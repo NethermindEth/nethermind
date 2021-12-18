@@ -43,16 +43,14 @@ namespace Nethermind.Network.Discovery.Test
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
-        private INetworkConfig _networkConfig = new NetworkConfig();
-        private IDiscoveryManager _discoveryManager;
-        private IMsgSender _msgSender;
-        private INodeTable _nodeTable;
-        private ITimestamper _timestamper;
-        private int _port = 1;
-        private string _host = "192.168.1.17";
-        private Node[] _nodes;
-        private PublicKey _publicKey;
-        private IIPResolver _ipResolver;
+        private readonly INetworkConfig _networkConfig = new NetworkConfig();
+        private IDiscoveryManager _discoveryManager = null!;
+        private IMsgSender _msgSender = null!;
+        private INodeTable _nodeTable = null!;
+        private const int Port = 1;
+        private const string Host = "192.168.1.17";
+        private Node[] _nodes = null!;
+        private PublicKey _publicKey = null!;
 
         [SetUp]
         public void Initialize()
@@ -74,10 +72,6 @@ namespace Nethermind.Network.Discovery.Test
             _nodeTable = new NodeTable(calculator, discoveryConfig, _networkConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
 
-            _timestamper = Timestamper.Default;
-
-            _ipResolver = new IPResolver(_networkConfig, logManager);
-
             EvictionManager evictionManager = new(_nodeTable, logManager);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager, 
@@ -94,15 +88,15 @@ namespace Nethermind.Network.Discovery.Test
         public async Task OnPingMessageTest()
         {
             //receiving ping
-            IPEndPoint address = new(IPAddress.Parse(_host), _port);
-            _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode.Address, new byte[32]) {FarAddress = address});
+            IPEndPoint address = new(IPAddress.Parse(Host), Port);
+            _discoveryManager.OnIncomingMsg(new PingMsg(_publicKey, GetExpirationTime(), address, _nodeTable.MasterNode!.Address, new byte[32]) {FarAddress = address});
             await Task.Delay(500);
 
             // expecting to send pong
-            _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
+            _msgSender.Received(1).SendMsg(Arg.Is<PongMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
 
             // send pings to  new node
-            _msgSender.Received().SendMsg(Arg.Is<PingMsg>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
+            _msgSender.Received().SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
         }
 
         [Test, Ignore("Add bonding"), Retry(3)]
@@ -112,13 +106,13 @@ namespace Nethermind.Network.Discovery.Test
             ReceiveSomePong();
             
             //expecting to activate node as valid peer
-            IEnumerable<Node> nodes = _nodeTable.GetClosestNodes();
+            IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
             Assert.AreEqual(1, nodes.Count());
             Node node = nodes.First();
-            Assert.AreEqual(_host, node.Host);
-            Assert.AreEqual(_port, node.Port);
+            Assert.AreEqual(Host, node.Host);
+            Assert.AreEqual(Port, node.Port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.Active, manager.State);
+            Assert.AreEqual(NodeLifecycleState.Active, manager?.State);
         }
 
         [Test, Ignore("Add bonding"), Retry(3)]
@@ -128,21 +122,21 @@ namespace Nethermind.Network.Discovery.Test
             ReceiveSomePong();
             
             //expecting to activate node as valid peer
-            IEnumerable<Node> nodes = _nodeTable.GetClosestNodes();
+            IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
             Assert.AreEqual(1, nodes.Count());
             Node node = nodes.First();
-            Assert.AreEqual(_host, node.Host);
-            Assert.AreEqual(_port, node.Port);
+            Assert.AreEqual(Host, node.Host);
+            Assert.AreEqual(Port, node.Port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.Active, manager.State);
+            Assert.AreEqual(NodeLifecycleState.Active, manager?.State);
 
             //receiving findNode
             FindNodeMsg msg = new(_publicKey, GetExpirationTime(), Build.A.PrivateKey.TestObject.PublicKey.Bytes);
-            msg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
+            msg.FarAddress = new IPEndPoint(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(msg);
             
             //expecting to respond with sending Neighbors
-            _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
+            _msgSender.Received(1).SendMsg(Arg.Is<NeighborsMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
         }
 
         [Test, Retry(3)]
@@ -153,11 +147,11 @@ namespace Nethermind.Network.Discovery.Test
             {
                 for (int b = 0; b < 255; b++)
                 {
-                    INodeLifecycleManager manager = _discoveryManager.GetNodeLifecycleManager(new Node($"{a}.{b}.1.1", 8000));
-                    manager.SendPingAsync();
+                    INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(new Node($"{a}.{b}.1.1", 8000));
+                    manager?.SendPingAsync();
                     
                     PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
-                    pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse($"{a}.{b}.1.1"), _port);
+                    pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse($"{a}.{b}.1.1"), Port);
                     _discoveryManager.OnIncomingMsg(pongMsg);
                 }
             }
@@ -172,33 +166,33 @@ namespace Nethermind.Network.Discovery.Test
             ReceiveSomePong();
 
             //expecting to activate node as valid peer
-            IEnumerable<Node> nodes = _nodeTable.GetClosestNodes();
+            IEnumerable<Node> nodes = _nodeTable.GetClosestNodes().ToArray();
             Assert.AreEqual(1, nodes.Count());
             Node node = nodes.First();
-            Assert.AreEqual(_host, node.Host);
-            Assert.AreEqual(_port, node.Port);
+            Assert.AreEqual(Host, node.Host);
+            Assert.AreEqual(Port, node.Port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
-            Assert.AreEqual(NodeLifecycleState.Active, manager.State);
+            Assert.AreEqual(NodeLifecycleState.Active, manager?.State);
 
             //sending FindNode to expect Neighbors
-            manager.SendFindNode(_nodeTable.MasterNode.Id.Bytes);
-            _msgSender.Received(1).SendMsg(Arg.Is<FindNodeMsg>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
+            manager?.SendFindNode(_nodeTable.MasterNode!.Id.Bytes);
+            _msgSender.Received(1).SendMsg(Arg.Is<FindNodeMsg>(m => m.FarAddress!.Address.ToString() == Host && m.FarAddress.Port == Port));
 
             //receiving findNode
             NeighborsMsg msg = new(_publicKey, GetExpirationTime(), _nodes);
-            msg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
+            msg.FarAddress = new IPEndPoint(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(msg);
 
             //expecting to send 3 pings to both nodes
             await Task.Delay(600);
-            _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port));
-            _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress.Address.ToString() == _nodes[1].Host && m.FarAddress.Port == _nodes[1].Port));
+            _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port));
+            _msgSender.Received(3).SendMsg(Arg.Is<PingMsg>(m => m.FarAddress!.Address.ToString() == _nodes[1].Host && m.FarAddress.Port == _nodes[1].Port));
         }
 
         private void ReceiveSomePong()
         {
             PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
-            pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port);
+            pongMsg.FarAddress = new IPEndPoint(IPAddress.Parse(Host), Port);
             _discoveryManager.OnIncomingMsg(pongMsg);
         }
     }

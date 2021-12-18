@@ -81,7 +81,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
                 IPAddress.Broadcast.ToString(),
                 30001);
 
-            Node existing = nodeBucket.BondedItems.First().Node;
+            Node existing = nodeBucket.BondedItems.First().Node!;
             nodeBucket.ReplaceNode(existing, node);
             nodeBucket.BondedItemsCount.Should().Be(16);
             nodeBucket.BondedItems.Should().HaveCount(16);
@@ -97,7 +97,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             NodeBucket nodeBucket = new(1, 16);
             AddNodes(nodeBucket, nodesInTheBucket);
 
-            Node existing1 = nodeBucket.BondedItems.First().Node;
+            Node existing1 = nodeBucket.BondedItems.First().Node!;
             nodeBucket.RefreshNode(existing1);
 
             nodeBucket.BondedItems.Should().HaveCount(Math.Min(nodeBucket.BucketSize, nodesInTheBucket));

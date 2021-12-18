@@ -35,23 +35,19 @@ namespace Nethermind.Network.Discovery.Test
             new("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
 
         //private readonly PrivateKey _farPrivateKey = new PrivateKey("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
-        private IPEndPoint _farAddress;
-        private IPEndPoint _nearAddress;
-        private IDiscoveryConfig _config;
-        private INetworkConfig _networkConfig;
-        private IMessageSerializationService _messageSerializationService;
-        private ITimestamper _timestamper;
-
-        [SetUp]
-        public void Initialize()
+        private readonly IPEndPoint _farAddress;
+        private readonly IPEndPoint _nearAddress;
+        private readonly IMessageSerializationService _messageSerializationService;
+        private readonly ITimestamper _timestamper;
+        
+        public DiscoveryMessageSerializerTests()
         {
-            _config = new DiscoveryConfig();
-            _networkConfig = new NetworkConfig();
-            _networkConfig.ExternalIp = "99.10.10.66";
-            _networkConfig.LocalIp = "10.0.0.5";
+            INetworkConfig networkConfig = new NetworkConfig();
+            networkConfig.ExternalIp = "99.10.10.66";
+            networkConfig.LocalIp = "10.0.0.5";
             
             _farAddress = new IPEndPoint(IPAddress.Parse("192.168.1.2"), 1);
-            _nearAddress = new IPEndPoint(IPAddress.Parse(_networkConfig.LocalIp), _networkConfig.DiscoveryPort);
+            _nearAddress = new IPEndPoint(IPAddress.Parse(networkConfig.LocalIp), networkConfig.DiscoveryPort);
             _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
             _timestamper = Timestamper.Default;
         }
