@@ -64,7 +64,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             }
 
             BlockHeader head = SyncServer.Head;
-            StatusMessage statusMessage = new StatusMessage
+            StatusMessage statusMessage = new()
             {
                 ProtocolVersion = ProtocolVersion,
                 ChainId = (UInt256)SyncServer.ChainId,
@@ -245,8 +245,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public void Handle(GetHelperTrieProofsMessage getHelperTrieProofs)
         {
-            List<byte[]> proofNodes = new List<byte[]>();
-            List<byte[]> auxData = new List<byte[]>();
+            List<byte[]> proofNodes = new();
+            List<byte[]> auxData = new();
 
             for (int requestNo = 0; requestNo < getHelperTrieProofs.Requests.Length; requestNo++)
             {
@@ -294,7 +294,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
             if (block.TotalDifficulty <= _lastSentBlock.TotalDifficulty) return;
 
-            AnnounceMessage announceMessage = new AnnounceMessage();
+            AnnounceMessage announceMessage = new();
             announceMessage.HeadHash = block.Hash;
             announceMessage.HeadBlockNo = block.Number;
             announceMessage.TotalDifficulty = block.TotalDifficulty.Value;

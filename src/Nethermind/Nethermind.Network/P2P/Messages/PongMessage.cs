@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class PongMessage : P2PMessage
     {
-        public static readonly PongMessage Instance = new PongMessage();
+        public static readonly PongMessage Instance = new();
 
         private PongMessage()
         {

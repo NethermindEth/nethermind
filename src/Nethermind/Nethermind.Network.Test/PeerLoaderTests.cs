@@ -42,7 +42,7 @@ namespace Nethermind.Network.Test
             _discoveryConfig = new DiscoveryConfig();
             _statsManager = Substitute.For<INodeStatsManager>();
             _peerStorage = Substitute.For<INetworkStorage>();
-            _loader = new PeerLoader(_networkConfig, _discoveryConfig, _statsManager, _peerStorage, LimboLogs.Instance);
+            _loader = new PeerLoader(_networkConfig, _statsManager, _peerStorage, LimboLogs.Instance);
         }
 
         [Test]

@@ -453,8 +453,7 @@ namespace Nethermind.Network.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
-                PeerLoader = new PeerLoader(new NetworkConfig(), new DiscoveryConfig(), Stats, Storage,
-                    LimboLogs.Instance);
+                PeerLoader = new PeerLoader(new NetworkConfig(), Stats, Storage, LimboLogs.Instance);
                 NetworkConfig = new NetworkConfig();
                 NetworkConfig.ActivePeersMaxCount = 25;
                 NetworkConfig.PeersPersistenceInterval = 50;

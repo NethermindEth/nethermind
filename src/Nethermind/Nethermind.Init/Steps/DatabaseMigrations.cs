@@ -34,7 +34,7 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            foreach (var migration in CreateMigrations())
+            foreach (IDatabaseMigration migration in CreateMigrations())
             {
                 migration.Run();
             }

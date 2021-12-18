@@ -18,7 +18,7 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class PingMessage : P2PMessage
     {
-        public static readonly PingMessage Instance = new PingMessage();
+        public static readonly PingMessage Instance = new();
 
         private PingMessage()
         {

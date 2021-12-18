@@ -26,8 +26,8 @@ namespace Nethermind.Network
 {
     public class MessageSerializationService : IMessageSerializationService
     {
-        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _serializers = new ConcurrentDictionary<RuntimeTypeHandle, object>();
-        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new ConcurrentDictionary<RuntimeTypeHandle, object>();
+        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _serializers = new();
+        private readonly ConcurrentDictionary<RuntimeTypeHandle, object> _zeroSerializers = new();
 
         public T Deserialize<T>(byte[] bytes) where T : MessageBase
         {

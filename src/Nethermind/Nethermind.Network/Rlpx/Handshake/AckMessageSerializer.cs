@@ -46,7 +46,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 throw new NetworkingException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {msgBytes.Length}", NetworkExceptionType.Validation);
             }
 
-            AckMessage authMessage = new AckMessage();
+            AckMessage authMessage = new();
             authMessage.EphemeralPublicKey = new PublicKey(msgBytes.AsSpan().Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength));
             authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength);
             authMessage.IsTokenUsed = msgBytes[IsTokenUsedOffset] == 0x01;

@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P.Messages
             RlpStream rlpStream = msgBytes.AsRlpStream();
             rlpStream.ReadSequenceLength();
 
-            HelloMessage helloMessage = new HelloMessage();
+            HelloMessage helloMessage = new();
             helloMessage.P2PVersion = rlpStream.DecodeByte();
             helloMessage.ClientId = string.Intern(rlpStream.DecodeString());
             helloMessage.Capabilities = rlpStream.DecodeArray(ctx =>

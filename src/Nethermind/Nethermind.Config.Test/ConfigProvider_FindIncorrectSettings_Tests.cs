@@ -28,17 +28,17 @@ namespace Nethermind.Config.Test
         [Test]
         public void CorrectSettingNames_CaseInsensitive()
         {
-            var jsonSource = new JsonConfigSource("SampleJson/CorrectSettingNames.cfg");
+            JsonConfigSource? jsonSource = new("SampleJson/CorrectSettingNames.cfg");
 
-            var env = Substitute.For<IEnvironment>();
+            IEnvironment? env = Substitute.For<IEnvironment>();
             env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() { { "NETHERMIND_NETWORKCONFIG_MAXCANDIDATEPEERCOUNT", "500" } });
-            var envSource = new EnvConfigSource(env);
+            EnvConfigSource? envSource = new(env);
 
-            var argsSource = new ArgsConfigSource(new Dictionary<string, string>() { 
+            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() { 
                 { "DiscoveryConfig.BucketSize", "10" }, 
                 { "NetworkConfig.DiscoveryPort", "30301" } });
 
-            var configProvider = new ConfigProvider();
+            ConfigProvider? configProvider = new();
             configProvider.AddSource(jsonSource);
             configProvider.AddSource(envSource);
             configProvider.AddSource(argsSource);
@@ -46,7 +46,7 @@ namespace Nethermind.Config.Test
             configProvider.Initialize();
 
 
-            var res = configProvider.FindIncorrectSettings();
+            (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
 
             Assert.AreEqual(0, res.Errors.Count);
         }
@@ -54,7 +54,7 @@ namespace Nethermind.Config.Test
         [Test]
         public void NoCategorySettings()
         {
-            var env = Substitute.For<IEnvironment>();
+            IEnvironment? env = Substitute.For<IEnvironment>();
             env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() { 
                 { "NETHERMIND_CLI_SWITCH_LOCAL", "http://localhost:80" },
                 { "NETHERMIND_MONITORING_JOB", "nethermindJob" },
@@ -67,9 +67,9 @@ namespace Nethermind.Config.Test
                 { "NETHERMIND_XYZ", "xyz" },    // not existing, should get error
                 { "QWER", "qwerty" }    // not Nethermind setting, no error
             }); 
-            var envSource = new EnvConfigSource(env);
+            EnvConfigSource? envSource = new(env);
 
-            var argsSource = new ArgsConfigSource(new Dictionary<string, string>() {
+            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() {
                 { "config", "test.cfg" },
                 { "datadir", "Data" },
                 { "ConfigsDirectory", "ConfDir" },
@@ -80,13 +80,13 @@ namespace Nethermind.Config.Test
                 { "Abc", "abc" }    // not existing, should get error
             });
 
-            var configProvider = new ConfigProvider();
+            ConfigProvider? configProvider = new();
             configProvider.AddSource(envSource);
             configProvider.AddSource(argsSource);
 
             configProvider.Initialize();
 
-            var res = configProvider.FindIncorrectSettings();
+            (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
 
             Assert.AreEqual(2, res.Errors.Count);
             Assert.AreEqual("XYZ", res.Errors[0].Name);
@@ -98,27 +98,27 @@ namespace Nethermind.Config.Test
         [Test]
         public void SettingWithTypos()
         {
-            var jsonSource = new JsonConfigSource("SampleJson/ConfigWithTypos.cfg");
+            JsonConfigSource? jsonSource = new("SampleJson/ConfigWithTypos.cfg");
 
-            var env = Substitute.For<IEnvironment>();
+            IEnvironment? env = Substitute.For<IEnvironment>();
             env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() { 
                 { "NETHERMIND_NETWORKCONFIG_MAXCANDIDATEPERCOUNT", "500" }  // incorrect, should be NETHERMIND_NETWORKCONFIG_MAXCANDIDATEPEERCOUNT
             });
-            var envSource = new EnvConfigSource(env);
+            EnvConfigSource? envSource = new(env);
 
-            var argsSource = new ArgsConfigSource(new Dictionary<string, string>() { 
+            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() { 
                 { "DiscoveryConfig.BucketSize", "10" }, 
                 { "NetworkConfig.DiscoverPort", "30301" }, // incorrect, should be NetworkConfig.DiscoveryPort
                 { "Network.P2PPort", "30301" } });
 
-            var configProvider = new ConfigProvider();
+            ConfigProvider? configProvider = new();
             configProvider.AddSource(jsonSource);
             configProvider.AddSource(envSource);
             configProvider.AddSource(argsSource);
 
             configProvider.Initialize();
 
-            var res = configProvider.FindIncorrectSettings();
+            (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
 
             Assert.AreEqual(4, res.Errors.Count);
             Assert.AreEqual("Concurrenc", res.Errors[0].Name);
@@ -131,23 +131,23 @@ namespace Nethermind.Config.Test
         [Test]
         public void IncorrectFormat()
         {
-            var env = Substitute.For<IEnvironment>();
+            IEnvironment? env = Substitute.For<IEnvironment>();
             env.GetEnvironmentVariables().Returns(new Dictionary<string, string>() { 
                 { "NETHERMIND_NETWORKCONFIGMAXCANDIDATEPEERCOUNT", "500" }  // incorrect, should be NETHERMIND_NETWORKCONFIG_MAXCANDIDATEPEERCOUNT
             });
-            var envSource = new EnvConfigSource(env);
+            EnvConfigSource? envSource = new(env);
 
-            var argsSource = new ArgsConfigSource(new Dictionary<string, string>() { 
+            ArgsConfigSource? argsSource = new(new Dictionary<string, string>() { 
                 { "DiscoveryConfig.BucketSize", "10" }, 
                 { "NetworkConfigP2PPort", "30301" } }); // incorrect, should be Network.P2PPort
 
-            var configProvider = new ConfigProvider();
+            ConfigProvider? configProvider = new();
             configProvider.AddSource(envSource);
             configProvider.AddSource(argsSource);
 
             configProvider.Initialize();
 
-            var res = configProvider.FindIncorrectSettings();
+            (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) res = configProvider.FindIncorrectSettings();
 
             Assert.AreEqual(2, res.Errors.Count);
             Assert.AreEqual("NETWORKCONFIGMAXCANDIDATEPEERCOUNT", res.Errors[0].Name);

@@ -20,8 +20,8 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -34,10 +34,10 @@ namespace Nethermind.Config.Test
         [SetUp]
         public void Initialize()
         {
-            var keystoreConfig = new KeyStoreConfig();
-            var networkConfig = new NetworkConfig();
-            var jsonRpcConfig = new JsonRpcConfig();
-            var statsConfig = StatsParameters.Instance;
+            KeyStoreConfig? keystoreConfig = new();
+            NetworkConfig? networkConfig = new();
+            JsonRpcConfig? jsonRpcConfig = new();
+            StatsParameters? statsConfig = StatsParameters.Instance;
 
             _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.cfg");
         }
@@ -51,9 +51,9 @@ namespace Nethermind.Config.Test
         [Test]
         public void Can_load_config_from_file()
         {
-            var keystoreConfig = _configProvider.GetConfig<IKeyStoreConfig>();
-            var networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
-            var jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
+            IKeyStoreConfig? keystoreConfig = _configProvider.GetConfig<IKeyStoreConfig>();
+            IDiscoveryConfig? networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+            IJsonRpcConfig? jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
 
             Assert.AreEqual(100, keystoreConfig.KdfparamsDklen);
             Assert.AreEqual("test", keystoreConfig.Cipher);

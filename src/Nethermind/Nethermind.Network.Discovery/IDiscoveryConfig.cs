@@ -16,7 +16,7 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.Network.Config;
+namespace Nethermind.Network.Discovery;
 
 [ConfigCategory(DisabledForCli = false, HiddenFromDocs = true)]
 public interface IDiscoveryConfig : IConfig

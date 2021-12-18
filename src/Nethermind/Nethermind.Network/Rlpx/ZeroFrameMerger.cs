@@ -30,7 +30,7 @@ namespace Nethermind.Network.Rlpx
         private ILogger _logger;
 
         private ZeroPacket _zeroPacket;
-        private FrameHeaderReader _headerReader = new FrameHeaderReader();
+        private FrameHeaderReader _headerReader = new();
 
         public ZeroFrameMerger(ILogManager logManager)
         {

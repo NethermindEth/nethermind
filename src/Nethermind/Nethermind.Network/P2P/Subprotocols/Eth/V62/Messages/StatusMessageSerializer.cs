@@ -79,7 +79,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         
         private static StatusMessage Deserialize(RlpStream rlpStream)
         {
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             rlpStream.ReadSequenceLength();
             statusMessage.ProtocolVersion = rlpStream.DecodeByte();
             statusMessage.ChainId = rlpStream.DecodeUInt256();

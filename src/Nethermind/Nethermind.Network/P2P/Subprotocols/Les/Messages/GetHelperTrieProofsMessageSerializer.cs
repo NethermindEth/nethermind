@@ -62,17 +62,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
         public GetHelperTrieProofsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
 
         public static GetHelperTrieProofsMessage Deserialize(RlpStream rlpStream)
         {
-            GetHelperTrieProofsMessage message = new GetHelperTrieProofsMessage();
+            GetHelperTrieProofsMessage message = new();
             rlpStream.ReadSequenceLength();
             message.RequestId = rlpStream.DecodeLong();
             message.Requests = rlpStream.DecodeArray(stream => { 
-                HelperTrieRequest request = new HelperTrieRequest();
+                HelperTrieRequest request = new();
                 stream.ReadSequenceLength();
                 request.SubType = (HelperTrieType)stream.DecodeInt();
                 request.SectionIndex = stream.DecodeLong();

@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, GetBlockWitnessHashesMessage message)
         {
-            NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream nettyRlpStream = new(byteBuffer);
             int totalLength = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(totalLength, true);
             nettyRlpStream.StartSequence(contentLength);
@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
 
         public GetBlockWitnessHashesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             rlpStream.ReadSequenceLength();
             long requestId = rlpStream.DecodeLong();
             var hash = rlpStream.DecodeKeccak();
