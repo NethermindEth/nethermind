@@ -167,6 +167,8 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             MsgType.Pong => _msgSerializationService.Deserialize<PongMsg>(msg),
             MsgType.FindNode => _msgSerializationService.Deserialize<FindNodeMsg>(msg),
             MsgType.Neighbors => _msgSerializationService.Deserialize<NeighborsMsg>(msg),
+            MsgType.EnrRequest => _msgSerializationService.Deserialize<EnrRequestMsg>(msg),
+            MsgType.EnrResponse => _msgSerializationService.Deserialize<EnrResponseMsg>(msg),
             _ => throw new Exception($"Unsupported messageType: {type}")
         };
     }
@@ -179,6 +181,8 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             MsgType.Pong => _msgSerializationService.Serialize((PongMsg) msg),
             MsgType.FindNode => _msgSerializationService.Serialize((FindNodeMsg) msg),
             MsgType.Neighbors => _msgSerializationService.Serialize((NeighborsMsg) msg),
+            MsgType.EnrRequest => _msgSerializationService.Serialize((EnrRequestMsg) msg),
+            MsgType.EnrResponse => _msgSerializationService.Serialize((EnrResponseMsg) msg),
             _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
         };
     }
@@ -221,7 +225,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
     {
         if (msg is PingMsg pingMsg)
         {
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "HANDLER disc v4", $"PING {pingMsg.SourceAddress?.Address} -> {pingMsg.DestinationAddress?.Address}");    
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "HANDLER disc v4", $"PING {pingMsg.SourceAddress.Address} -> {pingMsg.DestinationAddress?.Address}");    
         }
         else
         {

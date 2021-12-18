@@ -13,15 +13,35 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
+
+using System.Net;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Network.Enr;
 
 namespace Nethermind.Network.Discovery.Messages;
 
-public enum MsgType
+/// <summary>
+/// https://eips.ethereum.org/EIPS/eip-868
+/// </summary>
+public class EnrResponseMsg : DiscoveryMsg
 {
-    Ping = 1,
-    Pong = 2,
-    FindNode = 3,
-    Neighbors = 4,
-    EnrRequest = 5,
-    EnrResponse = 6
+    private const long MaxTime = long.MaxValue; // non-expiring message
+    
+    public override MsgType MsgType => MsgType.EnrResponse;
+
+    public NodeRecord NodeRecord { get; }
+
+    public EnrResponseMsg(IPEndPoint farAddress, NodeRecord nodeRecord)
+        : base(farAddress, MaxTime)
+    {
+        NodeRecord = nodeRecord;
+    }
+    
+    public EnrResponseMsg(PublicKey farPublicKey, NodeRecord nodeRecord)
+        : base(farPublicKey, MaxTime)
+    {
+        NodeRecord = nodeRecord;
+    }
 }

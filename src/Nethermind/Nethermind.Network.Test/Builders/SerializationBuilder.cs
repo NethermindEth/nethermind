@@ -19,6 +19,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -105,7 +106,7 @@ namespace Nethermind.Network.Test.Builders
             Ecdsa ecdsa = new();
             SameKeyGenerator privateKeyProvider = new(privateKey);
 
-            PingMsgSerializer pingSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
+            PingMsgSerializer pingSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa), new NodeRecord());
             PongMsgSerializer pongSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
             FindNodeMsgSerializer findNodeSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
             NeighborsMsgSerializer neighborsSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));

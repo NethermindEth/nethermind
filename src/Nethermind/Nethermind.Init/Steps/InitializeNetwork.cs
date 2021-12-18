@@ -32,6 +32,7 @@ using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
@@ -274,11 +275,20 @@ namespace Nethermind.Init.Steps
             SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
             NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
 
+            NodeRecord nodeRecord = new();
+            nodeRecord.SetEntry(IdEntry.Instance);
+            nodeRecord.SetEntry(new IpEntry( _api.IpResolver!.ExternalIp));
+            nodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
+            nodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
+            // TODO: compressed key here
+            //nodeRecord.SetEntry(new Secp256K1Entry(_api.Enode.PublicKey));
+            
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _api.MessageSerializationService,
                 _api.EthereumEcdsa,
                 privateKeyProvider,
-                nodeIdResolver);
+                nodeIdResolver,
+                nodeRecord);
 
             msgSerializersProvider.RegisterDiscoverySerializers();
 

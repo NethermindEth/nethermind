@@ -20,6 +20,11 @@ namespace Nethermind.Network.Enr
     public static class EnrContentKey
     {
         /// <summary>
+        /// ETH info
+        /// </summary>
+        public const string Eth = "eth";
+        
+        /// <summary>
         /// Name of identity scheme, e.g. "v4"
         /// </summary>
         public const string Id = "id";

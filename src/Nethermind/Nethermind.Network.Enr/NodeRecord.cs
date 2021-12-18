@@ -24,7 +24,7 @@ public class NodeRecord
 {
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
-    public int Sequence { get; set; }
+    public int Sequence { get; set; } = 1;
 
     public NodeRecord()
     {
@@ -39,6 +39,28 @@ public class NodeRecord
         }
 
         Entries[entry.Key] = entry;
+    }
+    
+    public TValue? GetValue<TValue>(string entryKey) where TValue : struct
+    {
+        if (Entries.ContainsKey(entryKey))
+        {
+            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)Entries[entryKey];
+            return entry.Value;
+        }
+
+        return null;
+    }
+    
+    public TValue? GetObj<TValue>(string entryKey) where TValue : class
+    {
+        if (Entries.ContainsKey(entryKey))
+        {
+            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)Entries[entryKey];
+            return entry.Value;
+        }
+
+        return null;
     }
     
     private int GetContentLengthWithoutSignature()

@@ -101,6 +101,12 @@ public class DiscoveryManager : IDiscoveryManager
                 case MsgType.FindNode:
                     nodeManager.ProcessFindNodeMsg((FindNodeMsg)msg);
                     break;
+                case MsgType.EnrRequest:
+                    nodeManager.ProcessEnrRequestMsg((EnrRequestMsg)msg);
+                    break;
+                case MsgType.EnrResponse:
+                    nodeManager.ProcessEnrResponseMsg((EnrResponseMsg)msg);
+                    break;
                 default:
                     _logger.Error($"Unsupported msgType: {msgType}");
                     return;

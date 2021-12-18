@@ -19,15 +19,19 @@ using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
 public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<PingMsg>
 {
-    public PingMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator privateKeyGenerator, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, privateKeyGenerator, nodeIdResolver)
+    private readonly NodeRecord _self;
+
+    public PingMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver, NodeRecord self)
+        : base(ecdsa, nodeKey, nodeIdResolver)
     {
+        _self = self ?? throw new ArgumentNullException(nameof(self));
     }
 
     public byte[] Serialize(PingMsg msg)
@@ -41,6 +45,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
             destination,
             //verify if encoding is correct
             Rlp.Encode(msg.ExpirationTime)
+            // Rlp.Encode(_self.Sequence) TODO: advertising ENR sequence - needs to be tested between our two nodes
         ).Bytes;
 
         byte[] serializedMsg = Serialize(typeByte, data);
@@ -51,7 +56,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
 
     public PingMsg Deserialize(byte[] msgBytes)
     {
-        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization<PingMsg>(msgBytes);
+        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization(msgBytes);
             
         RlpStream rlp = results.Data.AsRlpStream();
         rlp.ReadSequenceLength();
@@ -72,8 +77,14 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
         rlp.DecodeInt(); // UDP port
 
         long expireTime = rlp.DecodeLong();
+        int? enrSequence = null;
+        if (!rlp.HasBeenRead)
+        {
+            enrSequence = rlp.DecodeInt();
+        }
 
         PingMsg msg = new(results.FarPublicKey, expireTime, source, destination, results.Mdc);
+        msg.EnrSequence = enrSequence;
         msg.Version = version;
         if (version != 4)
         {

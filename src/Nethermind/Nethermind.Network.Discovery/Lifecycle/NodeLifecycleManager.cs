@@ -17,9 +17,9 @@
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -74,16 +74,53 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     public event EventHandler<NodeLifecycleState>? OnStateChanged;
 
-    public void ProcessPingMsg(PingMsg discoveryMsg)
+    public void ProcessPingMsg(PingMsg pingMsg)
     {
         // _receivedPing = true;
-        SendPong(discoveryMsg);
+        SendPong(pingMsg);
+        if (pingMsg.EnrSequence is not null && pingMsg.EnrSequence > _lastEnrSequence)
+        {
+            RequestEnr();
+        }
 
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
         RefreshNodeContactTime();
     }
 
-    public void ProcessPongMsg(PongMsg discoveryMsg)
+    private void RequestEnr()
+    {
+        EnrRequestMsg msg = new (ManagedNode.Address, CalculateExpirationTime());
+        _discoveryManager.SendMessage(msg);
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestOut);
+    }
+
+    public void ProcessEnrResponseMsg(EnrResponseMsg enrResponseMsg)
+    {
+        // TODO: use this knowledge to mark each node with info on the forkhash
+        // Enr.ForkId? forkId = enrResponseMsg.NodeRecord.GetValue<Enr.ForkId>(EnrContentKey.Eth);
+        // if (forkId is not null)
+        // {
+        //     _logger.Warn($"Discovered new node with forkId {forkId.Value.ForkHash.ToHexString()}");
+        // }
+        
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
+    }
+    
+    public void ProcessEnrRequestMsg(EnrRequestMsg enrResponseMsg)
+    {
+        if (!IsBonded)
+        {
+            if (_logger.IsWarn) _logger.Warn("Attempt to request ENR before bonding");
+            return;
+        }
+
+        EnrResponseMsg msg = new(ManagedNode.Address, new NodeRecord());
+        _discoveryManager.SendMessage(msg);
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
+    }
+
+    public void ProcessPongMsg(PongMsg pongMsg)
     {
         PingMsg? sentPingMsg = Interlocked.Exchange(ref _lastSentPing, null);
         if (sentPingMsg == null)
@@ -91,7 +128,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (Bytes.AreEqual(sentPingMsg.Mdc, discoveryMsg.PingMdc))
+        if (Bytes.AreEqual(sentPingMsg.Mdc, pongMsg.PingMdc))
         {
             _receivedPong = true;
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongIn);
@@ -164,6 +201,8 @@ public class NodeLifecycleManager : INodeLifecycleManager
     }
         
     private readonly DateTime _lastTimeSendFindNode = DateTime.MinValue;
+    
+    private readonly int _lastEnrSequence = 0;
 
     public void SendFindNode(byte[] searchedNodeId)
     {

@@ -163,6 +163,8 @@ namespace Nethermind.Serialization.Rlp
 
         public virtual int Length => Data!.Length;
 
+        public virtual bool HasBeenRead => Position >= Data!.Length;
+
         public bool IsSequenceNext()
         {
             return PeekByte() >= 192;

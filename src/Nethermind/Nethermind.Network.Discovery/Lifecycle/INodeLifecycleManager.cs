@@ -25,10 +25,12 @@ public interface INodeLifecycleManager
     Node ManagedNode { get; }
     INodeStats NodeStats { get; }
     NodeLifecycleState State { get; }
-    void ProcessPingMsg(PingMsg discoveryMsg);
-    void ProcessPongMsg(PongMsg discoveryMsg);
+    void ProcessPingMsg(PingMsg pingMsg);
+    void ProcessPongMsg(PongMsg pongMsg);
     void ProcessNeighborsMsg(NeighborsMsg discoveryMsg);
     void ProcessFindNodeMsg(FindNodeMsg discoveryMsg);
+    void ProcessEnrRequestMsg(EnrRequestMsg msg);
+    void ProcessEnrResponseMsg(EnrResponseMsg msg);
     void SendFindNode(byte[] searchedNodeId);
     Task SendPingAsync();
     void SendPong(PingMsg discoveryMsg);

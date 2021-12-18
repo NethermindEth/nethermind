@@ -13,15 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Network.Discovery.Messages;
+namespace Nethermind.Network.Enr;
 
-public enum MsgType
+public struct ForkId
 {
-    Ping = 1,
-    Pong = 2,
-    FindNode = 3,
-    Neighbors = 4,
-    EnrRequest = 5,
-    EnrResponse = 6
+    public ForkId(byte[] forkHash, long nextBlock)
+    {
+        ForkHash = forkHash;
+        NextBlock = nextBlock;
+    }
+    
+    public byte[] ForkHash { get; set; }
+    public long NextBlock { get; set; }
 }

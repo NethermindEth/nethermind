@@ -16,6 +16,7 @@
 
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Enr;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
@@ -26,22 +27,22 @@ public class DiscoveryMsgSerializersProvider : IDiscoveryMsgSerializersProvider
     private readonly PongMsgSerializer _pongMsgSerializer;
     private readonly FindNodeMsgSerializer _findNodeMsgSerializer;
     private readonly NeighborsMsgSerializer _neighborsMsgSerializer;
+    private readonly EnrRequestMsgSerializer _enrRequestMsgSerializer;
+    private readonly EnrResponseMsgSerializer _enrResponseMsgSerializer;
 
     public DiscoveryMsgSerializersProvider(IMessageSerializationService msgSerializationService,
         IEcdsa ecdsa,
         IPrivateKeyGenerator privateKeyGenerator,
-        INodeIdResolver nodeIdResolver)
+        INodeIdResolver nodeIdResolver,
+        NodeRecord self)
     {
-        PingMsgSerializer pingSerializer = new(ecdsa, privateKeyGenerator, nodeIdResolver);
-        PongMsgSerializer pongSerializer = new(ecdsa, privateKeyGenerator, nodeIdResolver);
-        FindNodeMsgSerializer findNodeSerializer = new(ecdsa, privateKeyGenerator, nodeIdResolver);
-        NeighborsMsgSerializer neighborsSerializer = new(ecdsa, privateKeyGenerator, nodeIdResolver);
-
         _msgSerializationService = msgSerializationService;
-        _pingMsgSerializer = pingSerializer;
-        _pongMsgSerializer = pongSerializer;
-        _findNodeMsgSerializer = findNodeSerializer;
-        _neighborsMsgSerializer = neighborsSerializer;
+        _pingMsgSerializer = new PingMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver, self);
+        _pongMsgSerializer = new PongMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver);
+        _findNodeMsgSerializer = new FindNodeMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver);
+        _neighborsMsgSerializer = new NeighborsMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver);
+        _enrRequestMsgSerializer = new EnrRequestMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver);
+        _enrResponseMsgSerializer = new EnrResponseMsgSerializer(ecdsa, privateKeyGenerator, nodeIdResolver);
     }
 
     public void RegisterDiscoverySerializers()
@@ -50,5 +51,7 @@ public class DiscoveryMsgSerializersProvider : IDiscoveryMsgSerializersProvider
         _msgSerializationService.Register(_pongMsgSerializer);
         _msgSerializationService.Register(_findNodeMsgSerializer);
         _msgSerializationService.Register(_neighborsMsgSerializer);
+        _msgSerializationService.Register(_enrRequestMsgSerializer);
+        _msgSerializationService.Register(_enrResponseMsgSerializer);
     }
 }

@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P
     {
         private readonly IByteBuffer _buffer;
 
-        private int _initialPosition;
+        private readonly int _initialPosition;
 
         public NettyRlpStream(IByteBuffer buffer)
         {
@@ -96,6 +96,8 @@ namespace Nethermind.Network.P2P
         }
 
         public override int Length => _buffer.ReadableBytes + (_buffer.ReaderIndex - _initialPosition);
+
+        public override bool HasBeenRead => _buffer.ReadableBytes > 0;
 
         protected override string Description => "|NettyRlpStream|description missing|";
     }

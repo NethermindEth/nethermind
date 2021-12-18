@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Diagnostics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr
@@ -51,6 +52,7 @@ namespace Nethermind.Network.Enr
     /// <summary>
     /// Single key, value pair entry in the ENR record content.
     /// </summary>
+    [DebuggerDisplay("{Key} {Value}")]
     public abstract class EnrContentEntry<TValue> : EnrContentEntry
     {
         public TValue Value { get; }
@@ -58,6 +60,11 @@ namespace Nethermind.Network.Enr
         protected EnrContentEntry(TValue value)
         {
             Value = value;
+        }
+
+        public override string ToString()
+        {
+            return $"{Key} {Value}";
         }
     }
 }

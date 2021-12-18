@@ -8,6 +8,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+      <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
       <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     </ItemGroup>
 
