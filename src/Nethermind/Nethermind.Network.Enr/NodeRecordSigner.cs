@@ -26,13 +26,13 @@ namespace Nethermind.Network.Enr;
 /// </summary>
 public class NodeRecordSigner
 {
-    private readonly IEthereumEcdsa _ethereumEcdsa;
+    private readonly IEcdsa _ecdsa;
     
     private readonly PrivateKey _privateKey;
 
-    public NodeRecordSigner(IEthereumEcdsa? ethereumEcdsa, PrivateKey? privateKey)
+    public NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey)
     {
-        _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
+        _ecdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
         _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
     }
 
@@ -40,8 +40,7 @@ public class NodeRecordSigner
     {
         KeccakRlpStream rlpStream = new();
         nodeRecord.Encode(rlpStream);
-
-        return _ethereumEcdsa.Sign(_privateKey, new Keccak(rlpStream.GetHash()));
+        return _ecdsa.Sign(_privateKey, new Keccak(rlpStream.GetHash()));
     }
     
     public string GetEnrString(NodeRecord nodeRecord)
@@ -51,9 +50,11 @@ public class NodeRecordSigner
         RlpStream rlpStream = new(rlpLength);
         nodeRecord.Encode(rlpStream, signature);
         byte[] rlpData = rlpStream.Data!;
-        
-        // TODO: verify if the Base64 URL safe alphabet is used (just via the test case)
+        // Console.WriteLine("actual: " + rlpData.ToHexString());
         // https://tools.ietf.org/html/rfc4648#section-5
-        return string.Concat("enr:", Convert.ToBase64String(rlpData));
+        
+        // Base64Url must be used, hence Replace calls (not sure if allocating internally)
+        return string.Concat("enr:",
+            Convert.ToBase64String(rlpData).Replace("+", "-").Replace("/", "_").Replace("=", ""));
     }
 }

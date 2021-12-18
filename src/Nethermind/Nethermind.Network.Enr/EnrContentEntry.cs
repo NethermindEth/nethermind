@@ -51,14 +51,8 @@ namespace Nethermind.Network.Enr
     /// <summary>
     /// Single key, value pair entry in the ENR record content.
     /// </summary>
-    public abstract class EnrContentEntry<TValue>
+    public abstract class EnrContentEntry<TValue> : EnrContentEntry
     {
-        public abstract string Key { get; }
-        
-        protected abstract void EncodeValue(RlpStream rlpStream);
-        
-        protected abstract int GetRlpLengthOfValue();
-
         public TValue Value { get; }
 
         protected EnrContentEntry(TValue value)

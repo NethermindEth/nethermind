@@ -25,6 +25,11 @@ public class CompressedPublicKey : IEquatable<CompressedPublicKey>
 {
     public const int LengthInBytes = 33;
 
+    public CompressedPublicKey(string? hexString)
+        : this(Core.Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))
+    {
+    }
+    
     public CompressedPublicKey(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length != LengthInBytes)

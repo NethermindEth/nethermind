@@ -22,10 +22,15 @@ namespace Nethermind.Network.Enr;
 
 public class NodeRecord
 {
-    private SortedDictionary<string, EnrContentEntry> Entries { get; set; } = new();
+    private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
-    public int Sequence { get; set; } = 0;
+    public int Sequence { get; set; }
 
+    public NodeRecord()
+    {
+        SetEntry(IdEntry.Instance);
+    }
+    
     public void SetEntry(EnrContentEntry entry)
     {
         if (Entries.ContainsKey(entry.Key))
@@ -35,21 +40,33 @@ public class NodeRecord
 
         Entries[entry.Key] = entry;
     }
-
-    public int GetRlpLengthWithSignature()
+    
+    private int GetContentLengthWithoutSignature()
     {
         int contentLength = Rlp.LengthOf(Sequence); // this is a different meaning of a sequence than the RLP sequence
-        contentLength += 64 + 1; // signature RLP length
         foreach ((_, EnrContentEntry enrContentEntry) in Entries)
         {
             contentLength += enrContentEntry.GetRlpLength();
         }
 
-        return Rlp.LengthOfSequence(contentLength);
+        return contentLength;
+    }
+
+    private int GetContentLengthWithSignature()
+    {
+        return GetContentLengthWithoutSignature() + 64 + 2;
+    }
+    
+    public int GetRlpLengthWithSignature()
+    {
+        return Rlp.LengthOfSequence(
+            GetContentLengthWithSignature());
     }
 
     public void Encode(RlpStream rlpStream)
     {
+        int contentLength = GetContentLengthWithoutSignature();
+        rlpStream.StartSequence(contentLength);
         rlpStream.Encode(Sequence);
         foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
         {
@@ -59,6 +76,8 @@ public class NodeRecord
     
     public void Encode(RlpStream rlpStream, Signature signature)
     {
+        int contentLength = GetContentLengthWithSignature();
+        rlpStream.StartSequence(contentLength);
         rlpStream.Encode(signature.Bytes);
         rlpStream.Encode(Sequence);
         foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
