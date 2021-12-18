@@ -96,7 +96,13 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     public void ProcessEnrResponseMsg(EnrResponseMsg enrResponseMsg)
     {
-        // TODO: use this knowledge to mark each node with info on the forkhash
+        // TODO: 1) compressed sig validation
+        // TODO: 2) compressed public key publication
+        // TODO: 3) use test vector from ENR to check private key -> compressed public key -> sig
+        // TODO: 4) test for NodeRecord validation
+        // TODO: 5) tests for the whole req resp flow
+        // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash
+        
         // Enr.ForkId? forkId = enrResponseMsg.NodeRecord.GetValue<Enr.ForkId>(EnrContentKey.Eth);
         // if (forkId is not null)
         // {
@@ -152,9 +158,9 @@ public class NodeLifecycleManager : INodeLifecycleManager
         }
     }
 
-    public void ProcessNeighborsMsg(NeighborsMsg? discoveryMsg)
+    public void ProcessNeighborsMsg(NeighborsMsg? msg)
     {
-        if (discoveryMsg is null)
+        if (msg is null)
         {
             return;
         }
@@ -169,11 +175,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
             RefreshNodeContactTime();
 
-            foreach (Node node in discoveryMsg.Nodes)
+            foreach (Node node in msg.Nodes)
             {
                 if (node.Address.Address.ToString().Contains("127.0.0.1"))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Received localhost as node address from: {discoveryMsg.FarPublicKey}, node: {node}");
+                    if (_logger.IsTrace) _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
                     continue;
                 }
 
@@ -186,7 +192,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     }
         
 
-    public void ProcessFindNodeMsg(FindNodeMsg discoveryMsg)
+    public void ProcessFindNodeMsg(FindNodeMsg msg)
     {
         if (!IsBonded)
         {
@@ -196,7 +202,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
         RefreshNodeContactTime();
 
-        Node[] nodes = _nodeTable.GetClosestNodes(discoveryMsg.SearchedNodeId).ToArray();
+        Node[] nodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId).ToArray();
         SendNeighbors(nodes);
     }
         
