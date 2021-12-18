@@ -1,6 +1,5 @@
 using System;
 using System.Buffers.Binary;
-using System.Buffers.Text;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,19 +15,27 @@ public class NodeRecordSignerTests
     {
     }
 
-    [Test]
+    [Test(Description = "https://eips.ethereum.org/EIPS/eip-778")]
     public void Verify_eip_test_vector()
     {
-        string expectedStringUrlSafe = "-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOonrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8=";
-        string expectedString = expectedStringUrlSafe.Replace('-', '+').Replace('_', '/'); // go back from Base64Url - also added the '=' padding at the end of the previous string
-
-        byte[] expected =  Convert.FromBase64String(expectedString);
+        const string expectedEnrString = "enr:" +
+                                         "-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOo" +
+                                         "nrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPK" +
+                                         "Y0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8";
+        
+        // go back from Base64Url - also added the '=' padding at the end of the previous string
+        // just to check how RLP should look (for debugging the test)
+        string expectedEnrStringNonRfcBase64 = expectedEnrString
+            .Replace("enr:", "")
+            .Replace('-', '+')
+            .Replace('_', '/') + /*padding*/ "=";
+        byte[] expected =  Convert.FromBase64String(expectedEnrStringNonRfcBase64);
         string expectedHexString = expected.ToHexString();
         Console.WriteLine("expected: " + expectedHexString);
         
         Ecdsa ecdsa = new();
-        PrivateKey testKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
-        NodeRecordSigner signer = new(ecdsa, testKey);
+        PrivateKey privateKey = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        NodeRecordSigner signer = new(ecdsa, privateKey);
         NodeRecord nodeRecord = new();
         nodeRecord.SetEntry(new IpEntry(
             new IPAddress(Bytes.FromHexString("7f000001"))));
@@ -40,8 +47,6 @@ public class NodeRecordSignerTests
         nodeRecord.Sequence = 1; // override
         
         string enrString = signer.GetEnrString(nodeRecord);
-        Assert.AreEqual(
-            "enr:-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOonrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPKY0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8",
-            enrString);
+        Assert.AreEqual(expectedEnrString, enrString);
     }
 }
