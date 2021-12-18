@@ -94,9 +94,9 @@ namespace Nethermind.Network.Test.Builders
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessageSerializer())
-                .With(new GetNodeDataMessageSerializer())
-                .With(new NodeDataMessageSerializer())
-                .With(new GetReceiptsMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)));
         }
 
