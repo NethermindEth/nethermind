@@ -105,7 +105,6 @@ public class NodeLifecycleManager : INodeLifecycleManager
         {
             return;
         }
-
         _lastEnrSequence = enrResponseMsg.NodeRecord.EnrSequence;
         
         // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash

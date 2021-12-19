@@ -25,7 +25,7 @@ namespace Nethermind.Network.Enr;
 public class NodeRecord
 {
     private int _enrSequence;
-    
+
     private string? _enrString;
 
     private Keccak? _contentHash;
@@ -78,7 +78,7 @@ public class NodeRecord
     {
         SetEntry(IdEntry.Instance);
     }
-    
+
     public void Seal(Signature signature)
     {
         // verify here?
@@ -94,7 +94,7 @@ public class NodeRecord
 
         Entries[entry.Key] = entry;
     }
-    
+
     public TValue? GetValue<TValue>(string entryKey) where TValue : struct
     {
         if (Entries.ContainsKey(entryKey))
@@ -105,7 +105,7 @@ public class NodeRecord
 
         return null;
     }
-    
+
     public TValue? GetObj<TValue>(string entryKey) where TValue : class
     {
         if (Entries.ContainsKey(entryKey))
@@ -116,10 +116,11 @@ public class NodeRecord
 
         return null;
     }
-    
+
     private int GetContentLengthWithoutSignature()
     {
-        int contentLength = Rlp.LengthOf(EnrSequence); // this is a different meaning of a sequence than the RLP sequence
+        int contentLength =
+            Rlp.LengthOf(EnrSequence); // this is a different meaning of a sequence than the RLP sequence
         foreach ((_, EnrContentEntry enrContentEntry) in Entries)
         {
             contentLength += enrContentEntry.GetRlpLength();
@@ -132,7 +133,7 @@ public class NodeRecord
     {
         return GetContentLengthWithoutSignature() + 64 + 2;
     }
-    
+
     public int GetRlpLengthWithSignature()
     {
         return Rlp.LengthOfSequence(
@@ -158,11 +159,11 @@ public class NodeRecord
         Encode(rlpStream);
         return rlpStream.Data!.ToHexString();
     }
-    
+
     public void Encode(RlpStream rlpStream)
     {
         RequireSignature();
-        
+
         int contentLength = GetContentLengthWithSignature();
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(Signature!.Bytes);
@@ -172,18 +173,18 @@ public class NodeRecord
             contentEntry.Encode(rlpStream);
         }
     }
-    
+
     private string CreateEnrString()
     {
         RequireSignature();
-        
+
         int rlpLength = GetRlpLengthWithSignature();
         RlpStream rlpStream = new(rlpLength);
         Encode(rlpStream);
         byte[] rlpData = rlpStream.Data!;
         // Console.WriteLine("actual: " + rlpData.ToHexString());
         // https://tools.ietf.org/html/rfc4648#section-5
-        
+
         // Base64Url must be used, hence Replace calls (not sure if allocating internally)
         return string.Concat("enr:",
             Convert.ToBase64String(rlpData).Replace("+", "-").Replace("/", "_").Replace("=", ""));
