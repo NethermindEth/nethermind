@@ -51,6 +51,7 @@ public class NodeRecord
 
     public Signature? Signature { get; private set; }
 
+
     public NodeRecord()
     {
         SetEntry(IdEntry.Instance);
@@ -88,7 +89,7 @@ public class NodeRecord
         return GetContentLengthWithoutSignature() + 64 + 2;
     }
     
-    private int GetRlpLengthWithSignature()
+    public int GetRlpLengthWithSignature()
     {
         return Rlp.LengthOfSequence(
             GetContentLengthWithSignature());
@@ -105,7 +106,7 @@ public class NodeRecord
         }
     }
     
-    private void Encode(RlpStream rlpStream)
+    public void Encode(RlpStream rlpStream)
     {
         RequireSignature();
         
@@ -118,7 +119,7 @@ public class NodeRecord
             contentEntry.Encode(rlpStream);
         }
     }
-    
+
     private string CreateEnrString()
     {
         RequireSignature();

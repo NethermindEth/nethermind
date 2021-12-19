@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.Init.Steps
@@ -47,7 +48,7 @@ namespace Nethermind.Init.Steps
             _blockTree = _api.BlockTree ?? throw new StepDependencyException(nameof(_api.BlockTree));
             _chainLevelInfoRepository = _api.ChainLevelInfoRepository ?? throw new StepDependencyException(nameof(_api.ChainLevelInfoRepository));
             
-            var initConfig = _api.Config<IInitConfig>();
+            IInitConfig initConfig = _api.Config<IInitConfig>();
 
             if (initConfig.StoreReceipts)
             {
@@ -66,11 +67,11 @@ namespace Nethermind.Init.Steps
                 long blockNumber = _blockTree.Head?.Number ?? 0;
                 while (blockNumber > 0)
                 {
-                    var level = _chainLevelInfoRepository.LoadLevel(blockNumber);
-                    var firstBlockInfo = level?.BlockInfos.FirstOrDefault();
+                    ChainLevelInfo level = _chainLevelInfoRepository.LoadLevel(blockNumber);
+                    BlockInfo firstBlockInfo = level?.BlockInfos.FirstOrDefault();
                     if (firstBlockInfo != null)
                     {
-                        var receipts = _receiptStorage.Get(firstBlockInfo.BlockHash);
+                        TxReceipt[] receipts = _receiptStorage.Get(firstBlockInfo.BlockHash);
                         if (receipts?.Length > 0)
                         {
                             if (recovery.NeedRecover(receipts))

@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
-        private readonly ReceiptMessageDecoder _decoder = new ReceiptMessageDecoder();
+        private readonly ReceiptMessageDecoder _decoder = new();
 
         public ReceiptsMessageSerializer(ISpecProvider specProvider)
         {
@@ -61,7 +61,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             TxReceipt[][] data = rlpStream.DecodeArray(itemContext =>
                 itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? new TxReceipt[0], true);
-            ReceiptsMessage message = new ReceiptsMessage(data);
+            ReceiptsMessage message = new(data);
 
             return message;
         }

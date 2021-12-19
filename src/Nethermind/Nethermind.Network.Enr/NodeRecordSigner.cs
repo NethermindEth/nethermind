@@ -27,13 +27,28 @@ namespace Nethermind.Network.Enr;
 public class NodeRecordSigner
 {
     private readonly IEcdsa _ecdsa;
-    
+
     private readonly PrivateKey _privateKey;
 
     public NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey)
     {
         _ecdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
         _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+    }
+
+    public string GetEnrString(NodeRecord nodeRecord)
+    {
+        Sign(nodeRecord);
+        int rlpLength = nodeRecord.GetRlpLengthWithSignature();
+        RlpStream rlpStream = new(rlpLength);
+        nodeRecord.Encode(rlpStream);
+        byte[] rlpData = rlpStream.Data!;
+        // Console.WriteLine("actual: " + rlpData.ToHexString());
+        // https://tools.ietf.org/html/rfc4648#section-5
+
+        // Base64Url must be used, hence Replace calls (not sure if allocating internally)
+        return string.Concat("enr:",
+            Convert.ToBase64String(rlpData).Replace("+", "-").Replace("/", "_").Replace("=", ""));
     }
 
     public void Sign(NodeRecord nodeRecord)
@@ -43,19 +58,20 @@ public class NodeRecordSigner
         Signature signature = _ecdsa.Sign(_privateKey, new Keccak(rlpStream.GetHash()));
         nodeRecord.Seal(signature);
     }
-    
+
     public CompressedPublicKey Verify(NodeRecord nodeRecord)
     {
         if (nodeRecord.Signature is null)
         {
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
-        
+
         KeccakRlpStream rlpStream = new();
         nodeRecord.EncodeContent(rlpStream);
-        
+
         // change after merging with changes from 868
-        CompressedPublicKey publicKey = _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, new Keccak(rlpStream.GetHash()));
+        CompressedPublicKey publicKey =
+            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, new Keccak(rlpStream.GetHash()));
         return publicKey;
     }
 }

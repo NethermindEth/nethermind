@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
         {
             int length = GetLength(message, out int contentLength);
             byteBuffer.EnsureWritable(length);
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.HeadHash);
@@ -55,7 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
         private static AnnounceMessage Deserialize(RlpStream rlpStream)
         {
-            AnnounceMessage announceMessage = new AnnounceMessage();
+            AnnounceMessage announceMessage = new();
             rlpStream.ReadSequenceLength();
             announceMessage.HeadHash = rlpStream.DecodeKeccak();
             announceMessage.HeadBlockNo = rlpStream.DecodeLong();

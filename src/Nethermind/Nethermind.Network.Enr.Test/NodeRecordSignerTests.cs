@@ -22,13 +22,13 @@ public class NodeRecordSignerTests
                                          "-IS4QHCYrYZbAKWCBRlAy5zzaDZXJBGkcnh4MHcBFZntXNFrdvJjX04jRzjzCBOo" +
                                          "nrkTfj499SZuOh8R33Ls8RRcy5wBgmlkgnY0gmlwhH8AAAGJc2VjcDI1NmsxoQPK" +
                                          "Y0yuDUmstAHYpMa2_oxVtw0RW_QAdpzBQA8yWM0xOIN1ZHCCdl8";
-
         // go back from Base64Url - also added the '=' padding at the end of the previous string
         // just to check how RLP should look (for debugging the test)
         string expectedEnrStringNonRfcBase64 = expectedEnrString
             .Replace("enr:", "")
             .Replace('-', '+')
             .Replace('_', '/') + /*padding*/ "=";
+
         byte[] expected = Convert.FromBase64String(expectedEnrStringNonRfcBase64);
         string expectedHexString = expected.ToHexString();
         Console.WriteLine("expected: " + expectedHexString);
@@ -46,8 +46,7 @@ public class NodeRecordSignerTests
             new CompressedPublicKey("03ca634cae0d49acb401d8a4c6b6fe8c55b70d115bf400769cc1400f3258cd3138")));
         nodeRecord.Sequence = 1; // override
 
-        signer.Sign(nodeRecord);
-        string enrString = nodeRecord.EnrString;
+        string enrString = signer.GetEnrString(nodeRecord);
         Assert.AreEqual(expectedEnrString, enrString);
     }
 
@@ -84,7 +83,7 @@ public class NodeRecordSignerTests
         nodeRecord.SetEntry(new Secp256K1Entry(
             // new CompressedPublicKey("03a448f24c6d18e575453db13171562b71999873db5b286df957af199ec94617f7")));
             compressedPublicKey));
-        
+
         nodeRecord.Sequence = 1; // override
 
         signer.Sign(nodeRecord);
