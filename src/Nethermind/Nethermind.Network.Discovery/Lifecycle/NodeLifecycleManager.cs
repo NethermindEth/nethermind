@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -33,6 +35,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly ITimestamper _timestamper;
     private readonly IEvictionManager _evictionManager;
+    private readonly NodeRecord _nodeRecord;
 
     /// <summary>
     /// This is the value set by other clients based on real network tests.
@@ -52,6 +55,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         INodeTable nodeTable,
         IEvictionManager evictionManager,
         INodeStats nodeStats,
+        NodeRecord nodeRecord,
         IDiscoveryConfig discoveryConfig,
         ITimestamper timestamper,
         ILogger logger)
@@ -62,6 +66,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));
+        _nodeRecord = nodeRecord ?? throw new ArgumentNullException(nameof(nodeRecord));
         NodeStats = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
         ManagedNode = node;
         UpdateState(NodeLifecycleState.New);
@@ -74,16 +79,62 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     public event EventHandler<NodeLifecycleState>? OnStateChanged;
 
-    public void ProcessPingMsg(PingMsg discoveryMsg)
+    public void ProcessPingMsg(PingMsg pingMsg)
     {
         // _receivedPing = true;
-        SendPong(discoveryMsg);
-
+        SendPong(pingMsg);
+        if (pingMsg.EnrSequence is not null && pingMsg.EnrSequence > _lastEnrSequence)
+        {
+            RequestEnr();
+        }
+        
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
         RefreshNodeContactTime();
     }
 
-    public void ProcessPongMsg(PongMsg discoveryMsg)
+    private void RequestEnr()
+    {
+        EnrRequestMsg msg = new (ManagedNode.Address, CalculateExpirationTime());
+        _discoveryManager.SendMessage(msg);
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestOut);
+    }
+
+    public void ProcessEnrResponseMsg(EnrResponseMsg enrResponseMsg)
+    {
+        if (!IsBonded)
+        {
+            return;
+        }
+        
+        // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash
+        
+        // Enr.ForkId? forkId = enrResponseMsg.NodeRecord.GetValue<Enr.ForkId>(EnrContentKey.Eth);
+        // if (forkId is not null)
+        // {
+        //     _logger.Warn($"Discovered new node with forkId {forkId.Value.ForkHash.ToHexString()}");
+        // }
+        
+        OnStateChanged?.Invoke(this, NodeLifecycleState.ActiveWithEnr);
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseIn);
+    }
+    
+    public void ProcessEnrRequestMsg(EnrRequestMsg enrRequestMessage)
+    {
+        if (!IsBonded)
+        {
+            if (_logger.IsWarn) _logger.Warn("Attempt to request ENR before bonding");
+            return;
+        }
+
+        Rlp requestRlp = Rlp.Encode(
+            Rlp.Encode(enrRequestMessage.ExpirationTime));
+        EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, Keccak.Compute(requestRlp.Bytes));
+        _discoveryManager.SendMessage(msg);
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
+        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
+    }
+
+    public void ProcessPongMsg(PongMsg pongMsg)
     {
         PingMsg? sentPingMsg = Interlocked.Exchange(ref _lastSentPing, null);
         if (sentPingMsg == null)
@@ -91,7 +142,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (Bytes.AreEqual(sentPingMsg.Mdc, discoveryMsg.PingMdc))
+        if (Bytes.AreEqual(sentPingMsg.Mdc, pongMsg.PingMdc))
         {
             _receivedPong = true;
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongIn);
@@ -115,9 +166,9 @@ public class NodeLifecycleManager : INodeLifecycleManager
         }
     }
 
-    public void ProcessNeighborsMsg(NeighborsMsg? discoveryMsg)
+    public void ProcessNeighborsMsg(NeighborsMsg? msg)
     {
-        if (discoveryMsg is null)
+        if (msg is null)
         {
             return;
         }
@@ -132,11 +183,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
             RefreshNodeContactTime();
 
-            foreach (Node node in discoveryMsg.Nodes)
+            foreach (Node node in msg.Nodes)
             {
                 if (node.Address.Address.ToString().Contains("127.0.0.1"))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Received localhost as node address from: {discoveryMsg.FarPublicKey}, node: {node}");
+                    if (_logger.IsTrace) _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
                     continue;
                 }
 
@@ -148,8 +199,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         _isNeighborsExpected = false;
     }
         
-
-    public void ProcessFindNodeMsg(FindNodeMsg discoveryMsg)
+    public void ProcessFindNodeMsg(FindNodeMsg msg)
     {
         if (!IsBonded)
         {
@@ -159,11 +209,13 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
         RefreshNodeContactTime();
 
-        Node[] nodes = _nodeTable.GetClosestNodes(discoveryMsg.SearchedNodeId).ToArray();
+        Node[] nodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId).ToArray();
         SendNeighbors(nodes);
     }
         
     private readonly DateTime _lastTimeSendFindNode = DateTime.MinValue;
+
+    private readonly int _lastEnrSequence = 0;
 
     public void SendFindNode(byte[] searchedNodeId)
     {
@@ -276,6 +328,8 @@ public class NodeLifecycleManager : INodeLifecycleManager
             }
             else
             {
+                // TODO: this is very strange...?
+                // seems like we quickly send two state updates here since we do not return after invocation?
                 OnStateChanged?.Invoke(this, NodeLifecycleState.Active);
             }
         }
@@ -300,6 +354,8 @@ public class NodeLifecycleManager : INodeLifecycleManager
         }
 
         PingMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), _nodeTable.MasterNode.Address);
+        msg.EnrSequence = _nodeRecord.Sequence;
+        
         try
         {
             _lastSentPing = msg;

@@ -21,5 +21,7 @@ public enum MsgType
     Ping = 1,
     Pong = 2,
     FindNode = 3,
-    Neighbors = 4
+    Neighbors = 4,
+    EnrRequest = 5,
+    EnrResponse = 6
 }

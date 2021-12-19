@@ -25,8 +25,8 @@ namespace Nethermind.Network.Discovery.Serializers;
 
 public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<PingMsg>
 {
-    public PingMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator privateKeyGenerator, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, privateKeyGenerator, nodeIdResolver)
+    public PingMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
+        : base(ecdsa, nodeKey, nodeIdResolver)
     {
     }
 
@@ -35,13 +35,27 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
         byte typeByte = (byte)msg.MsgType;
         Rlp source = Encode(msg.SourceAddress);
         Rlp destination = Encode(msg.DestinationAddress);
-        byte[] data = Rlp.Encode(
-            Rlp.Encode(msg.Version),
-            source,
-            destination,
-            //verify if encoding is correct
-            Rlp.Encode(msg.ExpirationTime)
-        ).Bytes;
+
+        byte[] data;
+        if (msg.EnrSequence.HasValue)
+        {
+            data = Rlp.Encode(
+                Rlp.Encode(msg.Version),
+                source,
+                destination,
+                //verify if encoding is correct
+                Rlp.Encode(msg.ExpirationTime),
+                Rlp.Encode(msg.EnrSequence.Value)).Bytes;
+        }
+        else
+        {
+            data = Rlp.Encode(
+                Rlp.Encode(msg.Version),
+                source,
+                destination,
+                //verify if encoding is correct
+                Rlp.Encode(msg.ExpirationTime)).Bytes;
+        }
 
         byte[] serializedMsg = Serialize(typeByte, data);
         msg.Mdc = serializedMsg.Slice(0, 32);
@@ -51,8 +65,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
 
     public PingMsg Deserialize(byte[] msgBytes)
     {
-        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization<PingMsg>(msgBytes);
-            
+        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization(msgBytes);
         RlpStream rlp = results.Data.AsRlpStream();
         rlp.ReadSequenceLength();
         int version = rlp.DecodeInt();
@@ -72,10 +85,18 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
         rlp.DecodeInt(); // UDP port
 
         long expireTime = rlp.DecodeLong();
-
         PingMsg msg = new(results.FarPublicKey, expireTime, source, destination, results.Mdc);
+        
         msg.Version = version;
-        if (version != 4)
+        if (version == 4)
+        {
+            if (!rlp.HasBeenRead)
+            {
+                int enrSequence = rlp.DecodeInt();
+                msg.EnrSequence = enrSequence;
+            }
+        }
+        else
         {
             // what do we do when receive version 5?
         }

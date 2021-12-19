@@ -23,8 +23,8 @@ namespace Nethermind.Network.Discovery.Serializers;
 
 public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<FindNodeMsg>
 {
-    public FindNodeMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator privateKeyGenerator, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, privateKeyGenerator, nodeIdResolver) { }
+    public FindNodeMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
+        : base(ecdsa, nodeKey, nodeIdResolver) { }
 
     public byte[] Serialize(FindNodeMsg msg)
     {
@@ -40,7 +40,7 @@ public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IMessageSeriali
 
     public FindNodeMsg Deserialize(byte[] msgBytes)
     {
-        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization<FindNodeMsg>(msgBytes);
+        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization(msgBytes);
         RlpStream rlpStream = results.Data.AsRlpStream();
 
         rlpStream.ReadSequenceLength();

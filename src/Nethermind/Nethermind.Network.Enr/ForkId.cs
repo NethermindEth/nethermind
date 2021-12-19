@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,28 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
+namespace Nethermind.Network.Enr;
 
-namespace Nethermind.Crypto
+public struct ForkId
 {
-    public static class BlockHeaderExtensions
+    public ForkId(byte[] forkHash, long nextBlock)
     {
-        private static readonly HeaderDecoder _headerDecoder = new();
-
-        public static Keccak CalculateHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            KeccakRlpStream stream = new();
-            _headerDecoder.Encode(stream, header, behaviors);
-
-            return stream.GetHash();
-        }
-
-        public static Keccak CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            return CalculateHash(block.Header, behaviors);
-        }
+        ForkHash = forkHash;
+        NextBlock = nextBlock;
     }
+    
+    public byte[] ForkHash { get; set; }
+    public long NextBlock { get; set; }
 }

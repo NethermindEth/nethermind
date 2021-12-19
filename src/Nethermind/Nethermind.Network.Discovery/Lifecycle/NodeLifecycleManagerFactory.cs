@@ -16,8 +16,8 @@
 
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Enr;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -31,10 +31,12 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
     private readonly ITimestamper _timestamper;
     private readonly IEvictionManager _evictionManager;
     private readonly INodeStatsManager _nodeStatsManager;
+    private readonly NodeRecord _selfNodeRecord;
 
     public NodeLifecycleManagerFactory(INodeTable nodeTable,
         IEvictionManager evictionManager,
         INodeStatsManager nodeStatsManager,
+        NodeRecord self,
         IDiscoveryConfig discoveryConfig,
         ITimestamper timestamper,
         ILogManager? logManager)
@@ -45,6 +47,7 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));
         _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+        _selfNodeRecord = self ?? throw new ArgumentNullException(nameof(self));
     }
 
     public IDiscoveryManager? DiscoveryManager { private get; set; }
@@ -55,13 +58,14 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
         {
             throw new Exception($"{nameof(DiscoveryManager)} has to be set");
         }
-            
+
         return new NodeLifecycleManager(
             node,
             DiscoveryManager,
             _nodeTable,
             _evictionManager,
             _nodeStatsManager.GetOrAdd(node),
+            _selfNodeRecord,
             _discoveryConfig,
             _timestamper,
             _logger);

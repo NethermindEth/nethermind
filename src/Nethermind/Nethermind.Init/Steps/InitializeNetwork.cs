@@ -32,6 +32,7 @@ using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
@@ -274,6 +275,7 @@ namespace Nethermind.Init.Steps
             SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
             NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
 
+            NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _api.MessageSerializationService,
                 _api.EthereumEcdsa,
@@ -291,6 +293,7 @@ namespace Nethermind.Init.Steps
                 nodeTable,
                 evictionManager,
                 _api.NodeStatsManager,
+                selfNodeRecord,
                 discoveryConfig,
                 _api.Timestamper,
                 _api.LogManager);
@@ -332,6 +335,25 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
 
             _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
+        }
+
+        private NodeRecord PrepareNodeRecord(SameKeyGenerator privateKeyProvider)
+        {
+            NodeRecord selfNodeRecord = new();
+            selfNodeRecord.SetEntry(IdEntry.Instance);
+            selfNodeRecord.SetEntry(new IpEntry(_api.IpResolver!.ExternalIp));
+            selfNodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
+            selfNodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
+            selfNodeRecord.SetEntry(new Secp256K1Entry(_api.NodeKey!.CompressedPublicKey));
+            selfNodeRecord.Sequence = 1;
+            NodeRecordSigner enrSigner = new(_api.EthereumEcdsa, privateKeyProvider.Generate());
+            enrSigner.Sign(selfNodeRecord);
+            if (!enrSigner.Verify(selfNodeRecord))
+            {
+                throw new NetworkingException("Self ENR initialization failed", NetworkExceptionType.Discovery);
+            }
+
+            return selfNodeRecord;
         }
 
         private Task StartSync()

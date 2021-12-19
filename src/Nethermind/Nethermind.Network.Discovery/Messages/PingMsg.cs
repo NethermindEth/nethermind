@@ -24,7 +24,16 @@ public class PingMsg : DiscoveryMsg
 {
     public IPEndPoint SourceAddress { get; }
     public IPEndPoint DestinationAddress { get; }
+    
+    /// <summary>
+    /// Modification detection code
+    /// </summary>
     public byte[]? Mdc { get; set; }
+    
+    /// <summary>
+    /// https://eips.ethereum.org/EIPS/eip-868
+    /// </summary>
+    public int? EnrSequence { get; set; }
 
     public PingMsg(PublicKey farPublicKey, long expirationTime, IPEndPoint source, IPEndPoint destination, byte[] mdc)
         : base(farPublicKey, expirationTime)

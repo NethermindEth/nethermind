@@ -15,25 +15,37 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Enr;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Network.Discovery.Messages;
+
+/// <summary>
+/// https://eips.ethereum.org/EIPS/eip-868
+/// </summary>
+public class EnrResponseMsg : DiscoveryMsg
 {
-    public class ProtectedPrivateKey : ProtectedData<PrivateKey>
-    {
-        public ProtectedPrivateKey(PrivateKey privateKey, ICryptoRandom random = null, ITimestamper timestamper = null) : base(privateKey.KeyBytes, random, timestamper)
-        {
-            PublicKey = privateKey.PublicKey;
-            CompressedPublicKey = privateKey.CompressedPublicKey;
-        }
+    private const long MaxTime = long.MaxValue; // non-expiring message
+    
+    public override MsgType MsgType => MsgType.EnrResponse;
 
-        protected override PrivateKey CreateUnprotected(byte[] data) => new(data);
-        
-        public PublicKey PublicKey { get; }
-        
-        public CompressedPublicKey CompressedPublicKey { get; }
-        
-        public Address Address => PublicKey.Address;
+    public NodeRecord NodeRecord { get; }
+
+    public Keccak RequestKeccak { get; set; }
+
+    public EnrResponseMsg(IPEndPoint farAddress, NodeRecord nodeRecord, Keccak requestKeccak)
+        : base(farAddress, MaxTime)
+    {
+        NodeRecord = nodeRecord;
+        RequestKeccak = requestKeccak;
+    }
+    
+    public EnrResponseMsg(PublicKey farPublicKey, NodeRecord nodeRecord, Keccak requestKeccak)
+        : base(farPublicKey, MaxTime)
+    {
+        NodeRecord = nodeRecord;
+        RequestKeccak = requestKeccak;
     }
 }

@@ -26,8 +26,8 @@ namespace Nethermind.Network.Discovery.Serializers;
 public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<NeighborsMsg>
 {
     public NeighborsMsgSerializer(IEcdsa ecdsa,
-        IPrivateKeyGenerator privateKeyGenerator,
-        INodeIdResolver nodeIdResolver) : base(ecdsa, privateKeyGenerator, nodeIdResolver)
+        IPrivateKeyGenerator nodeKey,
+        INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
     {
     }
 
@@ -56,7 +56,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerial
 
     public NeighborsMsg Deserialize(byte[] msgBytes)
     {
-        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization<NeighborsMsg>(msgBytes);
+        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization(msgBytes);
 
         RlpStream rlp = results.Data.AsRlpStream();
         rlp.ReadSequenceLength();

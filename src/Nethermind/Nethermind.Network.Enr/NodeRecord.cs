@@ -16,6 +16,8 @@
 // 
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -26,7 +28,11 @@ public class NodeRecord
     
     private string? _enrString;
 
+    private Keccak? _contentHash;
+
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
+
+    public byte[]? OriginalContentRlp { get; set; }
 
     public int Sequence
     {
@@ -36,6 +42,8 @@ public class NodeRecord
             if (_sequence != value)
             {
                 _sequence = value;
+                _enrString = null;
+                _contentHash = null;
                 Signature = null;
             }
         }
@@ -49,8 +57,22 @@ public class NodeRecord
         }
     }
 
-    public Signature? Signature { get; private set; }
+    public Keccak ContentHash
+    {
+        get
+        {
+            return _contentHash ??= CalculateContentHash();
+        }
+    }
 
+    private Keccak CalculateContentHash()
+    {
+        KeccakRlpStream rlpStream = new();
+        EncodeContent(rlpStream);
+        return rlpStream.GetHash();
+    }
+
+    public Signature? Signature { get; private set; }
 
     public NodeRecord()
     {
@@ -71,6 +93,28 @@ public class NodeRecord
         }
 
         Entries[entry.Key] = entry;
+    }
+    
+    public TValue? GetValue<TValue>(string entryKey) where TValue : struct
+    {
+        if (Entries.ContainsKey(entryKey))
+        {
+            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)Entries[entryKey];
+            return entry.Value;
+        }
+
+        return null;
+    }
+    
+    public TValue? GetObj<TValue>(string entryKey) where TValue : class
+    {
+        if (Entries.ContainsKey(entryKey))
+        {
+            EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)Entries[entryKey];
+            return entry.Value;
+        }
+
+        return null;
     }
     
     private int GetContentLengthWithoutSignature()
@@ -105,6 +149,15 @@ public class NodeRecord
             contentEntry.Encode(rlpStream);
         }
     }
+
+    public string GetHex()
+    {
+        int contentLength = GetContentLengthWithSignature();
+        int totalLength = Rlp.LengthOfSequence(contentLength);
+        RlpStream rlpStream = new(totalLength);
+        Encode(rlpStream);
+        return rlpStream.Data!.ToHexString();
+    }
     
     public void Encode(RlpStream rlpStream)
     {
@@ -113,13 +166,13 @@ public class NodeRecord
         int contentLength = GetContentLengthWithSignature();
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(Signature!.Bytes);
-        rlpStream.Encode(Sequence);
+        rlpStream.Encode(Sequence); // a different sequence here (not RLP sequence)
         foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
         {
             contentEntry.Encode(rlpStream);
         }
     }
-
+    
     private string CreateEnrString()
     {
         RequireSignature();

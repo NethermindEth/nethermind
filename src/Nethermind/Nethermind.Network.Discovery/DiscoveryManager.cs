@@ -101,6 +101,12 @@ public class DiscoveryManager : IDiscoveryManager
                 case MsgType.FindNode:
                     nodeManager.ProcessFindNodeMsg((FindNodeMsg)msg);
                     break;
+                case MsgType.EnrRequest:
+                    nodeManager.ProcessEnrRequestMsg((EnrRequestMsg)msg);
+                    break;
+                case MsgType.EnrResponse:
+                    nodeManager.ProcessEnrResponseMsg((EnrResponseMsg)msg);
+                    break;
                 default:
                     _logger.Error($"Unsupported msgType: {msgType}");
                     return;
@@ -139,14 +145,26 @@ public class DiscoveryManager : IDiscoveryManager
         {
             Interlocked.Increment(ref _managersCreated);
             INodeLifecycleManager manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
+            manager.OnStateChanged += ManagerOnOnStateChanged;
             if (!isPersisted)
             {
                 _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation) });
             }
 
-            OnNewNode(manager);
             return manager;
         });
+    }
+
+    private void ManagerOnOnStateChanged(object? sender, NodeLifecycleState e)
+    {
+        if (e == NodeLifecycleState.Active)
+        {
+            if (sender is INodeLifecycleManager manager)
+            {
+                manager.OnStateChanged -= ManagerOnOnStateChanged;
+                NodeDiscovered?.Invoke(this, new NodeEventArgs(manager.ManagedNode));
+            }
+        }
     }
 
     public void SendMessage(DiscoveryMsg discoveryMsg)
@@ -232,11 +250,6 @@ public class DiscoveryManager : IDiscoveryManager
         #endregion
 
         return true;
-    }
-
-    private void OnNewNode(INodeLifecycleManager manager)
-    {
-        NodeDiscovered?.Invoke(this, new NodeEventArgs(manager.ManagedNode));
     }
 
     private void NotifySubscribersOnMsgReceived(MsgType msgType, Node node, DiscoveryMsg msg)

@@ -26,16 +26,16 @@ namespace Nethermind.Network.Discovery.Serializers;
 public abstract class DiscoveryMsgSerializerBase
 {
     private readonly PrivateKey _privateKey;
-    private readonly IEcdsa _ecdsa;
+    protected readonly IEcdsa _ecdsa;
 
     private readonly INodeIdResolver _nodeIdResolver;
 
     protected DiscoveryMsgSerializerBase(IEcdsa ecdsa,
-        IPrivateKeyGenerator privateKeyGenerator,
+        IPrivateKeyGenerator nodeKey,
         INodeIdResolver nodeIdResolver)
     {
         _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-        _privateKey = privateKeyGenerator.Generate();
+        _privateKey = nodeKey.Generate();
         _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
     }
 
@@ -58,7 +58,7 @@ public abstract class DiscoveryMsgSerializerBase
         return result;
     }
 
-    protected (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) PrepareForDeserialization<T>(byte[] msg) where T : DiscoveryMsg
+    protected (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) PrepareForDeserialization(byte[] msg)
     {
         if (msg.Length < 98)
         {

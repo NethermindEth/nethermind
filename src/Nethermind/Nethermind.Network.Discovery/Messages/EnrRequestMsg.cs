@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,27 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
+using System.Net;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Network.Discovery.Messages;
+
+/// <summary>
+/// https://eips.ethereum.org/EIPS/eip-868
+/// </summary>
+public class EnrRequestMsg : DiscoveryMsg
 {
-    public static class BlockHeaderExtensions
+    public override MsgType MsgType => MsgType.EnrRequest;
+
+    public EnrRequestMsg(IPEndPoint farAddress, long expirationDate)
+        : base(farAddress, expirationDate)
     {
-        private static readonly HeaderDecoder _headerDecoder = new();
-
-        public static Keccak CalculateHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            KeccakRlpStream stream = new();
-            _headerDecoder.Encode(stream, header, behaviors);
-
-            return stream.GetHash();
-        }
-
-        public static Keccak CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            return CalculateHash(block.Header, behaviors);
-        }
+    }
+    
+    public EnrRequestMsg(PublicKey farPublicKey, long expirationDate)
+        : base(farPublicKey, expirationDate)
+    {
     }
 }
