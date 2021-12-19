@@ -15,18 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using DnsClient;
-
 namespace Nethermind.Network.Dns;
 
-public class Something
+/// <summary>
+/// enr:[node-record] is a leaf containing a node record. The node record is encoded as a URL-safe base64 string.
+/// Note that this type of entry matches the canonical ENR text encoding. It may only appear in the enr-root subtree.
+/// </summary>
+public class EnrLinkedTree : EnrTreeNode
 {
-    public Something()
+    public string Link { get; set; }
+
+    public override string ToString()
     {
-        DnsQuestion question = new(
-            "all.mainnet.ethdisco.net", QueryType.TXT);
-        
-        LookupClient client = new();
-        IDnsQueryResponse response = client.Query(question);
+        return $"enrtree://{Link}";
     }
+
+    public override string[] Links => new[] { Link };
+    
+    public override string[] Refs => Array.Empty<string>();
+
+    public override string[] Records => Array.Empty<string>();
 }
