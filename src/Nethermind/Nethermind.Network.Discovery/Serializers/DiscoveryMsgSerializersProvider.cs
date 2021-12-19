@@ -16,7 +16,6 @@
 
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Enr;
 
 namespace Nethermind.Network.Discovery.Serializers;
 

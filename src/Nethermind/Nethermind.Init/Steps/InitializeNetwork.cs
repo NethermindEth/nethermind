@@ -274,6 +274,7 @@ namespace Nethermind.Init.Steps
 
             SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
             NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
+
             NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _api.MessageSerializationService,

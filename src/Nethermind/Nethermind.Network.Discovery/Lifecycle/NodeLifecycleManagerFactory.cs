@@ -16,7 +16,6 @@
 
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Enr;
 using Nethermind.Stats;
@@ -59,7 +58,7 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
         {
             throw new Exception($"{nameof(DiscoveryManager)} has to be set");
         }
-            
+
         return new NodeLifecycleManager(
             node,
             DiscoveryManager,

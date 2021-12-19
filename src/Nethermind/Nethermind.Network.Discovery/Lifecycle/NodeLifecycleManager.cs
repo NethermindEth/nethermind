@@ -87,7 +87,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         {
             RequestEnr();
         }
-
+        
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
         RefreshNodeContactTime();
     }
@@ -199,7 +199,6 @@ public class NodeLifecycleManager : INodeLifecycleManager
         _isNeighborsExpected = false;
     }
         
-
     public void ProcessFindNodeMsg(FindNodeMsg msg)
     {
         if (!IsBonded)
@@ -215,7 +214,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     }
         
     private readonly DateTime _lastTimeSendFindNode = DateTime.MinValue;
-    
+
     private readonly int _lastEnrSequence = 0;
 
     public void SendFindNode(byte[] searchedNodeId)
@@ -356,7 +355,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         PingMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), _nodeTable.MasterNode.Address);
         msg.EnrSequence = _nodeRecord.Sequence;
-
+        
         try
         {
             _lastSentPing = msg;

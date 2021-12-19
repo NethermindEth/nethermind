@@ -125,7 +125,7 @@ public class NodeRecordSigner
         {
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
-
+        
         Keccak contentHash;
         if (nodeRecord.OriginalContentRlp is not null)
         {

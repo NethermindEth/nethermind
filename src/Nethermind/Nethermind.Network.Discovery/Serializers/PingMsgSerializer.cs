@@ -19,8 +19,6 @@ using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Enr;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
@@ -68,7 +66,6 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
     public PingMsg Deserialize(byte[] msgBytes)
     {
         (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization(msgBytes);
-            
         RlpStream rlp = results.Data.AsRlpStream();
         rlp.ReadSequenceLength();
         int version = rlp.DecodeInt();

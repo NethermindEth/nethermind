@@ -75,8 +75,8 @@ namespace Nethermind.Network.Discovery.Test
 
             EvictionManager evictionManager = new(_nodeTable, logManager);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager, 
-                new NodeStatsManager(timerFactory, logManager), new NodeRecord(), discoveryConfig, Timestamper.Default, logManager);
+            NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager,
+                    new NodeStatsManager(timerFactory, logManager), new NodeRecord(), discoveryConfig, Timestamper.Default, logManager);
 
             _nodes = new[] {new Node("192.168.1.18", 1), new Node("192.168.1.19", 2)};
 

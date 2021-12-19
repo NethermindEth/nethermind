@@ -27,13 +27,13 @@ public class NodeRecord
     private int _sequence;
     
     private string? _enrString;
-    
+
     private Keccak? _contentHash;
 
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
     public byte[]? OriginalContentRlp { get; set; }
-    
+
     public int Sequence
     {
         get => _sequence;
@@ -56,7 +56,7 @@ public class NodeRecord
             return _enrString ??= CreateEnrString();
         }
     }
-    
+
     public Keccak ContentHash
     {
         get
@@ -139,7 +139,7 @@ public class NodeRecord
             GetContentLengthWithSignature());
     }
 
-    private void EncodeContent(RlpStream rlpStream)
+    public void EncodeContent(RlpStream rlpStream)
     {
         int contentLength = GetContentLengthWithoutSignature();
         rlpStream.StartSequence(contentLength);

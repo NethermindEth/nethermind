@@ -40,13 +40,11 @@ namespace Nethermind.Network.Discovery.Test
         private readonly IPEndPoint _nearAddress;
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ITimestamper _timestamper;
-
         public DiscoveryMessageSerializerTests()
         {
             INetworkConfig networkConfig = new NetworkConfig();
             networkConfig.ExternalIp = "99.10.10.66";
             networkConfig.LocalIp = "10.0.0.5";
-
             _farAddress = new IPEndPoint(IPAddress.Parse("192.168.1.2"), 1);
             _nearAddress = new IPEndPoint(IPAddress.Parse(networkConfig.LocalIp), networkConfig.DiscoveryPort);
             _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
