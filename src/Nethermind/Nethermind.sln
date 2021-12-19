@@ -216,7 +216,7 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Enr", "Nethermind.Network.Enr\Nethermind.Network.Enr.csproj", "{03D72C8A-4659-4E84-9880-EC686EF25F65}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Enr.Test", "Nethermind.Network.Enr.Test\Nethermind.Network.Enr.Test.csproj", "{1BA992CF-157C-4E0C-B031-46502D1AFD7D}"
-EndProject
+EndProject#
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Discovery", "Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj", "{0B5265D6-2B5C-411D-9E8C-9748CBCBFE84}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Discovery.Test", "Nethermind.Network.Discovery.Test\Nethermind.Network.Discovery.Test.csproj", "{25910851-D58B-42D5-83F1-0BA530CD8E1E}"
