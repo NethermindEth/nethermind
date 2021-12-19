@@ -24,8 +24,8 @@ namespace Nethermind.Network.Enr;
 
 public class NodeRecord
 {
-    private int _sequence;
-    
+    private int _enrSequence;
+
     private string? _enrString;
 
     private Keccak? _contentHash;
@@ -34,14 +34,14 @@ public class NodeRecord
 
     public byte[]? OriginalContentRlp { get; set; }
 
-    public int Sequence
+    public int EnrSequence
     {
-        get => _sequence;
+        get => _enrSequence;
         set
         {
-            if (_sequence != value)
+            if (_enrSequence != value)
             {
-                _sequence = value;
+                _enrSequence = value;
                 _enrString = null;
                 _contentHash = null;
                 Signature = null;
@@ -78,7 +78,7 @@ public class NodeRecord
     {
         SetEntry(IdEntry.Instance);
     }
-    
+
     public void Seal(Signature signature)
     {
         // verify here?
@@ -89,12 +89,12 @@ public class NodeRecord
     {
         if (Entries.ContainsKey(entry.Key))
         {
-            Sequence++;
+            EnrSequence++;
         }
 
         Entries[entry.Key] = entry;
     }
-    
+
     public TValue? GetValue<TValue>(string entryKey) where TValue : struct
     {
         if (Entries.ContainsKey(entryKey))
@@ -105,7 +105,7 @@ public class NodeRecord
 
         return null;
     }
-    
+
     public TValue? GetObj<TValue>(string entryKey) where TValue : class
     {
         if (Entries.ContainsKey(entryKey))
@@ -116,10 +116,11 @@ public class NodeRecord
 
         return null;
     }
-    
+
     private int GetContentLengthWithoutSignature()
     {
-        int contentLength = Rlp.LengthOf(Sequence); // this is a different meaning of a sequence than the RLP sequence
+        int contentLength =
+            Rlp.LengthOf(EnrSequence); // this is a different meaning of a sequence than the RLP sequence
         foreach ((_, EnrContentEntry enrContentEntry) in Entries)
         {
             contentLength += enrContentEntry.GetRlpLength();
@@ -132,7 +133,7 @@ public class NodeRecord
     {
         return GetContentLengthWithoutSignature() + 64 + 2;
     }
-    
+
     public int GetRlpLengthWithSignature()
     {
         return Rlp.LengthOfSequence(
@@ -143,7 +144,7 @@ public class NodeRecord
     {
         int contentLength = GetContentLengthWithoutSignature();
         rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(Sequence);
+        rlpStream.Encode(EnrSequence);
         foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
         {
             contentEntry.Encode(rlpStream);
@@ -158,32 +159,32 @@ public class NodeRecord
         Encode(rlpStream);
         return rlpStream.Data!.ToHexString();
     }
-    
+
     public void Encode(RlpStream rlpStream)
     {
         RequireSignature();
-        
+
         int contentLength = GetContentLengthWithSignature();
         rlpStream.StartSequence(contentLength);
         rlpStream.Encode(Signature!.Bytes);
-        rlpStream.Encode(Sequence); // a different sequence here (not RLP sequence)
+        rlpStream.Encode(EnrSequence); // a different sequence here (not RLP sequence)
         foreach ((_, EnrContentEntry contentEntry) in Entries.OrderBy(e => e.Key))
         {
             contentEntry.Encode(rlpStream);
         }
     }
-    
+
     private string CreateEnrString()
     {
         RequireSignature();
-        
+
         int rlpLength = GetRlpLengthWithSignature();
         RlpStream rlpStream = new(rlpLength);
         Encode(rlpStream);
         byte[] rlpData = rlpStream.Data!;
         // Console.WriteLine("actual: " + rlpData.ToHexString());
         // https://tools.ietf.org/html/rfc4648#section-5
-        
+
         // Base64Url must be used, hence Replace calls (not sure if allocating internally)
         return string.Concat("enr:",
             Convert.ToBase64String(rlpData).Replace("+", "-").Replace("/", "_").Replace("=", ""));

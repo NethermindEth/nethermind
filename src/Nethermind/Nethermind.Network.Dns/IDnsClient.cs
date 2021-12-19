@@ -15,27 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Data;
-using System.Net;
-using Nethermind.Serialization.Rlp;
+using DnsClient;
+using DnsClient.Protocol;
 
-namespace Nethermind.Network.Enr;
+namespace Nethermind.Network.Dns;
 
-public class IpEntry : EnrContentEntry<IPAddress>
+public interface IDnsClient
 {
-    public IpEntry(IPAddress ipAddress) : base(ipAddress) { }
+    string[][] Lookup(string query);
+}
 
-    public override string Key => EnrContentKey.Ip;
-    
-    protected override int GetRlpLengthOfValue()
+public class DnsClient : IDnsClient
+{
+    private readonly string _domain;
+    private readonly LookupClient _client;
+
+    public DnsClient(string domain)
     {
-        return 5;
+        _domain = domain ?? throw new ArgumentNullException(nameof(domain));
+        _client = new();
     }
-
-    protected override void EncodeValue(RlpStream rlpStream)
+    
+    public string[][] Lookup(string query)
     {
-        Span<byte> bytes = stackalloc byte[4];
-        Value.MapToIPv4().TryWriteBytes(bytes, out int _);
-        rlpStream.Encode(bytes);
+        string queryString = (string.IsNullOrWhiteSpace(query) ? "" : (query + ".")) + _domain;
+        DnsQuestion rootQuestion = new(queryString, QueryType.TXT);
+        IDnsQueryResponse response = _client.Query(rootQuestion);
+        return response.Answers.OfType<TxtRecord>().Select(txt => txt.Text.ToArray()).ToArray();
     }
 }

@@ -15,27 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Data;
-using System.Net;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Network.Enr;
 
-namespace Nethermind.Network.Enr;
+namespace Nethermind.Network.Dns;
 
-public class IpEntry : EnrContentEntry<IPAddress>
+/// <summary>
+/// enrtree-branch:[h₁],[h₂],...,[h] is an intermediate tree entry containing hashes of subtree entries.
+/// </summary>
+public class EnrTreeBranch : EnrTreeNode
 {
-    public IpEntry(IPAddress ipAddress) : base(ipAddress) { }
+    public string[] Hashes { get; set; }
 
-    public override string Key => EnrContentKey.Ip;
+    public override string ToString()
+    {
+        return $"enrtree-branch:{string.Join(',', Hashes)}";
+    }
+
+    public override string[] Links => Array.Empty<string>();
     
-    protected override int GetRlpLengthOfValue()
-    {
-        return 5;
-    }
+    public override string[] Refs => Hashes;
 
-    protected override void EncodeValue(RlpStream rlpStream)
-    {
-        Span<byte> bytes = stackalloc byte[4];
-        Value.MapToIPv4().TryWriteBytes(bytes, out int _);
-        rlpStream.Encode(bytes);
-    }
+    public override string[] Records => Array.Empty<string>();
 }

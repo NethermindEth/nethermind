@@ -15,27 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Data;
-using System.Net;
-using Nethermind.Serialization.Rlp;
+namespace Nethermind.Network.Dns;
 
-namespace Nethermind.Network.Enr;
-
-public class IpEntry : EnrContentEntry<IPAddress>
+public abstract class EnrTreeNode
 {
-    public IpEntry(IPAddress ipAddress) : base(ipAddress) { }
-
-    public override string Key => EnrContentKey.Ip;
-    
-    protected override int GetRlpLengthOfValue()
-    {
-        return 5;
-    }
-
-    protected override void EncodeValue(RlpStream rlpStream)
-    {
-        Span<byte> bytes = stackalloc byte[4];
-        Value.MapToIPv4().TryWriteBytes(bytes, out int _);
-        rlpStream.Encode(bytes);
-    }
+    public abstract string[] Links { get; }
+    public abstract string[] Refs { get; }
+    public abstract string[] Records { get; }
 }

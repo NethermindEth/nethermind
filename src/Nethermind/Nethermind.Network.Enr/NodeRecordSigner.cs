@@ -113,7 +113,7 @@ public class NodeRecordSigner
             nodeRecord.OriginalContentRlp = originalContentStream.Data!;
         }
 
-        nodeRecord.Sequence = enrSequence;
+        nodeRecord.EnrSequence = enrSequence;
         nodeRecord.Seal(signature);
 
         return nodeRecord;

@@ -345,7 +345,7 @@ namespace Nethermind.Init.Steps
             selfNodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
             selfNodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
             selfNodeRecord.SetEntry(new Secp256K1Entry(_api.NodeKey!.CompressedPublicKey));
-            selfNodeRecord.Sequence = 1;
+            selfNodeRecord.EnrSequence = 1;
             NodeRecordSigner enrSigner = new(_api.EthereumEcdsa, privateKeyProvider.Generate());
             enrSigner.Sign(selfNodeRecord);
             if (!enrSigner.Verify(selfNodeRecord))

@@ -15,27 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Data;
-using System.Net;
-using Nethermind.Serialization.Rlp;
+namespace Nethermind.Network.Dns;
 
-namespace Nethermind.Network.Enr;
-
-public class IpEntry : EnrContentEntry<IPAddress>
+/// <summary>
+/// enr:[node-record] is a leaf containing a node record. The node record is encoded as a URL-safe base64 string.
+/// Note that this type of entry matches the canonical ENR text encoding. It may only appear in the enr-root subtree.
+/// </summary>
+public class EnrLeaf : EnrTreeNode
 {
-    public IpEntry(IPAddress ipAddress) : base(ipAddress) { }
+    public string NodeRecord { get; set; }
 
-    public override string Key => EnrContentKey.Ip;
+    public override string ToString()
+    {
+        return $"enr:{NodeRecord}";
+    }
+
+    public override string[] Links => Array.Empty<string>();
     
-    protected override int GetRlpLengthOfValue()
-    {
-        return 5;
-    }
+    public override string[] Refs => Array.Empty<string>();
 
-    protected override void EncodeValue(RlpStream rlpStream)
-    {
-        Span<byte> bytes = stackalloc byte[4];
-        Value.MapToIPv4().TryWriteBytes(bytes, out int _);
-        rlpStream.Encode(bytes);
-    }
+    public override string[] Records => new[] { NodeRecord };
 }

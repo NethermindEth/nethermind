@@ -119,14 +119,14 @@ namespace Nethermind.Network.Discovery.Test
         {
             NodeRecord nodeRecord = new ();
             nodeRecord.SetEntry(new Secp256K1Entry(_privateKey.CompressedPublicKey));
-            nodeRecord.Sequence = 5;
+            nodeRecord.EnrSequence = 5;
             NodeRecordSigner signer = new (new Ecdsa(), _privateKey);
             signer.Sign(nodeRecord);
             EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
 
             byte[] serialized = _messageSerializationService.Serialize(msg);
             EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
-            Assert.AreEqual(msg.NodeRecord.Sequence, deserialized.NodeRecord.Sequence);
+            Assert.AreEqual(msg.NodeRecord.EnrSequence, deserialized.NodeRecord.EnrSequence);
             Assert.AreEqual(msg.RequestKeccak, deserialized.RequestKeccak);
             Assert.AreEqual(msg.NodeRecord.Signature, deserialized.NodeRecord.Signature);
         }
