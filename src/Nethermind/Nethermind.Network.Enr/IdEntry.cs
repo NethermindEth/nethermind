@@ -13,15 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Network.Enr;
+
+public class IdEntry : EnrContentEntry<string>
 {
-    public interface IEcdsa
+    private IdEntry() : base("v4") { }
+
+    public static IdEntry Instance { get; } = new();
+
+    public override string Key => EnrContentKey.Id;
+
+    protected override int GetRlpLengthOfValue()
     {
-        Signature Sign(PrivateKey privateKey, Keccak message);
-        PublicKey RecoverPublicKey(Signature signature, Keccak message);
-        CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Keccak message);
+        // TODO: hardcode
+        return Rlp.LengthOf(Value);
+    }
+
+    protected override void EncodeValue(RlpStream rlpStream)
+    {
+        // TODO: hardcode
+        rlpStream.Encode("v4");
     }
 }

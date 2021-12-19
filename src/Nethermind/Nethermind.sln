@@ -213,6 +213,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Hive", "Nethermi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Hive.Tests", "Nethermind.Hive.Tests\Nethermind.Hive.Tests.csproj", "{96270195-EB87-41ED-A4E2-A342C50C4CF4}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Enr", "Nethermind.Network.Enr\Nethermind.Network.Enr.csproj", "{03D72C8A-4659-4E84-9880-EC686EF25F65}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Enr.Test", "Nethermind.Network.Enr.Test\Nethermind.Network.Enr.Test.csproj", "{1BA992CF-157C-4E0C-B031-46502D1AFD7D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -563,6 +567,14 @@ Global
 		{96270195-EB87-41ED-A4E2-A342C50C4CF4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{96270195-EB87-41ED-A4E2-A342C50C4CF4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{96270195-EB87-41ED-A4E2-A342C50C4CF4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{03D72C8A-4659-4E84-9880-EC686EF25F65}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{03D72C8A-4659-4E84-9880-EC686EF25F65}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{03D72C8A-4659-4E84-9880-EC686EF25F65}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{03D72C8A-4659-4E84-9880-EC686EF25F65}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1BA992CF-157C-4E0C-B031-46502D1AFD7D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1BA992CF-157C-4E0C-B031-46502D1AFD7D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1BA992CF-157C-4E0C-B031-46502D1AFD7D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1BA992CF-157C-4E0C-B031-46502D1AFD7D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -641,6 +653,7 @@ Global
 		{C9AFA242-6BFF-4579-B67E-956B013BFE4A} = {78BED57D-720E-4E6C-ABA2-397B73B494F9}
 		{B9C52326-BC13-4C16-B440-8BD25EB23BFA} = {C9AFA242-6BFF-4579-B67E-956B013BFE4A}
 		{96270195-EB87-41ED-A4E2-A342C50C4CF4} = {C9AFA242-6BFF-4579-B67E-956B013BFE4A}
+		{1BA992CF-157C-4E0C-B031-46502D1AFD7D} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

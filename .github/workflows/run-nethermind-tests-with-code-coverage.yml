@@ -115,6 +115,9 @@ jobs:
     - name: Nethermind.Network.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Test
+    - name: Nethermind.Network.Enr.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Network.Enr.Test
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Secp256k1.Test

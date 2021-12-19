@@ -13,15 +13,35 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core.Crypto;
+using System.Data;
+using System.Net;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Network.Enr;
+
+public class IpEntry : EnrContentEntry<IPAddress>
 {
-    public interface IEcdsa
+    public IpEntry(IPAddress ipAddress) : base(ipAddress) { }
+
+    public override string Key => EnrContentKey.Ip;
+    
+    protected override int GetRlpLengthOfValue()
     {
-        Signature Sign(PrivateKey privateKey, Keccak message);
-        PublicKey RecoverPublicKey(Signature signature, Keccak message);
-        CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Keccak message);
+        return 5;
+    }
+
+    protected override void EncodeValue(RlpStream rlpStream)
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        Value.MapToIPv4().TryWriteBytes(bytes, out int bytesWritten);
+
+        if (bytesWritten != 4)
+        {
+            throw new DataException($"Invalid ENR record - bytes written {bytesWritten} when encoding IP");
+        }
+        
+        rlpStream.Encode(bytes);
     }
 }

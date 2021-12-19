@@ -13,15 +13,26 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Crypto
+namespace Nethermind.Network.Enr;
+
+public class Secp256K1Entry : EnrContentEntry<CompressedPublicKey>
 {
-    public interface IEcdsa
+    public Secp256K1Entry(CompressedPublicKey publicKey) : base(publicKey) { }
+
+    public override string Key => EnrContentKey.Secp256K1;
+    
+    protected override int GetRlpLengthOfValue()
     {
-        Signature Sign(PrivateKey privateKey, Keccak message);
-        PublicKey RecoverPublicKey(Signature signature, Keccak message);
-        CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Keccak message);
+        return CompressedPublicKey.LengthInBytes + 1;
+    }
+
+    protected override void EncodeValue(RlpStream rlpStream)
+    {
+        rlpStream.Encode(Value.Bytes);
     }
 }

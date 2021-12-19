@@ -90,6 +90,9 @@ jobs:
     - name: Nethermind.Network.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Network.Test
+    - name: Nethermind.Network.Enr.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Network.Enr.Test
     - name: Nethermind.Facade.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Facade.Test
