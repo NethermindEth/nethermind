@@ -46,7 +46,7 @@ public class NodeRecordSignerTests
         nodeRecord.SetEntry(new Secp256K1Entry(
             // new CompressedPublicKey("03a448f24c6d18e575453db13171562b71999873db5b286df957af199ec94617f7")));
             new CompressedPublicKey("03ca634cae0d49acb401d8a4c6b6fe8c55b70d115bf400769cc1400f3258cd3138")));
-        nodeRecord.Sequence = 1; // override
+        nodeRecord.EnrSequence = 1; // override
         
         signer.Sign(nodeRecord);
         string enrString = nodeRecord.EnrString;
@@ -87,7 +87,7 @@ public class NodeRecordSignerTests
             // new CompressedPublicKey("03a448f24c6d18e575453db13171562b71999873db5b286df957af199ec94617f7")));
             compressedPublicKey));
 
-        nodeRecord.Sequence = 1; // override
+        nodeRecord.EnrSequence = 1; // override
 
         signer.Sign(nodeRecord);
         Assert.IsTrue(signer.Verify(nodeRecord));

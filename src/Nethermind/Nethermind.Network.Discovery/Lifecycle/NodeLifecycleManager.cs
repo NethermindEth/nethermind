@@ -85,14 +85,14 @@ public class NodeLifecycleManager : INodeLifecycleManager
         SendPong(pingMsg);
         if (pingMsg.EnrSequence is not null && pingMsg.EnrSequence > _lastEnrSequence)
         {
-            RequestEnr();
+            SendEnrRequest();
         }
         
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
         RefreshNodeContactTime();
     }
 
-    private void RequestEnr()
+    private void SendEnrRequest()
     {
         EnrRequestMsg msg = new (ManagedNode.Address, CalculateExpirationTime());
         _discoveryManager.SendMessage(msg);
@@ -105,6 +105,8 @@ public class NodeLifecycleManager : INodeLifecycleManager
         {
             return;
         }
+
+        _lastEnrSequence = enrResponseMsg.NodeRecord.EnrSequence;
         
         // TODO: 6) use the fork ID knowledge to mark each node with info on the forkhash
         
@@ -215,7 +217,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         
     private readonly DateTime _lastTimeSendFindNode = DateTime.MinValue;
 
-    private readonly int _lastEnrSequence = 0;
+    private int _lastEnrSequence;
 
     public void SendFindNode(byte[] searchedNodeId)
     {
@@ -354,7 +356,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         }
 
         PingMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), _nodeTable.MasterNode.Address);
-        msg.EnrSequence = _nodeRecord.Sequence;
+        msg.EnrSequence = _nodeRecord.EnrSequence;
         
         try
         {
