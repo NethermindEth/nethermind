@@ -39,7 +39,7 @@ using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class RlpxPeer : IRlpxPeer
+    public class RlpxHost : IRlpxHost
     {
         private IChannel? _bootstrapChannel;
         private IEventLoopGroup _bossGroup;
@@ -56,7 +56,7 @@ namespace Nethermind.Network.Rlpx
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IEventExecutorGroup _group;
 
-        public RlpxPeer(IMessageSerializationService serializationService,
+        public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
             int localPort,
             IHandshakeService handshakeService,

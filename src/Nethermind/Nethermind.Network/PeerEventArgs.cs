@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,45 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core.Crypto;
-using Nethermind.Stats.Model;
+namespace Nethermind.Network;
 
-namespace Nethermind.Network.Discovery;
-
-public class NullDiscoveryApp : IDiscoveryApp
+public class PeerEventArgs
 {
-    public void Initialize(PublicKey masterPublicKey)
+    public PeerEventArgs(Peer peer)
     {
-    }
-
-    public void Start()
-    {
-    }
-
-    public Task StopAsync()
-    {
-        return Task.CompletedTask;
+        Peer = peer;
     }
     
-    public void AddNodeToDiscovery(Node node)
-    {
-    }
-
-    public List<Node> LoadInitialList()
-    {
-        return new List<Node>();
-    }
-
-    public event EventHandler<NodeEventArgs>? NodeAdded
-    {
-        add { }
-        remove { }
-    }
-
-    public event EventHandler<NodeEventArgs>? NodeRemoved
-    {
-        add { }
-        remove { }
-    }
+    public Peer Peer { get; set; }
 }

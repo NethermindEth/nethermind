@@ -48,7 +48,7 @@ namespace Nethermind.Network.Discovery.Test
             NetworkConfig networkConfig = new();
             networkConfig.ExternalIp = IPAddress.Broadcast.ToString();
             
-            _masterNode = new Node(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000);
+            _masterNode = new Node(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000, false);
             DiscoveryConfig config = new() {DiscoveryNewCycleWaitTime = 1};
             NodeDistanceCalculator distanceCalculator = new(config);
             _nodeTable = new NodeTable(distanceCalculator, config, networkConfig, LimboLogs.Instance);
@@ -91,7 +91,7 @@ namespace Nethermind.Network.Discovery.Test
 
             for (int i = 0; i < nodesCount; i++)
             {
-                Node node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000 + i);
+                Node node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000 + i, false);
                 _nodeTable.AddNode(node);
             }
             

@@ -100,7 +100,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 MonitoringService = Substitute.For<IMonitoringService>(),
                 ProtocolsManager = Substitute.For<IProtocolsManager>(),
                 ProtocolValidator = Substitute.For<IProtocolValidator>(),
-                RlpxPeer = Substitute.For<IRlpxPeer>(),
+                RlpxPeer = Substitute.For<IRlpxHost>(),
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
                 StateProvider = Substitute.For<IStateProvider>(),

@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.Test
             private readonly bool _causeTimeoutOnInit;
             private readonly bool _causeTimeoutOnBlocks;
             private readonly bool _causeTimeoutOnHeaders;
-            private List<Block> Blocks { get; } = new List<Block>();
+            private List<Block> Blocks { get; } = new();
 
             public Block HeadBlock => Blocks.Last();
 
@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization.Test
                 TotalDifficulty = HeadBlock.TotalDifficulty ?? 0;
             }
 
-            public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
+            public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234, false);
 
             public string ClientId { get; }
             public Keccak HeadHash { get; set; }
@@ -187,7 +187,7 @@ namespace Nethermind.Synchronization.Test
                     ReceivedBlocks.Push(block);
             }
 
-            public ConcurrentStack<Block> ReceivedBlocks { get; } = new ConcurrentStack<Block>();
+            public ConcurrentStack<Block> ReceivedBlocks { get; } = new();
             
             public event EventHandler Disconnected;
 
@@ -240,7 +240,7 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
-        private WhenImplementation When => new WhenImplementation(_synchronizerType);
+        private WhenImplementation When => new(_synchronizerType);
 
         private class WhenImplementation
         {
@@ -251,14 +251,14 @@ namespace Nethermind.Synchronization.Test
                 _synchronizerType = synchronizerType;
             }
 
-            public SyncingContext Syncing => new SyncingContext(_synchronizerType);
+            public SyncingContext Syncing => new(_synchronizerType);
         }
 
         public class SyncingContext
         {
-            public static ConcurrentBag<SyncingContext> AllInstances = new ConcurrentBag<SyncingContext>();
+            public static ConcurrentBag<SyncingContext> AllInstances = new();
 
-            private Dictionary<string, ISyncPeer> _peers = new Dictionary<string, ISyncPeer>();
+            private Dictionary<string, ISyncPeer> _peers = new();
             private BlockTree BlockTree { get; }
 
             private ISyncServer SyncServer { get; }
@@ -288,20 +288,20 @@ namespace Nethermind.Synchronization.Test
                 IDbProvider dbProvider = TestMemDbProvider.Init();
                 IDb stateDb = new MemDb();
                 IDb codeDb = dbProvider.CodeDb;
-                MemDb blockInfoDb = new MemDb();
+                MemDb blockInfoDb = new();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-                NodeStatsManager stats = new NodeStatsManager(timerFactory, _logManager);
+                NodeStatsManager stats = new(timerFactory, _logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
 
-                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
+                SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     _logManager);
-                MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
+                MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
                 Synchronizer = new Synchronizer(
                     dbProvider,
                     MainnetSpecProvider.Instance,
@@ -492,7 +492,7 @@ namespace Nethermind.Synchronization.Test
             public void Stop()
             {
                 Synchronizer.SyncEvent -= SynchronizerOnSyncEvent;
-                Task task = new Task(async () =>
+                Task task = new(async () =>
                 {
                     await Synchronizer.StopAsync();
                     await SyncPeerPool.StopAsync();
@@ -529,7 +529,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_sync_with_one_peer_straight()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
 
             When.Syncing
                 .AfterProcessingGenesis()
@@ -540,7 +540,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_sync_with_one_peer_straight_and_extend_chain()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(3);
 
             When.Syncing
@@ -552,7 +552,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_extend_chain_by_one_on_new_block_message()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(1);
 
             When.Syncing
@@ -567,10 +567,10 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_reorg_on_new_block_message()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(3);
 
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerB = new("B");
             peerB.AddBlocksUpTo(3);
 
             When.Syncing
@@ -587,10 +587,10 @@ namespace Nethermind.Synchronization.Test
         [Ignore("Not supported for now - still analyzing this scenario")]
         public void Can_reorg_on_hint_block_message()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(3);
 
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerB = new("B");
             peerB.AddBlocksUpTo(3);
 
             When.Syncing
@@ -606,7 +606,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_extend_chain_by_one_on_block_hint_message()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(1);
 
             When.Syncing
@@ -621,7 +621,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_extend_chain_by_more_than_one_on_new_block_message()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(1);
 
             When.Syncing
@@ -640,7 +640,7 @@ namespace Nethermind.Synchronization.Test
         {
             // this test was designed for no sync-timer sync process
             // now it checks something different
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(1);
 
             When.Syncing
@@ -655,10 +655,10 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_sync_when_best_peer_is_timing_out()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(1);
 
-            SyncPeerMock badPeer = new SyncPeerMock("B", false, false, true);
+            SyncPeerMock badPeer = new("B", false, false, true);
             badPeer.AddBlocksUpTo(20);
 
             When.Syncing
@@ -678,10 +678,10 @@ namespace Nethermind.Synchronization.Test
                 return;
             }
 
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(2);
 
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerB = new("B");
             peerB.AddBlocksUpTo(2, 0, 1);
 
             When.Syncing
@@ -715,7 +715,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Will_not_add_same_peer_twice()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(1);
 
             When.Syncing
@@ -730,7 +730,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Will_remove_peer_when_init_fails()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A", true, true);
+            SyncPeerMock peerA = new("A", true, true);
             peerA.AddBlocksUpTo(1);
 
             When.Syncing
@@ -744,8 +744,8 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_remove_peers()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerA = new("A");
+            SyncPeerMock peerB = new("B");
 
             When.Syncing
                 .AfterProcessingGenesis()
@@ -764,10 +764,10 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_reorg_on_add_peer()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(SyncBatchSize.Max);
 
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerB = new("B");
             peerB.AddBlocksUpTo(SyncBatchSize.Max * 2, 0, 1);
 
             When.Syncing
@@ -781,10 +781,10 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_reorg_based_on_total_difficulty()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(10);
 
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerB = new("B");
             peerB.AddHighDifficultyBlocksUpTo(6, 0, 1);
 
             When.Syncing
@@ -799,10 +799,10 @@ namespace Nethermind.Synchronization.Test
         [Ignore("Not supported for now - still analyzing this scenario")]
         public void Can_extend_chain_on_hint_block_when_high_difficulty_low_number()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(10);
 
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerB = new("B");
             peerB.AddHighDifficultyBlocksUpTo(5, 0, 1);
 
             When.Syncing
@@ -819,10 +819,10 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_extend_chain_on_new_block_when_high_difficulty_low_number()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(10);
 
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerB = new("B");
             peerB.AddHighDifficultyBlocksUpTo(6, 0, 1);
 
             When.Syncing
@@ -840,10 +840,10 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Will_not_reorganize_on_same_chain_length()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(10);
 
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerB = new("B");
             peerB.AddBlocksUpTo(10, 0, 1);
 
             When.Syncing
@@ -857,10 +857,10 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Will_not_reorganize_more_than_max_reorg_length()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(BlockDownloader.MaxReorganizationLength + 1);
 
-            SyncPeerMock peerB = new SyncPeerMock("B");
+            SyncPeerMock peerB = new("B");
             peerB.AddBlocksUpTo(BlockDownloader.MaxReorganizationLength + 2, 0, 1);
 
             When.Syncing
@@ -874,7 +874,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Ignore("travis")]
         public void Can_sync_more_than_a_batch()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(SyncBatchSize.Max * 3);
 
             When.Syncing
@@ -886,7 +886,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_sync_exactly_one_batch()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(SyncBatchSize.Max);
 
             When.Syncing
@@ -899,7 +899,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_stop()
         {
-            SyncPeerMock peerA = new SyncPeerMock("A");
+            SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(SyncBatchSize.Max);
 
             When.Syncing

@@ -16,6 +16,7 @@
 
 using System;
 using System.Net;
+using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
@@ -37,27 +38,22 @@ namespace Nethermind.Stats.Model
         /// Hash of the node ID used extensively in discovery and kept here to avoid rehashing.
         /// </summary>
         public Keccak IdHash { get; }
-        
+
         /// <summary>
         /// Host part of the network node.
         /// </summary>
         public string Host { get; private set; }
-        
+
         /// <summary>
         /// Port part of the network node.
         /// </summary>
         public int Port { get; set; }
-        
+
         /// <summary>
         /// Network address of the node.
         /// </summary>
         public IPEndPoint Address { get; private set; }
-        
-        /// <summary>
-        /// Means that the discovery process is aware of this network node. 
-        /// </summary>
-        public bool AddedToDiscovery { get; set; }
-        
+
         /// <summary>
         /// We use bootnodes to bootstrap the discovery process.
         /// </summary>
@@ -82,7 +78,7 @@ namespace Nethermind.Stats.Model
         }
 
         public NodeClientType ClientType { get; private set; } = NodeClientType.Unknown;
-        
+
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
 
@@ -90,24 +86,29 @@ namespace Nethermind.Stats.Model
         {
             Id = id;
             IdHash = Keccak.Compute(Id.PrefixedBytes);
-            AddedToDiscovery = false;
             SetIPEndPoint(address);
         }
 
-        public Node(PublicKey id, string host, int port, bool addedToDiscovery = false)
+        public Node(NetworkNode networkNode)
+            : this(networkNode.NodeId, networkNode.Host, networkNode.Port, false)
+        {
+        }
+
+        public Node(PublicKey id, string host, int port, bool isStatic)
         {
             Id = id;
             IdHash = Keccak.Compute(Id.PrefixedBytes);
-            AddedToDiscovery = addedToDiscovery;
             SetIPEndPoint(host, port);
+            IsStatic = isStatic;
         }
 
         public Node(string host, int port, bool isStatic = false)
         {
+            // TODO: this is strange - should we ever add nodes without ID?
+            // I suggest removing this but maybe people use it...
             Keccak512 socketHash = Keccak512.Compute($"{host}:{port}");
             Id = new PublicKey(socketHash.Bytes);
             IdHash = Keccak.Compute(Id.PrefixedBytes);
-            AddedToDiscovery = true;
             IsStatic = isStatic;
             SetIPEndPoint(host, port);
         }
@@ -123,7 +124,7 @@ namespace Nethermind.Stats.Model
         {
             SetIPEndPoint(new IPEndPoint(IPAddress.Parse(host), port));
         }
-        
+
         public override bool Equals(object obj)
         {
             if (ReferenceEquals(this, obj))
@@ -157,7 +158,7 @@ namespace Nethermind.Stats.Model
                 _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
             };
         }
-        
+
         public static bool operator ==(Node a, Node b)
         {
             if (ReferenceEquals(a, null))
@@ -177,7 +178,7 @@ namespace Nethermind.Stats.Model
         {
             return !(a == b);
         }
-        
+
         private void RecognizeClientType()
         {
             if (_clientId is null)

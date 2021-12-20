@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Stats.Model;
+
 namespace Nethermind.Network.Dns;
 
-public class EnrDiscovery
+public class EnrDiscovery : INodeSource
 {
     private class SearchContext
     {
@@ -33,24 +35,23 @@ public class EnrDiscovery
         public Queue<string> RefsToVisit { get; } = new();
     }
 
-    public List<string> SearchTree(string domain)
+    public async Task SearchTree(string domain)
     {
         DnsClient client = new(domain);
         SearchContext searchContext = new("");
-        SearchTree(client, searchContext);
-        return searchContext.DiscoveredNodes;
+        await SearchTree(client, searchContext);
     }
-    
-    private void SearchTree(DnsClient client, SearchContext searchContext)
+
+    private async Task SearchTree(DnsClient client, SearchContext searchContext)
     {
         while (searchContext.RefsToVisit.Any())
         {
             string @ref = searchContext.RefsToVisit.Dequeue();
-            SearchNode(client, @ref, searchContext);
+            await SearchNode(client, @ref, searchContext);
         }
     }
 
-    private void SearchNode(IDnsClient client, string query, SearchContext searchContext)
+    private async Task SearchNode(IDnsClient client, string query, SearchContext searchContext)
     {
         if (searchContext.VisitedRefs.Contains(query))
         {
@@ -59,7 +60,7 @@ public class EnrDiscovery
 
         searchContext.VisitedRefs.Add(query);
 
-        string[][] lookupResult = client.Lookup(query);
+        string[][] lookupResult = await client.Lookup(query);
         foreach (string[] strings in lookupResult)
         {
             string s = string.Join("", strings);
@@ -67,12 +68,15 @@ public class EnrDiscovery
             foreach (string link in treeNode.Links)
             {
                 DnsClient linkedTreeLookup = new(link);
-                SearchTree(linkedTreeLookup, searchContext);
+                await SearchTree(linkedTreeLookup, searchContext);
             }
 
             foreach (string nodeRecord in treeNode.Records)
             {
                 searchContext.DiscoveredNodes.Add(nodeRecord);
+                // node record to node
+                // Node node = new Node()
+                // NodeAdded?.Invoke(this, new NodeEventArgs());
             }
 
             foreach (string nodeRef in treeNode.Refs)
@@ -81,4 +85,13 @@ public class EnrDiscovery
             }
         }
     }
+
+    public List<Node> LoadInitialList()
+    {
+        return new List<Node>();
+    }
+
+    public event EventHandler<NodeEventArgs>? NodeAdded;
+
+    public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 }

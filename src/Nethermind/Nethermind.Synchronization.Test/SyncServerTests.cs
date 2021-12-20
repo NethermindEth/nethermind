@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void _When_finding_hash_it_does_not_load_headers()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
             Keccak result = ctx.SyncServer.FindHash(123);
 
@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Does_not_request_peer_refresh_on_known_hints()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.BlockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(true);
             ctx.SyncServer.HintBlock(TestItem.KeccakA, 1, ctx.NodeWhoSentTheBlock);
             ctx.PeerPool.DidNotReceiveWithAnyArgs().RefreshTotalDifficulty(null!, null!);
@@ -64,7 +64,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Requests_peer_refresh_on_unknown_hints()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.BlockTree.IsKnownBlock(1, TestItem.KeccakA).ReturnsForAnyArgs(false);
             ctx.SyncServer.HintBlock(TestItem.KeccakA, 1, ctx.NodeWhoSentTheBlock);
             ctx.PeerPool.Received().ReceivedWithAnyArgs();
@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void When_finding_by_hash_block_info_is_not_loaded()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.SyncServer.Find(TestItem.KeccakA);
             ctx.BlockTree.Received().FindBlock(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.Test
         [TestCase(true, false, false)]
         public void Can_accept_new_valid_blocks(bool sealOk, bool validationOk, bool accepted)
         {
-            Context ctx = new Context();
+            Context ctx = new();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
@@ -126,7 +126,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_accept_blocks_that_are_fine()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
@@ -153,17 +153,17 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Will_not_reject_block_with_bad_total_diff_but_will_reset_diff_to_null()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
 
-            HeaderValidator headerValidator = new HeaderValidator(
+            HeaderValidator headerValidator = new(
                 localBlockTree,
                 Always.Valid,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
 
-            BlockValidator blockValidator = new BlockValidator(
+            BlockValidator blockValidator = new(
                 Always.Valid,
                 headerValidator,
                 Always.Valid,
@@ -196,7 +196,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Rejects_new_old_blocks()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
 
@@ -226,7 +226,7 @@ namespace Nethermind.Synchronization.Test
             public Context()
             {
                 NodeWhoSentTheBlock = Substitute.For<ISyncPeer>();
-                NodeWhoSentTheBlock.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+                NodeWhoSentTheBlock.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, false));
                 PeerPool = Substitute.For<ISyncPeerPool>();
 
                 BlockTree = Substitute.For<IBlockTree>();

@@ -168,7 +168,7 @@ namespace Nethermind.Network.Discovery.Test
             for (int i = 0; i < 3; i++)
             {
                 string host = "192.168.1." + i;
-                Node node = new(_nodeIds[i], host, _port);
+                Node node = new(_nodeIds[i], host, _port, false);
                 INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
                 if (manager is null)
                 {
@@ -191,7 +191,7 @@ namespace Nethermind.Network.Discovery.Test
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 0);
 
             //adding 4th node - table can store only 3, eviction process should start
-            Node candidateNode = new(_nodeIds[3], _host, _port);
+            Node candidateNode = new(_nodeIds[3], _host, _port, false);
             INodeLifecycleManager? candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
@@ -239,7 +239,7 @@ namespace Nethermind.Network.Discovery.Test
             for (int i = 0; i < 3; i++)
             {
                 string host = "192.168.1." + i;
-                Node node = new(_nodeIds[i], host, _port);
+                Node node = new(_nodeIds[i], host, _port, false);
                 INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
                 if (manager is null)
                 {
@@ -264,7 +264,7 @@ namespace Nethermind.Network.Discovery.Test
             }
 
             //adding 4th node - table can store only 3, eviction process should start
-            Node candidateNode = new(_nodeIds[3], _host, _port);
+            Node candidateNode = new(_nodeIds[3], _host, _port, false);
 
             INodeLifecycleManager? candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
             Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);

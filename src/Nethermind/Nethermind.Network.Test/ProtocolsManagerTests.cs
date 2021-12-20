@@ -62,7 +62,7 @@ namespace Nethermind.Network.Test
             private string _remoteHost = "35.0.0.1";
             private ISession _currentSession;
             private IDiscoveryApp _discoveryApp;
-            private IRlpxPeer _localPeer;
+            private IRlpxHost _rlpxHost;
             private ProtocolsManager _manager;
             private INodeStatsManager _nodeStatsManager;
             private INetworkStorage _peerStorage;
@@ -95,9 +95,9 @@ namespace Nethermind.Network.Test
                 _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
                 _discoveryApp = Substitute.For<IDiscoveryApp>();
                 _serializer = new MessageSerializationService();
-                _localPeer = Substitute.For<IRlpxPeer>();
-                _localPeer.LocalPort.Returns(_localPort);
-                _localPeer.LocalNodeId.Returns(TestItem.PublicKeyA);
+                _rlpxHost = Substitute.For<IRlpxHost>();
+                _rlpxHost.LocalPort.Returns(_localPort);
+                _rlpxHost.LocalNodeId.Returns(TestItem.PublicKeyA);
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 _blockTree = Substitute.For<IBlockTree>();
@@ -113,7 +113,7 @@ namespace Nethermind.Network.Test
                     _pooledTxsRequestor,
                     _discoveryApp,
                     _serializer,
-                    _localPeer,
+                    _rlpxHost,
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
@@ -130,16 +130,16 @@ namespace Nethermind.Network.Test
                 IChannel channel = Substitute.For<IChannel>();
                 _currentSession = new Session(_localPort, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
-                _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
+                _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }
 
             public Context CreateOutgoingSession()
             {
                 IChannel channel = Substitute.For<IChannel>();
-                _currentSession = new Session(_localPort, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort) {AddedToDiscovery = true}, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                _currentSession = new Session(_localPort, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort, false), channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
-                _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
+                _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }
 
@@ -302,20 +302,6 @@ namespace Nethermind.Network.Test
 
                 return ReceiveStatus(msg);
             }
-
-            public Context VerifyNotAddedToDiscovery()
-            {
-                _discoveryApp.DidNotReceive().AddNodeToDiscovery(_currentSession.Node);
-                Assert.True(_currentSession.Node.AddedToDiscovery);
-                return this;
-            }
-            
-            public Context VerifyAddedToDiscovery()
-            {
-                _discoveryApp.Received().AddNodeToDiscovery(_currentSession.Node);
-                Assert.True(_currentSession.Node.AddedToDiscovery);
-                return this;
-            }
         }
 
         [Test]
@@ -350,7 +336,7 @@ namespace Nethermind.Network.Test
                 .ActivateChannel()
                 .Handshake()
                 .Init()
-                .ReceiveHello(5)
+                .ReceiveHello()
                 .ReceiveDisconnect()
                 .VerifyDisconnected();
         }
@@ -364,7 +350,7 @@ namespace Nethermind.Network.Test
                 .Handshake()
                 .Init()
                 .Disconnect()
-                .ReceiveHello(5);
+                .ReceiveHello();
         }
 
         [Test]
@@ -376,30 +362,6 @@ namespace Nethermind.Network.Test
                 .Handshake()
                 .Init()
                 .VerifyInitialized();
-        }
-
-        [Test]
-        public void Adds_to_discovery()
-        {
-            When
-                .CreateIncomingSession()
-                .ActivateChannel()
-                .Handshake()
-                .Init()
-                .ReceiveHello()
-                .VerifyAddedToDiscovery();
-        }
-        
-        [Test]
-        public void Skips_adding_to_discovery_when_already_known()
-        {
-            When
-                .CreateOutgoingSession()
-                .ActivateChannel()
-                .Handshake()
-                .Init()
-                .ReceiveHello()
-                .VerifyNotAddedToDiscovery();
         }
 
         [Test]

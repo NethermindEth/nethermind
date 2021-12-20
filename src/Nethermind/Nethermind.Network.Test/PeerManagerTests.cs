@@ -71,7 +71,6 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(1);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelay);
             Assert.AreEqual(1, ctx.RlpxPeer.ConnectAsyncCallsCount);
@@ -82,7 +81,6 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelayLong * 10);
             Assert.AreEqual(25, ctx.RlpxPeer.ConnectAsyncCallsCount);
@@ -92,7 +90,7 @@ namespace Nethermind.Network.Test
         public async Task Will_discard_a_duplicate_incoming_session()
         {
             await using Context ctx = new();
-            ctx.PeerManager.Init();
+            ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
             Session session2 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
@@ -133,7 +131,7 @@ namespace Nethermind.Network.Test
             ctx.NetworkConfig.ActivePeersMaxCount = 1;
             ctx.StaticNodesManager.IsStatic(enode2String).Returns(true);
 
-            ctx.PeerManager.Init();
+            ctx.PeerManager.Start();
             var enode1 = new Enode(enode1String);
             Node node1 = new(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
             Session session1 = new(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
@@ -156,7 +154,7 @@ namespace Nethermind.Network.Test
             ConnectionDirection firstDirection)
         {
             await using Context ctx = new();
-            ctx.PeerManager.Init();
+            ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
@@ -194,7 +192,6 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelayLong);
             Assert.AreEqual(25, ctx.RlpxPeer.ConnectAsyncCallsCount);
@@ -210,7 +207,6 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
             ctx.RlpxPeer.MakeItFail();
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
 
             await Task.Delay(_travisDelay);
@@ -222,7 +218,6 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
 
             int currentCount = 0;
@@ -240,7 +235,6 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(0);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
 
             for (int i = 0; i < 10; i++)
@@ -261,7 +255,6 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(0);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
 
             for (int i = 0; i < 10; i++)
@@ -277,7 +270,6 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
 
             int currentCount = 0;
@@ -306,7 +298,6 @@ namespace Nethermind.Network.Test
             ctx.NetworkConfig.CandidatePeerCountCleanupThreshold = 30;
             ctx.NetworkConfig.PersistedPeerCountCleanupThreshold = 40;
             ctx.SetupPersistedPeers(50);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
 
             int currentCount = 0;
@@ -330,7 +321,6 @@ namespace Nethermind.Network.Test
             ctx.NetworkConfig.CandidatePeerCountCleanupThreshold = 30;
             ctx.NetworkConfig.PersistedPeerCountCleanupThreshold = 40;
             ctx.SetupPersistedPeers(50);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
 
             int currentCount = 0;
@@ -354,11 +344,10 @@ namespace Nethermind.Network.Test
             const int nodesCount = 5;
             var staticNodes = ctx.CreateNodes(nodesCount);
             ctx.StaticNodesManager.Nodes.Returns(staticNodes);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             foreach (var node in staticNodes)
             {
-                ctx.DiscoveryApp.NodeDiscovered += Raise.EventWith(new NodeEventArgs(new Node(node.Host, node.Port)));
+                ctx.DiscoveryApp.NodeAdded += Raise.EventWith(new NodeEventArgs(new Node(node.Host, node.Port)));
             }
 
             await Task.Delay(_travisDelay);
@@ -373,14 +362,14 @@ namespace Nethermind.Network.Test
             var disconnections = 0;
             var staticNodes = ctx.CreateNodes(nodesCount);
             ctx.StaticNodesManager.Nodes.Returns(staticNodes);
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelay);
 
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
-            ctx.StaticNodesManager.NodeRemoved += Raise.EventWith(new NetworkNodeEventArgs(staticNodes.First()));
+            ctx.StaticNodesManager.NodeRemoved += Raise.EventWith(new NodeEventArgs(
+                new Node(staticNodes.First())));
 
             ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount - 1);
             disconnections.Should().Be(1);
@@ -391,10 +380,9 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             var disconnections = 0;
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
-            ctx.PeerManager.AddPeer(node);
+            ctx.PeerPool.GetOrAdd(node);
             await Task.Delay(_travisDelayLong);
 
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
@@ -402,7 +390,7 @@ namespace Nethermind.Network.Test
 
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
-            ctx.PeerManager.RemovePeer(node).Should().BeTrue();
+            ctx.PeerPool.TryRemove(node.NodeId, out _).Should().BeTrue();
             ctx.PeerManager.ActivePeers.Should().BeEmpty();
             disconnections.Should().Be(1);
         }
@@ -411,12 +399,11 @@ namespace Nethermind.Network.Test
         public async Task Will_only_add_same_peer_once()
         {
             await using Context ctx = new();
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
-            ctx.PeerManager.AddPeer(node);
-            ctx.PeerManager.AddPeer(node);
-            ctx.PeerManager.AddPeer(node);
+            ctx.PeerPool.GetOrAdd(node);
+            ctx.PeerPool.GetOrAdd(node);
+            ctx.PeerPool.GetOrAdd(node);
             await Task.Delay(_travisDelayLong);
             ctx.PeerManager.ActivePeers.Should().HaveCount(1);
         }
@@ -425,11 +412,10 @@ namespace Nethermind.Network.Test
         public async Task RemovePeer_should_fail_if_peer_not_added()
         {
             await using Context ctx = new();
-            ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
             await Task.Delay(_travisDelay);
-            ctx.PeerManager.RemovePeer(node).Should().BeFalse();
+            ctx.PeerPool.TryRemove(node.NodeId, out _).Should().BeFalse();
         }
 
         private class Context : IAsyncDisposable
@@ -438,8 +424,9 @@ namespace Nethermind.Network.Test
             public IDiscoveryApp DiscoveryApp { get; }
             public INodeStatsManager Stats { get; }
             public INetworkStorage Storage { get; }
-            public PeerLoader PeerLoader { get; }
+            public NodesLoader NodesLoader { get; }
             public PeerManager PeerManager { get; }
+            public IPeerPool PeerPool { get; }
             public INetworkConfig NetworkConfig { get; }
             public IStaticNodesManager StaticNodesManager { get; }
             public List<Session> Sessions { get; } = new();
@@ -451,13 +438,14 @@ namespace Nethermind.Network.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
-                PeerLoader = new PeerLoader(new NetworkConfig(), Stats, Storage, LimboLogs.Instance);
+                NodesLoader = new NodesLoader(new NetworkConfig(), Stats, Storage, RlpxPeer, LimboLogs.Instance);
                 NetworkConfig = new NetworkConfig();
                 NetworkConfig.ActivePeersMaxCount = 25;
                 NetworkConfig.PeersPersistenceInterval = 50;
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
-                PeerManager = new PeerManager(RlpxPeer, DiscoveryApp, Stats, Storage, PeerLoader, NetworkConfig,
-                    LimboLogs.Instance, StaticNodesManager);
+                CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp);
+                PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance);
+                PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, LimboLogs.Instance);
             }
 
             public void SetupPersistedPeers(int count)
@@ -517,9 +505,9 @@ namespace Nethermind.Network.Test
             {
                 for (int i = 0; i < count; i++)
                 {
-                    DiscoveryApp.NodeDiscovered +=
+                    DiscoveryApp.NodeAdded +=
                         Raise.EventWith(new NodeEventArgs(new Node(new PrivateKeyGenerator().Generate().PublicKey,
-                            "1.2.3.4", 1234)));
+                            "1.2.3.4", 1234, false)));
                 }
             }
 
@@ -551,7 +539,7 @@ namespace Nethermind.Network.Test
             }
         }
 
-        private class RlpxMock : IRlpxPeer
+        private class RlpxMock : IRlpxHost
         {
             private readonly List<Session> _sessions;
 

@@ -14,12 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Network;
@@ -49,12 +51,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
             _networkConfig = new NetworkConfig();
-            IPeerManager peerManager = Substitute.For<IPeerManager>();
-            peerManager.ActivePeers.Returns(new List<Peer> {new(new Node("127.0.0.1", 30303, true))});
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            ConcurrentDictionary<PublicKey, Peer> dict = new();
+            dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node("127.0.0.1", 30303, true)));
+            peerPool.ActivePeers.Returns(dict);
             
             IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
             Enode enode = new(_enodeString);
-            _adminRpcModule = new AdminRpcModule(_blockTree, _networkConfig, peerManager, staticNodesManager, enode, _exampleDataDir);
+            _adminRpcModule = new AdminRpcModule(_blockTree, _networkConfig, peerPool, staticNodesManager, enode, _exampleDataDir);
             _serializer = new EthereumJsonSerializer();
         }
         

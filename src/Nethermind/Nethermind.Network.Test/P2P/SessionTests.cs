@@ -55,7 +55,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Constructor_sets_the_values()
         {
-            Session session = new(30312, new Node(TestItem.PublicKeyB, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30312, new Node(TestItem.PublicKeyB, "127.0.0.1", 8545, false), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             Assert.AreEqual(TestItem.PublicKeyB, session.RemoteNodeId);
             Assert.AreEqual(30312, session.LocalPort);
             Assert.AreEqual(ConnectionDirection.Out, session.Direction);

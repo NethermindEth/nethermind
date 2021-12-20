@@ -52,8 +52,8 @@ namespace Nethermind.Synchronization.Test
             HeadHash = Tree.Head.Hash;
             TotalDifficulty = Tree.Head.TotalDifficulty ?? 0;
             
-            Node = new Node(TestItem.PrivateKeys[RemoteIndex].PublicKey, remoteHost, 30303);
-            LocalNode = new Node(TestItem.PrivateKeys[0].PublicKey, localHost, 30303);
+            Node = new Node(TestItem.PrivateKeys[RemoteIndex].PublicKey, remoteHost, 30303, false);
+            LocalNode = new Node(TestItem.PrivateKeys[0].PublicKey, localHost, 30303, false);
             Node.ClientId = $"remote {RemoteIndex}";
             LocalNode.ClientId = "local nethermind";
             RemoteIndex++;

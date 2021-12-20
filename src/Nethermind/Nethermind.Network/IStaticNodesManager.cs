@@ -14,20 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Network.StaticNodes;
-using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
-    public interface IStaticNodesManager
+    public interface IStaticNodesManager : INodeSource
     {
         IEnumerable<NetworkNode> Nodes { get; }
-        event EventHandler<NetworkNodeEventArgs> NodeAdded;
-        event EventHandler<NetworkNodeEventArgs> NodeRemoved;
         Task InitAsync();
         Task<bool> AddAsync(string enode, bool updateFile = true);
         Task<bool> RemoveAsync(string enode, bool updateFile = true);
