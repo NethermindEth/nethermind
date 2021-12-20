@@ -88,9 +88,6 @@ namespace Nethermind.Network
                         return false;
                     }
                     
-                    session.StartTrackingSession();
-                    _logger.Error($"Valid GENESIS hash and such {session}");
-
                     break;
             }
             

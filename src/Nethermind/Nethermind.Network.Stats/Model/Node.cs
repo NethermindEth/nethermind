@@ -18,7 +18,6 @@ using System;
 using System.Net;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 
 namespace Nethermind.Stats.Model
 {
@@ -100,17 +99,6 @@ namespace Nethermind.Stats.Model
             IdHash = Keccak.Compute(Id.PrefixedBytes);
             SetIPEndPoint(host, port);
             IsStatic = isStatic;
-        }
-
-        public Node(string host, int port, bool isStatic = false)
-        {
-            // TODO: this is strange - should we ever add nodes without ID?
-            // I suggest removing this but maybe people use it...
-            Keccak512 socketHash = Keccak512.Compute($"{host}:{port}");
-            Id = new PublicKey(socketHash.Bytes);
-            IdHash = Keccak.Compute(Id.PrefixedBytes);
-            IsStatic = isStatic;
-            SetIPEndPoint(host, port);
         }
 
         private void SetIPEndPoint(IPEndPoint address)

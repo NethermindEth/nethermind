@@ -438,9 +438,12 @@ public class DiscoveryApp : IDiscoveryApp
         for (int i = 0; i < bootnodes.Length; i++)
         {
             NetworkNode bootnode = bootnodes[i];
-            Node node = bootnode.NodeId == null
-                ? new Node(bootnode.Host, bootnode.Port)
-                : new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, false);
+            if (bootnode.NodeId is null)
+            {
+                _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
+            }
+            
+            Node node = new (bootnode.NodeId, bootnode.Host, bootnode.Port, false);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             if (manager != null)
             {

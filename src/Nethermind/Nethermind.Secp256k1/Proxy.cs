@@ -285,6 +285,20 @@ namespace Nethermind.Secp256k1
             Ecdh(result, key, privateKey);
             return result;
         }
+        
+        public static byte[] Decompress(Span<byte> compressed)
+        {
+            Span<byte> serializedKey = stackalloc byte[65];
+            byte[] publicKey = new byte[64];
+            PublicKeyParse(publicKey, compressed);
+            
+            if (!PublicKeySerialize(serializedKey, publicKey))
+            {
+                throw new Exception("Failed toi serialize");
+            }
+            
+            return serializedKey.ToArray();
+        }
 
         /// <summary>
         /// Parse a variable-length public key into the pubkey object.
@@ -303,10 +317,10 @@ namespace Nethermind.Secp256k1
                 throw new ArgumentException($"{nameof(serializedPublicKey)} must be 33 or 65 bytes");
             }
 
-            if (publicKeyOutput.Length < 64)
-            {
-                throw new ArgumentException($"{nameof(publicKeyOutput)} must be {64} bytes");
-            }
+            // if (publicKeyOutput.Length < 64)
+            // {
+            //     throw new ArgumentException($"{nameof(publicKeyOutput)} must be {64} bytes");
+            // }
 
             fixed (byte* pubKeyPtr = &MemoryMarshal.GetReference(publicKeyOutput), serializedPtr = &MemoryMarshal.GetReference(serializedPublicKey))
             {
@@ -331,10 +345,11 @@ namespace Nethermind.Secp256k1
                 throw new ArgumentException($"{nameof(serializedPublicKeyOutput)} ({compressedStr}) must be {serializedPubKeyLength} bytes");
             }
 
-            if (publicKey.Length < 64)
-            {
-                throw new ArgumentException($"{nameof(publicKey)} must be {64} bytes");
-            }
+            // int expectedInputLength = flags == Secp256K1EcCompressed ? 33 : 64;
+            // if (publicKey.Length != expectedInputLength)
+            // {
+            //     throw new ArgumentException($"{nameof(publicKey)} must be {expectedInputLength} bytes");
+            // }
 
             uint newLength = (uint) serializedPubKeyLength;
 

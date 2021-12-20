@@ -483,7 +483,7 @@ namespace Nethermind.Init.Steps
             
             NodesLoader nodesLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.RlpxPeer, _api.LogManager);
             EnrDiscovery enrDiscovery = new (); // initialize with a proper network
-            CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery);
+            CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
             _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
             _api.PeerManager = new PeerManager(
                 _api.RlpxPeer,
@@ -492,18 +492,17 @@ namespace Nethermind.Init.Steps
                 _networkConfig,
                 _api.LogManager);
 
-            if (_api.ChainSpec!.ChainId == ChainId.Goerli)
-            {
+            string chainName = ChainId.GetChainName(_api.ChainSpec!.ChainId).ToLowerInvariant();
 #pragma warning disable CS4014
-                enrDiscovery.SearchTree("all.goerli.ethdisco.net").ContinueWith(t =>
+            enrDiscovery.SearchTree($"all.{chainName}.ethdisco.net").ContinueWith(t =>
 #pragma warning restore CS4014
+            {
+                if (t.IsFaulted)
                 {
-                    if (t.IsFaulted)
-                    {
-                        _logger.Error($"ENR discovery failed: {t.Exception}");
-                    }
-                });
-            }
+                    _logger.Error($"ENR discovery failed: {t.Exception}");
+                    
+                }
+            });
         }
     }
 }

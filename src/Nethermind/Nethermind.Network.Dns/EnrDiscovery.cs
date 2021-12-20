@@ -16,6 +16,7 @@
 // 
 
 using System.Net;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Enr;
 using Nethermind.Serialization.Rlp;
@@ -90,10 +91,13 @@ public class EnrDiscovery : INodeSource
                     broken = broken.PadRight(nodeRecordText.Length % 4);
                     RlpStream rlpStream = new(Convert.FromBase64String(broken));
                     NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
-                    // node record to node
+
+                    CompressedPublicKey? compressedPublicKey =
+                        nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
                     Node node = new(
+                        compressedPublicKey!.Decompress(),
                         nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip)!.ToString(),
-                        nodeRecord.GetValue<int>(EnrContentKey.Tcp)!.Value);
+                        nodeRecord.GetValue<int>(EnrContentKey.Tcp)!.Value, false);
                 
                     // here could add network info to the node
                     NodeAdded?.Invoke(this, new NodeEventArgs(node));

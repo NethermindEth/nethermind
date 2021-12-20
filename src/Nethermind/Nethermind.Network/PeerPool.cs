@@ -80,7 +80,7 @@ namespace Nethermind.Network
 
         private void NodeSourceOnNodeAdded(object? sender, NodeEventArgs e)
         {
-            _logger.Error($"Adding a node from source {sender}: {e.Node}");
+            // _logger.Error($"Adding a node from source {sender}: {e.Node}");
             GetOrAdd(e.Node);
         }
 

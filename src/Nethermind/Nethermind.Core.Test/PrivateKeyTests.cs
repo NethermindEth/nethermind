@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using NUnit.Framework;
@@ -94,6 +95,16 @@ namespace Nethermind.Core.Test
             Assert.AreSame(address1, address2);
         }
 
+        [Test]
+        public void Can_decompress_public_key()
+        {
+            PrivateKey privateKey = new(TestPrivateKeyHex);
+            PublicKey a = privateKey.PublicKey;
+            PublicKey b = privateKey.CompressedPublicKey.Decompress();
+            Assert.AreEqual(a, b);
+        }
+
+        
         /// <summary>
         /// https://en.bitcoin.it/wiki/Private_key
         /// </summary>

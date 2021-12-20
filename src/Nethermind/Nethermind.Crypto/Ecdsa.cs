@@ -85,5 +85,11 @@ namespace Nethermind.Crypto
             
             return new CompressedPublicKey(publicKey);
         }
+
+        public PublicKey Decompress(CompressedPublicKey compressedPublicKey)
+        {
+            byte[] deserialized = Proxy.Decompress(compressedPublicKey.Bytes);
+            return new PublicKey(deserialized);
+        }
     }
 }

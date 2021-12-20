@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _networkConfig = new NetworkConfig();
             IPeerPool peerPool = Substitute.For<IPeerPool>();
             ConcurrentDictionary<PublicKey, Peer> dict = new();
-            dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node("127.0.0.1", 30303, true)));
+            dict.TryAdd(TestItem.PublicKeyA, new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true)));
             peerPool.ActivePeers.Returns(dict);
             
             IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();

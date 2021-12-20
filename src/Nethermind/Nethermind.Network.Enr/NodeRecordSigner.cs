@@ -94,7 +94,7 @@ public class NodeRecordSigner
                     break;
                 case EnrContentKey.Secp256K1:
                     ReadOnlySpan<byte> keyBytes = rlpStream.DecodeByteArraySpan();
-                    CompressedPublicKey? reportedKey = new(keyBytes);
+                    CompressedPublicKey reportedKey = new(keyBytes);
                     nodeRecord.SetEntry(new Secp256K1Entry(reportedKey));
                     break;
                 // snap

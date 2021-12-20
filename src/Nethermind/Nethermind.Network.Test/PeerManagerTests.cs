@@ -347,7 +347,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             foreach (var node in staticNodes)
             {
-                ctx.DiscoveryApp.NodeAdded += Raise.EventWith(new NodeEventArgs(new Node(node.Host, node.Port)));
+                ctx.DiscoveryApp.NodeAdded += Raise.EventWith(new NodeEventArgs(new Node(TestItem.PublicKeyA, node.Host, node.Port, false)));
             }
 
             await Task.Delay(_travisDelay);

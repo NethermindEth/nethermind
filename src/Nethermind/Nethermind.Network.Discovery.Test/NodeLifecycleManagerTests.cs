@@ -101,7 +101,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task sending_ping_receiving_proper_pong_sets_bounded()
         {
-            Node node = new(_host, _port);
+            Node node = new(TestItem.PublicKeyA, _host, _port, false);
             NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
             , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
 
@@ -122,7 +122,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task sending_ping_receiving_incorrect_pong_does_not_bond()
         {
-            Node node = new(_host, _port);
+            Node node = new(TestItem.PublicKeyA, _host, _port, false);
             NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
             , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
 
@@ -135,7 +135,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public void Wrong_pong_will_get_ignored()
         {
-            Node node = new(_host, _port);
+            Node node = new(TestItem.PublicKeyA, _host, _port, false);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager?.State);
             
@@ -150,7 +150,7 @@ namespace Nethermind.Network.Discovery.Test
         [Retry(3)]
         public void UnreachableStateTest()
         {
-            Node node = new(_host, _port);
+            Node node = new(TestItem.PublicKeyA, _host, _port, false);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager?.State);
 

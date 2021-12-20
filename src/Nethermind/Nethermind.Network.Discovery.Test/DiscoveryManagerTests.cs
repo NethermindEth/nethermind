@@ -78,7 +78,7 @@ namespace Nethermind.Network.Discovery.Test
             NodeLifecycleManagerFactory lifecycleFactory = new(_nodeTable, evictionManager,
                     new NodeStatsManager(timerFactory, logManager), new NodeRecord(), discoveryConfig, Timestamper.Default, logManager);
 
-            _nodes = new[] {new Node("192.168.1.18", 1), new Node("192.168.1.19", 2)};
+            _nodes = new[] {new Node(TestItem.PublicKeyA, "192.168.1.18", 1, false), new Node(TestItem.PublicKeyB,"192.168.1.19", 2, false)};
 
             IFullDb nodeDb = new SimpleFilePublicKeyDb("Test", "test_db", logManager);
             _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeTable, new NetworkStorage(nodeDb, logManager), discoveryConfig, logManager);
@@ -148,7 +148,7 @@ namespace Nethermind.Network.Discovery.Test
             {
                 for (int b = 0; b < 255; b++)
                 {
-                    INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(new Node($"{a}.{b}.1.1", 8000));
+                    INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(new Node(TestItem.PublicKeyA, $"{a}.{b}.1.1", 8000, false));
                     manager?.SendPingAsync();
                     
                     PongMsg pongMsg = new(_publicKey, GetExpirationTime(), Array.Empty<byte>());
