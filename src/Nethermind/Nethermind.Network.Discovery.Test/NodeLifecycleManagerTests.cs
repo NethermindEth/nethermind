@@ -101,7 +101,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task sending_ping_receiving_proper_pong_sets_bounded()
         {
-            Node node = new(TestItem.PublicKeyA, _host, _port, false);
+            Node node = new(TestItem.PublicKeyB, _host, _port, false);
             NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
             , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
 
@@ -122,12 +122,12 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task sending_ping_receiving_incorrect_pong_does_not_bond()
         {
-            Node node = new(TestItem.PublicKeyA, _host, _port, false);
+            Node node = new(TestItem.PublicKeyB, _host, _port, false);
             NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
             , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
 
             await nodeManager.SendPingAsync();
-            nodeManager.ProcessPongMsg(new PongMsg(TestItem.PublicKeyA, GetExpirationTime(), new byte[] {1,1,1}));
+            nodeManager.ProcessPongMsg(new PongMsg(TestItem.PublicKeyB, GetExpirationTime(), new byte[] {1,1,1}));
 
             Assert.IsFalse(nodeManager.IsBonded);
         }
@@ -135,7 +135,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public void Wrong_pong_will_get_ignored()
         {
-            Node node = new(TestItem.PublicKeyA, _host, _port, false);
+            Node node = new(TestItem.PublicKeyB, _host, _port, false);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager?.State);
             
@@ -148,13 +148,13 @@ namespace Nethermind.Network.Discovery.Test
 
         [Test]
         [Retry(3)]
-        public void UnreachableStateTest()
+        public async Task UnreachableStateTest()
         {
-            Node node = new(TestItem.PublicKeyA, _host, _port, false);
+            Node node = new(TestItem.PublicKeyB, _host, _port, false);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager?.State);
 
-            //await Task.Delay(500);
+            await Task.Delay(500);
 
             Assert.That(() => manager?.State, Is.EqualTo(NodeLifecycleState.Unreachable).After(500, 50));
             //Assert.AreEqual(NodeLifecycleState.Unreachable, manager.State);
