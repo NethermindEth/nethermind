@@ -37,12 +37,20 @@ public class NodeRecordSigner
         _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
     }
 
+    /// <summary>
+    /// Signs the node record with own private key.
+    /// </summary>
+    /// <param name="nodeRecord"></param>
     public void Sign(NodeRecord nodeRecord)
     {
-        Signature signature = _ecdsa.Sign(_privateKey, nodeRecord.ContentHash);
-        nodeRecord.Seal(signature);
+        nodeRecord.Signature = _ecdsa.Sign(_privateKey, nodeRecord.ContentHash);
     }
 
+    /// <summary>
+    /// Deserializes a <see cref="NodeRecord"/> from an <see cref="RlpStream"/>.
+    /// </summary>
+    /// <param name="rlpStream">A stream to read the serialized data from.</param>
+    /// <returns>A deserialized <see cref="NodeRecord"/></returns>
     public NodeRecord Deserialize(RlpStream rlpStream)
     {
         int startPosition = rlpStream.Position;
@@ -50,7 +58,6 @@ public class NodeRecordSigner
 
         NodeRecord nodeRecord = new();
 
-        // TODO: may want to move this deserialization logic to something reusable
         ReadOnlySpan<byte> sigBytes = rlpStream.DecodeByteArraySpan();
         Signature signature = new(sigBytes, 0);
 
@@ -114,11 +121,19 @@ public class NodeRecordSigner
         }
 
         nodeRecord.EnrSequence = enrSequence;
-        nodeRecord.Seal(signature);
+        nodeRecord.Signature = signature;
 
         return nodeRecord;
     }
 
+    /// <summary>
+    /// Verifies if the public key recovered from the <see cref="Signature"/> of this record matches
+    /// the one that is included in the <value>Secp256k1</value> entry.
+    /// If the <value>Secp256k1</value> entry is missing then <value>false</value> is returned.
+    /// </summary>
+    /// <param name="nodeRecord">A <see cref="NodeRecord"/> for which to verify the signature.</param>
+    /// <returns><value>True</value> if signature has a matching public key, otherwise <value>false</value></returns>
+    /// <exception cref="Exception">Thrown when <see cref="Signature"/> is <value>null</value></exception>
     public bool Verify(NodeRecord nodeRecord)
     {
         if (nodeRecord.Signature is null)

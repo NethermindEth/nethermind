@@ -17,6 +17,9 @@
 
 namespace Nethermind.Network.Enr
 {
+    /// <summary>
+    /// A string identifying an ENR entry type.
+    /// </summary>
     public static class EnrContentKey
     {
         /// <summary>

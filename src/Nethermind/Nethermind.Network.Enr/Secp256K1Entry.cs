@@ -20,6 +20,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
 
+/// <summary>
+/// An entry storing the <see cref="CompressedPublicKey"/> of the node signer.
+/// </summary>
 public class Secp256K1Entry : EnrContentEntry<CompressedPublicKey>
 {
     public Secp256K1Entry(CompressedPublicKey publicKey) : base(publicKey) { }

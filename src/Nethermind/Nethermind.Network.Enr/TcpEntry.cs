@@ -19,6 +19,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
 
+/// <summary>
+/// An entry storing TCP IPv4 port number.
+/// </summary>
 public class TcpEntry : EnrContentEntry<int>
 {
     public TcpEntry(int portNumber) : base(portNumber) { }
