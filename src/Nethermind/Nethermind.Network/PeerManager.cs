@@ -695,6 +695,15 @@ namespace Nethermind.Network
                     {
                         if (_logger.IsDebug) _logger.Debug($"Disconnecting a new {session} - {directionToKeep} session already connected");
                         session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "same");
+                        if (newSessionIsIn)
+                        {
+                            _stats.ReportHandshakeEvent(peer.Node, ConnectionDirection.In);
+                            peer.InSession = session;
+                        }
+                        else
+                        {
+                            peer.OutSession = session;
+                        }
                     }
                     // replacing existing session with the new one as the new one won
                     else if (newSessionIsIn)

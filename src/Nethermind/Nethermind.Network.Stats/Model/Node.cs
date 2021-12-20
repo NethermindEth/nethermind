@@ -92,6 +92,11 @@ namespace Nethermind.Stats.Model
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, false)
         {
         }
+        
+        public Node(NetworkNode networkNode, bool isStatic)
+            : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
+        {
+        }
 
         public Node(PublicKey id, string host, int port, bool isStatic)
         {

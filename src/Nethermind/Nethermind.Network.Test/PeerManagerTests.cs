@@ -71,6 +71,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(1);
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelay);
             Assert.AreEqual(1, ctx.RlpxPeer.ConnectAsyncCallsCount);
@@ -81,6 +82,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelayLong * 10);
             Assert.AreEqual(25, ctx.RlpxPeer.ConnectAsyncCallsCount);
@@ -131,6 +133,7 @@ namespace Nethermind.Network.Test
             ctx.NetworkConfig.ActivePeersMaxCount = 1;
             ctx.StaticNodesManager.IsStatic(enode2String).Returns(true);
 
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             var enode1 = new Enode(enode1String);
             Node node1 = new(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
@@ -154,12 +157,18 @@ namespace Nethermind.Network.Test
             ConnectionDirection firstDirection)
         {
             await using Context ctx = new();
+            
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
-            session1.RemoteNodeId = shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC;
+            session1.RemoteNodeId =
+                (firstDirection == ConnectionDirection.In)
+                    ? (shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC)
+                    : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyA);
+                
 
             if (firstDirection == ConnectionDirection.In)
             {
@@ -192,6 +201,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelayLong);
             Assert.AreEqual(25, ctx.RlpxPeer.ConnectAsyncCallsCount);
@@ -207,6 +217,7 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
             ctx.RlpxPeer.MakeItFail();
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
             await Task.Delay(_travisDelay);
@@ -218,6 +229,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
             int currentCount = 0;
@@ -235,6 +247,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(0);
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
             for (int i = 0; i < 10; i++)
@@ -255,6 +268,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(0);
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
             for (int i = 0; i < 10; i++)
@@ -270,6 +284,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
             int currentCount = 0;
@@ -298,6 +313,7 @@ namespace Nethermind.Network.Test
             ctx.NetworkConfig.CandidatePeerCountCleanupThreshold = 30;
             ctx.NetworkConfig.PersistedPeerCountCleanupThreshold = 40;
             ctx.SetupPersistedPeers(50);
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
             int currentCount = 0;
@@ -321,6 +337,7 @@ namespace Nethermind.Network.Test
             ctx.NetworkConfig.CandidatePeerCountCleanupThreshold = 30;
             ctx.NetworkConfig.PersistedPeerCountCleanupThreshold = 40;
             ctx.SetupPersistedPeers(50);
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
             int currentCount = 0;
@@ -343,7 +360,8 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             const int nodesCount = 5;
             var staticNodes = ctx.CreateNodes(nodesCount);
-            ctx.StaticNodesManager.Nodes.Returns(staticNodes);
+            ctx.StaticNodesManager.LoadInitialList().Returns(staticNodes.Select(n => new Node(n, true)).ToList());
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             foreach (var node in staticNodes)
             {
@@ -361,7 +379,8 @@ namespace Nethermind.Network.Test
             const int nodesCount = 5;
             var disconnections = 0;
             var staticNodes = ctx.CreateNodes(nodesCount);
-            ctx.StaticNodesManager.Nodes.Returns(staticNodes);
+            ctx.StaticNodesManager.LoadInitialList().Returns(staticNodes.Select(n => new Node(n, true)).ToList());
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             await Task.Delay(_travisDelay);
 
@@ -380,6 +399,7 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             var disconnections = 0;
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
             ctx.PeerPool.GetOrAdd(node);
@@ -399,6 +419,7 @@ namespace Nethermind.Network.Test
         public async Task Will_only_add_same_peer_once()
         {
             await using Context ctx = new();
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
             ctx.PeerPool.GetOrAdd(node);
@@ -412,6 +433,7 @@ namespace Nethermind.Network.Test
         public async Task RemovePeer_should_fail_if_peer_not_added()
         {
             await using Context ctx = new();
+            ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
             await Task.Delay(_travisDelay);
@@ -435,6 +457,7 @@ namespace Nethermind.Network.Test
             {
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
+                DiscoveryApp.LoadInitialList().Returns(new List<Node>());
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
@@ -443,7 +466,8 @@ namespace Nethermind.Network.Test
                 NetworkConfig.ActivePeersMaxCount = 25;
                 NetworkConfig.PeersPersistenceInterval = 50;
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
-                CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp);
+                StaticNodesManager.LoadInitialList().Returns(new List<Node>());
+                CompositeNodeSource nodeSources = new(NodesLoader, DiscoveryApp, StaticNodesManager);
                 PeerPool = new PeerPool(nodeSources, Stats, Storage, NetworkConfig, LimboLogs.Instance);
                 PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, LimboLogs.Instance);
             }
