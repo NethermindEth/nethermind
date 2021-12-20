@@ -483,7 +483,7 @@ namespace Nethermind.Init.Steps
             
             NodesLoader nodesLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.RlpxPeer, _api.LogManager);
             EnrDiscovery enrDiscovery = new (); // initialize with a proper network
-            CompositeNodeSource nodeSources = new(_api.DiscoveryApp, _api.StaticNodesManager, nodesLoader, enrDiscovery);
+            CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery);
             _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
             _api.PeerManager = new PeerManager(
                 _api.RlpxPeer,

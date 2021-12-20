@@ -216,7 +216,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         
     private readonly DateTime _lastTimeSendFindNode = DateTime.MinValue;
 
-    private int _lastEnrSequence;
+    private long _lastEnrSequence;
 
     public void SendFindNode(byte[] searchedNodeId)
     {

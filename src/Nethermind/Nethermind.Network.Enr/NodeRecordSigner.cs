@@ -62,7 +62,7 @@ public class NodeRecordSigner
         Signature signature = new(sigBytes, 0);
 
         bool canVerify = true;
-        int enrSequence = rlpStream.DecodeInt();
+        long enrSequence = rlpStream.DecodeLong();
         while (rlpStream.Position < startPosition + recordRlpLength)
         {
             string key = rlpStream.DecodeString();
@@ -72,7 +72,7 @@ public class NodeRecordSigner
                     _ = rlpStream.ReadSequenceLength();
                     _ = rlpStream.ReadSequenceLength();
                     byte[] forkHash = rlpStream.DecodeByteArray();
-                    int nextBlock = rlpStream.DecodeInt();
+                    long nextBlock = rlpStream.DecodeLong();
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case EnrContentKey.Id:

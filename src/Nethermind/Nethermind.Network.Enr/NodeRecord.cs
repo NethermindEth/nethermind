@@ -27,7 +27,7 @@ namespace Nethermind.Network.Enr;
 /// </summary>
 public class NodeRecord
 {
-    private int _enrSequence;
+    private long _enrSequence;
 
     private string? _enrString;
 
@@ -47,7 +47,7 @@ public class NodeRecord
     /// update to the node data. Setting sequence on this class wipes out <see cref="EnrString"/> and
     /// <see cref="ContentHash"/>.
     /// </summary>
-    public int EnrSequence
+    public long EnrSequence
     {
         get => _enrSequence;
         set

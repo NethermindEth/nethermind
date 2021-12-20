@@ -449,6 +449,11 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnecting;
             }
 
+            if (_isTracked)
+            {
+                _logger.Warn($"Tracked {this} -> disconnected {disconnectType} {disconnectReason} {details}");
+            }
+            
             _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost != null)
@@ -626,6 +631,13 @@ namespace Nethermind.Network.P2P
 
                 throw new InvalidOperationException($"Registered protocols do not support {protocol}.{messageCode}");
             }
+        }
+
+        private bool _isTracked = false;
+        
+        public void StartTrackingSession()
+        {
+            _isTracked = true;
         }
     }
 }

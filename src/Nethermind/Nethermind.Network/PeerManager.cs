@@ -88,7 +88,6 @@ namespace Nethermind.Network
 
         private void PeerPoolOnPeerAdded(object sender, PeerEventArgs nodeEventArgs)
         {
-            _logger.Error("Peer added: " + nodeEventArgs.Peer.ToString());
             Peer peer = nodeEventArgs.Peer;
 
             lock (_peerPool)
@@ -343,6 +342,8 @@ namespace Nethermind.Network
         [Todo(Improve.MissingFunctionality, "Add cancellation support for the peer connection (so it does not wait for the 10sec timeout")]
         private async Task SetupPeerConnection(Peer peer)
         {
+            _logger.Error($"Setting up peer connection {peer}");
+            
             // TODO: hack related to not clearly separated peer pool and peer manager
             if (_nodesBeingAdded.ContainsKey(peer.Node.Id))
             {
@@ -377,7 +378,14 @@ namespace Nethermind.Network
 
                 peer.IsAwaitingConnection = false;
                 DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");
+                
+                _logger.Error($"FAILED to connect with {peer}");
                 return;
+            }
+            else
+            {
+                peer.OutSession?.StartTrackingSession();
+                _logger.Error($"Connected with {peer}");
             }
 
             Interlocked.Increment(ref _newActiveNodes);

@@ -15,12 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Net;
+using Nethermind.Crypto;
+using Nethermind.Network.Enr;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Dns;
 
 public class EnrDiscovery : INodeSource
 {
+    private NodeRecordSigner _nodeRecordSigner;
+
     private class SearchContext
     {
         public SearchContext(string startRef)
@@ -28,11 +34,16 @@ public class EnrDiscovery : INodeSource
             RefsToVisit.Enqueue(startRef);
         }
 
-        public List<string> DiscoveredNodes { get; } = new();
-
         public HashSet<string> VisitedRefs { get; } = new();
 
         public Queue<string> RefsToVisit { get; } = new();
+    }
+
+    public EnrDiscovery()
+    {
+        // I do not use the key here -> API is broken - no sense to use the node signer here
+        PrivateKeyGenerator generator = new();
+        _nodeRecordSigner = new NodeRecordSigner(new Ecdsa(), generator.Generate());
     }
 
     public async Task SearchTree(string domain)
@@ -71,12 +82,26 @@ public class EnrDiscovery : INodeSource
                 await SearchTree(linkedTreeLookup, searchContext);
             }
 
-            foreach (string nodeRecord in treeNode.Records)
+            foreach (string nodeRecordText in treeNode.Records)
             {
-                searchContext.DiscoveredNodes.Add(nodeRecord);
-                // node record to node
-                // Node node = new Node()
-                // NodeAdded?.Invoke(this, new NodeEventArgs());
+                try
+                {
+                    string broken = nodeRecordText[4..].Replace("-", "+").Replace("_", "/");
+                    broken = broken.PadRight(nodeRecordText.Length % 4);
+                    RlpStream rlpStream = new(Convert.FromBase64String(broken));
+                    NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
+                    // node record to node
+                    Node node = new(
+                        nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip)!.ToString(),
+                        nodeRecord.GetValue<int>(EnrContentKey.Tcp)!.Value);
+                
+                    // here could add network info to the node
+                    NodeAdded?.Invoke(this, new NodeEventArgs(node));
+                }
+                catch (Exception e)
+                {
+                    // just Debug log some error
+                }
             }
 
             foreach (string nodeRef in treeNode.Refs)
