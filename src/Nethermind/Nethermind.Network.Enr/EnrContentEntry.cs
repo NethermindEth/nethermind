@@ -22,6 +22,9 @@ namespace Nethermind.Network.Enr
 {
     public abstract class EnrContentEntry
     {
+        /// <summary>
+        /// A key string of the node record entry.
+        /// </summary>
         public abstract string Key { get; }
         
         internal int GetRlpLength()
@@ -29,12 +32,15 @@ namespace Nethermind.Network.Enr
             return Rlp.LengthOf(Key) + GetRlpLengthOfValue();
         }
         
+        /// <summary>
+        /// Needed for optimized RLP serialization.
+        /// </summary>
+        /// <returns></returns>
         protected abstract int GetRlpLengthOfValue();
         
         /// <summary>
-        /// Gets the key as a string to be added in the 
+        /// Encodes the entry into an RLP stream. 
         /// </summary>
-        /// <returns></returns>
         public void Encode(RlpStream rlpStream)
         {
             rlpStream.Encode(Key);
@@ -55,6 +61,9 @@ namespace Nethermind.Network.Enr
     [DebuggerDisplay("{Key} {Value}")]
     public abstract class EnrContentEntry<TValue> : EnrContentEntry
     {
+        /// <summary>
+        /// A value of the node record entry.
+        /// </summary>
         public TValue Value { get; }
 
         protected EnrContentEntry(TValue value)

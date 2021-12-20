@@ -22,6 +22,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
 
+/// <summary>
+/// Represents an Ethereum Node Record (ENR) as defined in https://eips.ethereum.org/EIPS/eip-778
+/// </summary>
 public class NodeRecord
 {
     private int _enrSequence;
@@ -32,8 +35,18 @@ public class NodeRecord
 
     private SortedDictionary<string, EnrContentEntry> Entries { get; } = new();
 
+    /// <summary>
+    /// This field is used when this <see cref="NodeRecord"/> is deserialized and an unknown entry is encountered.
+    /// In such cases we do not know the RLP serialization format of such an entry and we store the original RLP
+    /// in order to be able to verify the signature. I think that we may replace it by Keccak(OriginalContentRlp).
+    /// </summary>
     public byte[]? OriginalContentRlp { get; set; }
 
+    /// <summary>
+    /// Represents the version / id / sequence of the node record data. It should be increased by one with each
+    /// update to the node data. Setting sequence on this class wipes out <see cref="EnrString"/> and
+    /// <see cref="ContentHash"/>.
+    /// </summary>
     public int EnrSequence
     {
         get => _enrSequence;
@@ -49,6 +62,10 @@ public class NodeRecord
         }
     }
 
+    /// <summary>
+    /// A base64 string representing a node record with the 'enr:' prefix
+    /// enr:-IS4QHCYrYZbAK(...)WM0xOIN1ZHCCdl8
+    /// </summary>
     public string EnrString
     {
         get
@@ -57,6 +74,9 @@ public class NodeRecord
         }
     }
 
+    /// <summary>
+    /// Hash of the content, i.e. Keccak([seq, k, v, ...]) as defined in https://eips.ethereum.org/EIPS/eip-778
+    /// </summary>
     public Keccak ContentHash
     {
         get
@@ -72,19 +92,20 @@ public class NodeRecord
         return rlpStream.GetHash();
     }
 
-    public Signature? Signature { get; private set; }
+    /// <summary>
+    /// A signature resulting from a secp256k1 signing of the [seq, k, v, ...] content.
+    /// </summary>
+    public Signature? Signature { get; set; }
 
     public NodeRecord()
     {
         SetEntry(IdEntry.Instance);
     }
 
-    public void Seal(Signature signature)
-    {
-        // verify here?
-        Signature = signature;
-    }
-
+    /// <summary>
+    /// Sets one of the record entries. Entries are then automatically sorted by keys.
+    /// </summary>
+    /// <param name="entry"></param>
     public void SetEntry(EnrContentEntry entry)
     {
         if (Entries.ContainsKey(entry.Key))
@@ -95,6 +116,12 @@ public class NodeRecord
         Entries[entry.Key] = entry;
     }
 
+    /// <summary>
+    /// Gets a record entry value (in case of the value types). Use <see cref="GetObj{TValue}"/> for reference types./>
+    /// </summary>
+    /// <param name="entryKey">Key of the entry to retrieve.</param>
+    /// <typeparam name="TValue">Type of the entry value.</typeparam>
+    /// <returns>Value of the entry or <value>null</value> if the entry is missing.</returns>
     public TValue? GetValue<TValue>(string entryKey) where TValue : struct
     {
         if (Entries.ContainsKey(entryKey))
@@ -106,6 +133,12 @@ public class NodeRecord
         return null;
     }
 
+    /// <summary>
+    /// Gets a record entry value (in case of the ref types). Use <see cref="GetValue{TValue}"/> for value types./>
+    /// </summary>
+    /// <param name="entryKey">Key of the entry to retrieve.</param>
+    /// <typeparam name="TValue">Type of the entry value.</typeparam>
+    /// <returns>Value of the entry or <value>null</value> if the entry is missing.</returns>
     public TValue? GetObj<TValue>(string entryKey) where TValue : class
     {
         if (Entries.ContainsKey(entryKey))
@@ -117,6 +150,10 @@ public class NodeRecord
         return null;
     }
 
+    /// <summary>
+    /// Needed for an optimized content serialization. We serialize content to calculate signatures.
+    /// </summary>
+    /// <returns>Length of the Rlp([seq, k, v, ...]) when calculated without the RLP sequence prefix.</returns>
     private int GetContentLengthWithoutSignature()
     {
         int contentLength =
@@ -129,18 +166,30 @@ public class NodeRecord
         return contentLength;
     }
 
+    /// <summary>
+    /// Needed for optimized RLP serialization.
+    /// </summary>
+    /// <returns>Length of the Rlp([signature, seq, k, v, ...]) when calculated without the RLP sequence prefix.</returns>
     private int GetContentLengthWithSignature()
     {
         return GetContentLengthWithoutSignature() + 64 + 2;
     }
 
+    /// <summary>
+    /// Needed for optimized RLP serialization when a proper length byte array has to be allocated upfront.
+    /// </summary>
+    /// <returns>Length of the Rlp([signature, seq, k, v, ...])</returns>
     public int GetRlpLengthWithSignature()
     {
         return Rlp.LengthOfSequence(
             GetContentLengthWithSignature());
     }
 
-    public void EncodeContent(RlpStream rlpStream)
+    /// <summary>
+    /// Applies Rlp([seq, k, v, ...]]).
+    /// </summary>
+    /// <param name="rlpStream">An RLP stream to encode the content to.</param>
+    private void EncodeContent(RlpStream rlpStream)
     {
         int contentLength = GetContentLengthWithoutSignature();
         rlpStream.StartSequence(contentLength);
@@ -151,6 +200,10 @@ public class NodeRecord
         }
     }
 
+    /// <summary>
+    /// Added here for diagnostic purposes - hes is easier to read and compare.
+    /// </summary>
+    /// <returns>Rlp([signature, seq, k, v, ...]) as a hex string</returns>
     public string GetHex()
     {
         int contentLength = GetContentLengthWithSignature();
@@ -160,6 +213,10 @@ public class NodeRecord
         return rlpStream.Data!.ToHexString();
     }
 
+    /// <summary>
+    /// Applies Rlp([signature, seq, k, v, ...]]).
+    /// </summary>
+    /// <param name="rlpStream">An RLP stream to encode the content to.</param>
     public void Encode(RlpStream rlpStream)
     {
         RequireSignature();
@@ -182,10 +239,10 @@ public class NodeRecord
         RlpStream rlpStream = new(rlpLength);
         Encode(rlpStream);
         byte[] rlpData = rlpStream.Data!;
-        // Console.WriteLine("actual: " + rlpData.ToHexString());
+        
         // https://tools.ietf.org/html/rfc4648#section-5
-
-        // Base64Url must be used, hence Replace calls (not sure if allocating internally)
+        // Base64Url must be used, hence the replace calls.
+        // Convert.ToBase64String uses '+'. '/' signs and padding.
         return string.Concat("enr:",
             Convert.ToBase64String(rlpData).Replace("+", "-").Replace("/", "_").Replace("=", ""));
     }

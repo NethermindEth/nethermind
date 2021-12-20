@@ -19,6 +19,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
 
+/// <summary>
+/// An entry storing UDP IPv4 port number.
+/// </summary>
 public class UdpEntry : EnrContentEntry<int>
 {
     public UdpEntry(int portNumber) : base(portNumber) { }

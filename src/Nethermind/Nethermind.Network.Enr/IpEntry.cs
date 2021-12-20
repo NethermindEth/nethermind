@@ -21,6 +21,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
 
+/// <summary>
+/// An entry storing the IP address of the node.
+/// </summary>
 public class IpEntry : EnrContentEntry<IPAddress>
 {
     public IpEntry(IPAddress ipAddress) : base(ipAddress) { }

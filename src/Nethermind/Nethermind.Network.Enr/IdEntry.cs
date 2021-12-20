@@ -19,6 +19,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
 
+/// <summary>
+/// An entry storing the signature scheme version - hardcoded to 'v4'.
+/// </summary>
 public class IdEntry : EnrContentEntry<string>
 {
     private IdEntry() : base("v4") { }
@@ -29,13 +32,11 @@ public class IdEntry : EnrContentEntry<string>
 
     protected override int GetRlpLengthOfValue()
     {
-        // TODO: hardcode
         return Rlp.LengthOf(Value);
     }
 
     protected override void EncodeValue(RlpStream rlpStream)
     {
-        // TODO: hardcode
         rlpStream.Encode("v4");
     }
 }
