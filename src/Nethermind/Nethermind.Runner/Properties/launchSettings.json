@@ -9,7 +9,7 @@
     },
     "Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet.cfg --Sync.FastSync true",
+      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath C:\\mainnet_mem_fast --JsonRpc.Enabled true",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }

@@ -292,7 +292,7 @@ namespace Nethermind.Network.Test
             {
                 currentCount += 25;
                 await Task.Delay(_travisDelay);
-                Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.DisconnectAllSessions();
@@ -321,7 +321,7 @@ namespace Nethermind.Network.Test
             {
                 currentCount += 25;
                 await Task.Delay(_travisDelayLong);
-                Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.DisconnectAllSessions();
@@ -345,7 +345,7 @@ namespace Nethermind.Network.Test
             {
                 currentCount += 25;
                 await Task.Delay(_travisDelayLong);
-                Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.CreateIncomingSessions();
