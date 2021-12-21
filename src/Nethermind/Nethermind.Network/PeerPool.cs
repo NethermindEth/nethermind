@@ -31,8 +31,15 @@ using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network
 {
+    /// <summary>
+    /// This class is responsible for gathering all the nodes discovered in various node sources.
+    /// This class is also responsible for persisting peers information.
+    ///
+    /// Responsibility that should disappear from here is knowing which peers are active.
+    /// </summary>
     public class PeerPool : IPeerPool
     {
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
         private Timer _peerPersistenceTimer;
         private Task? _storageCommitTask;
         
@@ -53,7 +60,8 @@ namespace Nethermind.Network
         public int ActivePeerCount => ActivePeers.Count;
         public int StaticPeerCount => _staticPeers.Count;
         
-        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        public event EventHandler<PeerEventArgs>? PeerAdded;
+        public event EventHandler<PeerEventArgs>? PeerRemoved;
 
         public PeerPool(
             INodeSource nodeSource,
@@ -130,6 +138,12 @@ namespace Nethermind.Network
 
         public Peer Replace(ISession session)
         {
+            if (session.ObsoleteRemoteNodeId is null)
+            {
+                throw new Exception(
+                    $"{nameof(Replace)} should never be called on session with a NULL {nameof(session.ObsoleteRemoteNodeId)}");
+            }
+            
             if (Peers.TryGetValue(session.ObsoleteRemoteNodeId, out Peer previousPeer))
             {
                 // this should happen
@@ -143,11 +157,11 @@ namespace Nethermind.Network
                     // (what with the other session?)
 
                     _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
-                    Peers.TryRemove(session.ObsoleteRemoteNodeId, out Peer oldPeer);
-                    if (oldPeer != null)
+                    if (Peers.TryRemove(session.ObsoleteRemoteNodeId, out Peer? oldPeer))
                     {
-                        oldPeer.InSession = null;
-                        oldPeer.OutSession = null;
+                        PeerRemoved?.Invoke(this, new PeerEventArgs(oldPeer!));
+                        // oldPeer!.InSession?.InitiateDisconnect(DisconnectReason.UnexpectedIdentity, "");
+                        // oldPeer.OutSession?.InitiateDisconnect(DisconnectReason.UnexpectedIdentity, "");
                     }
                 }
                 else
@@ -161,9 +175,6 @@ namespace Nethermind.Network
             newPeer.OutSession = session.Direction == ConnectionDirection.Out ? session : null;
             return newPeer;
         }
-
-        public event EventHandler<PeerEventArgs>? PeerAdded;
-        public event EventHandler<PeerEventArgs>? PeerRemoved;
 
         private void StartPeerPersistenceTimer()
         {

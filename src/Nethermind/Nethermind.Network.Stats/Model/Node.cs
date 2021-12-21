@@ -143,7 +143,7 @@ namespace Nethermind.Stats.Model
         {
             return format switch
             {
-                "s" => $"{Host}:{Port}",
+                "s" => $"{Id.ToShortString()}@{Host}:{Port}",
                 "c" => $"[Node|{Host}:{Port}|{ClientId}|{EthDetails}]",
                 "f" => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
                 "e" => $"enode://{Id.ToString(false)}@{Host}:{Port}",

@@ -37,6 +37,8 @@ namespace Nethermind.Network
 
         public bool IsAwaitingConnection { get; set; }
         
+        public bool IsConnected => !(InSession?.IsClosing ?? true) || !(OutSession?.IsClosing ?? true);
+
         /// <summary>
         /// A physical network node with a network address combined with information about the client version
         /// and any extra attributes that we assign to a network node (static / trusted / bootnode).

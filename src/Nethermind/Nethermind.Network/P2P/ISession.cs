@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P
         SessionState BestStateReached { get; }
         bool IsClosing { get; }
         PublicKey RemoteNodeId { get; }
-        PublicKey ObsoleteRemoteNodeId { get; }
+        PublicKey? ObsoleteRemoteNodeId { get; }
         string RemoteHost { get; set; }
         int RemotePort { get; set; }
         int LocalPort { get; }

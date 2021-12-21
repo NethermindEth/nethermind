@@ -146,6 +146,9 @@ namespace Nethermind.Network.Test
                 LimboLogs.Instance);
 
             ctx.RlpxPeer.CreateIncoming(session1, session2);
+
+            await Task.Delay(2000);
+            await ctx.PeerManager.StopAsync();
             ctx.PeerManager.ActivePeers.Count.Should().Be(2);
         }
 
@@ -283,19 +286,23 @@ namespace Nethermind.Network.Test
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
         {
             await using Context ctx = new();
-            ctx.SetupPersistedPeers(50);
+            ctx.SetupPersistedPeers(25);
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
             int currentCount = 0;
             for (int i = 0; i < 10; i++)
             {
+                Console.WriteLine($"{i}");
                 currentCount += 25;
                 await Task.Delay(_travisDelay);
-                Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount);
+                Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount, "  A" + i.ToString());
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
+                Assert.AreEqual(currentCount, ctx.RlpxPeer.ConnectAsyncCallsCount, "  B" + i.ToString());
                 ctx.DisconnectAllSessions();
+                await Task.Delay(_travisDelay);
+                Assert.AreEqual(currentCount + 25, ctx.RlpxPeer.ConnectAsyncCallsCount, "  C" + i.ToString());
             }
 
             await ctx.PeerManager.StopAsync();
@@ -499,7 +506,9 @@ namespace Nethermind.Network.Test
 
                 foreach (Session session in clone)
                 {
-                    session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
+                    PublicKey newId = new PrivateKeyGenerator().Generate().PublicKey;
+                    // this is when the same host changes public key and we need to update node information
+                    session.Handshake(newId);
                 }
             }
 
