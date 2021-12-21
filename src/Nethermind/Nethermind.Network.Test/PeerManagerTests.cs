@@ -106,7 +106,7 @@ namespace Nethermind.Network.Test
             session2.RemoteNodeId = TestItem.PublicKeyA;
 
             ctx.RlpxPeer.CreateIncoming(session1, session2);
-            await Task.Delay(20);
+            await Task.Delay(_travisDelay);
             ctx.PeerManager.ActivePeers.Count.Should().Be(1);
         }
 
@@ -150,7 +150,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             ctx.RlpxPeer.CreateIncoming(session1, session2);
-            await Task.Delay(20);
+            await Task.Delay(_travisDelay);
             await ctx.PeerManager.StopAsync();
             ctx.PeerManager.ActivePeers.Count.Should().Be(2);
         }
@@ -181,7 +181,7 @@ namespace Nethermind.Network.Test
                 ctx.RlpxPeer.CreateIncoming(session1);
                 await ctx.RlpxPeer.ConnectAsync(session1.Node);
                 if (session1.State < SessionState.HandshakeComplete) session1.Handshake(session1.Node.Id);
-                await Task.Delay(20);
+                await Task.Delay(_travisDelay);
                 (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(shouldLose);
                 (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(!shouldLose);
             }
@@ -191,7 +191,7 @@ namespace Nethermind.Network.Test
                 await ctx.RlpxPeer.ConnectAsync(session1.Node);
                 ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
                 ctx.RlpxPeer.CreateIncoming(session1);
-                await Task.Delay(20);
+                await Task.Delay(_travisDelay);
                 (ctx.PeerManager.ActivePeers.First().OutSession?.IsClosing ?? true).Should().Be(!shouldLose);
                 (ctx.PeerManager.ActivePeers.First().InSession?.IsClosing ?? true).Should().Be(shouldLose);
             }
@@ -311,9 +311,8 @@ namespace Nethermind.Network.Test
             }
 
             await ctx.PeerManager.StopAsync();
-            ctx.DisconnectAllSessions();
-
-            Assert.True(ctx.PeerManager.CandidatePeers.All(p => p.OutSession == null));
+            await Task.Delay(_travisDelayLong);
+            Assert.AreEqual(250, ctx.RlpxPeer.DisconnectCount);
         }
 
         [Test, Retry(3)]
@@ -401,6 +400,7 @@ namespace Nethermind.Network.Test
 
             ctx.StaticNodesManager.NodeRemoved += Raise.EventWith(new NodeEventArgs(
                 new Node(staticNodes.First())));
+            await Task.Delay(_travisDelay);
 
             ctx.PeerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount - 1);
             disconnections.Should().Be(1);
@@ -417,15 +417,11 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.GetOrAdd(node);
             await Task.Delay(_travisDelay);
 
-            void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             ctx.PeerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(new[] { node.NodeId });
-
-            ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
-
             ctx.PeerPool.TryRemove(node.NodeId, out _).Should().BeTrue();
             Console.WriteLine(ctx.PeerPool.PeerCount + "PEER COUNT");
             await Task.Delay(_travisDelay);
-            disconnections.Should().Be(1);
+            ctx.RlpxPeer.DisconnectCount.Should().Be(1);
             Console.WriteLine(ctx.PeerPool.PeerCount + "PEER COUNT");
             ctx.PeerManager.ActivePeers.Should().BeEmpty();
         }
@@ -563,7 +559,7 @@ namespace Nethermind.Network.Test
 
                 foreach (Session session in clone)
                 {
-                    session.MarkDisconnected(DisconnectReason.TooManyPeers, DisconnectType.Remote, "test");
+                    session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "test");
                 }
             }
 
@@ -616,8 +612,16 @@ namespace Nethermind.Network.Test
                     _sessions.Add(session);
                 }
 
+                session.Disconnected += SessionOnDisconnected;
                 SessionCreated?.Invoke(this, new SessionEventArgs(session));
                 return Task.CompletedTask;
+            }
+
+            public int DisconnectCount { get; set; }
+            
+            private void SessionOnDisconnected(object? sender, DisconnectEventArgs e)
+            {
+                DisconnectCount++;
             }
 
             public void CreateRandomIncoming()
