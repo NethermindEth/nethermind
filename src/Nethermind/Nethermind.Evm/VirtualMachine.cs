@@ -75,7 +75,7 @@ namespace Nethermind.Evm
         private IStateProvider _state;
         private readonly Stack<EvmState> _stateStack = new();
         private IStorageProvider _storage;
-        private Address? _parityTouchBugAccount;
+        private (Address Address, bool ShouldDelete) _parityTouchBugAccount = (Address.FromNumber(3), false);
         private Dictionary<Address, CodeInfo>? _precompiles;
         private byte[] _returnDataBuffer = Array.Empty<byte>();
         private ITxTracer _txTracer = NullTxTracer.Instance;
@@ -161,10 +161,10 @@ namespace Nethermind.Evm
                             if (_txTracer.IsTracingActions) _txTracer.ReportActionError(callResult.ExceptionType);
                             _worldState.Restore(currentState.Snapshot);
 
-                            if (_parityTouchBugAccount != null)
+                            if (_parityTouchBugAccount.ShouldDelete)
                             {
-                                _state.AddToBalance(_parityTouchBugAccount, UInt256.Zero, spec);
-                                _parityTouchBugAccount = null;
+                                _state.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, spec);
+                                _parityTouchBugAccount.ShouldDelete = false;
                             }
 
                             if (currentState.IsTopLevel)
@@ -342,10 +342,10 @@ namespace Nethermind.Evm
 
                     _worldState.Restore(currentState.Snapshot);
 
-                    if (_parityTouchBugAccount != null)
+                    if (_parityTouchBugAccount.ShouldDelete)
                     {
-                        _state.AddToBalance(_parityTouchBugAccount, UInt256.Zero, spec);
-                        _parityTouchBugAccount = null;
+                        _state.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, spec);
+                        _parityTouchBugAccount.ShouldDelete = false;
                     }
 
                     if (txTracer.IsTracingInstructions)
@@ -548,32 +548,20 @@ namespace Nethermind.Evm
                 _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec);
             }
             
-            // commented out this part of code in 'if' below and execute only for PrecompileRipemd160
-            // in order to pass hive consensus tests
-            string addressOfPrecompileRipemd160 = "0x0000000000000000000000000000000000000003";
-            if (!wasCreated && transferValue.IsZero && spec.ClearEmptyAccountWhenTouched && state.Env.ExecutingAccount.ToString().Equals(addressOfPrecompileRipemd160))
+            // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
+            // An additional issue was found in Parity,
+            // where the Parity client incorrectly failed
+            // to revert empty account deletions in a more limited set of contexts
+            // involving out-of-gas calls to precompiled contracts;
+            // the new Geth behavior matches Parity’s,
+            // and empty accounts will cease to be a source of concern in general
+            // in about one week once the state clearing process finishes.
+            if (state.Env.ExecutingAccount.Equals(_parityTouchBugAccount.Address)
+                && !wasCreated
+                && transferValue.IsZero
+                && spec.ClearEmptyAccountWhenTouched)
             {
-                _parityTouchBugAccount = state.Env.ExecutingAccount;
-            }
-
-            if (gasAvailable < dataGasCost + baseGasCost)
-            {
-                // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
-                // An additional issue was found in Parity,
-                // where the Parity client incorrectly failed
-                // to revert empty account deletions in a more limited set of contexts
-                // involving out-of-gas calls to precompiled contracts;
-                // the new Geth behavior matches Parity’s,
-                // and empty accounts will cease to be a source of concern in general
-                // in about one week once the state clearing process finishes.
-
-                // if (!wasCreated && transferValue.IsZero && spec.ClearEmptyAccountWhenTouched)
-                // {
-                //     _parityTouchBugAccount = state.Env.ExecutingAccount;
-                // }
-
-                Metrics.EvmExceptions++;
-                throw new OutOfGasException();
+                _parityTouchBugAccount.ShouldDelete = true;
             }
 
             //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
