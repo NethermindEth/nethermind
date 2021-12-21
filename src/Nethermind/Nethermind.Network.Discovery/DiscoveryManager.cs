@@ -67,7 +67,7 @@ public class DiscoveryManager : IDiscoveryManager
             if (_logger.IsTrace) _logger.Trace($"Received msg: {msg}");
             MsgType msgType = msg.MsgType;
 
-            Node node = new(msg.FarPublicKey, msg.FarAddress);
+            Node node = new(msg.FarPublicKey, msg.FarAddress, false);
             INodeLifecycleManager? nodeManager = GetNodeLifecycleManager(node);
             if (nodeManager == null)
             {

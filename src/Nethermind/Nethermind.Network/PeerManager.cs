@@ -84,10 +84,14 @@ namespace Nethermind.Network
 
             _rlpxHost.SessionCreated += (_, args) =>
             {
+                ToggleSessionEventListeners(args.Session, true);
                 SessionCreated sessionCreated = new(this, args.Session);
                 _peeringEvents.Add(sessionCreated);
             };
 
+            MorePeersNeeded morePeersNeeded = new MorePeersNeeded(this);
+            _peeringEvents.Add(morePeersNeeded);
+            
             updatePeersTimer = new Timer();
             updatePeersTimer.Interval = 1000;
             updatePeersTimer.Elapsed += UpdatePeersTimerOnElapsed;
@@ -380,6 +384,8 @@ namespace Nethermind.Network
 
         private void OnDisconnected(object sender, DisconnectEventArgs e)
         {
+            ToggleSessionEventListeners((ISession)sender, false);
+            
             SessionDisconnected sessionDisconnected = new(this, (ISession)sender, e.DisconnectType, e.DisconnectReason);
             _peeringEvents.Add(sessionDisconnected);
 
@@ -405,6 +411,7 @@ namespace Nethermind.Network
 
             foreach (PeeringEvent peeringEvent in _peeringEvents.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
+                Console.WriteLine(peeringEvent);
                 Type thisEventType = peeringEvent.GetType();
                 long thisEventTime = Timestamper.Default.UnixTime.MillisecondsLong;
                 long timeElapsed = thisEventTime - lastEventTime;

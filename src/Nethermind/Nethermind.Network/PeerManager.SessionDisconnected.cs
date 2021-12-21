@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.ComponentModel;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
@@ -42,13 +43,13 @@ public partial class PeerManager
         
         public override void Execute()
         {
-            ToggleSessionEventListeners(_session, false);
             if (_session.State != SessionState.Disconnected)
             {
                 throw new InvalidAsynchronousStateException(
                     $"Invalid session state in {nameof(OnDisconnected)} - {_session.State}");
             }
 
+            Console.WriteLine("ADD BACK");
             Peer peer = _peerPool.GetOrAdd(_session.Node);
             if (_session.Direction == ConnectionDirection.Out)
             {

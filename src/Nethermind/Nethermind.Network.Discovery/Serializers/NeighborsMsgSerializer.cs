@@ -82,7 +82,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerial
             }
 
             ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
-            return new Node(new PublicKey(id), address);
+            return new Node(new PublicKey(id), address, false);
         });
     }
 }

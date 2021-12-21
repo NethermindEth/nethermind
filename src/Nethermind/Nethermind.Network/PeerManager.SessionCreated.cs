@@ -34,7 +34,6 @@ public partial class PeerManager
         
         public override void Execute()
         {
-            ToggleSessionEventListeners(_session, true);
             if (_session.Direction == ConnectionDirection.Out)
             {
                 ProcessOutgoingConnection();

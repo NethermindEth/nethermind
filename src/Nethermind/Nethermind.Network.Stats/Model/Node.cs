@@ -81,11 +81,12 @@ namespace Nethermind.Stats.Model
         public string EthDetails { get; set; }
         public long CurrentReputation { get; set; }
 
-        public Node(PublicKey id, IPEndPoint address)
+        public Node(PublicKey id, IPEndPoint address, bool isStatic = false)
         {
             Id = id;
             IdHash = Keccak.Compute(Id.PrefixedBytes);
             SetIPEndPoint(address);
+            IsStatic = isStatic;
         }
 
         public Node(NetworkNode networkNode)
@@ -93,7 +94,7 @@ namespace Nethermind.Stats.Model
         {
         }
         
-        public Node(NetworkNode networkNode, bool isStatic)
+        public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
         {
         }

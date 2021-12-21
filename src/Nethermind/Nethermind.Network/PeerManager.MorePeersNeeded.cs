@@ -112,6 +112,11 @@ public partial class PeerManager
             public List<Peer> Candidates { get; } = new();
             public List<Peer> Incompatible { get; } = new();
             public Dictionary<ActivePeerSelectionCounter, int> Counters { get; } = new();
+
+            public override string ToString()
+            {
+                return $"Selection: pre {PreCandidates.Count} candidates {Candidates.Count} incompatible {Incompatible.Count}";
+            }
         }
 
         private readonly CandidateSelection _currentSelection = new();
@@ -242,6 +247,8 @@ public partial class PeerManager
                 Interlocked.Exchange(ref _peerManager._failedInitialConnect, 0);
 
                 SelectAndRankCandidates();
+                Console.WriteLine(_currentSelection);
+                
                 List<Peer> remainingCandidates = _currentSelection.Candidates;
                 if (!remainingCandidates.Any())
                 {

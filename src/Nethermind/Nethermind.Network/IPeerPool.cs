@@ -44,7 +44,7 @@ public interface IPeerPool
         return GetOrAdd(node);
     }
     
-    Peer GetOrAdd(Node node);
+    Peer GetOrAdd(Node node, string member = null);
     bool TryGet(PublicKey id, out Peer peer);
     bool TryRemove(PublicKey id, out Peer removed);
     Peer Replace(ISession session);

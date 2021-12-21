@@ -18,6 +18,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -92,8 +93,9 @@ namespace Nethermind.Network
             GetOrAdd(e.Node);
         }
 
-        public Peer GetOrAdd(Node node)
+        public Peer GetOrAdd(Node node, [CallerMemberName] string member = null)
         {
+            Console.WriteLine($"GET OR ADD {member}");
             return Peers.GetOrAdd(node.Id, CreateNew, (node, _staticPeers));
         }
         
@@ -122,9 +124,9 @@ namespace Nethermind.Network
 
         public bool TryRemove(PublicKey id, out Peer peer)
         {
+            _staticPeers.TryRemove(id, out _);
             if (Peers.TryRemove(id, out peer))
             {
-                _staticPeers.TryRemove(id, out _);
                 peer.InSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
                 peer.OutSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
                 peer.InSession = null;
