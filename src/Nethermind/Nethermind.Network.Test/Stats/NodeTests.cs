@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.Stats
             node.Equals(1).Should().BeFalse();
         }
         
-        [TestCase("s", "127.0.0.1:30303")]
+        [TestCase("s", "a49ac7...b67e92@127.0.0.1:30303")]
         [TestCase("c", "[Node|127.0.0.1:30303|ClientId|Details]")]
         [TestCase("f", "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@127.0.0.1:30303|ClientId")]
         [TestCase("e", "enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@127.0.0.1:30303")]

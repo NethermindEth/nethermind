@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
@@ -42,8 +43,10 @@ public partial class PeerManager
 
         private void ProcessOutgoingConnection()
         {
-            if (AvailableActivePeersCount <= 0)
+            Console.WriteLine($"Process outgoing {_session} {AvailableActivePeersCount}");
+            if (AvailableActivePeersCount < 0)
             {
+                Console.WriteLine($"outgoing cancelled {_session}  {AvailableActivePeersCount}");
                 _session.InitiateDisconnect(DisconnectReason.TooManyPeers,
                     $"Outgoing cancelled, available: {AvailableActivePeersCount}");
             }

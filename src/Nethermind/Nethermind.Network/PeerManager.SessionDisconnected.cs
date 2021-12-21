@@ -73,7 +73,7 @@ public partial class PeerManager
 
         public override string ToString()
         {
-            return $"Session disconnected: {_session}";
+            return $"Session disconnected: {_session} {_disconnectType} {_reason}";
         }
     }
 }

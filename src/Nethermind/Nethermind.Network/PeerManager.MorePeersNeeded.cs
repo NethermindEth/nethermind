@@ -270,6 +270,8 @@ public partial class PeerManager
 
                     int nodesToTry = Math.Min(remainingCandidates.Count - currentPosition,
                         AvailableActivePeersCount);
+
+                    Console.WriteLine(nodesToTry + " nodes totry");
                     if (nodesToTry <= 0)
                     {
                         break;
