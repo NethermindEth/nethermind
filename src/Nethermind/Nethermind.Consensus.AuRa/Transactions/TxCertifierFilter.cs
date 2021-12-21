@@ -53,9 +53,9 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private bool IsCertified(Transaction tx, BlockHeader parentHeader)
         {
-            if (tx.IsZeroGasPrice(parentHeader, _specProvider))
+            Address sender = tx.SenderAddress;
+            if (tx.IsZeroGasPrice(parentHeader, _specProvider) && sender is not null)
             {
-                Address sender = tx.SenderAddress;
                 if (_logger.IsTrace) _logger.Trace($"Checking service transaction checker contract from {sender}.");
                 IDictionary<Address, bool> cache = GetCache(parentHeader.Hash);
 
