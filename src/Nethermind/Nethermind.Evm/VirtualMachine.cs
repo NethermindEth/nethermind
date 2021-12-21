@@ -547,6 +547,14 @@ namespace Nethermind.Evm
             {
                 _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec);
             }
+            
+            // commented out this part of code in 'if' below and execute only for PrecompileRipemd160
+            // in order to pass hive consensus tests
+            string addressOfPrecompileRipemd160 = "0x0000000000000000000000000000000000000003";
+            if (!wasCreated && transferValue.IsZero && spec.ClearEmptyAccountWhenTouched && state.Env.ExecutingAccount.ToString().Equals(addressOfPrecompileRipemd160))
+            {
+                _parityTouchBugAccount = state.Env.ExecutingAccount;
+            }
 
             if (gasAvailable < dataGasCost + baseGasCost)
             {
@@ -568,12 +576,6 @@ namespace Nethermind.Evm
                 throw new OutOfGasException();
             }
 
-            string addressOfPrecompileRipemd160 = "0x0000000000000000000000000000000000000003";
-            if (!wasCreated && transferValue.IsZero && spec.ClearEmptyAccountWhenTouched && state.Env.ExecutingAccount.ToString().Equals(addressOfPrecompileRipemd160))
-            {
-                _parityTouchBugAccount = state.Env.ExecutingAccount;
-            }
-            
             //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
             if (!UpdateGas(baseGasCost, ref gasAvailable))
             {
