@@ -1112,7 +1112,6 @@ namespace Nethermind.Blockchain
             _bloomStorage.Store(block.Number, block.Bloom);
             level.HasBlockOnMainChain = true;
             _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
-            
 
             Block previous = hashOfThePreviousMainBlock is not null && hashOfThePreviousMainBlock != block.Hash
                 ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded)

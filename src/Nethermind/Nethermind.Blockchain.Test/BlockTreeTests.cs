@@ -1329,14 +1329,19 @@ namespace Nethermind.Blockchain.Test
             syncConfig.PivotNumber = pivotNumber.ToString();
 
             var bloomStorage = Substitute.For<IBloomStorage>();
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
+            IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
+            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, chainLevelInfoRepository, MainnetSpecProvider.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = 5; i > 0; i--)
             {
                 Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
                 tree.Insert(block.Header);
-                bloomStorage.Received().Store(block.Header.Number, block.Bloom);
+                Received.InOrder(() =>
+                {
+                    bloomStorage.Store(block.Header.Number, block.Bloom!);
+                    chainLevelInfoRepository.PersistLevel(block.Header.Number, Arg.Any<ChainLevelInfo>(), Arg.Any<BatchWrite>());
+                });
             }
         }
 
