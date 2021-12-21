@@ -559,15 +559,21 @@ namespace Nethermind.Evm
                 // and empty accounts will cease to be a source of concern in general
                 // in about one week once the state clearing process finishes.
 
-                if (!wasCreated && transferValue.IsZero && spec.ClearEmptyAccountWhenTouched)
-                {
-                    _parityTouchBugAccount = state.Env.ExecutingAccount;
-                }
+                // if (!wasCreated && transferValue.IsZero && spec.ClearEmptyAccountWhenTouched)
+                // {
+                //     _parityTouchBugAccount = state.Env.ExecutingAccount;
+                // }
 
                 Metrics.EvmExceptions++;
                 throw new OutOfGasException();
             }
 
+            string addressOfPrecompileRipemd160 = "0x0000000000000000000000000000000000000003";
+            if (!wasCreated && transferValue.IsZero && spec.ClearEmptyAccountWhenTouched && state.Env.ExecutingAccount.ToString().Equals(addressOfPrecompileRipemd160))
+            {
+                _parityTouchBugAccount = state.Env.ExecutingAccount;
+            }
+            
             //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
             if (!UpdateGas(baseGasCost, ref gasAvailable))
             {
