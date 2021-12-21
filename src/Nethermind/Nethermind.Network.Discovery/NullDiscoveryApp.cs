@@ -49,9 +49,12 @@ public class NullDiscoveryApp : IDiscoveryApp
         remove { }
     }
 
-    public event EventHandler<NodeEventArgs>? NodeRemoved
+    public event EventHandler<NodeEventArgs>? NodeNoLongerStatic
     {
         add { }
         remove { }
     }
+
+    public event EventHandler<NodeEventArgs>? NodeBanished { add { } remove { } }
+    public event EventHandler<NodeEventArgs>? NodeForgiven { add { } remove { } }
 }

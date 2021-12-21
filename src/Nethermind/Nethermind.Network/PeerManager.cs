@@ -210,7 +210,6 @@ namespace Nethermind.Network
 
         private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
         {
-            Console.WriteLine($"adding active {peer} {reason}");
             peer.IsAwaitingConnection = false;
             bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
             if (added)
@@ -412,7 +411,6 @@ namespace Nethermind.Network
 
             foreach (PeeringEvent peeringEvent in _peeringEvents.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
-                Console.WriteLine(peeringEvent);
                 Type thisEventType = peeringEvent.GetType();
                 long thisEventTime = Timestamper.Default.UnixTime.MillisecondsLong;
                 long timeElapsed = thisEventTime - lastEventTime;
@@ -424,7 +422,6 @@ namespace Nethermind.Network
                 }
 
                 if(_logger.IsTrace) _logger.Trace($"Executing {peeringEvent}");
-                Console.WriteLine($"{peeringEvent} EXECUTES");
                 peeringEvent.Execute();
                 lastEventType = thisEventType;
                 lastEventTime = thisEventTime;

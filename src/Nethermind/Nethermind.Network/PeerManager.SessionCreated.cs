@@ -43,10 +43,8 @@ public partial class PeerManager
 
         private void ProcessOutgoingConnection()
         {
-            Console.WriteLine($"Process outgoing {_session} {AvailableActivePeersCount}");
             if (AvailableActivePeersCount < 0)
             {
-                Console.WriteLine($"outgoing cancelled {_session}  {AvailableActivePeersCount}");
                 _session.InitiateDisconnect(DisconnectReason.TooManyPeers,
                     $"Outgoing cancelled, available: {AvailableActivePeersCount}");
             }

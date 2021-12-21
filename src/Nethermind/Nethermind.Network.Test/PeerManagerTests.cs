@@ -398,7 +398,7 @@ namespace Nethermind.Network.Test
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
-            ctx.StaticNodesManager.NodeRemoved += Raise.EventWith(new NodeEventArgs(
+            ctx.StaticNodesManager.NodeNoLongerStatic += Raise.EventWith(new NodeEventArgs(
                 new Node(staticNodes.First())));
             await Task.Delay(_travisDelay);
 
@@ -414,11 +414,11 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
-            ctx.PeerPool.GetOrAdd(node);
+            ctx.PeerPool.TryGetOrAdd(new Node(node), out Peer _);
             await Task.Delay(_travisDelay);
 
             ctx.PeerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(new[] { node.NodeId });
-            ctx.PeerPool.TryRemove(node.NodeId, out _).Should().BeTrue();
+            ctx.PeerPool.Banish(node.NodeId).Should().BeTrue();
             Console.WriteLine(ctx.PeerPool.PeerCount + "PEER COUNT");
             await Task.Delay(_travisDelay);
             ctx.RlpxPeer.DisconnectCount.Should().Be(1);
@@ -433,9 +433,9 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
-            ctx.PeerPool.GetOrAdd(node);
-            ctx.PeerPool.GetOrAdd(node);
-            ctx.PeerPool.GetOrAdd(node);
+            ctx.PeerPool.TryGetOrAdd(new Node(node), out _);
+            ctx.PeerPool.TryGetOrAdd(new Node(node), out _);
+            ctx.PeerPool.TryGetOrAdd(new Node(node), out _);
             await Task.Delay(_travisDelayLong);
             ctx.PeerManager.ActivePeers.Should().HaveCount(1);
         }

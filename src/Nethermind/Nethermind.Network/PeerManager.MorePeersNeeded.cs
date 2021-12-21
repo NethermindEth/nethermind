@@ -247,7 +247,6 @@ public partial class PeerManager
                 Interlocked.Exchange(ref _peerManager._failedInitialConnect, 0);
 
                 SelectAndRankCandidates();
-                Console.WriteLine(_currentSelection);
                 
                 List<Peer> remainingCandidates = _currentSelection.Candidates;
                 if (!remainingCandidates.Any())
@@ -271,7 +270,6 @@ public partial class PeerManager
                     int nodesToTry = Math.Min(remainingCandidates.Count - currentPosition,
                         AvailableActivePeersCount);
 
-                    Console.WriteLine(nodesToTry + " nodes totry");
                     if (nodesToTry <= 0)
                     {
                         break;

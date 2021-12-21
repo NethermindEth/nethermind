@@ -25,5 +25,7 @@ public interface INodeSource
 {
     List<Node> LoadInitialList();
     event EventHandler<NodeEventArgs> NodeAdded;
-    event EventHandler<NodeEventArgs> NodeRemoved;
+    event EventHandler<NodeEventArgs> NodeNoLongerStatic;
+    event EventHandler<NodeEventArgs> NodeBanished;
+    event EventHandler<NodeEventArgs> NodeForgiven;
 }

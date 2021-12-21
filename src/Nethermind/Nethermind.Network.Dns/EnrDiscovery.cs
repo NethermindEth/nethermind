@@ -122,5 +122,7 @@ public class EnrDiscovery : INodeSource
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
 
-    public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
+    public event EventHandler<NodeEventArgs>? NodeNoLongerStatic { add { } remove { } }
+    public event EventHandler<NodeEventArgs>? NodeBanished { add { } remove { } }
+    public event EventHandler<NodeEventArgs>? NodeForgiven { add { } remove { } }
 }

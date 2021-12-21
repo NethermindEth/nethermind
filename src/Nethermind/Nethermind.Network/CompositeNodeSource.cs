@@ -37,8 +37,9 @@ public class CompositeNodeSource : INodeSource
     }
 
     public event EventHandler<NodeEventArgs>? NodeAdded;
-    
-    public event EventHandler<NodeEventArgs>? NodeRemoved;
+    public event EventHandler<NodeEventArgs>? NodeNoLongerStatic;
+    public event EventHandler<NodeEventArgs>? NodeBanished;
+    public event EventHandler<NodeEventArgs>? NodeForgiven;
 
     public CompositeNodeSource(params INodeSource[] nodeSources)
     {
@@ -46,13 +47,25 @@ public class CompositeNodeSource : INodeSource
         foreach (INodeSource nodeSource in nodeSources)
         {
             nodeSource.NodeAdded += PeerSourceOnNodeAdded;
-            nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;
+            nodeSource.NodeNoLongerStatic += NodeSourceOnNodeNoLongerStatic;
+            nodeSource.NodeBanished += NodeSourceOnNodeBanished;
+            nodeSource.NodeForgiven += NodeSourceOnNodeForgiven;
         }
     }
 
-    private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
+    private void NodeSourceOnNodeForgiven(object? sender, NodeEventArgs e)
     {
-        NodeRemoved?.Invoke(sender, e);
+        NodeForgiven?.Invoke(sender, e);
+    }
+
+    private void NodeSourceOnNodeBanished(object? sender, NodeEventArgs e)
+    {
+        NodeBanished?.Invoke(sender, e);
+    }
+
+    private void NodeSourceOnNodeNoLongerStatic(object? sender, NodeEventArgs e)
+    {
+        NodeNoLongerStatic?.Invoke(sender, e);
     }
 
     private void PeerSourceOnNodeAdded(object? sender, NodeEventArgs e)

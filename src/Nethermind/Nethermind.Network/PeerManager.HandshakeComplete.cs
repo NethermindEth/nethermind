@@ -113,8 +113,14 @@ public partial class PeerManager
                 }
             }
 
-            Peer peer = _peerPool.GetOrAdd(_session.Node);
-            AddSession(_session, peer);
+            if (_peerPool.TryGetOrAdd(_session.Node, out Peer? peer))
+            {
+                AddSession(_session, peer!);
+            }
+            else
+            {
+                _session.InitiateDisconnect(DisconnectReason.UselessPeer, "banished peer");
+            }
         }
 
         private void ManageNewRemoteNodeId()
@@ -124,12 +130,16 @@ public partial class PeerManager
                 return;
             }
 
-            Peer newPeer = _peerPool.Replace(_session);
+            bool replaced = _peerPool.TryReplace(_session, out Peer newPeer);
 
             _peerManager.RemoveActivePeer(_session.ObsoleteRemoteNodeId,
                 $"handshake difference old: {_session.ObsoleteRemoteNodeId}, new: {_session.RemoteNodeId}");
-            _peerManager.AddActivePeer(_session.RemoteNodeId, newPeer,
-                $"handshake difference old: {_session.ObsoleteRemoteNodeId}, new: {_session.RemoteNodeId}");
+
+            if (replaced)
+            {
+                _peerManager.AddActivePeer(_session.RemoteNodeId, newPeer,
+                    $"handshake difference old: {_session.ObsoleteRemoteNodeId}, new: {_session.RemoteNodeId}");
+            }
 
             if (_logger.IsTrace)
                 _logger.Trace(

@@ -72,7 +72,7 @@ namespace Nethermind.Network.Test
         public async Task remove_should_delete_an_existing_static_node_and_trigger_an_event()
         {
             var eventRaised = false;
-            _staticNodesManager.NodeRemoved += (s, e) => { eventRaised = true; };
+            _staticNodesManager.NodeNoLongerStatic += (s, e) => { eventRaised = true; };
             await _staticNodesManager.AddAsync(Enode, false);
             _staticNodesManager.Nodes.Count().Should().Be(1);
             await _staticNodesManager.RemoveAsync(Enode, false);

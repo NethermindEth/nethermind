@@ -49,11 +49,10 @@ public partial class PeerManager
                     $"Invalid session state in {nameof(OnDisconnected)} - {_session.State}");
             }
 
-            Console.WriteLine("ADD BACK");
-            Peer peer = _peerPool.GetOrAdd(_session.Node);
-            if (_session.Direction == ConnectionDirection.Out)
+            bool resolved = _peerPool.TryGetOrAdd(_session.Node, out Peer peer);
+            if (resolved && _session.Direction == ConnectionDirection.Out)
             {
-                peer.IsAwaitingConnection = false;
+                peer!.IsAwaitingConnection = false;
             }
 
             if (_peerPool.ActivePeers.TryGetValue(_session.RemoteNodeId, out Peer activePeer))

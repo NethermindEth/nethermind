@@ -37,21 +37,23 @@ public interface IPeerPool
     int PeerCount { get; }
     int ActivePeerCount { get; }
     int StaticPeerCount { get; }
-
-    public Peer GetOrAdd(NetworkNode networkNode)
-    {
-        Node node = new (networkNode);
-        return GetOrAdd(node);
-    }
     
-    Peer GetOrAdd(Node node, string member = null);
+    bool TryGetOrAdd(Node node, out Peer? peer);
     bool TryGet(PublicKey id, out Peer peer);
     bool TryRemove(PublicKey id, out Peer removed);
-    Peer Replace(ISession session);
+    bool TryReplace(ISession session, out Peer newPeer);
 
     event EventHandler<PeerEventArgs> PeerAdded;
     event EventHandler<PeerEventArgs> PeerRemoved;
     
     void Start();
     Task StopAsync();
+    
+    /// <summary>
+    /// Remove from the banished list
+    /// </summary>
+    /// <param name="node"></param>
+    void Forgive(PublicKey nodeId);
+
+    bool Banish(PublicKey nodeId);
 }

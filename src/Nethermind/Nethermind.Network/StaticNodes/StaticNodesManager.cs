@@ -125,7 +125,7 @@ namespace Nethermind.Network.StaticNodes
 
             if (_logger.IsInfo) _logger.Info($"Static node was removed: {enode}");
             Node node = new(networkNode);
-            NodeRemoved?.Invoke(this, new NodeEventArgs(node));
+            NodeNoLongerStatic?.Invoke(this, new NodeEventArgs(node));
             if (updateFile)
             {
                 await SaveFileAsync();
@@ -151,7 +151,8 @@ namespace Nethermind.Network.StaticNodes
         }
 
         public event EventHandler<NodeEventArgs>? NodeAdded;
-        
-        public event EventHandler<NodeEventArgs>? NodeRemoved;
+        public event EventHandler<NodeEventArgs>? NodeNoLongerStatic;
+        public event EventHandler<NodeEventArgs>? NodeBanished { add { } remove { } }
+        public event EventHandler<NodeEventArgs>? NodeForgiven { add { } remove { } }
     }
 }

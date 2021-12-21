@@ -80,6 +80,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
         public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)
         {
+            NetworkNode networkNode = new(enode);
+            Node node = new(networkNode);
+            _peerPool.Forgive(node.Id);
+            
             bool added;
             if (addToStaticNodes)
             {
@@ -87,9 +91,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             }
             else
             {
-                NetworkNode networkNode = new(enode);
-                _peerPool.GetOrAdd(new Node(networkNode));
-                added = true;
+                added = _peerPool.TryGetOrAdd(node, out _);
             }
 
             return added
@@ -106,7 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             }
             else
             {
-                removed = _peerPool.TryRemove(new NetworkNode(enode).NodeId, out Peer _);
+                removed = _peerPool.Banish(new NetworkNode(enode).NodeId);
             }
             
             return removed
