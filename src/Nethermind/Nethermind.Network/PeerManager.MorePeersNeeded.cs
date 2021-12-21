@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -315,6 +316,18 @@ public partial class PeerManager
                     string nl = Environment.NewLine;
                     _logger.Trace(
                         $"{nl}{nl}All active peers: {nl} {string.Join(nl, _peerPool.ActivePeers.Values.Select(x => $"{x.Node:s} | P2P: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.Eth62Initialized)} | {_stats.GetOrAdd(x.Node).P2PNodeDetails?.ClientId} | {_stats.GetOrAdd(x.Node).ToString()}"))} {nl}{nl}");
+                }
+            }
+            catch (AggregateException e)
+            {
+                ReadOnlyCollection<Exception>? inner = e.Flatten().InnerExceptions;
+                if (inner.Count == 1 && inner[0] is TaskCanceledException)
+                {
+                     // ok   
+                }
+                else
+                {
+                    _logger.Error($"Error when updating peers {e}");    
                 }
             }
             catch (Exception e)
