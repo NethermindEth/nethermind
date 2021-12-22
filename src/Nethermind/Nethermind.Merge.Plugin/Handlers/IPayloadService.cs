@@ -24,5 +24,7 @@ namespace Nethermind.Merge.Plugin.Handlers
     public interface IPayloadService
     {
         Task<byte[]> StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
+
+        Block? GetPayload(byte[] payloadId);
     }
 }

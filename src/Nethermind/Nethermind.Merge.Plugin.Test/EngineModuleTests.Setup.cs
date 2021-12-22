@@ -49,10 +49,10 @@ namespace Nethermind.Merge.Plugin.Test
     {
         private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(new ManualTimestamper()).Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
-        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
+        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, IPayloadService? mockedPayloadService = null)
         {
             PayloadStorage? payloadStorage = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.LogManager);
-            PayloadService payloadService = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
+            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
             ISynchronizer synchronizer = Substitute.For<ISynchronizer>();
 
             return new EngineRpcModule(
