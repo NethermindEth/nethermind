@@ -108,11 +108,13 @@ namespace Nethermind.State
             byte[] nonce = _get(TreeKeys[2]);
             byte[] codeKeccak = _get(TreeKeys[3]);
             byte[] codeSize = _get(TreeKeys[4]);
-            Account account = new Account(
+            Account account = new (
                 
                 new UInt256(balance.AsSpan(), true),
                 new UInt256(nonce.AsSpan(), true),
-                new Keccak(codeKeccak)
+                new Keccak(codeKeccak),
+                new UInt256(codeSize.AsSpan(), true),
+                new UInt256(version.AsSpan(), true)
                 );
 
             return account;

@@ -48,15 +48,18 @@ namespace Nethermind.Core
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = Balance.IsZero;
+            CodeSize = 0;
         }
         
-        public Account(UInt256 balance, UInt256 nonce, Keccak codeHash)
+        public Account(UInt256 balance, UInt256 nonce, Keccak codeHash, UInt256 codeSize, UInt256 version)
         {
             Balance = balance;
             Nonce = nonce;
             CodeHash = codeHash;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = Balance.IsZero;
+            CodeSize = codeSize;
+            Version = version;
         }
 
         private Account()
@@ -66,6 +69,7 @@ namespace Nethermind.Core
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = true;
+            CodeSize = 0;
         }
 
         public Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash)
@@ -75,6 +79,7 @@ namespace Nethermind.Core
             StorageRoot = storageRoot;
             CodeHash = codeHash;
             IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
+            CodeSize = 0;
         }
 
         private Account(in UInt256 nonce, in UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
@@ -84,6 +89,7 @@ namespace Nethermind.Core
             StorageRoot = storageRoot;
             CodeHash = codeHash;
             IsTotallyEmpty = isTotallyEmpty;
+            CodeSize = 0;
         }
 
         public bool HasCode => !CodeHash.Equals(Keccak.OfAnEmptyString);
@@ -92,6 +98,8 @@ namespace Nethermind.Core
         
         public UInt256 Nonce { get; }
         public UInt256 Balance { get; }
+        public UInt256 CodeSize { get; }
+        public UInt256 Version { get; }
         public Keccak StorageRoot { get; }
         public Keccak CodeHash { get; }
         public bool IsTotallyEmpty { get; }

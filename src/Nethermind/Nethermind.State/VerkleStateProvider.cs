@@ -59,8 +59,6 @@ namespace Nethermind.State
         {
             _tree = new VerkleStateTree(logManager);
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-            // TODO: move this calculation out of here
-            
         }
         
         private Account? GetState(Address address)
