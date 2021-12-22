@@ -165,6 +165,10 @@
     "Kinstugi": {
       "commandName": "Project",
       "commandLineArgs": "--config kintsugi.cfg  --Init.DiagnosticMode MemDb"
+    },
+    "Kinstugi_FastSync": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kintsugi_fastsync.cfg  --Init.DiagnosticMode None"
     }
   }
 }

@@ -255,6 +255,7 @@ namespace Nethermind.Synchronization.Blocks
 
             int blocksSynced = 0;
             int ancestorLookupLevel = 0;
+            int currentBeaconPivot = 7051;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             // pivot number - 6 for uncle validation
@@ -265,7 +266,7 @@ namespace Nethermind.Synchronization.Blocks
             bool PostMergeRequirementSatisfied()
                 => bestPeer!.HeadNumber > (_blockTree.BestSuggestedHeader?.Number ?? 0);
             bool ImprovementRequirementSatisfied()
-                => PreMergeDifficultyRequirementSatisfied() || PostMergeRequirementSatisfied();
+                => (PreMergeDifficultyRequirementSatisfied() || PostMergeRequirementSatisfied()) && currentNumber < currentBeaconPivot;
             bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
             while(ImprovementRequirementSatisfied() && HasMoreToSync())

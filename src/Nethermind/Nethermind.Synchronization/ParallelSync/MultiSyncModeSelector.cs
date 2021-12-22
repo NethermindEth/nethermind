@@ -449,6 +449,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync));
             }
 
+            result = true;
             return result;
         }
 
