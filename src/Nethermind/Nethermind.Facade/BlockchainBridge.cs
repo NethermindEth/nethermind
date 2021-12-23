@@ -61,6 +61,7 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
 
+
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
@@ -188,7 +189,7 @@ namespace Nethermind.Facade
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
             
-            long estimate = estimateGasTracer.CalculateEstimate(tx, _specProvider.GetSpec(header.Number + 1));
+            long estimate = estimateGasTracer.CalculateEstimate(tx, header, _stateProvider, UInt256.Zero, _transactionProcessor, _specProvider.GetSpec(header.Number));
             
             return new CallOutput 
             {
