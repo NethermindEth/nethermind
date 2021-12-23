@@ -23,12 +23,16 @@ namespace Nethermind.Blockchain.Filters
     public interface IFilterStore
     {
         bool FilterExists(int filterId);
-        T[] GetFilters<T>() where T : FilterBase;
+        IEnumerable<T> GetFilters<T>() where T : FilterBase;
         BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true);
         PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true);
 
-        LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock, object address = null,
-            IEnumerable<object> topics = null, bool setId = true);
+        LogFilter CreateLogFilter(
+            BlockParameter fromBlock, 
+            BlockParameter toBlock, 
+            object? address = null,
+            IEnumerable<object>? topics = null,
+            bool setId = true);
 
         void SaveFilter(FilterBase filter);
         void RemoveFilter(int filterId);

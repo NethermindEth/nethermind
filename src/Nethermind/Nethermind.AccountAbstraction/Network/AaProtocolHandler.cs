@@ -51,19 +51,19 @@ namespace Nethermind.AccountAbstraction.Network
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _userOperationPool = userOperationPool ?? throw new ArgumentNullException(nameof(userOperationPool));
         }
-        
+
         public PublicKey Id => _session.Node.Id;
-        
+
         public override byte ProtocolVersion => 0;
-        
+
         public override string ProtocolCode => Protocol.AA;
         
         public override int MessageIdSpaceSize => 4;
 
         public override string Name => "aa";
-        
+
         protected override TimeSpan InitTimeout => Timeouts.Eth;
-        
+
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
         public override event EventHandler<ProtocolEventArgs> SubprotocolRequested
@@ -75,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Network
         public override void Init()
         {
             ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
-            
+
             _userOperationPool.AddPeer(this);
             _session.Disconnected += SessionDisconnected;
         }
@@ -98,7 +98,7 @@ namespace Nethermind.AccountAbstraction.Network
                 zeroPacket.SafeRelease();
             }
         }
-        
+
         public void HandleMessage(ZeroPacket message)
         {
             switch (message.PacketType)
@@ -123,12 +123,12 @@ namespace Nethermind.AccountAbstraction.Network
                 if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} sent {uop.Hash} uop and it was {result}");
             }
         }
-        
+
         public void SendNewUserOperation(UserOperation uop)
         {
-            SendMessage(new[]{uop});
+            SendMessage(new[] { uop });
         }
-        
+
         public void SendNewUserOperations(IEnumerable<UserOperation> uops)
         {
             const int maxCapacity = 256;
@@ -141,20 +141,20 @@ namespace Nethermind.AccountAbstraction.Network
                     SendMessage(uopsToSend);
                     uopsToSend.Clear();
                 }
-                
+
                 if (uop.Hash is not null)
                 {
                     uopsToSend.Add(uop);
                     TxPool.Metrics.PendingTransactionsSent++;
                 }
             }
-            
+
             if (uopsToSend.Count > 0)
             {
                 SendMessage(uopsToSend);
             }
         }
-        
+
         private void SendMessage(IList<UserOperation> uopsToSend)
         {
             UserOperationsMessage msg = new(uopsToSend);
@@ -168,7 +168,7 @@ namespace Nethermind.AccountAbstraction.Network
             if (Logger.IsDebug) Logger.Debug($"AA network protocol disconnected because of {disconnectReason} {details}");
             Dispose();
         }
-        
+
         public override void Dispose() { }
     }
 }

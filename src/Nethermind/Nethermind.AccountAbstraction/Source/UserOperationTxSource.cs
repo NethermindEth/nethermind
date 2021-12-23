@@ -55,7 +55,7 @@ namespace Nethermind.AccountAbstraction.Source
             IList<UserOperation> userOperationsToInclude = new List<UserOperation>();
             ulong gasUsed = 0;
 
-            IEnumerable<UserOperation> userOperations = 
+            IEnumerable<UserOperation> userOperations =
                 _userOperationPool
                     .GetUserOperations()
                     .Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas)
@@ -75,18 +75,20 @@ namespace Nethermind.AccountAbstraction.Source
                     //if (_logger.IsDebug) commented out for testing
                     {
                         _logger.Debug($"UserOperation {userOperation.Hash} resimulation unsuccessful: {result.Result.Error}");
-                        
+                        // TODO: Remove logging, just for testing
+                        _logger.Info($"UserOperation {userOperation.Hash} resimulation unsuccessful: {result.Result.Error}");
+
                         // ToDo: RemoveUserOperation shouldn't be dependent of logger's state, like below. Commented it out for now
                         // _logger.Debug(_userOperationPool.RemoveUserOperation(userOperation.Hash)
                         //     ? $"Removed UserOperation {userOperation.Hash} from Pool"
                         //     : $"Failed to remove UserOperation {userOperation} from Pool");
                     }
-                    
+
                     continue;
                 }
 
                 userOperationsToInclude.Add(userOperation);
-                gasUsed += (ulong)userOperation.CallGas + 
+                gasUsed += (ulong)userOperation.CallGas +
                            (ulong)userOperation.PreVerificationGas +
                            (ulong)userOperation.VerificationGas;
 
@@ -105,7 +107,9 @@ namespace Nethermind.AccountAbstraction.Source
                     _specProvider.GetSpec(parent.Number + 1));
             if (_logger.IsDebug)
                 _logger.Debug($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
-            return new List<Transaction> {userOperationTransaction};
+            // TODO: Remove logging, just for testing
+            _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
+            return new List<Transaction> { userOperationTransaction };
         }
 
         private UInt256 CalculateUserOperationPremiumGasPrice(UserOperation op, UInt256 baseFeePerGas)

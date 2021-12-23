@@ -74,6 +74,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized = ctx._test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x3635c9adc5de9f09e5\",\"id\":67}", serialized);
         }
+        
+        [Test]
+        public async Task Eth_get_eth_feeHistory()
+        {
+            using Context ctx = await Context.Create();
+            string serialized = ctx._test.TestEthRpc("eth_feeHistory", "0x1","latest","[20,50,90]");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0105],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x1\",\"0x1\",\"0x1\"]]},\"id\":67}", serialized);
+        }
 
         [Test]
         public async Task Eth_get_transaction_by_block_hash_and_index()
