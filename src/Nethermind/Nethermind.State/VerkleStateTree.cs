@@ -24,6 +24,7 @@ using Nethermind.Trie;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata;
 using Nethermind.Core;
 using Nethermind.Core.Resettables;
 using Nethermind.Crypto;
@@ -260,6 +261,63 @@ namespace Nethermind.State
             
             UInt256.Mod(pos, VerkleNodeWidth, out UInt256 subIndex);
             return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[0]);
+        }
+
+        public void SetCode(Address address, byte[] code)
+        {
+            byte[][] chunkifiedCode = chunkifyCode(code);
+            byte[] chunkKey;
+            for (int i = 0; i < chunkifiedCode.Length; i++)
+            {
+                chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
+                _set(chunkKey, chunkifiedCode[i]);
+            }
+        }
+        
+        private byte[][] chunkifyCode(byte[] code)
+        {
+            const int PUSH_OFFSET = 95;
+            const int PUSH1 = PUSH_OFFSET + 1;
+            const int PUSH32 = PUSH_OFFSET + 32;
+            
+            // To ensure that the code can be split into chunks of 32 bytes
+            byte[] chunkifyableCode = new byte[code.Length + 31 - code.Length % 31];
+            Buffer.BlockCopy(code, 0, chunkifyableCode, 0, code.Length);
+
+            int[] bytesToExecData  = new int[chunkifyableCode.Length];
+            int pos = 0;
+            int pushLength;
+            while (pos < chunkifyableCode.Length)
+            {
+                pushLength = 0;
+                if ( PUSH1 <= chunkifyableCode[pos] && chunkifyableCode[pos] <= PUSH32)
+                {
+                    pushLength = chunkifyableCode[pos] - PUSH_OFFSET;
+                }
+
+                pos += 1;
+
+                for (int i = 0; i < pushLength; i++)
+                {
+                    bytesToExecData[pos + i] = pushLength - i;
+                }
+
+                pos += pushLength;
+            }
+            
+            int chunkCount = (chunkifyableCode.Length + 31) / 32;
+            byte[][] chunks = new byte[chunkCount][];
+            pos = 0;
+            
+            for (int i = 0; i < chunkCount; i++)
+            {
+                chunks[i] = new byte[32];
+                chunks[i][0] = (byte)Math.Min(bytesToExecData[pos], 31);
+                Buffer.BlockCopy(chunkifyableCode, pos, chunks[i], 1, 31);
+                pos = pos + 31;
+            }
+
+            return chunks;
         }
         
     }
