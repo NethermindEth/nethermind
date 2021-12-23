@@ -110,7 +110,7 @@ namespace Nethermind.Db.Files
                 e._next = Volatile.Read(ref bucket);
 
                 Span<byte> bytes = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref e, 1));
-                var head = _log.Write(bytes);
+                long head = _log.Write(bytes);
 
                 if (Interlocked.CompareExchange(ref bucket, head, e._next) == e._next)
                 {
@@ -144,9 +144,14 @@ namespace Nethermind.Db.Files
 
             long current = Volatile.Read(ref bucket);
 
+            Span<Entry> entries = stackalloc Entry[1];
+            ref Entry entry = ref entries[0];
+            Span<byte> bytes = MemoryMarshal.AsBytes(entries);
+
             while (current != 0)
             {
-                _log.Read(current, out Entry entry);
+                // read in place
+                _log.Read(current, bytes);
                 
                 if (entry._key0 == key0 &&
                     entry._key1 == key1 &&

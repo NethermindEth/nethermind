@@ -138,7 +138,7 @@ namespace Nethermind.Db.Files
             }
         }
 
-        public unsafe Span<byte> Read(long header)
+        public unsafe Span<byte> Read(long header, Span<byte> destination = default)
         {
             int length = GetLength(header);
             long position = header >> LengthShift;
@@ -152,18 +152,24 @@ namespace Nethermind.Db.Files
                 return Read(accessor, chunkOffset, length);
             }
 
-            // try buffer 
+            // obtain the start from the buffer
             byte* start = (byte*)_buffer.ToPointer() + (position & _sizeMask);
 
-            // materialize before comparing
-            byte[] array = new Span<byte>(start + HeaderLength, length).ToArray();
+            // ensure that the destination is big enough, if not, allocate
+            if (destination.Length < length)
+            {
+                destination = new byte[length];
+            }
+
+            // copy before compare
+            new Span<byte>(start + HeaderLength, length).CopyTo(destination);
 
             long read = Volatile.Read(ref Unsafe.AsRef<long>(start));
 
             if (read == header)
             {
                 // the ordering is preserved, nothing has overwritten the value in the mean time
-                return array;
+                return destination.Slice(length);
             }
 
             // it must have been being mapped, retry till it happens
@@ -175,50 +181,6 @@ namespace Nethermind.Db.Files
             }
 
             return Read(accessor, chunkOffset, length);
-        }
-
-        public unsafe void Read<T>(long header, out T output)
-        {
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            static void ReadValue(MemoryMappedViewAccessor accessor, long chunkOffset, out T output)
-            {
-                IntPtr handle = accessor.SafeMemoryMappedViewHandle.DangerousGetHandle();
-                output = Unsafe.Read<T>((byte*)handle.ToPointer() + chunkOffset + HeaderLength);
-            }
-
-            long position = header >> LengthShift;
-            long chunkIndex = position / _chunkSize;
-            long chunkOffset = position & _chunkMask;
-
-            // try memory mapped first
-            MemoryMappedViewAccessor? accessor = Volatile.Read(ref _accessors[chunkIndex]);
-            if (accessor != null)
-            {
-                ReadValue(accessor, chunkOffset, out output);
-                return;
-            }
-
-            // try buffer 
-            byte* start = (byte*)_buffer.ToPointer() + (position & _sizeMask);
-            output = Unsafe.Read<T>(start + HeaderLength);
-
-            long read = Volatile.Read(ref Unsafe.AsRef<long>(start));
-
-            if (read == header)
-            {
-                // the ordering is preserved, nothing has overwritten the value in the mean time
-                return;
-            }
-
-            // it must have been being mapped, retry till it happens
-            SpinWait spin = default;
-            while (accessor == null)
-            {
-                spin.SpinOnce();
-                accessor = Volatile.Read(ref _accessors[chunkIndex]);
-            }
-
-            ReadValue(accessor, chunkOffset, out output);
         }
 
         public static int GetLength(long header) => (int)(LengthMask & header);
