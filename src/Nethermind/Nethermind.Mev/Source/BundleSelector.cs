@@ -21,6 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.VisualBasic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Mev.Data;
@@ -53,15 +54,23 @@ namespace Nethermind.Mev.Source
             long totalGasUsed = 0;
             int numBundles = 0;
 
-            foreach (SimulatedMevBundle simulatedBundle in simulatedBundles.OrderByDescending(bundle => bundle.BundleAdjustedGasPrice))
+            HashSet<Keccak> selectedTransactionsHashes = new HashSet<Keccak>();
+
+            foreach (SimulatedMevBundle simulatedBundle in simulatedBundles.OrderByDescending(bundle => bundle.BundleAdjustedGasPrice).ThenBy(bundle => bundle.Bundle.SequenceNumber))
             {
                 if (numBundles < _bundleLimit)
                 {
                     if (simulatedBundle.GasUsed <= gasLimit - totalGasUsed)
                     {
-                        totalGasUsed += simulatedBundle.GasUsed;
-                        numBundles++;
-                        yield return simulatedBundle.Bundle;
+                        IEnumerable<Keccak> bundleTransactionHashes = simulatedBundle.Bundle.Transactions.Select(tx => tx.Hash!);
+                        if (!selectedTransactionsHashes.Overlaps(bundleTransactionHashes))
+                        {
+                            totalGasUsed += simulatedBundle.GasUsed;
+                            numBundles++;
+
+                            selectedTransactionsHashes.UnionWith(bundleTransactionHashes);
+                            yield return simulatedBundle.Bundle;
+                        }
                     }
                 }
                 else

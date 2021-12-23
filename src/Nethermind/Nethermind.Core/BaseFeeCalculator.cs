@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -25,7 +26,7 @@ namespace Nethermind.Core
     {
         public static UInt256 Calculate(BlockHeader parent, IReleaseSpec spec)
         {
-            UInt256 expectedBaseFee = UInt256.Zero;
+            UInt256 expectedBaseFee = parent.BaseFeePerGas;
             if (spec.IsEip1559Enabled)
             {
                 UInt256 parentBaseFee = parent.BaseFeePerGas;
@@ -58,6 +59,11 @@ namespace Nethermind.Core
                 if (isForkBlockNumber)
                 {
                     expectedBaseFee = Eip1559Constants.ForkBaseFee;
+                }
+
+                if (spec.Eip1559BaseFeeMinValue.HasValue)
+                {
+                    expectedBaseFee = UInt256.Max(expectedBaseFee, spec.Eip1559BaseFeeMinValue.Value);
                 }
             }
 

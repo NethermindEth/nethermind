@@ -108,7 +108,7 @@ namespace Nethermind.Vault
             }
         }
 
-        public async ValueTask<(Keccak, AddTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
+        public async ValueTask<(Keccak, AcceptTxResult?)> SendTransaction(Transaction tx, TxHandlingOptions txHandlingOptions)
         {
             await EnsureAccount();
             ProvideTx provideTx = new ProvideTx();

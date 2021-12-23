@@ -48,6 +48,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
+        private readonly Random _rnd = new();
 
         private bool _cancelDueToBetterPeer;
         private AllocationWithCancellation _allocationWithCancellation;
@@ -424,7 +425,7 @@ namespace Nethermind.Synchronization.Blocks
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
+                IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
                 Task<BlockBody[]> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
                 await getBodiesRequest.ContinueWith(_ => DownloadFailHandler(getBodiesRequest, "bodies"), cancellation);
                 BlockBody[] result = getBodiesRequest.Result;
@@ -442,7 +443,7 @@ namespace Nethermind.Synchronization.Blocks
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
+                IReadOnlyList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
                 Task<TxReceipt[][]> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
                 await request.ContinueWith(_ => DownloadFailHandler(request, "receipts"), cancellation);
 
@@ -494,6 +495,7 @@ namespace Nethermind.Synchronization.Blocks
         {
             if (_logger.IsTrace) _logger.Trace("Starting seal validation");
             ConcurrentQueue<Exception> exceptions = new();
+            int randomNumberForValidation = _rnd.Next(Math.Max(0, headers.Length - 2));
             Parallel.For(0, headers.Length, (i, state) =>
             {
                 if (cancellation.IsCancellationRequested)
@@ -511,7 +513,8 @@ namespace Nethermind.Synchronization.Blocks
 
                 try
                 {
-                    if (!_sealValidator.ValidateSeal(header, false))
+                    bool forceValidation = i == headers.Length - 1 || i == randomNumberForValidation;
+                    if (!_sealValidator.ValidateSeal(header, forceValidation))
                     {
                         if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
                         throw new EthSyncException("Peer sent a block with an invalid seal");

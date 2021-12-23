@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Test.Data;
 using NUnit.Framework;
@@ -29,7 +28,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_serialize()
         {
-            ParityTraceAction action = new ParityTraceAction();
+            ParityTraceAction action = new();
             action.From = TestItem.AddressA;
             action.Gas = 12345;
             action.Input = new byte[] {6, 7, 8, 9, 0};
@@ -44,7 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         [Test]
         public void Can_serialize_nulls()
         {
-            ParityTraceAction action = new ParityTraceAction();
+            ParityTraceAction action = new();
             
             TestToJson(action, "{\"callType\":null,\"from\":null,\"gas\":\"0x0\",\"input\":null,\"to\":null,\"value\":\"0x0\"}");
         }

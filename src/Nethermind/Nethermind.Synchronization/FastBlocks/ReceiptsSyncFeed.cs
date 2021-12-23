@@ -243,11 +243,11 @@ namespace Nethermind.Synchronization.FastBlocks
                     else
                     {
                         hasBreachedProtocol = true;
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or ommers");
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - reporting INVALID - tx or uncles");
 
                         if (batch.ResponseSourcePeer != null)
                         {
-                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or ommers root");
+                            _syncPeerPool.ReportBreachOfProtocol(batch.ResponseSourcePeer, "invalid tx or uncles root");
                         }
 
                         _syncStatusList.MarkUnknown(blockInfo.BlockNumber);

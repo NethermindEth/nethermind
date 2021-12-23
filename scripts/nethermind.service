@@ -1,11 +1,14 @@
 [Unit]
-Description=Nethermind Ethereum Daemon
+Description=Nethermind Node
+Documentation=https://docs.nethermind.io
 After=network.target
 
 [Service]
 User=nethermind
-WorkingDirectory=/home/nethermind/nethermind
-ExecStart=/home/nethermind/nethermind/Nethermind.Runner
+Group=nethermind
+EnvironmentFile=/home/nethermind/.env
+WorkingDirectory=/home/nethermind
+ExecStart=/home/nethermind/build/Nethermind.Runner --datadir /home/nethermind/data
 Restart=on-failure
 LimitNOFILE=1000000
 

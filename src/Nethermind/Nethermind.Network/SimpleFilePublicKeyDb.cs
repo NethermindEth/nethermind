@@ -111,14 +111,14 @@ namespace Nethermind.Network
                 return;
             }
 
-            using Backup backup = new Backup(DbPath, _logger);
+            using Backup backup = new(DbPath, _logger);
             _hasPendingChanges = false;
             KeyValuePair<byte[], byte[]>[] snapshot = _cache.ToArray();
 
             if (_logger.IsDebug) _logger.Debug($"Saving data in {DbPath} | backup stored in {backup.BackupPath}");
             try
             {
-                using StreamWriter streamWriter = new StreamWriter(DbPath);
+                using StreamWriter streamWriter = new(DbPath);
                 foreach ((byte[] key, byte[] value) in snapshot)
                 {
                     if (value != null)

@@ -24,6 +24,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -40,6 +41,8 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -48,6 +51,7 @@ using Nethermind.Synchronization.Reporting;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.Exceptions;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 
@@ -76,11 +80,11 @@ namespace Nethermind.Synchronization.Test
         [TestCase(SyncBatchSize.Max * 8, DownloaderOptions.Process, 32)]
         public async Task Happy_path(long headNumber, int options, int threshold)
         {
-            Context ctx = new Context();
+            Context ctx = new();
             DownloaderOptions downloaderOptions = (DownloaderOptions) options;
             bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
-            InMemoryReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            InMemoryReceiptStorage receiptStorage = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             Response responseOptions = Response.AllCorrect;
             if (withReceipts)
@@ -91,9 +95,9 @@ namespace Nethermind.Synchronization.Test
             // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
             // will only be fixed slightly later
             long chainLength = headNumber + 1;
-            SyncPeerMock syncPeer = new SyncPeerMock(chainLength, withReceipts, responseOptions);
+            SyncPeerMock syncPeer = new(chainLength, withReceipts, responseOptions);
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
             ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
@@ -118,21 +122,21 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Ancestor_lookup_simple()
         {
-            InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
+            InMemoryReceiptStorage inMemoryReceiptStorage = new();
 
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.BlockTree = Build.A.BlockTree().OfChainLength(1024).TestObject;
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, syncPeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            BlockDownloader downloader = new(ctx.Feed, syncPeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             Response blockResponseOptions = Response.AllCorrect;
-            SyncPeerMock syncPeer = new SyncPeerMock(2048 + 1, false, blockResponseOptions);
+            SyncPeerMock syncPeer = new(2048 + 1, false, blockResponseOptions);
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
 
-            var block1024 = Build.A.Block.WithParent(ctx.BlockTree.Head).WithDifficulty(ctx.BlockTree.Head.Difficulty + 1).TestObject;
-            var block1025 = Build.A.Block.WithParent(block1024).WithDifficulty(block1024.Difficulty + 1).TestObject;
-            var block1026 = Build.A.Block.WithParent(block1025).WithDifficulty(block1025.Difficulty + 1).TestObject;
+            Block block1024 = Build.A.Block.WithParent(ctx.BlockTree.Head).WithDifficulty(ctx.BlockTree.Head.Difficulty + 1).TestObject;
+            Block block1025 = Build.A.Block.WithParent(block1024).WithDifficulty(block1024.Difficulty + 1).TestObject;
+            Block block1026 = Build.A.Block.WithParent(block1025).WithDifficulty(block1025.Difficulty + 1).TestObject;
             ctx.BlockTree.SuggestBlock(block1024);
             ctx.BlockTree.SuggestBlock(block1025);
             ctx.BlockTree.SuggestBlock(block1026);
@@ -150,19 +154,19 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Ancestor_lookup_headers()
         {
-            InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
+            InMemoryReceiptStorage inMemoryReceiptStorage = new();
 
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.BlockTree = Build.A.BlockTree().OfChainLength(1024).TestObject;
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             Response responseOptions = Response.AllCorrect;
-            SyncPeerMock syncPeer = new SyncPeerMock(2048 + 1, false, responseOptions);
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            SyncPeerMock syncPeer = new(2048 + 1, false, responseOptions);
+            PeerInfo peerInfo = new(syncPeer);
 
-            var block1024 = Build.A.Block.WithParent(ctx.BlockTree.Head).WithDifficulty(ctx.BlockTree.Head.Difficulty + 1).TestObject;
-            var block1025 = Build.A.Block.WithParent(block1024).WithDifficulty(block1024.Difficulty + 1).TestObject;
-            var block1026 = Build.A.Block.WithParent(block1025).WithDifficulty(block1025.Difficulty + 1).TestObject;
+            Block block1024 = Build.A.Block.WithParent(ctx.BlockTree.Head).WithDifficulty(ctx.BlockTree.Head.Difficulty + 1).TestObject;
+            Block block1025 = Build.A.Block.WithParent(block1024).WithDifficulty(block1024.Difficulty + 1).TestObject;
+            Block block1026 = Build.A.Block.WithParent(block1025).WithDifficulty(block1025.Difficulty + 1).TestObject;
             ctx.BlockTree.SuggestBlock(block1024);
             ctx.BlockTree.SuggestBlock(block1025);
             ctx.BlockTree.SuggestBlock(block1026);
@@ -179,16 +183,16 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Ancestor_failure()
         {
-            InMemoryReceiptStorage memReceiptStorage = new InMemoryReceiptStorage();
+            InMemoryReceiptStorage memReceiptStorage = new();
 
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.BlockTree = Build.A.BlockTree().OfChainLength(2048 + 1).TestObject;
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, memReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, memReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             Response blockResponseOptions = Response.AllCorrect;
-            SyncPeerMock syncPeer = new SyncPeerMock(2072 + 1, true, blockResponseOptions);
+            SyncPeerMock syncPeer = new(2072 + 1, true, blockResponseOptions);
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
 
             Assert.ThrowsAsync<EthSyncException>(() => downloader.DownloadHeaders(peerInfo, new BlocksRequest(), CancellationToken.None));
             ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(2048);
@@ -197,16 +201,16 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Ancestor_failure_blocks()
         {
-            InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
+            InMemoryReceiptStorage inMemoryReceiptStorage = new();
 
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.BlockTree = Build.A.BlockTree().OfChainLength(2048 + 1).TestObject;
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             Response responseOptions = Response.AllCorrect;
-            SyncPeerMock syncPeer = new SyncPeerMock(2072 + 1, true, responseOptions);
+            SyncPeerMock syncPeer = new(2072 + 1, true, responseOptions);
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
 
             Assert.ThrowsAsync<EthSyncException>(() => downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None));
             ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(2048);
@@ -217,20 +221,20 @@ namespace Nethermind.Synchronization.Test
         [TestCase(0)]
         public async Task Can_sync_with_peer_when_it_times_out_on_full_batch(int threshold)
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(async ci => await ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.TimeoutOnFullBatch));
 
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.TimeoutOnFullBatch));
 
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.HeadNumber.Returns(SyncBatchSize.Max * 2 + threshold);
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None).ContinueWith(t => { });
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None);
@@ -246,17 +250,17 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Headers_already_known()
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.AllKnown));
 
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.AllKnown));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(64);
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None)
@@ -271,17 +275,17 @@ namespace Nethermind.Synchronization.Test
         [TestCase(65L)]
         public async Task Peer_sends_just_one_item_when_advertising_more_blocks(long headNumber)
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.JustFirst));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.HeadNumber.Returns(headNumber);
 
@@ -295,17 +299,17 @@ namespace Nethermind.Synchronization.Test
         [TestCase(65L)]
         public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(long headNumber)
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.NoBody));
 
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.JustFirst));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(headNumber);
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
 
@@ -318,8 +322,8 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_null_best_peer()
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
             Task task1 = downloader.DownloadHeaders(null, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
             await task1.ContinueWith(t => Assert.True(t.IsFaulted));
 
@@ -330,16 +334,16 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_inconsistent_batch()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect ^ Response.Consistent));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.HeadNumber.Returns(1024);
 
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
         }
@@ -347,15 +351,15 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_invalid_seal()
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Invalid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Invalid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1000);
 
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
@@ -365,15 +369,15 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_invalid_header()
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Invalid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Invalid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1000);
 
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
@@ -403,13 +407,13 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer)
+            public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle)
             {
                 Thread.Sleep(1000);
                 return true;
             }
 
-            public bool Validate(BlockHeader header, bool isOmmer)
+            public bool Validate(BlockHeader header, bool isUncle)
             {
                 Thread.Sleep(1000);
                 return true;
@@ -432,21 +436,21 @@ namespace Nethermind.Synchronization.Test
         [Ignore("Fails OneLoggerLogManager Travis only")]
         public async Task Can_cancel_seal_validation()
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, new SlowSealValidator(), NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, new SlowSealValidator(), NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.HeadNumber.Returns(1000);
 
-            CancellationTokenSource cancellation = new CancellationTokenSource();
+            CancellationTokenSource cancellation = new();
             cancellation.CancelAfter(1000);
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, $"headers {t.Status}"));
@@ -462,22 +466,22 @@ namespace Nethermind.Synchronization.Test
         [Test, MaxTime(7000)]
         public async Task Can_cancel_adding_headers()
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, new SlowHeaderValidator(), Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, new SlowHeaderValidator(), Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect));
 
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.HeadNumber.Returns(1000);
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
 
-            CancellationTokenSource cancellation = new CancellationTokenSource();
+            CancellationTokenSource cancellation = new();
             cancellation.CancelAfter(1000);
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, "headers"));
@@ -488,6 +492,31 @@ namespace Nethermind.Synchronization.Test
             cancellation.CancelAfter(1000);
             task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, "blocks"));
+        }
+        
+        [Test]
+        public async Task Validate_always_the_last_seal_and_random_seal_in_the_package()
+        {
+            ISealValidator sealValidator = Substitute.For<ISealValidator>();
+            sealValidator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, sealValidator, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+
+            BlockHeader[] blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(blockHeaders);
+
+            PeerInfo peerInfo = new(syncPeer);
+            syncPeer.HeadNumber.Returns(511);
+
+            Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
+            await task;
+            
+            sealValidator.Received(2).ValidateSeal(Arg.Any<BlockHeader>(), true);
+            sealValidator.Received(510).ValidateSeal(Arg.Any<BlockHeader>(), false);
+            sealValidator.Received().ValidateSeal(blockHeaders[^1], true);
         }
 
         private class ThrowingPeer : ISyncPeer
@@ -511,7 +540,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -538,17 +567,17 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
 
-            public bool SendNewTransaction(Transaction transaction, bool isPriority)
+            public void SendNewTransactions(IEnumerable<Transaction> txs)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -567,11 +596,11 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Faults_on_get_headers_faulting()
         {
-            Context ctx = new Context();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, new InMemoryReceiptStorage(), RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = new ThrowingPeer(1000, UInt256.MaxValue);
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None)
                 .ContinueWith(t => Assert.True(t.IsFaulted));
@@ -580,9 +609,9 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Throws_on_block_task_exception()
         {
-            Context ctx = new Context();
-            InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            InMemoryReceiptStorage inMemoryReceiptStorage = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
@@ -590,20 +619,20 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromException<BlockBody[]>(new TimeoutException()));
 
-            syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
 
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
-            action.Should().Throw<AggregateException>().WithInnerException<TimeoutException>();
+            await action.Should().ThrowAsync<AggregateException>().WithInnerException<AggregateException, TimeoutException>();
         }
 
         [TestCase(DownloaderOptions.WithReceipts, true)]
@@ -611,10 +640,10 @@ namespace Nethermind.Synchronization.Test
         [TestCase(DownloaderOptions.Process, false)]
         public async Task Throws_on_receipt_task_exception_when_downloading_receipts(int options, bool shouldThrow)
         {
-            Context ctx = new Context();
+            Context ctx = new();
             DownloaderOptions downloaderOptions = (DownloaderOptions) options;
-            InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            InMemoryReceiptStorage inMemoryReceiptStorage = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
@@ -624,13 +653,13 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
             Task<BlockBody[]> buildBlocksResponse = null;
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildBlocksResponse = ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(Task.FromException<TxReceipt[][]>(new TimeoutException()));
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
 
@@ -640,11 +669,11 @@ namespace Nethermind.Synchronization.Test
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
             if (shouldThrow)
             {
-                action.Should().Throw<AggregateException>().WithInnerException<TimeoutException>();
+                await action.Should().ThrowAsync<AggregateException>().WithInnerException<AggregateException, TimeoutException>();
             }
             else
             {
-                action.Should().NotThrow();
+                await action.Should().NotThrowAsync();
             }
         }
 
@@ -653,11 +682,11 @@ namespace Nethermind.Synchronization.Test
         [TestCase(DownloaderOptions.Process, false)]
         public async Task Throws_on_null_receipt_downloaded(int options, bool shouldThrow)
         {
-            Context ctx = new Context();
+            Context ctx = new();
             DownloaderOptions downloaderOptions = (DownloaderOptions)options;
             bool withReceipts = downloaderOptions == DownloaderOptions.WithReceipts;
-            InMemoryReceiptStorage receiptStorage = new InMemoryReceiptStorage();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            InMemoryReceiptStorage receiptStorage = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             Response responseOptions = Response.AllCorrect;
             if (withReceipts)
@@ -670,18 +699,18 @@ namespace Nethermind.Synchronization.Test
             // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
             // will only be fixed slightly later
             long chainLength = headNumber + 1;
-            SyncPeerMock syncPeerInternal = new SyncPeerMock(chainLength, withReceipts, responseOptions);
+            SyncPeerMock syncPeerInternal = new(chainLength, withReceipts, responseOptions);
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
                 .Returns(ci => syncPeerInternal.GetBlockHeaders(ci.ArgAt<long>(0), ci.ArgAt<int>(1), ci.ArgAt<int>(2), ci.ArgAt<CancellationToken>(3)));
 
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IList<Keccak>>(0), ci.ArgAt<CancellationToken>(1)));
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
+                .Returns(ci => syncPeerInternal.GetBlockBodies(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1)));
 
-            syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(async ci =>
                 {
-                    TxReceipt[][] receipts = await syncPeerInternal.GetReceipts(ci.ArgAt<IList<Keccak>>(0), ci.ArgAt<CancellationToken>(1));
+                    TxReceipt[][] receipts = await syncPeerInternal.GetReceipts(ci.ArgAt<IReadOnlyList<Keccak>>(0), ci.ArgAt<CancellationToken>(1));
                     receipts[^1] = null;
                     return receipts;
                 });
@@ -690,7 +719,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadHash.Returns(ci => syncPeerInternal.HeadHash);
             syncPeer.HeadNumber.Returns(ci => syncPeerInternal.HeadNumber);
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
 
             int threshold = 2;
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
@@ -698,13 +727,14 @@ namespace Nethermind.Synchronization.Test
 
             syncPeerInternal.ExtendTree(chainLength * 2);
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
+            
             if (shouldThrow)
             {
-                action.Should().Throw<EthSyncException>();
+                await action.Should().ThrowAsync<EthSyncException>();
             }
             else
             {
-                action.Should().NotThrow();
+                await action.Should().NotThrowAsync();
             }
         }
 
@@ -713,9 +743,9 @@ namespace Nethermind.Synchronization.Test
         [TestCase(0)]
         public async Task Throws_on_block_bodies_count_higher_than_receipts_list_count(int threshold)
         {
-            Context ctx = new Context();
-            InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            InMemoryReceiptStorage inMemoryReceiptStorage = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
@@ -725,29 +755,29 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
             Task<BlockBody[]> buildBlocksResponse = null;
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildBlocksResponse = ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions).Result.Skip(1).ToArray());
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None);
 
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies | DownloaderOptions.WithReceipts), CancellationToken.None);
-            action.Should().Throw<EthSyncException>();
+            await action.Should().ThrowAsync<EthSyncException>();
         }
 
         [TestCase(32)]
         [TestCase(1)]
         public async Task Does_throw_on_transaction_count_different_than_receipts_count_in_block(int threshold)
         {
-            Context ctx = new Context();
-            InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            InMemoryReceiptStorage inMemoryReceiptStorage = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
@@ -756,30 +786,30 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
             Task<BlockBody[]> buildBlocksResponse = null;
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildBlocksResponse = ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions)
                     .Result.Select(r => r == null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToArray());
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
 
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
-            action.Should().Throw<EthSyncException>();
+            await action.Should().ThrowAsync<EthSyncException>();
         }
 
         [TestCase(32)]
         [TestCase(1)]
         public async Task Throws_on_incorrect_receipts_root(int threshold)
         {
-            Context ctx = new Context();
-            InMemoryReceiptStorage inMemoryReceiptStorage = new InMemoryReceiptStorage();
-            BlockDownloader downloader = new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
+            Context ctx = new();
+            InMemoryReceiptStorage inMemoryReceiptStorage = new();
+            BlockDownloader downloader = new(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, inMemoryReceiptStorage, RopstenSpecProvider.Instance, LimboLogs.Instance);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
@@ -789,20 +819,20 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => buildHeadersResponse = ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.IncorrectReceiptRoot));
 
             Task<BlockBody[]> buildBlocksResponse = null;
-            syncPeer.GetBlockBodies(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => buildBlocksResponse = ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions));
 
-            syncPeer.GetReceipts(Arg.Any<IList<Keccak>>(), Arg.Any<CancellationToken>())
+            syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Keccak>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Keccak>>(0), Response.AllCorrect | Response.WithTransactions).Result);
 
-            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, threshold), CancellationToken.None);
 
             syncPeer.HeadNumber.Returns(2);
 
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
-            action.Should().Throw<EthSyncException>();
+            await action.Should().ThrowAsync<EthSyncException>();
         }
 
         [Flags]
@@ -830,7 +860,7 @@ namespace Nethermind.Synchronization.Test
             public Context()
             {
                 Block genesis = Build.A.Block.Genesis.TestObject;
-                MemDb blockInfoDb = new MemDb();
+                MemDb blockInfoDb = new();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 BlockTree.SuggestBlock(genesis);
 
@@ -840,13 +870,12 @@ namespace Nethermind.Synchronization.Test
                 PeerPool = Substitute.For<ISyncPeerPool>();
                 Feed = Substitute.For<ISyncFeed<BlocksRequest>>();
 
-                var stateDb = new MemDb();
+                MemDb stateDb = new MemDb();
                 
-                SyncConfig syncConfig = new SyncConfig();
-                SyncProgressResolver syncProgressResolver = new SyncProgressResolver(
+                SyncConfig syncConfig = new();
+                SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
-                    stateDb,
                     stateDb,
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
@@ -861,9 +890,9 @@ namespace Nethermind.Synchronization.Test
         private class SyncPeerMock : ISyncPeer
         {
             private readonly bool _withReceipts;
-            private readonly BlockHeadersMessageSerializer _headersSerializer = new BlockHeadersMessageSerializer();
-            private readonly BlockBodiesMessageSerializer _bodiesSerializer = new BlockBodiesMessageSerializer();
-            private readonly ReceiptsMessageSerializer _receiptsSerializer = new ReceiptsMessageSerializer(RopstenSpecProvider.Instance);
+            private readonly BlockHeadersMessageSerializer _headersSerializer = new();
+            private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
+            private readonly ReceiptsMessageSerializer _receiptsSerializer = new(RopstenSpecProvider.Instance);
 
             private IDb _blockInfoDb = new MemDb();
             public BlockTree BlockTree { get; private set; }
@@ -881,7 +910,7 @@ namespace Nethermind.Synchronization.Test
             private void BuildTree(long chainLength, bool withReceipts)
             {
                 _receiptStorage = new InMemoryReceiptStorage();
-                var builder = Build.A.BlockTree();
+                BlockTreeBuilder builder = Build.A.BlockTree();
                 if (withReceipts)
                 {
                     builder = builder.WithTransactions(_receiptStorage, MainnetSpecProvider.Instance);
@@ -912,7 +941,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public async Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
+            public async Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 bool consistent = Flags.HasFlag(Response.Consistent);
                 bool justFirst = Flags.HasFlag(Response.JustFirst);
@@ -926,7 +955,7 @@ namespace Nethermind.Synchronization.Test
                     headers[i++] = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None).Body;
                 }
 
-                BlockBodiesMessage message = new BlockBodiesMessage(headers);
+                BlockBodiesMessage message = new(headers);
                 byte[] messageSerialized = _bodiesSerializer.Serialize(message);
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies);
             }
@@ -955,7 +984,7 @@ namespace Nethermind.Synchronization.Test
                     headers[i] = BlockTree.FindHeader(number + i, BlockTreeLookupOptions.None);
                 }
 
-                BlockHeadersMessage message = new BlockHeadersMessage(headers);
+                BlockHeadersMessage message = new(headers);
                 byte[] messageSerialized = _headersSerializer.Serialize(message);
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
@@ -972,12 +1001,12 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
 
-            public bool SendNewTransaction(Transaction transaction, bool isPriority)
+            public void SendNewTransactions(IEnumerable<Transaction> txs)
             {
                 throw new NotImplementedException();
             }
 
-            public async Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+            public async Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 TxReceipt[][] receipts = new TxReceipt[blockHash.Count][];
                 int i = 0;
@@ -988,12 +1017,12 @@ namespace Nethermind.Synchronization.Test
                     receipts[i++] = blockReceipts;
                 }
 
-                ReceiptsMessage message = new ReceiptsMessage(receipts);
+                ReceiptsMessage message = new(receipts);
                 byte[] messageSerialized = _receiptsSerializer.Serialize(message);
                 return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
             }
 
-            public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -1042,7 +1071,7 @@ namespace Nethermind.Synchronization.Test
                     {
                         Keccak receiptRoot = i == 1 ? Keccak.EmptyTreeHash : new Keccak("0x9904791428367d3f36f2be68daf170039dd0b3d6b23da00697de816a05fb5cc1");
                         headers[i] = consistent
-                            ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1]).WithOmmersHash(noBody ? Keccak.OfAnEmptySequenceRlp : Keccak.Zero).TestObject
+                            ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1]).WithUnclesHash(noBody ? Keccak.OfAnEmptySequenceRlp : Keccak.Zero).TestObject
                             : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber(headers[i - 1].Number + 1).TestObject;
 
                         if (allKnown)
@@ -1059,17 +1088,17 @@ namespace Nethermind.Synchronization.Test
                     _headers[header.Hash] = header;
                 }
 
-                BlockHeadersMessage message = new BlockHeadersMessage(headers);
+                BlockHeadersMessage message = new(headers);
                 byte[] messageSerialized = _headersSerializer.Serialize(message);
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
 
-            private readonly BlockHeadersMessageSerializer _headersSerializer = new BlockHeadersMessageSerializer();
-            private readonly BlockBodiesMessageSerializer _bodiesSerializer = new BlockBodiesMessageSerializer();
-            private readonly ReceiptsMessageSerializer _receiptsSerializer = new ReceiptsMessageSerializer(RopstenSpecProvider.Instance);
+            private readonly BlockHeadersMessageSerializer _headersSerializer = new();
+            private readonly BlockBodiesMessageSerializer _bodiesSerializer = new();
+            private readonly ReceiptsMessageSerializer _receiptsSerializer = new(RopstenSpecProvider.Instance);
 
-            private Dictionary<Keccak, BlockHeader> _headers = new Dictionary<Keccak, BlockHeader>();
-            private Dictionary<Keccak, BlockBody> _bodies = new Dictionary<Keccak, BlockBody>();
+            private Dictionary<Keccak, BlockHeader> _headers = new();
+            private Dictionary<Keccak, BlockBody> _bodies = new();
 
             public async Task<BlockBody[]> BuildBlocksResponse(IList<Keccak> blockHashes, Response flags)
             {
@@ -1117,7 +1146,7 @@ namespace Nethermind.Synchronization.Test
                         }
 
                         Block block = blockBuilder.TestObject;
-                        blockBodies[i] = new BlockBody(block.Transactions, block.Ommers);
+                        blockBodies[i] = new BlockBody(block.Transactions, block.Uncles);
                         _bodies[blockHashes[i]] = blockBodies[i];
 
                         if (allKnown)
@@ -1127,7 +1156,7 @@ namespace Nethermind.Synchronization.Test
                     }
                 }
 
-                BlockBodiesMessage message = new BlockBodiesMessage(blockBodies);
+                BlockBodiesMessage message = new(blockBodies);
                 byte[] messageSerialized = _bodiesSerializer.Serialize(message);
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies);
             }
@@ -1152,7 +1181,7 @@ namespace Nethermind.Synchronization.Test
                         : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec(_headers[blockHashes[i]].Number), receipts[i]).RootHash;
                 }
 
-                ReceiptsMessage message = new ReceiptsMessage(receipts);
+                ReceiptsMessage message = new(receipts);
                 byte[] messageSerialized = _receiptsSerializer.Serialize(message);
                 return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
             }

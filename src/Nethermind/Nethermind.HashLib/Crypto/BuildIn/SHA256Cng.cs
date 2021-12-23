@@ -19,7 +19,7 @@ namespace Nethermind.HashLib.Crypto.BuildIn
     internal class SHA256Cng : HashCryptoBuildIn
     {
         public SHA256Cng() 
-            : base(new System.Security.Cryptography.SHA256CryptoServiceProvider(), 64)
+            : base(System.Security.Cryptography.SHA256.Create(), 64)
         {
         }
     }

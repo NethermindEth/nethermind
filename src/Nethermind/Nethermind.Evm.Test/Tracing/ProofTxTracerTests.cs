@@ -18,7 +18,6 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.Proofs;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -50,19 +49,32 @@ namespace Nethermind.Evm.Test.Tracing
         }
         
         [Test]
-        public void Can_trace_sender_recipient_miner_when_all_are_same()
+        public void Can_trace_sender_recipient_miner_when_miner_and_sender_are_same()
         {
             byte[] code = Prepare.EvmCode
                 .PushData(SampleHexData1)
                 .Done;
 
             SenderRecipientAndMiner addresses = new();
-            addresses.RecipientKey = SenderKey;
             addresses.MinerKey = SenderKey;
             (ProofTxTracer trace, _, _) = ExecuteAndTraceProofCall(addresses, code);
-            Assert.AreEqual(1, trace.Accounts.Count, "count");
+            Assert.AreEqual(2, trace.Accounts.Count, "count");
             Assert.True(trace.Accounts.Contains(Sender));
         }
+        
+        [Test]
+        public void Can_trace_sender_recipient_miner_when_miner_and_recipient_are_same()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(SampleHexData1)
+                .Done;
+
+            SenderRecipientAndMiner addresses = new();
+            addresses.MinerKey = addresses.RecipientKey;
+            (ProofTxTracer trace, _, _) = ExecuteAndTraceProofCall(addresses, code);
+            Assert.AreEqual(2, trace.Accounts.Count, "count");
+            Assert.True(trace.Accounts.Contains(Sender));
+        }        
         
         [Test]
         public void Can_trace_touch_only_null_accounts()

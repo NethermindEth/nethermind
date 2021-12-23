@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Processing
 {
     public class OneTimeChainProcessor : IBlockchainProcessor
     {
-        public CompositeBlockTracerFactory BlockTracerFactory => _processor.BlockTracerFactory;
+        public ITracerBag Tracers => _processor.Tracers;
 
         private readonly IBlockchainProcessor _processor;
         private readonly IReadOnlyDbProvider _readOnlyDbProvider;
@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Processing
             return _processor.StopAsync(processRemainingBlocks);
         }
 
-        public Block Process(Block block, ProcessingOptions options, IBlockTracer tracer)
+        public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer)
         {
             lock (_lock)
             {

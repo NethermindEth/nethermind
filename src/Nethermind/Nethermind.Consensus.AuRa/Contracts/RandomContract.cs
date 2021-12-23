@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
@@ -39,7 +40,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        (Keccak Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, UInt256 collectRound);
+        (Keccak Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, in UInt256 collectRound);
 
         /// <summary>
         /// Called by the validator's node to store a hash and a cipher of the validator's secret on each collection round.
@@ -58,7 +59,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         /// <param name="number">The validator's number.</param>
         /// <returns>Transaction to be included in block.</returns>
-        Transaction RevealNumber(UInt256 number);
+        Transaction RevealNumber(in UInt256 number);
         
         public enum Phase
         {
@@ -141,7 +142,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        private bool SentReveal(BlockHeader parentHeader, UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(SentReveal), SignerAddress, collectRound, SignerAddress);
+        private bool SentReveal(BlockHeader parentHeader, in UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(SentReveal), SignerAddress, collectRound, SignerAddress);
 
         /// <summary>
         /// Returns a boolean flag indicating whether the specified validator has committed their secret's hash for the specified collection round.
@@ -152,7 +153,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        private bool IsCommitted(BlockHeader parentHeader, UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(IsCommitted), SignerAddress, collectRound, SignerAddress);
+        private bool IsCommitted(BlockHeader parentHeader, in UInt256 collectRound) => Constant.Call<bool>(parentHeader, nameof(IsCommitted), SignerAddress, collectRound, SignerAddress);
 
         /// <summary>
         /// Returns the serial number of the current collection round.
@@ -180,7 +181,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// <remarks>
         /// The mining address of validator is last contract parameter.
         /// </remarks>
-        public (Keccak Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, UInt256 collectRound)
+        public (Keccak Hash, byte[] Cipher) GetCommitAndCipher(BlockHeader parentHeader, in UInt256 collectRound)
         {
             var (hash, cipher) = Constant.Call<byte[], byte[]>(parentHeader, nameof(GetCommitAndCipher), SignerAddress, collectRound, SignerAddress);
             return (new Keccak(hash), cipher);
@@ -203,6 +204,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
         /// </summary>
         /// <param name="number">The validator's number.</param>
         /// <returns>Transaction to be included in block.</returns>
-        public Transaction RevealNumber(UInt256 number) => GenerateTransaction<GeneratedTransaction>(nameof(RevealNumber), SignerAddress, number);
+        public Transaction RevealNumber(in UInt256 number) => GenerateTransaction<GeneratedTransaction>(nameof(RevealNumber), SignerAddress, number);
     }
 }

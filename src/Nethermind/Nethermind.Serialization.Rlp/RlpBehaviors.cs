@@ -24,7 +24,6 @@ namespace Nethermind.Serialization.Rlp
         None,
         AllowExtraData = 1,
         ForSealing = 2,
-        [Obsolete("Storage behaviour should be default behaviour.")]
         Storage = 4,
         Eip658Receipts = 8,
         AllowUnsigned = 16,

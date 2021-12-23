@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data
@@ -28,7 +29,7 @@ namespace Nethermind.JsonRpc.Data
         {
         }
        
-        public ReceiptForRpc(Keccak txHash, TxReceipt receipt)
+        public ReceiptForRpc(Keccak txHash, TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart = 0)
         {
             TransactionHash = txHash;
             TransactionIndex = receipt.Index;
@@ -36,23 +37,26 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = receipt.BlockNumber;
             CumulativeGasUsed = receipt.GasUsedTotal;
             GasUsed = receipt.GasUsed;
+            EffectiveGasPrice = effectiveGasPrice;
             From = receipt.Sender;
             To = receipt.Recipient;
             ContractAddress = receipt.ContractAddress;
-            Logs = receipt.Logs.Select((l, idx) => new LogEntryForRpc(receipt, l, idx)).ToArray();
+            Logs = receipt.Logs.Select((l, idx) => new LogEntryForRpc(receipt, l, idx + logIndexStart)).ToArray();
             LogsBloom = receipt.Bloom;
             Root = receipt.PostTransactionState;
             Status = receipt.StatusCode;
-            Error = receipt.Error;
+            Error = string.IsNullOrEmpty(receipt.Error) ? null : receipt.Error;
             Type = receipt.TxType;
         }
-        
+
         public Keccak TransactionHash { get; set; }
         public long TransactionIndex { get; set; }
         public Keccak BlockHash { get; set; }
         public long BlockNumber { get; set; }
         public long CumulativeGasUsed { get; set; }
         public long GasUsed { get; set; }
+        
+        public UInt256? EffectiveGasPrice { get; set; }
         public Address From { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
@@ -64,7 +68,7 @@ namespace Nethermind.JsonRpc.Data
         public Bloom? LogsBloom { get; set; }
         public Keccak Root { get; set; }
         public long Status { get; set; }
-        public string Error { get; set; }
+        public string? Error { get; set; }
         public TxType Type { get; set; }
 
         public TxReceipt ToReceipt()

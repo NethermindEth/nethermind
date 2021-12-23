@@ -36,17 +36,24 @@ namespace Nethermind.Merge.Plugin.Handlers
 {
     public class Eth2BlockProducerFactory
     {
-        private readonly ITxSource? _txSource;
+        private readonly ITxSource? _additionalTxSource;
+        private readonly IGasLimitCalculator? _gasLimitCalculator;
 
-        public Eth2BlockProducerFactory(ITxSource? txSource = null)
+        public Eth2BlockProducerFactory(ITxSource? additionalTxSource = null) : this(additionalTxSource, null)
         {
-            _txSource = txSource;
+            _additionalTxSource = additionalTxSource;
         }
 
-        public virtual Eth2BlockProducer Create(
+        protected Eth2BlockProducerFactory(ITxSource? additionalTxSource, IGasLimitCalculator? gasLimitCalculator)
+        {
+            _additionalTxSource = additionalTxSource;
+            _gasLimitCalculator = gasLimitCalculator;
+        }
+
+        public Eth2BlockProducer Create(
             IBlockProducerEnvFactory blockProducerEnvFactory,
             IBlockTree blockTree,
-            IBlockProcessingQueue blockProcessingQueue,
+            IBlockProductionTrigger blockProductionTrigger,
             ISpecProvider specProvider,
             ISigner engineSigner,
             ITimestamper timestamper,
@@ -59,9 +66,9 @@ namespace Nethermind.Merge.Plugin.Handlers
                 producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 blockTree,
-                blockProcessingQueue,
+                blockProductionTrigger,
                 producerEnv.ReadOnlyStateProvider,
-                new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
+                _gasLimitCalculator ?? new TargetAdjustedGasLimitCalculator(specProvider, miningConfig),
                 engineSigner,
                 timestamper,
                 specProvider,
@@ -69,6 +76,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         }
 
         protected BlockProducerEnv GetProducerEnv(IBlockProducerEnvFactory blockProducerEnvFactory) => 
-            blockProducerEnvFactory.Create(_txSource);
+            blockProducerEnvFactory.Create(_additionalTxSource);
     }
 }

@@ -22,7 +22,7 @@ namespace Nethermind.Core.Test
 {
     public class TestLogger : ILogger
     {
-        public List<string> LogList { get; set; } = new List<string>();
+        public List<string> LogList { get; set; } = new();
 
         public void Info(string text)
         {
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Test
             LogList.Add(text);
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
             LogList.Add(text);
         }

@@ -38,5 +38,6 @@ namespace Nethermind.Specs
         public long? DaoBlockNumber { get; set; }
         public ulong ChainId { get; set; }
         public long[] TransitionBlocks { get; set; } = new long[] {0};
+        public bool AllowTestChainOverride { get; set; } = true;
     }
 }

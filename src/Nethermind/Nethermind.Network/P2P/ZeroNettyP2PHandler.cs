@@ -17,6 +17,7 @@
 using System;
 using System.Net.Sockets;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -68,6 +69,7 @@ namespace Nethermind.Network.P2P
 
 
                 IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(uncompressedLength);
+
                 try
                 {
                     int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output.Array, output.ArrayOffset);
@@ -83,15 +85,22 @@ namespace Nethermind.Network.P2P
                     else
                     {
                         content.SkipBytes(content.ReadableBytes);
+                        output.SafeRelease();
                         throw;
                     }
                 }
 
                 content.SkipBytes(content.ReadableBytes);
-                ZeroPacket outputPacket = new ZeroPacket(output);
-                outputPacket.PacketType = input.PacketType;
-                _session.ReceiveMessage(outputPacket);
-                outputPacket.Release();
+                ZeroPacket outputPacket = new(output);
+                try
+                {
+                    outputPacket.PacketType = input.PacketType;
+                    _session.ReceiveMessage(outputPacket);
+                }
+                finally
+                {
+                    outputPacket.SafeRelease();
+                }
             }
             else
             {

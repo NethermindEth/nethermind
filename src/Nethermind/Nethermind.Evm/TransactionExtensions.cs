@@ -22,7 +22,7 @@ namespace Nethermind.Evm
 {
     public static class TransactionExtensions
     {
-        public static Address? GetRecipient(this Transaction tx, UInt256 nonce) =>
+        public static Address? GetRecipient(this Transaction tx, in UInt256 nonce) =>
             tx.To != null
                 ? tx.To
                 : tx.IsSystem()

@@ -41,7 +41,7 @@ namespace Nethermind.Serialization.Json
 
         public override BigInteger? ReadJson(JsonReader reader, Type objectType, BigInteger? existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            if (reader.TokenType == JsonToken.Null)
+            if (reader.TokenType == JsonToken.Null || reader.Value is null)
             {
                 return null;
             }

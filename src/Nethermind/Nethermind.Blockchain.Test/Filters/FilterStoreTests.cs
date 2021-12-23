@@ -17,8 +17,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -32,7 +34,7 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Can_save_and_load_block_filter()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
             BlockFilter filter = store.CreateBlockFilter(1);
             store.SaveFilter(filter);
             Assert.True(store.FilterExists(0), "exists");
@@ -42,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Can_save_and_load_log_filter()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
             LogFilter filter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
             store.SaveFilter(filter);
             Assert.True(store.FilterExists(0), "exists");
@@ -52,9 +54,9 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Cannot_overwrite_filters()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
 
-            BlockFilter externalFilter = new BlockFilter(100, 1);
+            BlockFilter externalFilter = new(100, 1);
             store.SaveFilter(externalFilter);
             Assert.Throws<InvalidOperationException>(() => store.SaveFilter(externalFilter));
         }
@@ -62,9 +64,9 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Ids_are_incremented_when_storing_externally_created_filter()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
 
-            BlockFilter externalFilter = new BlockFilter(100, 1);
+            BlockFilter externalFilter = new(100, 1);
             store.SaveFilter(externalFilter);
             LogFilter filter = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
             store.SaveFilter(filter);
@@ -77,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Remove_filter_removes_and_notifies()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
             BlockFilter filter = store.CreateBlockFilter(1);
             store.SaveFilter(filter);
             bool hasNotified = false;
@@ -91,14 +93,14 @@ namespace Nethermind.Blockchain.Test.Filters
         [Test]
         public void Can_get_filters_by_type()
         {
-            FilterStore store = new FilterStore();
+            FilterStore store = new();
             BlockFilter filter1 = store.CreateBlockFilter(1);
             store.SaveFilter(filter1);
             LogFilter filter2 = store.CreateLogFilter(new BlockParameter(1), new BlockParameter(2));
             store.SaveFilter(filter2);
 
-            LogFilter[] logFilters = store.GetFilters<LogFilter>();
-            BlockFilter[] blockFilters = store.GetFilters<BlockFilter>();
+            LogFilter[] logFilters = store.GetFilters<LogFilter>().ToArray();
+            BlockFilter[] blockFilters = store.GetFilters<BlockFilter>().ToArray();
             
             Assert.AreEqual(1, logFilters.Length, "log filters length");
             Assert.AreEqual(1, logFilters[0].Id, "log filters ids");
@@ -120,9 +122,9 @@ namespace Nethermind.Blockchain.Test.Filters
         [TestCaseSource(nameof(CorrectlyCreatesAddressFilterTestCases))]
         public void Correctly_creates_address_filter(object address, AddressFilter expected)
         {
-            BlockParameter from = new BlockParameter(100);
-            BlockParameter to = new BlockParameter(BlockParameterType.Latest);
-            FilterStore store = new FilterStore();
+            BlockParameter from = new(100);
+            BlockParameter to = new(BlockParameterType.Latest);
+            FilterStore store = new();
             LogFilter filter = store.CreateLogFilter(from, to, address);
             filter.AddressFilter.Should().BeEquivalentTo(expected);
         }
@@ -131,21 +133,30 @@ namespace Nethermind.Blockchain.Test.Filters
         {
             get
             {
-                yield return new TestCaseData(null);
-                yield return new TestCaseData(new object[] {new string[] {TestItem.KeccakA.ToString()}});
-                yield return new TestCaseData(new object[] {new string[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString()}});
-                yield return new TestCaseData(new object[] {new string[] {null, TestItem.KeccakB.ToString()}});
-                yield return new TestCaseData(new object[] {new object[] {null, new string[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString()}, TestItem.KeccakD.ToString()}});
+                yield return new TestCaseData(null, SequenceTopicsFilter.AnyTopic);
+                
+                yield return new TestCaseData(new[] {TestItem.KeccakA.ToString()}, 
+                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA)));
+                
+                yield return new TestCaseData(new[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString()}, 
+                    new SequenceTopicsFilter(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB)));
+                
+                yield return new TestCaseData(new[] {null, TestItem.KeccakB.ToString()}, 
+                    new SequenceTopicsFilter(AnyTopic.Instance, new SpecificTopic(TestItem.KeccakB)));
+                
+                yield return new TestCaseData(new object[] {new[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString()}, TestItem.KeccakD.ToString()}, 
+                    new SequenceTopicsFilter(new OrExpression(new SpecificTopic(TestItem.KeccakA), new SpecificTopic(TestItem.KeccakB), new SpecificTopic(TestItem.KeccakC)), new SpecificTopic(TestItem.KeccakD)));
             }
         }
         
         [TestCaseSource(nameof(CorrectlyCreatesTopicsFilterTestCases))]
-        public void Correctly_creates_topics_filter(IEnumerable<object> topics)
+        public void Correctly_creates_topics_filter(IEnumerable<object> topics, TopicsFilter expected)
         {
-            BlockParameter from = new BlockParameter(100);
-            BlockParameter to = new BlockParameter(BlockParameterType.Latest);
-            FilterStore store = new FilterStore();
+            BlockParameter from = new(100);
+            BlockParameter to = new(BlockParameterType.Latest);
+            FilterStore store = new();
             LogFilter filter = store.CreateLogFilter(from, to, null, topics);
+            filter.TopicsFilter.Should().BeEquivalentTo(expected, c => c.ComparingByValue<TopicsFilter>());
         }
     }
 }

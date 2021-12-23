@@ -22,6 +22,8 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
@@ -42,6 +44,8 @@ namespace Nethermind.Mev
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
         private readonly ITracerFactory _tracerFactory;
+        private readonly ISpecProvider _specProvider;
+        private readonly ISigner? _signer;
         private readonly ulong _chainId;
 
         public MevModuleFactory(
@@ -51,6 +55,8 @@ namespace Nethermind.Mev
             IBlockTree blockTree,
             IStateReader stateReader,
             ITracerFactory tracerFactory,
+            ISpecProvider specProvider,
+            ISigner? signer,
             ulong chainId)
         {
             _mevConfig = mevConfig;
@@ -59,6 +65,8 @@ namespace Nethermind.Mev
             _blockTree = blockTree;
             _stateReader = stateReader;
             _tracerFactory = tracerFactory;
+            _specProvider = specProvider;
+            _signer = signer;
             _chainId = chainId;
         }
         
@@ -69,8 +77,9 @@ namespace Nethermind.Mev
                 _bundlePool,
                 _blockTree,
                 _stateReader, 
-                _tracerFactory, 
-                _chainId);
+                _tracerFactory,
+                _specProvider,
+                _signer);
         }
     }
 }

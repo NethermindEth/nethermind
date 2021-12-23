@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<long> GetLatestBlockNumberAsync()
         {
-            var head = _blockchainBridge.BeamHead;
+            var head = _blockchainBridge.HeadBlock;
             return head is null ? Task.FromResult(0L) : Task.FromResult(head.Number);
         }
 
@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<Block?> GetLatestBlockAsync()
         {
-            Block head = _blockchainBridge.BeamHead;
+            Block head = _blockchainBridge.HeadBlock;
             return head?.Hash is null
                 ? Task.FromResult<Block?>(null)
                 : Task.FromResult(_blockTree.FindBlock(head.Hash));
@@ -77,12 +77,12 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<UInt256> GetNonceAsync(Address address)
         {
-            return Task.FromResult(_stateReader.GetNonce(_blockchainBridge.BeamHead.StateRoot, address));   
+            return Task.FromResult(_stateReader.GetNonce(_blockchainBridge.HeadBlock.StateRoot, address));   
         }
 
         public Task<NdmTransaction?> GetTransactionAsync(Keccak transactionHash)
         {
-            (TxReceipt receipt, Transaction transaction) = _blockchainBridge.GetTransaction(transactionHash);
+            (TxReceipt receipt, Transaction transaction, UInt256? baseFee) = _blockchainBridge.GetTransaction(transactionHash);
             if (transaction is null)
             {
                 return Task.FromResult<NdmTransaction?>(null);
@@ -98,7 +98,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public Task<byte[]> CallAsync(Transaction transaction)
         {
-            var callOutput = _blockchainBridge.Call(_blockchainBridge.BeamHead?.Header, transaction, CancellationToken.None);
+            var callOutput = _blockchainBridge.Call(_blockchainBridge.HeadBlock?.Header, transaction, CancellationToken.None);
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
 

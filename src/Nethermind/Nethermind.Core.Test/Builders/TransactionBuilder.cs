@@ -46,7 +46,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder<T> WithTo(Address address)
+        public TransactionBuilder<T> WithHash(Keccak? hash)
+        {
+            TestObjectInternal.Hash = hash;
+            return this;
+        }
+        
+        public TransactionBuilder<T> WithTo(Address? address)
         {
             TestObjectInternal.To = address;
             return this;
@@ -100,6 +106,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.GasPrice = maxPriorityFeePerGas;
             return this;
         }
+        
+        public TransactionBuilder<T> WithGasBottleneck(UInt256 gasBottleneck)
+        {
+            TestObjectInternal.GasBottleneck = gasBottleneck;
+            return this;
+        }
 
         public TransactionBuilder<T> WithTimestamp(UInt256 timestamp)
         {
@@ -126,7 +138,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder<T> WithSenderAddress(Address address)
+        public TransactionBuilder<T> WithSenderAddress(Address? address)
         {
             TestObjectInternal.SenderAddress = address;
             return this;
@@ -156,7 +168,7 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> SignedAndResolved(PrivateKey? privateKey = null)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
-            EthereumEcdsa ecdsa = new EthereumEcdsa(TestObjectInternal.ChainId ?? ChainId.Mainnet, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(TestObjectInternal.ChainId ?? ChainId.Mainnet, LimboLogs.Instance);
             ecdsa.Sign(privateKey, TestObjectInternal, true);
             TestObjectInternal.SenderAddress = privateKey.Address;
             return this;
@@ -180,6 +192,12 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithType(TxType txType)
         {
             TestObjectInternal.Type = txType;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithIsServiceTransaction(bool isServiceTransaction)
+        {
+            TestObjectInternal.IsServiceTransaction = isServiceTransaction;
             return this;
         }
     }

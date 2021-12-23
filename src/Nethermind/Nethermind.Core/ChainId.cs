@@ -33,6 +33,8 @@ namespace Nethermind.Core
     /// 77: Sokol, the public POA Network testnet
     /// 99: Core, the public POA Network main network
     /// 100: xDai, the public MakerDAO/POA Network main network
+    /// 246: EnergyWeb, the public Energyweb main network
+    /// 73799: Volta, the public Volta testnet
     /// 31337: GoChain testnet, the GoChain networks public testnet
     /// 401697: Tobalaba, the public Energy Web Foundation testnet
     /// 7762959: Musicoin, the music blockchain
@@ -54,6 +56,9 @@ namespace Nethermind.Core
         public const int EnergyWeb = 246;
         public const int DefaultGethPrivateChain = 1337;
         public const int Stureby = 314158;
+        public const int xDai = 100;
+        public const int PoaCore = 99;
+        public const int Volta = 73799;
 
         public static string GetChainName(ulong chainId)
         {
@@ -72,6 +77,9 @@ namespace Nethermind.Core
                 EthereumClassicTestnet => "EthereumClassicTestnet",
                 DefaultGethPrivateChain => "DefaultGethPrivateChain",
                 Stureby => "Stureby",
+                xDai => "xDai",
+                PoaCore => "PoaCore",
+                Volta => "Volta",
                 _ => chainId.ToString()
             };
         }

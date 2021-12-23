@@ -17,9 +17,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
@@ -47,7 +45,7 @@ namespace Nethermind.JsonRpc.Test
                 JsonRpcRequest request = CreateRequest("eth_getBlockByHash", Parameter.ToString(), false);
                 string blockJson = await SendRequest(request);
                 BlockForRpcTxHashes block = _serializer.Deserialize<JsonRpcSuccessResponse<BlockForRpcTxHashes>>(blockJson).Result;
-                List<string> transactionsJsons = new List<string>(block.Transactions.Length);
+                List<string> transactionsJsons = new(block.Transactions.Length);
                 foreach (string tx in block.Transactions)
                 {
                     transactionsJsons.Add(await SendRequest(CreateRequest("eth_getTransactionReceipt", tx)));

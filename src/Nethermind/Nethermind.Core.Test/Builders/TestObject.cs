@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -23,7 +24,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public static class TestItem
     {
-        private static Random _random = new Random();
+        private static Random _random = new();
         
         static TestItem()
         {
@@ -67,12 +68,12 @@ namespace Nethermind.Core.Test.Builders
         public static Keccak KeccakG = Keccak.Compute("G");
         public static Keccak KeccakH = Keccak.Compute("H");
 
-        public static PrivateKey PrivateKeyA = new PrivateKey("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyB = new PrivateKey("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyC = new PrivateKey("030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyD = new PrivateKey("040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyE = new PrivateKey("050102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        public static PrivateKey PrivateKeyF = new PrivateKey("060102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyA = new("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyB = new("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyC = new("030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyD = new("040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyE = new("050102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyF = new("060102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 
         public static PublicKey PublicKeyA = PrivateKeyA.PublicKey;
         public static PublicKey PublicKeyB = PrivateKeyB.PublicKey;
@@ -81,7 +82,7 @@ namespace Nethermind.Core.Test.Builders
         public static PublicKey PublicKeyE = PrivateKeyE.PublicKey;
         public static PublicKey PublicKeyF = PrivateKeyF.PublicKey;
 
-        public static PrivateKey IgnoredPrivateKey = new PrivateKey("040102030405060708090a0b0c0d0e0f0001abe120919026fffff12155555555");
+        public static PrivateKey IgnoredPrivateKey = new("040102030405060708090a0b0c0d0e0f0001abe120919026fffff12155555555");
         public static PublicKey IgnoredPublicKey = IgnoredPrivateKey.PublicKey;
 
         public static PrivateKey[] PrivateKeys;
@@ -93,17 +94,26 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressB = PublicKeyB.Address;
         public static Address AddressC = PublicKeyC.Address;
         public static Address AddressD = PublicKeyD.Address;
+        public static Address AddressE = PublicKeyE.Address;
+        public static Address AddressF = PublicKeyF.Address;
+
+        public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
+        public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");
+        public static IPEndPoint IPEndPointC = IPEndPoint.Parse("10.0.0.3");
+        public static IPEndPoint IPEndPointD = IPEndPoint.Parse("10.0.0.4");
+        public static IPEndPoint IPEndPointE = IPEndPoint.Parse("10.0.0.5");
+        public static IPEndPoint IPEndPointF = IPEndPoint.Parse("10.0.0.6");
 
         public static Bloom NonZeroBloom;
         
-        public static Address GetRandomAddress(Random random = null)
+        public static Address GetRandomAddress(Random? random = null)
         {
             byte[] bytes = new byte[20];
             (random ?? _random).NextBytes(bytes);
             return new Address(bytes);
         }
         
-        public static Keccak GetRandomKeccak(Random random = null)
+        public static Keccak GetRandomKeccak(Random? random = null)
         {
             byte[] bytes = new byte[32];
             (random ?? _random).NextBytes(bytes);

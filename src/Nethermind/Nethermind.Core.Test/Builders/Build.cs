@@ -22,7 +22,7 @@ namespace Nethermind.Core.Test.Builders
         {
         }
 
-        public static Build A => new Build();
-        public static Build An => new Build();
+        public static Build A => new();
+        public static Build An => new();
     }
 }

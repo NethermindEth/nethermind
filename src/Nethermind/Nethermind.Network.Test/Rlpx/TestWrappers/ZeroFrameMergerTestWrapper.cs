@@ -18,7 +18,6 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Local;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
@@ -37,7 +36,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
 
         public ZeroPacket Decode(IByteBuffer input)
         {
-            List<object> result = new List<object>();
+            List<object> result = new();
             while (input.IsReadable())
             {
                 base.Decode(_context, input, result);

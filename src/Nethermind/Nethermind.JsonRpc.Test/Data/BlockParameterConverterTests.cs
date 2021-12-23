@@ -15,9 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Data;
 using Newtonsoft.Json;
@@ -41,11 +39,11 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"100\"", 100)]
         public void Can_read_block_number(string input, long output)
         {
-            using StringReader reader = new StringReader(input);
-            using JsonTextReader textReader = new JsonTextReader(reader);
+            using StringReader reader = new(input);
+            using JsonTextReader textReader = new(reader);
 
-            JsonSerializer serializer = new JsonSerializer();
-            BlockParameterConverter converter = new BlockParameterConverter();
+            JsonSerializer serializer = new();
+            BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
             BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader);
             
@@ -62,11 +60,11 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"PeNdInG\"", BlockParameterType.Pending)]
         public void Can_read_type(string input, BlockParameterType output)
         {
-            using StringReader reader = new StringReader(input);
-            using JsonTextReader textReader = new JsonTextReader(reader);
+            using StringReader reader = new(input);
+            using JsonTextReader textReader = new(reader);
 
-            JsonSerializer serializer = new JsonSerializer();
-            BlockParameterConverter converter = new BlockParameterConverter();
+            JsonSerializer serializer = new();
+            BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
             BlockParameter blockParameter = serializer.Deserialize<BlockParameter>(textReader);
             
@@ -80,13 +78,13 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("null", BlockParameterType.BlockHash)]
         public void Can_write_type(string output, BlockParameterType input)
         {
-            BlockParameter blockParameter = new BlockParameter(input);
+            BlockParameter blockParameter = new(input);
             
-            using StringWriter reader = new StringWriter();
-            using JsonTextWriter textWriter = new JsonTextWriter(reader);
+            using StringWriter reader = new();
+            using JsonTextWriter textWriter = new(reader);
 
-            JsonSerializer serializer = new JsonSerializer();
-            BlockParameterConverter converter = new BlockParameterConverter();
+            JsonSerializer serializer = new();
+            BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
             serializer.Serialize(textWriter, blockParameter);
             
@@ -97,13 +95,13 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"0xa\"", 10)]
         public void Can_write_number(string output, long input)
         {
-            BlockParameter blockParameter = new BlockParameter(input);
+            BlockParameter blockParameter = new(input);
             
-            using StringWriter reader = new StringWriter();
-            using JsonTextWriter textWriter = new JsonTextWriter(reader);
+            using StringWriter reader = new();
+            using JsonTextWriter textWriter = new(reader);
 
-            JsonSerializer serializer = new JsonSerializer();
-            BlockParameterConverter converter = new BlockParameterConverter();
+            JsonSerializer serializer = new();
+            BlockParameterConverter converter = new();
             serializer.Converters.Add(converter);
             serializer.Serialize(textWriter, blockParameter);
             

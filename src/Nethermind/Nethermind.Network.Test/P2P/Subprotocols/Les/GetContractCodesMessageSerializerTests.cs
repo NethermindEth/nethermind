@@ -14,15 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
-using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Les
@@ -35,13 +30,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         {
             CodeRequest[] requests = new CodeRequest[]
             {
-                new CodeRequest(TestItem.KeccakA, TestItem.KeccakB),
-                new CodeRequest(TestItem.KeccakC, TestItem.KeccakD),
+                new(TestItem.KeccakA, TestItem.KeccakB),
+                new(TestItem.KeccakC, TestItem.KeccakD),
             };
 
-            GetContractCodesMessage message = new GetContractCodesMessage(requests, 774);
+            GetContractCodesMessage message = new(requests, 774);
 
-            GetContractCodesMessageSerializer serializer = new GetContractCodesMessageSerializer();
+            GetContractCodesMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);
         }

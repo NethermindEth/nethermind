@@ -40,7 +40,10 @@ namespace Nethermind.Core.Test.Builders
     public class BlockTreeBuilder : BuilderBase<BlockTree>
     {
         private readonly Block _genesisBlock;
-        private IReceiptStorage _receiptStorage;
+        private IReceiptStorage? _receiptStorage;
+        private ISpecProvider? _specProvider;
+        private IEthereumEcdsa? _ecdsa;
+        private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;        
 
         private bool _onlyHeaders;
 
@@ -84,10 +87,6 @@ namespace Nethermind.Core.Test.Builders
             OfChainLength(out _, chainLength, splitVariant, splitFrom, blockBeneficiaries);
             return this;
         }
-
-        private ISpecProvider _specProvider;
-        private IEthereumEcdsa _ecdsa;
-        private Func<Block, Transaction, IEnumerable<LogEntry>> _logCreationFunction;
 
         public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
         {
@@ -148,11 +147,11 @@ namespace Nethermind.Core.Test.Builders
                     .WithBeneficiary(beneficiary)
                     .TestObject;
 
-                List<TxReceipt> receipts = new List<TxReceipt>();
+                List<TxReceipt> receipts = new();
                 foreach (var transaction in currentBlock.Transactions)
                 {
                     var logEntries = _logCreationFunction?.Invoke(currentBlock, transaction)?.ToArray() ?? Array.Empty<LogEntry>();
-                    TxReceipt receipt = new TxReceipt
+                    TxReceipt receipt = new()
                     {
                         Logs = logEntries,
                         TxHash = transaction.Hash,
@@ -213,6 +212,33 @@ namespace Nethermind.Core.Test.Builders
             blockTree.UpdateMainChain(new[] {block}, true);
         }
 
+        public BlockTreeBuilder WithBlocks(params Block[] blocks)
+        {
+            int counter = 0;
+            if (blocks.Length == 0)
+            {
+                return this;
+            }
+
+            if (blocks[0].Number != 0)
+            {
+                throw new ArgumentException("First block does not have block number 0.");
+            }
+
+            foreach (Block block in blocks)
+            {
+                if (block.Number != counter++)
+                {
+                    throw new ArgumentException("Block numbers are not consecutively increasing.");
+                }
+
+                TestObjectInternal.SuggestBlock(block);
+                TestObjectInternal.UpdateMainChain(new[] {block}, true);
+            }
+
+            return this;
+        }
+
         public static void ExtendTree(IBlockTree blockTree, long newChainLength)
         {
             Block previous = blockTree.RetrieveHeadBlock();
@@ -225,7 +251,7 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>> logsForBlockBuilder = null)
+        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>>? logsForBlockBuilder = null)
         {
             _specProvider = specProvider;
             _ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);

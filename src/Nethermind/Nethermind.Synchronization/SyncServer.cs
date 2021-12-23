@@ -183,7 +183,7 @@ namespace Nethermind.Synchronization
 
             ValidateSeal(block, nodeWhoSentTheBlock);
             if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None
-                || (_syncModeSelector.Current & (SyncMode.Full | SyncMode.Beam)) != SyncMode.None)
+                || (_syncModeSelector.Current & SyncMode.Full) != SyncMode.None)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                 SyncBlock(block, nodeWhoSentTheBlock);
@@ -342,7 +342,7 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[]?[] GetNodeData(IList<Keccak> keys,
+        public byte[]?[] GetNodeData(IReadOnlyList<Keccak> keys,
             NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             byte[]?[] values = new byte[keys.Count][];

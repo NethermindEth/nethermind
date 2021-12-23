@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.Test
             throw new NotImplementedException();
         }
 
-        public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
+        public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }
@@ -99,17 +99,17 @@ namespace Nethermind.Synchronization.Test
 
         public PublicKey Id => Node.Id;
 
-        public bool SendNewTransaction(Transaction transaction, bool isPriority)
+        public void SendNewTransactions(IEnumerable<Transaction> txs)
         {
             throw new NotImplementedException();
         }
 
-        public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+        public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {
             throw new NotImplementedException();
         }
 
-        public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+        public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }

@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
-        <LangVersion>8.0</LangVersion>
+        <TargetFramework>net6.0</TargetFramework>
+        <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
@@ -15,7 +15,7 @@
       <ProjectReference Include="..\Nethermind.DataMarketplace.Channels\Nethermind.DataMarketplace.Channels.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
       <ProjectReference Include="..\Nethermind.DataMarketplace.Infrastructure\Nethermind.DataMarketplace.Infrastructure.csproj" />
-      <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
+      <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     </ItemGroup>
 
 </Project>

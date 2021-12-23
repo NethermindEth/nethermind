@@ -36,12 +36,12 @@ namespace Nethermind.Evm.Precompiles.Bls.Shamatar
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 115000L;
 
-        public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             return 23000L * (inputData.Length / PairSize);
         }
 
-        public (ReadOnlyMemory<byte>, bool) Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+        public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             if (inputData.Length % PairSize > 0 || inputData.Length == 0)
             {

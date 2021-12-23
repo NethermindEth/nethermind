@@ -25,6 +25,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -40,7 +41,7 @@ namespace Nethermind.Mev.Execution
         private readonly ITxPool _txPool;
         private long _gasLimit;
 
-        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ITxPool txPool) : base(tracerFactory)
+        public TxBundleSimulator(ITracerFactory tracerFactory, IGasLimitCalculator gasLimitCalculator, ITimestamper timestamper, ITxPool txPool, ISpecProvider specProvider, ISigner? signer) : base(tracerFactory, specProvider, signer)
         {
             _gasLimitCalculator = gasLimitCalculator;
             _timestamper = timestamper;
@@ -60,27 +61,42 @@ namespace Nethermind.Mev.Execution
             }
         }
 
-        protected override SimulatedMevBundle BuildResult(MevBundle bundle, Block block, BundleBlockTracer tracer, Keccak resultStateRoot)
+        protected override long GetGasLimit(BlockHeader parent) => _gasLimitCalculator.GetGasLimit(parent);
+
+        protected override SimulatedMevBundle BuildResult(MevBundle bundle, BundleBlockTracer tracer)
         {
             UInt256 eligibleGasFeePayment = UInt256.Zero;
+            UInt256 totalGasFeePayment = UInt256.Zero;
             bool success = true;
             for (int i = 0; i < bundle.Transactions.Count; i++)
             {
-                Transaction tx = bundle.Transactions[i];
+                BundleTransaction tx = bundle.Transactions[i];
 
-                if (!bundle.RevertingTxHashes.Contains(tx.Hash))
-                {
-                    success &= tracer.TransactionResults[i];
-                }
+                tx.SimulatedBundleGasUsed = (UInt256)tracer.GasUsed;
 
+                success &= tracer.TransactionResults[i];
+                
+                totalGasFeePayment += tracer.TxFees[i];
                 if (!_txPool.IsKnown(tx.Hash))
                 {
                     eligibleGasFeePayment += tracer.TxFees[i];
                 }
             }
-
-            Metrics.TotalCoinbasePayments += tracer.CoinbasePayments;
             
+            for (int i = 0; i < bundle.Transactions.Count; i++)
+            {
+                bundle.Transactions[i].SimulatedBundleFee = totalGasFeePayment + tracer.CoinbasePayments;
+            }
+
+            if ((UInt256)decimal.MaxValue >= (UInt256)Metrics.TotalCoinbasePayments + tracer.CoinbasePayments)
+            {
+                Metrics.TotalCoinbasePayments += (decimal)tracer.CoinbasePayments;
+            }
+            else
+            {
+                Metrics.TotalCoinbasePayments = ulong.MaxValue;
+            }
+
             return new(bundle, tracer.GasUsed, success, tracer.BundleFee, tracer.CoinbasePayments, eligibleGasFeePayment);
         }
 
@@ -165,7 +181,9 @@ namespace Nethermind.Mev.Execution
                         TxFees[_tracer.Index] = txFee;
                     }
                     
-                    TransactionResults[_tracer.Index] = _tracer.Success;
+                    TransactionResults[_tracer.Index] = 
+                        _tracer.Success || 
+                        (tx is BundleTransaction {CanRevert: true} && _tracer.Error == "revert");
                 }
 
                 if (GasUsed > _gasLimit)
@@ -174,7 +192,9 @@ namespace Nethermind.Mev.Execution
                 }
             }
             
-            public void EndBlockTrace() { }
+            public void EndBlockTrace()
+            {
+            }
         }
 
         public class BundleTxTracer : ITxTracer
@@ -207,6 +227,7 @@ namespace Nethermind.Mev.Execution
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
             
             public bool Success { get; private set; }
+            public string? Error { get; private set; }
             
             public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
             {
@@ -218,6 +239,7 @@ namespace Nethermind.Mev.Execution
             {
                 GasSpent = gasSpent;
                 Success = false;
+                Error = error;
             }
 
             public void StartOperation(int depth, long gas, Instruction opcode, int pc)

@@ -1,3 +1,4 @@
+#! /bin/bash
 cd ~/src/nethermind
 git stash
 git pull

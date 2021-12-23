@@ -16,10 +16,16 @@
 //
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Logging;
+using Nethermind.Monitoring.Config;
+using Nethermind.Monitoring.Metrics;
+using Nethermind.Runner;
 using NUnit.Framework;
 
 namespace Nethermind.Monitoring.Test
@@ -27,6 +33,36 @@ namespace Nethermind.Monitoring.Test
     [TestFixture]
     public class MetricsTests
     {
+        [Test]
+        public void Register_and_update_metrics_should_not_throw_exception()
+        {
+            MetricsConfig metricsConfig = new()
+            {
+                Enabled = true
+            };
+            List<Type> knownMetricsTypes = new()
+            {
+                typeof(Nethermind.Mev.Metrics), typeof(Nethermind.TxPool.Metrics), typeof(Nethermind.Blockchain.Metrics),
+                typeof(Nethermind.Consensus.AuRa.Metrics), typeof(Nethermind.Evm.Metrics), typeof(Nethermind.JsonRpc.Metrics),
+                typeof(Nethermind.Db.Metrics), typeof(Nethermind.Network.Metrics), typeof(Init.Metrics), 
+                typeof(Nethermind.Synchronization.Metrics), typeof(Nethermind.Trie.Metrics), typeof(Nethermind.Trie.Pruning.Metrics), 
+            };
+            MetricsUpdater metricsUpdater = new(metricsConfig);
+            MonitoringService monitoringService = new(metricsUpdater, metricsConfig, LimboLogs.Instance);
+            List<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics)).ToList();
+            metrics.AddRange(knownMetricsTypes);
+
+            Assert.DoesNotThrow(() =>
+            {
+                foreach (Type metric in metrics)
+                {
+                    monitoringService.RegisterMetrics(metric);
+                }
+
+                metricsUpdater.UpdateMetrics(null);
+            });
+        }
+        
         [Test]
         public void All_config_items_have_descriptions()
         {

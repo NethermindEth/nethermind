@@ -21,8 +21,10 @@ namespace Nethermind.TxPool.Collections
 {
     public partial class SortedPool<TKey, TValue, TGroupKey>
     {
+#pragma warning disable 67
         public event EventHandler<SortedPoolEventArgs>? Inserted;
         public event EventHandler<SortedPoolRemovedEventArgs>? Removed;
+#pragma warning restore 67
 
         public class SortedPoolEventArgs
         {

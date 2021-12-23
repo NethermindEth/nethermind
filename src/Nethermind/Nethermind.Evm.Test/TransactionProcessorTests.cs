@@ -18,6 +18,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
@@ -28,12 +29,12 @@ using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -44,16 +45,16 @@ namespace Nethermind.Evm.Test
     [Parallelizable(ParallelScope.Self)]
     public class TransactionProcessorTests
     {
-        private bool _isEip155Enabled;
-        private ISpecProvider _specProvider;
+        private readonly bool _isEip155Enabled;
+        private readonly ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private TransactionProcessor _transactionProcessor;
-        private StateProvider _stateProvider;
+        private IStateProvider _stateProvider;
 
         public TransactionProcessorTests(bool eip155Enabled)
         {
             _isEip155Enabled = eip155Enabled;
-            _specProvider = eip155Enabled ? (ISpecProvider)MainnetSpecProvider.Instance : MainnetSpecProvider.Instance;
+            _specProvider = MainnetSpecProvider.Instance;
         }
         
         [SetUp]
@@ -67,7 +68,7 @@ namespace Nethermind.Evm.Test
             _stateProvider.CommitTree(0);
 
             StorageProvider storageProvider = new(trieStore, _stateProvider, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new(_stateProvider, storageProvider, Substitute.For<IBlockhashProvider>(), _specProvider, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
             _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
         }
@@ -182,12 +183,23 @@ namespace Nethermind.Evm.Test
         [TestCase(true, false)]
         [TestCase(false, true)]
         [TestCase(false, false)]
-        public void Can_handle_quick_fail_on_not_enough_balance(bool withStateDiff, bool withTrace)
+        public void Can_handle_quick_fail_on_not_enough_balance_on_intrinsic_gas(bool withStateDiff, bool withTrace)
         {
-            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-            tx.Value = 2.Ether();
+            AccessListBuilder accessListBuilder = new();
+            foreach (Address address in TestItem.Addresses)
+            {
+                accessListBuilder.AddAddress(address);
+            }
+            
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(GasCostOf.Transaction * 2)
+                .WithAccessList(accessListBuilder.ToAccessList())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+                .TestObject;
 
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            tx.Value = 1.Ether() - 3 * GasCostOf.Transaction;
+
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
 
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
@@ -195,6 +207,26 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
         }
         
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(false, false)]
+        public void Can_handle_quick_fail_on_not_enough_balance_on_reserved_gas_payment(bool withStateDiff, bool withTrace)
+        {
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(GasCostOf.Transaction * 2)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled)
+                .TestObject;
+
+            tx.Value = 1.Ether() - GasCostOf.Transaction;
+
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
+
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
+            Execute(tracer, tx, block);
+
+            Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+        }
         
         [TestCase(true, true)]
         [TestCase(true, false)]
@@ -208,7 +240,7 @@ namespace Nethermind.Evm.Test
                 .WithType(TxType.EIP1559)
                 .WithGasLimit(100000).TestObject;
 
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).WithTransactions(tx).TestObject;
 
             BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
             Execute(tracer, tx, block);
@@ -532,6 +564,74 @@ namespace Nethermind.Evm.Test
             Execute(tracer, tx, block);
             _stateProvider.AccountExists(tx.SenderAddress).Should().BeTrue();
         }
+        
+        [Test]
+        public void Balance_is_changed_on_buildup_and_restored()
+        {
+            long gasLimit = 100000;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(0).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            int state = _stateProvider.TakeSnapshot();
+            _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
+            _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 21000);
+            
+            _stateProvider.Restore(state);
+            _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
+        }
+        
+        [Test]
+        public void Account_is_not_created_on_buildup_and_restore()
+        {
+            long gasLimit = 100000;
+            Transaction tx = Build.A.Transaction
+                .WithValue(0.Ether())
+                .WithGasPrice(1)
+                .WithGasLimit(gasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyD, _isEip155Enabled)
+                .TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
+            int state = _stateProvider.TakeSnapshot();
+            _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
+            _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeTrue();
+            _stateProvider.Restore(state);
+            _stateProvider.AccountExists(TestItem.PrivateKeyD.Address).Should().BeFalse();
+        }
+        
+        [Test]
+        public void Nonce_is_not_changed_on_buildup_and_restore()
+        {
+            long gasLimit = 100000;
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(1.Ether() - (UInt256)gasLimit).WithGasPrice(1).WithGasLimit(gasLimit).TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
+
+            int state = _stateProvider.TakeSnapshot();
+            _transactionProcessor.BuildUp(tx, block.Header, NullTxTracer.Instance);
+            _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(1);
+            _stateProvider.Restore(state);
+            _stateProvider.GetNonce(TestItem.PrivateKeyA.Address).Should().Be(0);
+        }
+        
+        [Test]
+        public void State_changed_twice_in_buildup_should_have_correct_gas_cost()
+        {
+            long gasLimit = 100000;
+            Transaction tx1 = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(0).WithGasPrice(1).WithGasLimit(21000).TestObject;
+            Transaction tx2 = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithValue(0).WithNonce(1).WithGasPrice(1).WithGasLimit(21000).TestObject;
+            Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx1, tx2).WithGasLimit(gasLimit).TestObject;
+
+            int state = _stateProvider.TakeSnapshot();
+            _transactionProcessor.BuildUp(tx1, block.Header, NullTxTracer.Instance);
+            _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 21000);
+            
+            _transactionProcessor.BuildUp(tx2, block.Header, NullTxTracer.Instance);
+            _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether() - 42000);
+            
+            _stateProvider.Restore(state);
+            _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(1.Ether());
+        }
 
         private BlockReceiptsTracer BuildTracer(Block block, Transaction tx, bool stateDiff, bool trace)
         {
@@ -558,6 +658,7 @@ namespace Nethermind.Evm.Test
             tracer.StartNewTxTrace(tx);
             _transactionProcessor.Execute(tx, block.Header, tracer);
             tracer.EndTxTrace();
+            tracer.EndBlockTrace();
         }
 
         private void CallAndRestore(BlockReceiptsTracer tracer, Transaction tx, Block block)
@@ -566,6 +667,7 @@ namespace Nethermind.Evm.Test
             tracer.StartNewTxTrace(tx);
             _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
             tracer.EndTxTrace();
+            tracer.EndBlockTrace();
         }
     }
 }

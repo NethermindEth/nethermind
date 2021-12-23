@@ -39,9 +39,9 @@ namespace Nethermind.AuRa.Test.Validators
 
         private ListBasedValidator GetListValidator(params Address[] address)
         {
-            var logManager = LimboLogs.Instance;
+            LimboLogs logManager = LimboLogs.Instance;
             _validSealerStrategy = new ValidSealerStrategy();
-            var validator = new ListBasedValidator(
+            ListBasedValidator validator = new(
                 new AuRaParameters.Validator()
                 {
                     ValidatorType = AuRaParameters.ValidatorType.List,
@@ -92,7 +92,7 @@ namespace Nethermind.AuRa.Test.Validators
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
-            var logManager = LimboLogs.Instance;
+            LimboLogs logManager = LimboLogs.Instance;
             Action act = () => new ListBasedValidator(null, new ValidSealerStrategy(), Substitute.For<IValidatorStore>(), logManager, 1); 
             act.Should().Throw<ArgumentNullException>();
         }

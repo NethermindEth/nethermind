@@ -239,7 +239,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             if (_currentAction != null)
             {
-                throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
+                throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress?.Length ?? 0}");
             }
 
             if (_trace.Action.TraceAddress.Length == 0)
@@ -441,9 +441,17 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PushAction(action);
         }
 
-        private string GetCreateMethod(ExecutionType callType)
+        private string? GetCreateMethod(ExecutionType callType)
         {
-            return callType == ExecutionType.Create ? "create" : "create2";
+            switch (callType)
+            {
+                case ExecutionType.Create:
+                    return "create";
+                case ExecutionType.Create2:
+                    return "create2";
+                default:
+                    return null;
+            }
         }
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)

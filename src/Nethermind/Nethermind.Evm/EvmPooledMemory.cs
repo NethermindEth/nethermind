@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -160,6 +160,26 @@ namespace Nethermind.Evm
             return _memory.AsMemory((int)location, (int)length);
         }
 
+        public ReadOnlyMemory<byte> Inspect(in UInt256 location, in UInt256 length)
+        {
+            if (length.IsZero)
+            {
+                return ReadOnlyMemory<byte>.Empty;
+            }
+
+            if (location > int.MaxValue)
+            {
+                return new byte[(long)length];
+            }
+
+            if (_memory == null || location + length > _memory.Length)
+            {
+                return ReadOnlyMemory<byte>.Empty;
+            }
+
+            return _memory.AsMemory((int)location, (int)length);
+        }
+
         public long CalculateMemoryCost(in UInt256 location, in UInt256 length)
         {
             if (length.IsZero)
@@ -221,7 +241,7 @@ namespace Nethermind.Evm
 
         private static UInt256 MaxInt32 = (UInt256)int.MaxValue;
         
-        public static long Div32Ceiling(UInt256 length)
+        public static long Div32Ceiling(in UInt256 length)
         {
             UInt256 rem = length & 31;
             UInt256 result = length >> 5;

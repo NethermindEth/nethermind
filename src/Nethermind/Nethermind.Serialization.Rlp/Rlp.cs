@@ -87,7 +87,7 @@ namespace Nethermind.Serialization.Rlp
         {
             foreach (var type in assembly.GetExportedTypes())
             {
-                if (!type.IsClass)
+                if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
                 {
                     continue;
                 }
@@ -695,17 +695,6 @@ namespace Nethermind.Serialization.Rlp
             return Encode(rlpSequence);
         }
 
-        public static int GetSequenceRlpLength(int contentLength)
-        {
-            int totalLength = contentLength + 1;
-            if (contentLength >= 56)
-            {
-                totalLength += LengthOfLength(contentLength);
-            }
-
-            return totalLength;
-        }
-        
         public static int GetByteArrayRlpLength(int contentLength, bool firstByteLessThan128)
         {
             int result;

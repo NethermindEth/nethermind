@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
         <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
     </PropertyGroup>
@@ -17,6 +17,7 @@
       <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
       <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
       <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+      <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     </ItemGroup>
 
 </Project>

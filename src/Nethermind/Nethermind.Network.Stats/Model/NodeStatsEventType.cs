@@ -26,6 +26,10 @@ namespace Nethermind.Stats.Model
         DiscoveryNeighboursIn,
         DiscoveryFindNodeOut,
         DiscoveryFindNodeIn,
+        DiscoveryEnrRequestOut,
+        DiscoveryEnrRequestIn,
+        DiscoveryEnrResponseOut,
+        DiscoveryEnrResponseIn,
 
         P2PPingIn,
         P2PPingOut,

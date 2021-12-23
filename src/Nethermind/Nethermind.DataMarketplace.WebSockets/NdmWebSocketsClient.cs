@@ -16,37 +16,35 @@
 
 using System;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.WebSockets;
+using Nethermind.Serialization.Json;
+using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.WebSockets
 {
-    public class NdmWebSocketsClient : IWebSocketsClient
+    public class NdmWebSocketsClient : SocketClient
     {
-        private readonly IWebSocketsClient _client;
         private readonly INdmDataPublisher _dataPublisher;
-        public string Id => _client.Id;
-        public string Client { get; }
 
-        public NdmWebSocketsClient(IWebSocketsClient client, INdmDataPublisher dataPublisher)
+        public NdmWebSocketsClient(string clientName, ISocketHandler handler, INdmDataPublisher dataPublisher, IJsonSerializer jsonSerializer) 
+            :base(clientName, handler, jsonSerializer)
         {
-            _client = client;
             _dataPublisher = dataPublisher;
-            Client = client.Client;
         }
 
-        public Task ReceiveAsync(Memory<byte> data)
+        public override Task ProcessAsync(ArraySegment<byte> data)
         {
-            if (data.Length == 0)
+            if (data.Count == 0)
             {
                 return Task.CompletedTask;
             }
 
-            (Keccak? dataAssetId, string? headerData) = GetDataInfo(data.ToArray());
+            (Keccak? dataAssetId, string? headerData) = GetDataInfo(data);
             if (dataAssetId is null || string.IsNullOrWhiteSpace(headerData))
             {
                 return Task.CompletedTask;
@@ -57,9 +55,9 @@ namespace Nethermind.DataMarketplace.WebSockets
             return Task.CompletedTask;
         }
 
-        private static (Keccak? dataAssetId, string? data) GetDataInfo(byte[] bytes)
+        private static (Keccak? dataAssetId, string? data) GetDataInfo(ArraySegment<byte> bytes)
         {
-            var request = Encoding.UTF8.GetString(bytes);
+            var request = Encoding.UTF8.GetString(bytes.Array!, bytes.Offset, bytes.Count);
             var parts = request.Split('|');
 
             if (!parts.Any() || parts.Length != 3)
@@ -73,8 +71,5 @@ namespace Nethermind.DataMarketplace.WebSockets
 
             return dataAssetId.Length != 64 ? (null, null) : (new Keccak(dataAssetId), data);
         }
-
-        public Task SendRawAsync(string data) => _client.SendRawAsync(data);
-        public Task SendAsync(WebSocketsMessage message) => _client.SendAsync(message);
     }
 }

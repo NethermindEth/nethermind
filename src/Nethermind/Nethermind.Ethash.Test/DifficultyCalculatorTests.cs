@@ -36,7 +36,7 @@ namespace Nethermind.Ethash.Test
             releaseSpec.IsTimeAdjustmentPostOlympic.Returns(true);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<long>()).Returns(releaseSpec);
-            DifficultyCalculator difficultyCalculator = new(specProvider);
+            EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186983, result);
         }
@@ -47,7 +47,7 @@ namespace Nethermind.Ethash.Test
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<long>()).Returns(Olympic.Instance);
-            DifficultyCalculator difficultyCalculator = new(specProvider);
+            EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186983, result);
         }
@@ -57,29 +57,48 @@ namespace Nethermind.Ethash.Test
         {
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<long>()).Returns(Berlin.Instance);
-            DifficultyCalculator difficultyCalculator = new(specProvider);
+            EthashDifficultyCalculator difficultyCalculator = new(specProvider);
             UInt256 result = difficultyCalculator.Calculate(0x55f78f7, 1613570258, 0x602d20d2, 200000, false);
             Assert.AreEqual((UInt256)90186982, result);
         }
         
-        [TestCase(3)]
-        [TestCase(730000)]
-        public void London_calculation_should_not_be_equal_to_berlin_above_block_9200000(long blocksAbove)
+        // previous difficulty bomb +  InitialDifficultyBombBlock + offset
+        [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
+        [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
+        [TestCase(9000000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
+        public void London_calculation_should_not_be_equal_to_Berlin(long blocksAbove)
+        {
+            Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
+                Berlin.Instance, London.Instance);
+        }
+        
+        // previous difficulty bomb +  InitialDifficultyBombBlock + offset
+        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
+        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
+        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
+        public void ArrowGlacier_calculation_should_not_be_equal_to_London0(long blocksAbove)
+        {
+            Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
+                London.Instance, ArrowGlacier.Instance);
+        }
+
+        private void Calculation_should_not_be_equal_on_different_difficulty_hard_forks(
+            long blocksAbove, IReleaseSpec firstHardfork, IReleaseSpec secondHardfork)
         {
             UInt256 parentDifficulty = 0x55f78f7;
             UInt256 parentTimestamp = 1613570258;
             UInt256 currentTimestamp = 0x602d20d2;
-            ISpecProvider berlinSpecProvider = Substitute.For<ISpecProvider>();
-            berlinSpecProvider.GetSpec(Arg.Any<long>()).Returns(Berlin.Instance);
-            DifficultyCalculator berlinDifficultyCalculator = new(berlinSpecProvider);
-            UInt256 berlinResult = berlinDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, 9200000L + blocksAbove, false);
+            ISpecProvider firstHardForkSpecProvider = Substitute.For<ISpecProvider>();
+            firstHardForkSpecProvider.GetSpec(Arg.Any<long>()).Returns(firstHardfork);
+            EthashDifficultyCalculator firstHardforkDifficultyCalculator = new(firstHardForkSpecProvider);
+            UInt256 firstHardforkResult = firstHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
             
-            ISpecProvider londonSpecProvider = Substitute.For<ISpecProvider>();
-            londonSpecProvider.GetSpec(Arg.Any<long>()).Returns(London.Instance);
-            DifficultyCalculator londonDifficultyCalculator = new(londonSpecProvider);
-            UInt256 londonResult = londonDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, 9200000L + blocksAbove, false);
+            ISpecProvider secondHardforkSpecProvider = Substitute.For<ISpecProvider>();
+            secondHardforkSpecProvider.GetSpec(Arg.Any<long>()).Returns(secondHardfork);
+            EthashDifficultyCalculator secondHardforkDifficultyCalculator = new(secondHardforkSpecProvider);
+            UInt256 secondHardforkResult = secondHardforkDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
             
-            Assert.AreNotEqual(berlinResult, londonResult);
+            Assert.AreNotEqual(firstHardforkResult, secondHardforkResult);
         }
     }
 }

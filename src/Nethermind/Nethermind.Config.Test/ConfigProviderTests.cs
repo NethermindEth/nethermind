@@ -17,12 +17,9 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
-using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
-using Nethermind.Stats;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -34,7 +31,7 @@ namespace Nethermind.Config.Test
         [Test]
         public void Can_read_without_sources()
         {
-            ConfigProvider configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             INetworkConfig config = configProvider.GetConfig<INetworkConfig>();
             Assert.AreEqual(30303, config.DiscoveryPort);
         }
@@ -53,10 +50,10 @@ namespace Nethermind.Config.Test
         [Test]
         public void Can_read_overwrites()
         {
-            BitArray bitArray = new BitArray(6);
+            BitArray bitArray = new(6);
             for (int i = 0; i < 2 * 2 * 2 * 2 * 2 * 2; i++)
             {
-                ConfigProvider configProvider = new ConfigProvider();
+                ConfigProvider configProvider = new();
                 bitArray.Set(0, (i >> 0) % 2 == 1);
                 bitArray.Set(1, (i >> 1) % 2 == 1);
                 bitArray.Set(2, (i >> 2) % 2 == 1);
@@ -64,7 +61,7 @@ namespace Nethermind.Config.Test
                 bitArray.Set(4, (i >> 4) % 2 == 1);
                 bitArray.Set(5, (i >> 5) % 2 == 1);
 
-                Dictionary<string, string> args = new Dictionary<string, string>();
+                Dictionary<string, string> args = new();
                 if (bitArray.Get(4))
                 {
                     args.Add("JsonRpc.Enabled", bitArray.Get(5).ToString());
@@ -76,7 +73,7 @@ namespace Nethermind.Config.Test
                     Environment.SetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_ENABLED", bitArray.Get(3).ToString(), EnvironmentVariableTarget.Process);
                 }
 
-                Dictionary<string, string> fakeJson = new Dictionary<string, string>();
+                Dictionary<string, string> fakeJson = new();
                 if (bitArray.Get(0))
                 {
                     fakeJson.Add("JsonRpc.Enabled", bitArray.Get(1).ToString());
@@ -86,7 +83,7 @@ namespace Nethermind.Config.Test
                 configProvider.AddSource(new EnvConfigSource());
                 configProvider.AddSource(new ArgsConfigSource(fakeJson));
 
-                var config = configProvider.GetConfig<IJsonRpcConfig>();
+                IJsonRpcConfig? config = configProvider.GetConfig<IJsonRpcConfig>();
                 bool expectedResult = bitArray.Get(4)
                     ? bitArray.Get(5)
                     : bitArray.Get(2)

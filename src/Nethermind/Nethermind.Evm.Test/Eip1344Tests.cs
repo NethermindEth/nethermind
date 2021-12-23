@@ -27,13 +27,13 @@ namespace Nethermind.Evm.Test
     {
         private void Test(ulong chainId)
         {
-            var code = Prepare.EvmCode
+            byte[] code = Prepare.EvmCode
                 .Op(Instruction.CHAINID)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
                 .Done;
-            var result = Execute(code);
-            var setCost = chainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
+            TestAllTracerWithOutput result = Execute(code);
+            long setCost = chainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
             AssertStorage(0, ((UInt256)chainId).ToBigEndian());

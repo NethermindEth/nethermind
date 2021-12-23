@@ -28,19 +28,15 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.Producers
 {
-    public class DevBlockProducer : BlockProducerBase
+    public class DevBlockProducer : BlockProducerBase, IDisposable
     {
-        private readonly IBlockProductionTrigger _trigger;
         private readonly IMiningConfig _miningConfig;
-        private readonly SemaphoreSlim _newBlockLock = new(1, 1);
-        private bool _isRunning;
-
+        
         public DevBlockProducer(
             ITxSource? txSource,
             IBlockchainProcessor? processor,
             IStateProvider? stateProvider,
             IBlockTree? blockTree,
-            IBlockProcessingQueue? blockProcessingQueue,
             IBlockProductionTrigger? trigger,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
@@ -51,94 +47,56 @@ namespace Nethermind.Blockchain.Producers
                 processor,
                 new NethDevSealEngine(),
                 blockTree,
-                blockProcessingQueue,
+                trigger,
                 stateProvider,
                 new FollowOtherMiners(specProvider!),
                 timestamper,
                 specProvider,
-                logManager)
+                logManager,
+                new RandomizedDifficultyCalculator(miningConfig!, ConstantDifficultyCalculator.One))
         {
-            _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));
             _miningConfig = miningConfig ?? throw new ArgumentNullException(nameof(miningConfig));
-        }
-
-        private async void TriggerOnTriggerBlockProduction(object? sender, EventArgs e)
-        {
-            if (await _newBlockLock.WaitAsync(TimeSpan.FromSeconds(1)))
-            {
-                try
-                {
-                    Block? block = await TryProduceNewBlock(CancellationToken.None);
-                    if (block is null)
-                    {
-                        _newBlockLock.Release();
-                    }
-                }
-                catch (Exception exception)
-                {
-                    if (Logger.IsError) Logger.Error("Failed to produce block", exception);
-                    _newBlockLock.Release();
-                }
-            }
-        }
-
-        public override void Start()
-        {
-            _isRunning = true;
-            _trigger.TriggerBlockProduction += TriggerOnTriggerBlockProduction;
             BlockTree.NewHeadBlock += OnNewHeadBlock;
-            _lastProducedBlockDateTime = DateTime.UtcNow;
-        }
-
-        public override async Task StopAsync()
-        {
-            _isRunning = false;
-            // TODO: not changing without testing but it is a red flag when we detach from events in the same order as we attach
-            _trigger.TriggerBlockProduction -= TriggerOnTriggerBlockProduction;
-            BlockTree.NewHeadBlock -= OnNewHeadBlock;
-            await Task.CompletedTask;
-        }
-
-        private readonly Random _random = new();
-
-        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
-        {
-            UInt256 difficulty;
-            if (_miningConfig.RandomizedBlocks)
-            {
-                UInt256 change = new((ulong)(_random.Next(100) + 50));
-                difficulty = UInt256.Max(1000, UInt256.Max(parent.Difficulty, 1000) / 100 * change);
-            }
-            else
-            {
-                difficulty = UInt256.One;
-            }
-
-            return difficulty;
-        }
-
-        protected override bool IsRunning()
-        {
-            return _isRunning;
         }
 
         private void OnNewHeadBlock(object sender, BlockEventArgs e)
         {
-            if (_newBlockLock.CurrentCount == 0)
+            if (_miningConfig.RandomizedBlocks)
             {
-                if (e.Block == null)
-                {
-                    return;
-                }
-                
+                if (Logger.IsInfo)
+                    Logger.Info(
+                        $"Randomized difficulty for {e.Block.ToString(Block.Format.Short)} is {e.Block.Difficulty}");
+            }
+        }
+        
+        public void Dispose()
+        {
+            BlockTree.NewHeadBlock -= OnNewHeadBlock;
+        }
+        
+        private class RandomizedDifficultyCalculator : IDifficultyCalculator
+        {
+            private readonly IMiningConfig _miningConfig;
+            private readonly IDifficultyCalculator _fallbackDifficultyCalculator;
+            private readonly Random _random = new();
+
+            public RandomizedDifficultyCalculator(IMiningConfig miningConfig, IDifficultyCalculator fallbackDifficultyCalculator)
+            {
+                _miningConfig = miningConfig;
+                _fallbackDifficultyCalculator = fallbackDifficultyCalculator;
+            }
+            
+            public UInt256 Calculate(BlockHeader header, BlockHeader parent)
+            {
                 if (_miningConfig.RandomizedBlocks)
                 {
-                    if (Logger.IsInfo)
-                        Logger.Info(
-                            $"Randomized difficulty for {e.Block.ToString(Block.Format.Short)} is {e.Block.Difficulty}");
+                    UInt256 change = new((ulong)(_random.Next(100) + 50));
+                    return UInt256.Max(1000, UInt256.Max(parent.Difficulty, 1000) / 100 * change);
                 }
-
-                _newBlockLock.Release();
+                else
+                {
+                    return _fallbackDifficultyCalculator.Calculate(header, parent);
+                }
             }
         }
     }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -25,7 +26,7 @@ namespace Nethermind.TxPool
     {
         private ITxPoolPeer Peer { get; }
 
-        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
+        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         public PeerInfo(ITxPoolPeer peer)
         {
@@ -34,15 +35,28 @@ namespace Nethermind.TxPool
 
         public PublicKey Id => Peer.Id;
 
-        public bool SendNewTransaction(Transaction tx, bool isPriority)
+        public void SendNewTransaction(Transaction tx)
         {
-            if (!NotifiedTransactions.Get(tx.Hash))
+            if (NotifiedTransactions.Set(tx.Hash))
             {
-                NotifiedTransactions.Set(tx.Hash);
-                return Peer.SendNewTransaction(tx, isPriority);                     
+                Peer.SendNewTransaction(tx);
             }
+        }
 
-            return false;
+        public void SendNewTransactions(IEnumerable<Transaction> txs)
+        {
+            Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs));
+        }
+
+        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs)
+        {
+            foreach (Transaction tx in txs)
+            {
+                if (NotifiedTransactions.Set(tx.Hash))
+                {
+                    yield return tx;
+                }
+            }
         }
 
         public override string ToString() => Peer.Enode;

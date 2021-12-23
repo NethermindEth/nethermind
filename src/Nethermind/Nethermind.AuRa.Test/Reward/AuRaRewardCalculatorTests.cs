@@ -23,10 +23,12 @@ using Nethermind.Abi;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
@@ -160,7 +162,7 @@ namespace Nethermind.AuRa.Test.Reward
         
         [TestCase(10, 100ul)]
         [TestCase(15, 150ul)]
-        public void calculates_rewards_correctly_for_ommers(long blockNumber, ulong expectedReward)
+        public void calculates_rewards_correctly_for_uncles(long blockNumber, ulong expectedReward)
         {
             _block.Header.Number = blockNumber;
             _block = _block.WithReplacedBody(new BlockBody(_block.Body.Transactions, new[]
@@ -171,8 +173,8 @@ namespace Nethermind.AuRa.Test.Reward
             
             BlockReward[] expected = {
                 new(_block.Beneficiary, expectedReward, BlockRewardType.External),
-                new(_block.Body.Ommers[0].Beneficiary, expectedReward, BlockRewardType.External),
-                new(_block.Body.Ommers[1].Beneficiary, expectedReward, BlockRewardType.External),
+                new(_block.Body.Uncles[0].Beneficiary, expectedReward, BlockRewardType.External),
+                new(_block.Body.Uncles[1].Beneficiary, expectedReward, BlockRewardType.External),
             };
             
             SetupBlockRewards(new Dictionary<Address, BlockReward[]>() {{_address10, expected}});

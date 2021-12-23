@@ -28,15 +28,15 @@ namespace Nethermind.Blockchain.Validators
     {
         private readonly IHeaderValidator _headerValidator;
         private readonly ITxValidator _txValidator;
-        private readonly IOmmersValidator _ommersValidator;
+        private readonly IUnclesValidator _unclesValidator;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public BlockValidator(ITxValidator? txValidator, IHeaderValidator? headerValidator, IOmmersValidator? ommersValidator, ISpecProvider? specProvider, ILogManager? logManager)
+        public BlockValidator(ITxValidator? txValidator, IHeaderValidator? headerValidator, IUnclesValidator? unclesValidator, ISpecProvider? specProvider, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _txValidator = txValidator ?? throw new ArgumentNullException(nameof(headerValidator));
-            _ommersValidator = ommersValidator ?? throw new ArgumentNullException(nameof(ommersValidator));
+            _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
@@ -46,14 +46,14 @@ namespace Nethermind.Blockchain.Validators
             return _headerValidator.ValidateHash(header);
         }
         
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isOmmer)
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
         {
-            return _headerValidator.Validate(header, parent, isOmmer);
+            return _headerValidator.Validate(header, parent, isUncle);
         }
 
-        public bool Validate(BlockHeader header, bool isOmmer)
+        public bool Validate(BlockHeader header, bool isUncle)
         {
-            return _headerValidator.Validate(header, isOmmer);
+            return _headerValidator.Validate(header, isUncle);
         }
 
         /// <summary>
@@ -75,19 +75,19 @@ namespace Nethermind.Blockchain.Validators
                 }
             }
 
-            if (spec.MaximumUncleCount < block.Ommers.Length)
+            if (spec.MaximumUncleCount < block.Uncles.Length)
             {
-                _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - uncle count is {block.Ommers.Length} (MAX: {spec.MaximumUncleCount})");
+                _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - uncle count is {block.Uncles.Length} (MAX: {spec.MaximumUncleCount})");
                 return false;
             }
 
-            if (block.Header.OmmersHash != OmmersHash.Calculate(block))
+            if (block.Header.UnclesHash != UnclesHash.Calculate(block))
             {
                 _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles hash");
                 return false;
             }
             
-            if (!_ommersValidator.Validate(block.Header, block.Ommers))
+            if (!_unclesValidator.Validate(block.Header, block.Uncles))
             {
                 _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles");
                 return false;

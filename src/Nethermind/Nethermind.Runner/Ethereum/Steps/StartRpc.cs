@@ -19,10 +19,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Core;
+using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -44,38 +46,36 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (jsonRpcConfig.Enabled)
             {
                 IInitConfig initConfig = _api.Config<IInitConfig>();
+                IJsonRpcUrlCollection jsonRpcUrlCollection = new JsonRpcUrlCollection(_api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
+
                 JsonRpcLocalStats jsonRpcLocalStats = new(
                     _api.Timestamper,
                     jsonRpcConfig,
                     _api.LogManager);
 
                 JsonRpcService jsonRpcService = new(_api.RpcModuleProvider, _api.LogManager);
+                IJsonSerializer jsonSerializer = CreateJsonSerializer(jsonRpcService);
 
                 JsonRpcProcessor jsonRpcProcessor = new(
                     jsonRpcService,
-                    _api.EthereumJsonSerializer,
+                    jsonSerializer,
                     jsonRpcConfig,
                     _api.FileSystem,
                     _api.LogManager);
 
                 if (initConfig.WebSocketsEnabled)
                 {
-                    // TODO: I do not like passing both service and processor to any of the types
-                    JsonRpcWebSocketsModule webSocketsModule = new JsonRpcWebSocketsModule(
-                        jsonRpcProcessor,
-                        jsonRpcService,
-                        _api.EthereumJsonSerializer,
-                        jsonRpcLocalStats);
-
+                    JsonRpcWebSocketsModule webSocketsModule = new (jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, _api.LogManager, jsonSerializer, jsonRpcUrlCollection);
                     _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 }
 
                 Bootstrap.Instance.JsonRpcService = jsonRpcService;
                 Bootstrap.Instance.LogManager = _api.LogManager;
-                Bootstrap.Instance.JsonSerializer = _api.EthereumJsonSerializer;
+                Bootstrap.Instance.JsonSerializer = jsonSerializer;
                 Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
                 JsonRpcRunner? jsonRpcRunner = new(
                     jsonRpcProcessor,
+                    jsonRpcUrlCollection,
                     _api.WebSocketsManager!,
                     _api.ConfigProvider,
                     _api.LogManager,
@@ -87,14 +87,25 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Error("Error during jsonRpc runner start", x.Exception);
                 }, cancellationToken);
 
+                JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, jsonRpcService, _api.ConfigProvider, _api.LogManager, jsonRpcLocalStats, jsonSerializer, _api.FileSystem);
+                jsonIpcRunner.Start(cancellationToken);
+
 #pragma warning disable 4014
                 _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
+                _api.DisposeStack.Push(jsonIpcRunner); // do not await
 #pragma warning restore 4014
             }
             else
             {
                 if (logger.IsInfo) logger.Info("Json RPC is disabled");
             }
+        }
+
+        private IJsonSerializer CreateJsonSerializer(JsonRpcService jsonRpcService)
+        {
+            IJsonSerializer serializer = new EthereumJsonSerializer();
+            serializer.RegisterConverters(jsonRpcService.Converters);
+            return serializer;
         }
     }
 }

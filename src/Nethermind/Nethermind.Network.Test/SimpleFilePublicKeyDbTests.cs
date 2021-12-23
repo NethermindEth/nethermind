@@ -32,7 +32,7 @@ namespace Nethermind.Network.Test
             using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
             tempPath.Dispose();
             
-            SimpleFilePublicKeyDb filePublicKeyDb = new SimpleFilePublicKeyDb("Test", Path.GetTempPath(), LimboLogs.Instance);
+            SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
             using (filePublicKeyDb.StartBatch())
             {
                 filePublicKeyDb[TestItem.PublicKeyA.Bytes] = new byte[] {1, 2, 3};
@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test
                 filePublicKeyDb[TestItem.PublicKeyC.Bytes] = new byte[] {1, 2, 3};
             }
 
-            SimpleFilePublicKeyDb copy = new SimpleFilePublicKeyDb("Test", Path.GetTempPath(), LimboLogs.Instance);
+            SimpleFilePublicKeyDb copy = new("Test", Path.GetTempPath(), LimboLogs.Instance);
             Assert.AreEqual(3, copy.Keys.Count);
         }
     }

@@ -27,10 +27,9 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Synchronization.BeamSync;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -45,7 +44,6 @@ namespace Nethermind.Evm.Test
         private IEthereumEcdsa _ethereumEcdsa;
         protected ITransactionProcessor _processor;
         private IDb _stateDb;
-        protected bool UseBeamSync { get; set; }
 
         protected VirtualMachine Machine { get; private set; }
         protected IStateProvider TestState { get; private set; }
@@ -74,24 +72,21 @@ namespace Nethermind.Evm.Test
         {
             ILogManager logManager = GetLogManager();
 
-            MemDb beamStateDb = new();
-            IDb beamSyncDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager);
-            IDb beamSyncCodeDb = new BeamSyncDb(new MemDb(), beamStateDb, StaticSelector.Full, logManager);
-            IDb codeDb = UseBeamSync ? beamSyncCodeDb : new MemDb();
-            _stateDb = UseBeamSync ? beamSyncDb : new MemDb();
+            IDb codeDb = new MemDb();
+            _stateDb = new MemDb();
             ITrieStore trieStore = new TrieStore(_stateDb, logManager);
             TestState = new StateProvider(trieStore, codeDb, logManager);
             Storage = new StorageProvider(trieStore, TestState, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
-            Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logManager);
+            Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
             _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logManager);
         }
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
         {
             GethLikeTxTracer tracer = new(GethTraceOptions.Default);
-            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
         }
@@ -99,14 +94,14 @@ namespace Nethermind.Evm.Test
         protected GethLikeTxTrace ExecuteAndTrace(long blockNumber, long gasLimit, params byte[] code)
         {
             GethLikeTxTracer tracer = new(GethTraceOptions.Default);
-            (var block, var transaction) = PrepareTx(blockNumber, gasLimit, code);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer.BuildResult();
         }
 
         protected TestAllTracerWithOutput Execute(params byte[] code)
         {
-            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
@@ -116,7 +111,7 @@ namespace Nethermind.Evm.Test
 
         protected T Execute<T>(T tracer, params byte[] code) where T : ITxTracer
         {
-            (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
+            (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code);
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
         }

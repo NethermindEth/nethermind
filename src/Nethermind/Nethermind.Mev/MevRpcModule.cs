@@ -16,20 +16,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Find;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Data;
-using Nethermind.Int256;
+using Nethermind.Consensus;
 using Nethermind.Core;
-using Nethermind.Facade;
-using Nethermind.Logging;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
@@ -37,7 +32,6 @@ using Nethermind.Mev.Source;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
-using Newtonsoft.Json;
 
 namespace Nethermind.Mev
 {
@@ -48,60 +42,79 @@ namespace Nethermind.Mev
         private readonly IBlockFinder _blockFinder;
         private readonly IStateReader _stateReader;
         private readonly ITracerFactory _tracerFactory;
-        private readonly ulong _chainId;
+        private readonly ISpecProvider _specProvider;
+        private readonly ISigner? _signer;
 
+        static MevRpcModule()
+        {
+            Rlp.RegisterDecoders(typeof(BundleTxDecoder).Assembly);
+        }
+        
         public MevRpcModule(
             IJsonRpcConfig jsonRpcConfig, 
             IBundlePool bundlePool, 
             IBlockFinder blockFinder, 
             IStateReader stateReader,
             ITracerFactory tracerFactory,
-            ulong chainId)
+            ISpecProvider specProvider,
+            ISigner? signer)
         {
             _jsonRpcConfig = jsonRpcConfig;
             _bundlePool = bundlePool;
             _blockFinder = blockFinder;
             _stateReader = stateReader;
             _tracerFactory = tracerFactory;
-            _chainId = chainId;
+            _specProvider = specProvider;
+            _signer = signer;
         }
 
-        public ResultWrapper<bool> eth_sendBundle(byte[][] transactions, long blockNumber, UInt256? minTimestamp = null, UInt256? maxTimestamp = null, Keccak[]? revertingTxHashes = null)
+        public ResultWrapper<bool> eth_sendBundle(MevBundleRpc mevBundleRpc)
         {
-            Transaction[] txs = Decode(transactions);
-            MevBundle bundle = new(blockNumber, txs, minTimestamp, maxTimestamp, revertingTxHashes);
+            BundleTransaction[] txs = Decode(mevBundleRpc.Txs, mevBundleRpc.RevertingTxHashes?.ToHashSet());
+            MevBundle bundle = new(mevBundleRpc.BlockNumber, txs, mevBundleRpc.MinTimestamp, mevBundleRpc.MaxTimestamp);
             bool result = _bundlePool.AddBundle(bundle);
             return ResultWrapper<bool>.Success(result);
         }
 
-        public ResultWrapper<TxsResults> eth_callBundle(byte[][] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null)
+        public ResultWrapper<bool> eth_sendMegabundle(MevMegabundleRpc mevMegabundleRpc)
         {
-            Transaction[] txs = Decode(transactions);
-            return CallBundle(txs, blockParameter, timestamp);
+            BundleTransaction[] txs = Decode(mevMegabundleRpc.Txs, mevMegabundleRpc.RevertingTxHashes?.ToHashSet());
+            Signature relaySignature = new(mevMegabundleRpc.RelaySignature);
+            MevMegabundle megabundle = new(mevMegabundleRpc.BlockNumber, txs, mevMegabundleRpc.RevertingTxHashes,
+                relaySignature, mevMegabundleRpc.MinTimestamp, mevMegabundleRpc.MaxTimestamp);
+            bool result = _bundlePool.AddMegabundle(megabundle);
+            return ResultWrapper<bool>.Success(result);
         }
 
-        private ResultWrapper<TxsResults> CallBundle(Transaction[] txs, BlockParameter? blockParameter, UInt256? timestamp)
+        public ResultWrapper<TxsResults> eth_callBundle(MevCallBundleRpc mevBundleRpc)
         {
-            blockParameter ??= BlockParameter.Latest;
+            BundleTransaction[] txs = Decode(mevBundleRpc.Txs);
+            return CallBundle(txs, mevBundleRpc.BlockNumber, mevBundleRpc.StateBlockNumber, mevBundleRpc.Timestamp);
+        }
+
+        private ResultWrapper<TxsResults> CallBundle(BundleTransaction[] txs, long? blockNumber, BlockParameter stateBlockNumber, UInt256? timestamp)
+        {
             if (txs.Length == 0)
                 return ResultWrapper<TxsResults>.Fail("no tx specified in bundle");
 
-            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(stateBlockNumber);
             if (searchResult.IsError)
             {
                 return ResultWrapper<TxsResults>.Fail(searchResult);
             }
 
             BlockHeader header = searchResult.Object!;
-            if (!HasStateForBlock(header!))
+            if (!HasStateForBlock(header))
             {
                 return ResultWrapper<TxsResults>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
             }
 
-            using CancellationTokenSource cancellationTokenSource = new(_jsonRpcConfig.Timeout);
+            const int callBundleTimeout = 5000;
+            using CancellationTokenSource cancellationTokenSource = new(callBundleTimeout);
+            long bundleBlockNumber = blockNumber ?? header.Number + 1;
 
-            TxsResults results = new CallTxBundleExecutor(_tracerFactory).ExecuteBundle(
-                new MevBundle(header.Number, txs, timestamp, timestamp),
+            TxsResults results = new CallTxBundleExecutor(_tracerFactory, _specProvider, _signer).ExecuteBundle(
+                new MevBundle(bundleBlockNumber, txs, timestamp, timestamp),
                 header,
                 cancellationTokenSource.Token,
                 timestamp);
@@ -109,23 +122,25 @@ namespace Nethermind.Mev
             return ResultWrapper<TxsResults>.Success(results);
         }
 
-        public ResultWrapper<TxsResults> eth_callBundleJSon(TransactionForRpc[] transactions, BlockParameter? blockParameter = null, UInt256? timestamp = null) 
+        private static BundleTransaction[] Decode(byte[][] transactions, ISet<Keccak>? revertingTxHashes = null)
         {
-            Transaction[] txs = transactions.Select(txForRpc =>
-            {
-                FixCallTx(txForRpc);
-                return txForRpc.ToTransaction(_chainId);
-            }).ToArray();
-            
-            return CallBundle(txs, blockParameter, timestamp);
-        }
-        
-        private static Transaction[] Decode(byte[][] transactions)
-        {
-            Transaction[] txs = new Transaction[transactions.Length];
+            revertingTxHashes ??= new HashSet<Keccak>();
+            BundleTransaction[] txs = new BundleTransaction[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
-                txs[i] = Rlp.Decode<Transaction>(transactions[i]);
+                BundleTransaction bundleTransaction = Rlp.Decode<BundleTransaction>(transactions[i], RlpBehaviors.SkipTypedWrapping);
+                Keccak transactionHash = bundleTransaction.Hash!;
+                bundleTransaction.CanRevert = revertingTxHashes.Contains(transactionHash);
+                revertingTxHashes.Remove(transactionHash);
+                
+                txs[i] = bundleTransaction;
+            }
+            
+            if (revertingTxHashes.Count > 0)
+            {
+                throw new ArgumentException(
+                    $"Bundle didn't contain some of revertingTxHashes: [{string.Join(", ", revertingTxHashes.OfType<object>())}]",
+                    nameof(revertingTxHashes));
             }
 
             return txs;
@@ -137,15 +152,6 @@ namespace Nethermind.Mev
             if (header.StateRoot == null) return false;
             _stateReader.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);
             return rootCheckVisitor.HasRoot;
-        }
-        
-        private void FixCallTx(TransactionForRpc transactionCall)
-        {
-            transactionCall.Gas = transactionCall.Gas == null || transactionCall.Gas == 0 
-                ? _jsonRpcConfig.GasCap ?? long.MaxValue 
-                : Math.Min(_jsonRpcConfig.GasCap ?? long.MaxValue, transactionCall.Gas.Value);
-
-            transactionCall.From ??= Address.SystemUser;
         }
     }
 }

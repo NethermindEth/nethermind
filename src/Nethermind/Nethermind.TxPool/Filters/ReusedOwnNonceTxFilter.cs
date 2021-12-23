@@ -40,7 +40,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
             
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             bool managedNonce = (handlingOptions & TxHandlingOptions.ManagedNonce) == TxHandlingOptions.ManagedNonce;
             Account account = _accounts.GetAccount(tx.SenderAddress!);
@@ -50,10 +50,10 @@ namespace Nethermind.TxPool.Filters
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, nonce already used.");
-                return (false, AddTxResult.OwnNonceAlreadyUsed);
+                return AcceptTxResult.OwnNonceAlreadyUsed;
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
         
         /// <summary>
@@ -62,7 +62,7 @@ namespace Nethermind.TxPool.Filters
         /// <param name="transaction"></param>
         /// <param name="currentNonce"></param>
         /// <returns></returns>
-        private bool CheckOwnTransactionAlreadyUsed(Transaction transaction, UInt256 currentNonce)
+        private bool CheckOwnTransactionAlreadyUsed(Transaction transaction, in UInt256 currentNonce)
         {
             Address address = transaction.SenderAddress;
             lock (_locker)

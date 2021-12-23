@@ -12,7 +12,7 @@ mkdir $LIN_RELEASE
 mkdir $OSX_RELEASE
 mkdir $WIN_RELEASE
 mkdir $LIN_ARM64_RELEASE
-
+mkdir $OSX_ARM64_RELEASE
 
 echo =======================================================
 echo Creating  git-hash and git-tag files

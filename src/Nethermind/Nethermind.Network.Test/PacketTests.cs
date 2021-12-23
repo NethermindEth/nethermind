@@ -27,7 +27,7 @@ namespace Nethermind.Network.Test
         public void Asggins_values_from_constructor()
         {
             byte[] data = {3, 4, 5};
-            Packet packet = new Packet("eth", 2, data);
+            Packet packet = new("eth", 2, data);
             Assert.AreEqual("eth", packet.Protocol);
             Assert.AreEqual(2, packet.PacketType);
             Assert.AreEqual(data, packet.Data);

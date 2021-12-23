@@ -118,7 +118,7 @@ namespace Nethermind.Core
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
-        public static Address FromNumber(UInt256 number)
+        public static Address FromNumber(in UInt256 number)
         {
             byte[] addressBytes = new byte[20];
             number.ToBigEndian(addressBytes);
@@ -230,7 +230,7 @@ namespace Nethermind.Core
             Bytes = bytes;
         }
 
-        public static AddressStructRef FromNumber(UInt256 number)
+        public static AddressStructRef FromNumber(in UInt256 number)
         {
             byte[] addressBytes = new byte[20];
             number.ToBigEndian(addressBytes);

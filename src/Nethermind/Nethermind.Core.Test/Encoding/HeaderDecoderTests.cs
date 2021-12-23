@@ -37,9 +37,9 @@ namespace Nethermind.Core.Test.Encoding
                 .WithNonce(1000)
                 .TestObject;
 
-            HeaderDecoder decoder = new HeaderDecoder();
+            HeaderDecoder decoder = new();
             Rlp rlp = decoder.Encode(header);
-            var decoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
+            Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
             BlockHeader decoded = decoder.Decode(ref decoderContext);
             decoded.Hash = decoded.CalculateHash();
 
@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Encoding
                 .WithNonce(1000)
                 .TestObject;
 
-            HeaderDecoder decoder = new HeaderDecoder();
+            HeaderDecoder decoder = new();
             Rlp rlp = decoder.Encode(header);
             rlp.Bytes[2]++;
             string bytesWithAAA = rlp.Bytes.ToHexString();
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Encoding
             
             rlp = new Rlp(Bytes.FromHexString(bytesWithAAA));
 
-            var decoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
+            Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
             BlockHeader decoded = decoder.Decode(ref decoderContext);
             decoded.Hash = decoded.CalculateHash();
 
@@ -79,9 +79,9 @@ namespace Nethermind.Core.Test.Encoding
                 .WithAura(100000000, auRaSignature)
                 .TestObject;
 
-            HeaderDecoder decoder = new HeaderDecoder();
+            HeaderDecoder decoder = new();
             Rlp rlp = decoder.Encode(header);
-            var decoderContext = new Rlp.ValueDecoderContext(rlp.Bytes);
+            Rlp.ValueDecoderContext decoderContext = new(rlp.Bytes);
             BlockHeader decoded = decoder.Decode(ref decoderContext);
             decoded.Hash = decoded.CalculateHash();
 
@@ -91,7 +91,7 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Get_length_null()
         {
-            HeaderDecoder decoder = new HeaderDecoder();
+            HeaderDecoder decoder = new();
             Assert.AreEqual(1, decoder.GetLength(null, RlpBehaviors.None));
         }
 

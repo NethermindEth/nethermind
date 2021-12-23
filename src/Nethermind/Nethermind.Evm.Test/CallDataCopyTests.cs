@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.CALLDATACOPY)
                 .Done;
 
-            var result = Execute(code);
+            TestAllTracerWithOutput result = Execute(code);
             result.Error.Should().BeNull();
         }
     }

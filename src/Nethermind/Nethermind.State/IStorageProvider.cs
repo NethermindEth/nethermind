@@ -18,7 +18,7 @@ using Nethermind.Core;
 
 namespace Nethermind.State
 {
-    public interface IStorageProvider
+    public interface IStorageProvider : IJournal<int>
     {
         byte[] GetOriginal(StorageCell storageCell);
         
@@ -30,13 +30,22 @@ namespace Nethermind.State
         
         void CommitTrees(long blockNumber);
         
-        void Restore(int snapshot);
-
         void Commit();
         
         void Commit(IStorageTracer stateTracer);
         
-        int TakeSnapshot();
+        /// <summary>
+        /// Creates a restartable snapshot.
+        /// </summary>
+        /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>
+        /// <returns>Snapshot index</returns>
+        /// <remarks>
+        /// If <see cref="newTransactionStart"/> is true and there are already changes in <see cref="IStorageProvider"/> then next call to
+        /// <see cref="GetOriginal"/> will use changes before this snapshot as original values for this new transaction.
+        /// </remarks>
+        int TakeSnapshot(bool newTransactionStart = false);
+
+        int IJournal<int>.TakeSnapshot() => TakeSnapshot();
 
         void ClearStorage(Address address);
     }

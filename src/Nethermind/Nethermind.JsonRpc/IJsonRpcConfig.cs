@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Config;
 using Nethermind.JsonRpc.Modules.Eth;
 
@@ -55,17 +56,20 @@ namespace Nethermind.JsonRpc
             Description = "Port number for JSON RPC web sockets calls. By default same port is used as regular JSON RPC. Ensure the firewall is configured when enabling JSON RPC.",
             DefaultValue = "8545")]
         int WebSocketsPort { get; set; }
-        
+
+        [ConfigItem(Description = "The path to connect a unix domain socket over.")]
+        string IpcUnixDomainSocketPath { get; set; }
+
         [ConfigItem(
             Description = "Defines which RPC modules should be enabled. Built in modules are: Admin, Baseline, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
             DefaultValue = "[Eth, Subscribe, Trace, TxPool, Web3, Personal, Proof, Net, Parity, Health]")]
         string[] EnabledModules { get; set; }
-        
+
         [ConfigItem(
-            Description = "Defines block depth when finding logs.",
-            DefaultValue = "1000")]
-        int FindLogBlockDepthLimit { get; set; }
-        
+            Description = "Defines additional RPC urls to listen on. Example url format: http://localhost:8550|http,wss|engine,eth,net,subscribe",
+            DefaultValue = "[]")]
+        string[] AdditionalRPCUrls { get; set; }
+
         [ConfigItem(
             Description = "Gas limit for eth_call and eth_estimateGas",
             DefaultValue = "100000000")]

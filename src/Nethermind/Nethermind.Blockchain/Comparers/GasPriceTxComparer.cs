@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Comparers
 {
@@ -41,17 +42,17 @@ namespace Nethermind.Blockchain.Comparers
             
             // if gas bottleneck was calculated, it's highest priority for sorting
             // if not, different method of sorting by gas price is needed
-            if (x.GasBottleneck != 0 || y.GasBottleneck != 0)
+            if (x.GasBottleneck !=null && y.GasBottleneck != null)
             {
-                return y!.GasBottleneck.CompareTo(x!.GasBottleneck);
+                return y!.GasBottleneck.Value.CompareTo(x!.GasBottleneck);
             }
             
             // When we're adding Tx to TxPool we don't know the base fee of the block in which transaction will be added.
             // We can get a base fee from the current head.
             Block block = _blockFinder.Head;
-            bool isEip1559Enabled = _specProvider.GetSpec(block?.Number ?? 0).IsEip1559Enabled;
+            bool isEip1559Enabled = _specProvider.GetSpec(block?.Number ?? 0L).IsEip1559Enabled;
             
-            return GasPriceTxComparerHelper.Compare(x, y, block?.Header.BaseFeePerGas ?? 0, isEip1559Enabled);
+            return GasPriceTxComparerHelper.Compare(x, y, block?.Header.BaseFeePerGas ?? UInt256.Zero, isEip1559Enabled);
         }
     }
 }

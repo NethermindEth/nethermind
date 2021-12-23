@@ -61,33 +61,39 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    # beam sections
-    "mainnet_beam": {
+    # mev section
+    "mainnet_mev": {
         "url": "api.etherscan.io",
         "blockReduced": 2000,
-        "multiplierRequirement": 2000 
+        "multiplierRequirement": 2000
     },
-    "goerli_beam": {
+    "goerli_mev": {
         "url": "api-goerli.etherscan.io",
         "blockReduced": 8192,
         "multiplierRequirement": 30000 
     },
-    "ropsten_beam": {
-        "url": "api-ropsten.etherscan.io",
+    "xdai_mev": {
+        "url": "https://dai.poa.network",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    "rinkeby_beam": {
-        "url": "api-rinkeby.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000
+    # pruned mev section
+    "mainnet_pruned_mev": {
+        "url": "api.etherscan.io",
+        "blockReduced": 2000,
+        "multiplierRequirement": 2000
     },
-    "poacore_beam": {
-        "url": "https://core.poa.network",
+    "goerli_pruned_mev": {
+        "url": "api-goerli.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
+    },
+    "xdai_pruned_mev": {
+        "url": "https://dai.poa.network",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
-    # pruning sections
+    # pruning section
     "mainnet_pruned": {
         "url": "api.etherscan.io",
         "blockReduced": 2000,
@@ -130,27 +136,6 @@ configs = {
     },
     "volta_pruned": {
         "url": "https://volta-rpc.energyweb.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    # ndm sections
-    "ndm_consumer_mainnet": {
-        "url": "api.etherscan.io",
-        "blockReduced": 2000,
-        "multiplierRequirement": 2000 
-    },
-    "ndm_consumer_xdai": {
-        "url": "https://dai.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "ndm_consumer_goerli": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "ndm_consumer_ropsten": {
-        "url": "api-ropsten.etherscan.io",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     }

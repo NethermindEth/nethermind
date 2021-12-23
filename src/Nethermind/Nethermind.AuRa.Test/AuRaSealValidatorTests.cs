@@ -109,7 +109,7 @@ namespace Nethermind.AuRa.Test
                     Repeat repeat = Repeat.No,
                     bool parentIsHead = true,
                     bool isValidSealer = true) =>
-                    new TestCaseData(parent.TestObject, block.TestObject, paramAction, repeat, parentIsHead, isValidSealer);
+                    new(parent.TestObject, block.TestObject, paramAction, repeat, parentIsHead, isValidSealer);
                 
 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock())
@@ -170,7 +170,7 @@ namespace Nethermind.AuRa.Test
             _reportingValidator.TryReportSkipped(Arg.Do<BlockHeader>(h => header = h), Arg.Do<BlockHeader>(h => parent = h));
             
             modifyParameters?.Invoke(_auRaParameters);
-            var validateParams = _sealValidator.ValidateParams(parentBlock, block);
+            bool validateParams = _sealValidator.ValidateParams(parentBlock, block);
             
             if (header?.AuRaStep > parent?.AuRaStep + 1)
             {
@@ -194,8 +194,8 @@ namespace Nethermind.AuRa.Test
         {
             get
             {
-                yield return new TestCaseData(0, null, TestItem.AddressA).Returns(true).SetName("Genesis valid.").SetCategory("ValidSeal");;
-                yield return new TestCaseData(1, null, TestItem.AddressA).Returns(false).SetName("Wrong sealer.").SetCategory("ValidSeal");;
+                yield return new TestCaseData(0, null, TestItem.AddressA).Returns(true).SetName("Genesis valid.").SetCategory("ValidSeal");
+                yield return new TestCaseData(1, null, TestItem.AddressA).Returns(false).SetName("Wrong sealer.").SetCategory("ValidSeal");
                 yield return new TestCaseData(1, null, null).Returns(true).SetName("General valid.").SetCategory("ValidSeal");
             }
         }
@@ -206,13 +206,13 @@ namespace Nethermind.AuRa.Test
             signedAddress ??= _address;
             recoveredAddress ??= _address;
             
-            var block = Build.A.BlockHeader
+            BlockHeader block = Build.A.BlockHeader
                 .WithAura(10, Array.Empty<byte>())
                 .WithBeneficiary(_address)
                 .WithNumber(blockNumber)
                 .TestObject;
             
-            var hash = block.CalculateHash(RlpBehaviors.ForSealing);
+            Keccak hash = block.CalculateHash(RlpBehaviors.ForSealing);
             block.AuRaSignature = _wallet.Sign(hash, signedAddress).BytesWithRecovery;
             _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), hash).Returns(recoveredAddress);
 

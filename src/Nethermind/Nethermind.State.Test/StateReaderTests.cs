@@ -37,16 +37,16 @@ namespace Nethermind.Store.Test
     public class StateReaderTests
     {
         private static readonly Keccak Hash1 = Keccak.Compute("1");
-        private readonly Address _address1 = new Address(Hash1);
+        private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
         [Test]
         public async Task Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec(MainnetSpecProvider.ConstantinopleFixBlockNumber);
-            MemDb stateDb = new MemDb();
+            MemDb stateDb = new();
             StateProvider provider =
-                new StateProvider(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
+                new(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -71,7 +71,7 @@ namespace Nethermind.Store.Test
             provider.CommitTree(0);
 
             StateReader reader =
-                new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
             Task a = StartTask(reader, stateRoot0, 1);
             Task b = StartTask(reader, stateRoot1, 2);
@@ -84,12 +84,12 @@ namespace Nethermind.Store.Test
         [Test]
         public async Task Can_ask_about_storage_in_parallel()
         {
-            StorageCell storageCell = new StorageCell(_address1, UInt256.One);
+            StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            MemDb stateDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, Logger);
-            StateProvider provider = new StateProvider(trieStore, new MemDb(), Logger);
-            StorageProvider storageProvider = new StorageProvider(trieStore, provider, Logger);
+            MemDb stateDb = new();
+            TrieStore trieStore = new(stateDb, Logger);
+            StateProvider provider = new(trieStore, new MemDb(), Logger);
+            StorageProvider storageProvider = new(trieStore, provider, Logger);
 
             void UpdateStorageValue(byte[] newValue)
             {
@@ -133,7 +133,7 @@ namespace Nethermind.Store.Test
             Keccak stateRoot3 = provider.StateRoot;
 
             StateReader reader =
-                new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
 
             Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] {1});
             Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] {2});
@@ -146,13 +146,13 @@ namespace Nethermind.Store.Test
         [Test]
         public void Non_existing()
         {
-            StorageCell storageCell = new StorageCell(_address1, UInt256.One);
+            StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
 
-            MemDb stateDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, Logger);
-            StateProvider provider = new StateProvider(trieStore, new MemDb(), Logger);
-            StorageProvider storageProvider = new StorageProvider(trieStore, provider, Logger);
+            MemDb stateDb = new();
+            TrieStore trieStore = new(stateDb, Logger);
+            StateProvider provider = new(trieStore, new MemDb(), Logger);
+            StorageProvider storageProvider = new(trieStore, provider, Logger);
 
             void CommitEverything()
             {
@@ -168,7 +168,7 @@ namespace Nethermind.Store.Test
             Keccak stateRoot0 = provider.StateRoot;
             
             StateReader reader =
-                new StateReader(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
             Keccak storageRoot = reader.GetStorageRoot(stateRoot0, _address1);
             reader.GetStorage(storageRoot, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
             reader.GetStorage(Keccak.EmptyTreeHash, storageCell.Index + 1).Should().BeEquivalentTo(new byte[] {0});
@@ -207,11 +207,11 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
 
             /* all testing will be touching just a single storage cell */
-            StorageCell storageCell = new StorageCell(_address1, UInt256.One);
+            StorageCell storageCell = new(_address1, UInt256.One);
 
-            TrieStore trieStore = new TrieStore(dbProvider.StateDb, Logger);
-            StateProvider state = new StateProvider(trieStore, dbProvider.CodeDb, Logger);
-            StorageProvider storage = new StorageProvider(trieStore, state, Logger);
+            TrieStore trieStore = new(dbProvider.StateDb, Logger);
+            StateProvider state = new(trieStore, dbProvider.CodeDb, Logger);
+            StorageProvider storage = new(trieStore, state, Logger);
 
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
@@ -227,7 +227,7 @@ namespace Nethermind.Store.Test
             state.Commit(MuirGlacier.Instance);
             state.CommitTree(2);
 
-            StateReader reader = new StateReader(
+            StateReader reader = new(
                 new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
 
             var account = reader.GetAccount(state.StateRoot, _address1);
@@ -243,11 +243,11 @@ namespace Nethermind.Store.Test
             byte[] newValue = new byte[] {1, 2, 3, 4, 5};
 
             StateProvider processorStateProvider =
-                new StateProvider(trieStore, new MemDb(), LimboLogs.Instance);
+                new(trieStore, new MemDb(), LimboLogs.Instance);
             processorStateProvider.StateRoot = state.StateRoot;
 
             StorageProvider processorStorageProvider =
-                new StorageProvider(trieStore, processorStateProvider, LimboLogs.Instance);
+                new(trieStore, processorStateProvider, LimboLogs.Instance);
 
             processorStorageProvider.Set(storageCell, newValue);
             processorStorageProvider.Commit();

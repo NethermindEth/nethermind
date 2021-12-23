@@ -25,10 +25,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
@@ -42,13 +46,12 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager
     {
-        private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers =
-            new ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase>();
+        private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
 
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
-            new ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>>();
+            new();
         
-        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
+        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
         private readonly ITxPool _txPool;
@@ -182,7 +185,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    P2PProtocolHandler handler = new P2PProtocolHandler(session, _localPeer.LocalNodeId, _stats, _serializer, _logManager);
+                    P2PProtocolHandler handler = new(session, _localPeer.LocalNodeId, _stats, _serializer, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 
@@ -196,6 +199,7 @@ namespace Nethermind.Network
                         63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
                         64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _specProvider, _logManager),
                         65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _specProvider, _logManager),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _specProvider, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -215,7 +219,7 @@ namespace Nethermind.Network
                 },
                 [Protocol.Les] = (session, version) =>
                 {
-                    LesProtocolHandler handler = new LesProtocolHandler(session, _serializer, _stats, _syncServer, _logManager);
+                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _logManager);
                     InitSyncPeerProtocol(session, handler);
 
                     return handler;
@@ -410,7 +414,7 @@ namespace Nethermind.Network
 
         public void SendNewCapability(Capability capability)
         {
-            AddCapabilityMessage message = new AddCapabilityMessage(capability);
+            AddCapabilityMessage message = new(capability);
             foreach ((Guid _, ISession session) in _sessions)
             {
                 if (session.HasAgreedCapability(capability))

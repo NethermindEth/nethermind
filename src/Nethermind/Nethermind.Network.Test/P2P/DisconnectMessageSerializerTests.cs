@@ -15,8 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
-using Nethermind.Network.P2P;
-using Nethermind.Stats;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -29,8 +28,8 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_do_roundtrip()
         {
-            DisconnectMessage msg = new DisconnectMessage(DisconnectReason.AlreadyConnected);
-            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
+            DisconnectMessage msg = new(DisconnectReason.AlreadyConnected);
+            DisconnectMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(msg);
             Assert.AreEqual("0xc105", serialized.ToHexString(true), "bytes");
             DisconnectMessage deserialized = serializer.Deserialize(serialized);
@@ -40,7 +39,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_read_single_byte_message()
         {
-            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
+            DisconnectMessageSerializer serializer = new();
             byte[] serialized = new byte[] {16};
             DisconnectMessage deserialized = serializer.Deserialize(serialized);
             Assert.AreEqual(DisconnectReason.Other, (DisconnectReason)deserialized.Reason, "reason");

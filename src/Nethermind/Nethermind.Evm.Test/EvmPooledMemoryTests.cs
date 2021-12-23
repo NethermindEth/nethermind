@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -56,8 +57,47 @@ namespace Nethermind.Evm.Test
         {
             EvmPooledMemory memory = new();
             UInt256 dest = (UInt256) destination;
-            var result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation);
+            long result = memory.CalculateMemoryCost(in dest, (UInt256)memoryAllocation);
             TestContext.WriteLine($"Gas cost of allocating {memoryAllocation} starting from {dest}: {result}");
+        }
+
+        [Test]
+        public void Inspect_should_not_change_evm_memory()
+        {
+            EvmPooledMemory memory = new();
+            memory.Save(3, TestItem.KeccakA.Bytes);
+            ulong initialSize = memory.Size;
+            ReadOnlyMemory<byte> result = memory.Inspect(initialSize + 32, 32);
+            Assert.AreEqual(initialSize, memory.Size);
+            Assert.AreEqual(ReadOnlyMemory<byte>.Empty, result);
+        }
+        
+        [Test]
+        public void Inspect_can_read_memory()
+        {
+            const int offset = 3;
+            byte[] expectedEmptyRead = new byte[32 - offset];
+            byte[] expectedKeccakRead = TestItem.KeccakA.Bytes;
+            EvmPooledMemory memory = new();
+            memory.Save((UInt256)offset, expectedKeccakRead);
+            ulong initialSize = memory.Size;
+            ReadOnlyMemory<byte> actualKeccakMemoryRead = memory.Inspect((UInt256)offset, 32);
+            ReadOnlyMemory<byte> actualEmptyRead = memory.Inspect(32 + (UInt256)offset, 32 - (UInt256)offset);
+            Assert.AreEqual(initialSize, memory.Size);
+            Assert.AreEqual(expectedKeccakRead, actualKeccakMemoryRead.ToArray());
+            Assert.AreEqual(expectedEmptyRead, actualEmptyRead.ToArray());
+        }
+
+        [Test]
+        public void Load_should_update_size_of_memory()
+        {
+            byte[] expectedResult = new byte[32];
+            EvmPooledMemory memory = new();
+            memory.Save(3, TestItem.KeccakA.Bytes);
+            ulong initialSize = memory.Size;
+            ReadOnlyMemory<byte> result = memory.Load(initialSize + 32, 32);
+            Assert.AreNotEqual(initialSize, memory.Size);
+            Assert.AreEqual(expectedResult, result.ToArray());
         }
     }
 }

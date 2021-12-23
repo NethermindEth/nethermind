@@ -26,10 +26,10 @@ namespace Nethermind.Core.Test.Json
     {
         protected void TestConverter(T item, Func<T, T, bool> equalityComparer, JsonConverter<T> converter)
         {
-            JsonSerializer serializer = new JsonSerializer();
+            JsonSerializer serializer = new();
             serializer.Converters.Add(converter);
-            StringBuilder builder = new StringBuilder();
-            StringWriter writer = new StringWriter(builder);
+            StringBuilder builder = new();
+            StringWriter writer = new(builder);
             serializer.Serialize(writer, item);
             string result = builder.ToString();
             JsonReader reader = new JsonTextReader(new StringReader(result));

@@ -56,8 +56,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         
         public long? FixedDifficulty { get; set; }
         
-        public UInt256 ForkBaseFee { get; set; }
-        
         public long? DaoForkBlockNumber { get; set; }
 
         public long? HomesteadBlockNumber { get; set; }
@@ -79,5 +77,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? BerlinBlockNumber { get; set; }
         
         public long? LondonBlockNumber { get; set; }
+        
+        public long? ArrowGlacierBlockNumber { get; set; }
     }
 }

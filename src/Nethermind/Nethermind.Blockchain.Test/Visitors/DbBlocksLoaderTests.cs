@@ -46,9 +46,9 @@ namespace Nethermind.Blockchain.Test.Visitors
             {
                 Block genesisBlock = Build.A.Block.Genesis.TestObject;
 
-                MemDb blocksDb = new MemDb();
-                MemDb blockInfosDb = new MemDb();
-                MemDb headersDb = new MemDb();
+                MemDb blocksDb = new();
+                MemDb blockInfosDb = new();
+                MemDb headersDb = new();
 
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
                 for (int i = 0; i < testTree.Head.Number + 1; i++)
@@ -58,11 +58,11 @@ namespace Nethermind.Blockchain.Test.Visitors
 
                     headersDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock.Header).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(
+                    ChainLevelInfo ithLevel = new(
                         true,
                         new BlockInfo[1]
                         {
-                            new BlockInfo(
+                            new(
                                 ithBlock.Hash,
                                 ithBlock.TotalDifficulty.Value) {WasProcessed = true}
                         });
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
                 
-                BlockTree blockTree = new BlockTree(
+                BlockTree blockTree = new(
                     blocksDb,
                     headersDb,
                     blockInfosDb,
@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     NullBloomStorage.Instance,
                     LimboLogs.Instance);
 
-                DbBlocksLoader loader = new DbBlocksLoader(blockTree, LimboNoErrorLogger.Instance);
+                DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
 
                 Assert.AreEqual(testTree.Head.Hash, blockTree.BestSuggestedHeader.Hash, $"head {chainLength}");
@@ -95,9 +95,9 @@ namespace Nethermind.Blockchain.Test.Visitors
             {
                 Block genesisBlock = Build.A.Block.Genesis.TestObject;
 
-                MemDb blocksDb = new MemDb();
-                MemDb blockInfosDb = new MemDb();
-                MemDb headersDb = new MemDb();
+                MemDb blocksDb = new();
+                MemDb blockInfosDb = new();
+                MemDb headersDb = new();
 
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
                 for (int i = 0; i < testTree.Head.Number + 1; i++)
@@ -107,9 +107,9 @@ namespace Nethermind.Blockchain.Test.Visitors
 
                     headersDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock.Header).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1]
+                    ChainLevelInfo ithLevel = new(true, new BlockInfo[1]
                     {
-                        new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value)
+                        new(ithBlock.Hash, ithBlock.TotalDifficulty.Value)
                     });
                     
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 blockInfosDb.Set(Keccak.Zero, genesisBlock.Header.Hash.Bytes);
                 headersDb.Set(genesisBlock.Header.Hash, Rlp.Encode(genesisBlock.Header).Bytes);
 
-                BlockTree blockTree = new BlockTree(
+                BlockTree blockTree = new(
                     blocksDb,
                     headersDb,
                     blockInfosDb,
@@ -127,7 +127,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                     NullBloomStorage.Instance,
                     LimboLogs.Instance);
                 
-                DbBlocksLoader loader = new DbBlocksLoader(blockTree, LimboNoErrorLogger.Instance);
+                DbBlocksLoader loader = new(blockTree, LimboNoErrorLogger.Instance);
                 await blockTree.Accept(loader, CancellationToken.None);
 
                 Assert.AreEqual(testTree.Head.Hash, blockTree.BestSuggestedHeader.Hash, $"head {chainLength}");
@@ -137,11 +137,11 @@ namespace Nethermind.Blockchain.Test.Visitors
         [Test]
         public async Task Can_load_from_DB_when_there_is_an_invalid_block_in_DB_and_a_valid_branch()
         {
-            MemDb blocksDb = new MemDb();
-            MemDb blockInfosDb = new MemDb();
-            MemDb headersDb = new MemDb();
+            MemDb blocksDb = new();
+            MemDb blockInfosDb = new();
+            MemDb headersDb = new();
 
-            BlockTree tree1 = new BlockTree(
+            BlockTree tree1 = new(
                 blocksDb,
                 headersDb,
                 blockInfosDb,
@@ -170,7 +170,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree1.UpdateMainChain(block0);
             
-            BlockTree tree2 = new BlockTree(
+            BlockTree tree2 = new(
                 blocksDb,
                 headersDb,
                 blockInfosDb,
@@ -179,7 +179,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
 
-            CancellationTokenSource tokenSource = new CancellationTokenSource();
+            CancellationTokenSource tokenSource = new();
 #pragma warning disable 4014
             Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
 #pragma warning restore 4014
@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 }
             };
 
-            DbBlocksLoader loader = new DbBlocksLoader(tree2, LimboNoErrorLogger.Instance, null, 1);
+            DbBlocksLoader loader = new(tree2, LimboNoErrorLogger.Instance, null, 1);
             await tree2.Accept(loader, tokenSource.Token);
 
             Assert.AreEqual(3L, tree2.BestKnownNumber, "best known");
@@ -215,11 +215,11 @@ namespace Nethermind.Blockchain.Test.Visitors
         [Test]
         public async Task Can_load_from_DB_when_there_is_only_an_invalid_chain_in_DB()
         {
-            MemDb blocksDb = new MemDb();
-            MemDb blockInfosDb = new MemDb();
-            MemDb headersDb = new MemDb();
+            MemDb blocksDb = new();
+            MemDb blockInfosDb = new();
+            MemDb headersDb = new();
 
-            BlockTree tree1 = new BlockTree(
+            BlockTree tree1 = new(
                 blocksDb,
                 headersDb,
                 blockInfosDb,
@@ -240,7 +240,7 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree1.UpdateMainChain(block0);
 
-            BlockTree tree2 = new BlockTree(
+            BlockTree tree2 = new(
                 blocksDb,
                 headersDb,
                 blockInfosDb,
@@ -249,7 +249,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
 
-            CancellationTokenSource tokenSource = new CancellationTokenSource();
+            CancellationTokenSource tokenSource = new();
 #pragma warning disable 4014
             Task.Delay(_dbLoadTimeout).ContinueWith(t => tokenSource.Cancel());
 #pragma warning restore 4014
@@ -266,7 +266,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 }
             };
 
-            DbBlocksLoader loader = new DbBlocksLoader(tree2, LimboNoErrorLogger.Instance, null, 1);
+            DbBlocksLoader loader = new(tree2, LimboNoErrorLogger.Instance, null, 1);
             await tree2.Accept(loader, tokenSource.Token);
 
             /* note the block tree historically loads one less block than it could */

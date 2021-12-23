@@ -11,7 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Updating submodules 
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
+    - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native
     - name: Installing Linux packages
       run: |
@@ -29,7 +33,7 @@ jobs:
       run: docker ps -a
     - name: Running Vault Tests
       run: |
-        curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/users -d '{"email": "hello@localhost", "password": "hello12345", "first_name": "A", "last_name": "User"}' -v
+        curl -s -X POST -H 'content-type: application/json' http://localhost:8081/api/v1/users -d '{"email": "hello@localhost", "password": "hello12345", "first_name": "A", "last_name": "User"}' -v
         ACCESS_TOKEN=$(curl -XPOST -H 'content-type: application/json' http://localhost:8081/api/v1/authenticate -d '{"email": "hello@localhost", "password": "hello12345"}' -v | jq ".token.token" | tr -d '"') 
         export TOKEN="bearer ${ACCESS_TOKEN}"
         cd src/Nethermind/Nethermind.Vault.Test

@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
 using Nethermind.Grpc.Servers;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps

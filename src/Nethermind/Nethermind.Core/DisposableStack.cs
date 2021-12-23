@@ -22,10 +22,9 @@ namespace Nethermind.Core
 {
     public class DisposableStack : Stack<IAsyncDisposable>
     {
-        public void Push(IDisposable item)
-        {
-            Push(new AsyncDisposableWrapper(item));
-        }
+        public new void Push(IAsyncDisposable item) => base.Push(item);
+
+        public void Push(IDisposable item) => Push(new AsyncDisposableWrapper(item));
 
         private class AsyncDisposableWrapper : IAsyncDisposable
         {

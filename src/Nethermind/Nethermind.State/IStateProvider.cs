@@ -23,11 +23,11 @@ using Nethermind.Trie;
 
 namespace Nethermind.State
 {
-    public interface IStateProvider : IReadOnlyStateProvider
+    public interface IStateProvider : IReadOnlyStateProvider, IJournal<int>
     {
         void RecalculateStateRoot();
 
-        new Keccak StateRoot { get; set; }
+        Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
 
@@ -35,7 +35,7 @@ namespace Nethermind.State
         
         void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce);
 
-        void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
+        void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec, bool isGenesis = false);
 
         void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
@@ -51,17 +51,13 @@ namespace Nethermind.State
 
         /* snapshots */
 
-        void Commit(IReleaseSpec releaseSpec);
+        void Commit(IReleaseSpec releaseSpec, bool isGenesis = false);
 
-        void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer);
+        void Commit(IReleaseSpec releaseSpec, IStateTracer? stateTracer, bool isGenesis = false);
 
         void Reset();
 
-        void Restore(int snapshot);
-
         void CommitTree(long blockNumber);
-
-        int TakeSnapshot();
 
         /// <summary>
         /// For witness

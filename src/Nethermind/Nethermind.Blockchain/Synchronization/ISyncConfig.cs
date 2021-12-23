@@ -31,9 +31,6 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "If 'false' then the node does not download/process new blocks.", DefaultValue = "true")]
         bool SynchronizationEnabled { get; set; }
         
-        [ConfigItem(Description = "Enables beam sync that can be useful to create some JSON RPC queries while the node is fast syncing in the background.", DefaultValue = "false")]
-        bool BeamSync { get; set; }
-
         [ConfigItem(
             Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.",
             DefaultValue = "false")]
@@ -49,7 +46,7 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "If set to 'true' then in the Fast Blocks mode Nethermind generates smaller requests to avoid Geth from disconnecting. On the Geth heavy networks (mainnet) it is desired while on Parity or Nethermind heavy networks (Goerli, AuRa) it slows down the sync by a factor of ~4", DefaultValue = "true")]
         public bool UseGethLimitsInFastBlocks { get; set; }
         
-        [ConfigItem(Description = "If set to 'false' then beam sync will only download recent blocks.", DefaultValue = "true")]
+        [ConfigItem(Description = "If set to 'false' then fast sync will only download recent blocks.", DefaultValue = "true")]
         bool DownloadHeadersInFastSync { get; set; }
         
         [ConfigItem(Description = "If set to 'true' then the block bodies will be downloaded in the Fast Sync mode.", DefaultValue = "true")]
@@ -67,37 +64,25 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Hash of the pivot block for the Fast Blocks sync.", DefaultValue = "null")]
         string PivotHash { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
         long PivotNumberParsed => LongConverter.FromString(PivotNumber ?? "0");
         
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "0")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
         UInt256 PivotTotalDifficultyParsed => UInt256.Parse(PivotTotalDifficulty ?? "0");
 
-        [ConfigItem(HiddenFromDocs = true)]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         Keccak PivotHashParsed => PivotHash == null ? null : new Keccak(Bytes.FromHexString(PivotHash));
-        
-        [ConfigItem(Description = "Number of seconds before a single beam sync request expires and throw an exception. If you want your JSON RPC requests to keep trying then set this value to a higher number.", DefaultValue = "4")]
-        public int BeamSyncContextTimeout { get; set; }
-        
-        [ConfigItem(Description = "Number of seconds to pass without progress before beam sync stops trying to process a single block.", DefaultValue = "15")]
-        public int BeamSyncPreProcessorTimeout { get; set; }
-        
-        [ConfigItem(Description = "Should use beam sync to fix corrupted state DB (dev use).", DefaultValue = "false")]
-        public bool BeamSyncFixMode { get; set; }
-        
-        [ConfigItem(Description = "When beam syncing should verify each state item loaded from DB (dev use).", DefaultValue = "false")]
-        public bool BeamSyncVerifiedMode { get; set; }
         
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest body downloaded in fast sync when DownloadBodiesInFastSync is enabled. Actual values used will be Math.Max(1, Math.Min(PivotNumber, AncientBodiesBarrier))", DefaultValue = "0")]
         public long AncientBodiesBarrier { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
         public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
         
         [ConfigItem(Description = "[EXPERIMENTAL] Defines the earliest receipts downloaded in fast sync when DownloadReceiptsInFastSync is enabled. Actual value used will be Math.Max(1, Math.Min(PivotNumber, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)))", DefaultValue = "0")]
         public long AncientReceiptsBarrier { get; set; }
 
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "1")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
         public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
         
         [ConfigItem(Description = "Enables witness protocol.", DefaultValue = "false")]
@@ -107,7 +92,7 @@ namespace Nethermind.Blockchain.Synchronization
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }
         
-        [ConfigItem(HiddenFromDocs = true, DefaultValue = "true")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "true")]
         public bool BlockGossipEnabled { get; set; }
     }
 }

@@ -23,8 +23,8 @@ namespace Nethermind.Blockchain.Test.Validators
 {
     public class TestBlockValidator : IBlockValidator
     {
-        public static TestBlockValidator AlwaysValid = new TestBlockValidator(true, true);
-        public static TestBlockValidator NeverValid = new TestBlockValidator(false, false);
+        public static TestBlockValidator AlwaysValid = new(true, true);
+        public static TestBlockValidator NeverValid = new(false, false);
         private readonly Queue<bool> _processedValidationResults;
 
         private readonly Queue<bool> _suggestedValidationResults;
@@ -54,12 +54,12 @@ namespace Nethermind.Blockchain.Test.Validators
             return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         }
 
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer)
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle)
         {
             return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         }
 
-        public bool Validate(BlockHeader header, bool isOmmer)
+        public bool Validate(BlockHeader header, bool isUncle)
         {
             return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         }

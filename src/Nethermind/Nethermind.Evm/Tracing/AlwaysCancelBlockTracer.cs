@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Tracing
         public void EndTxTrace()
         {
         }
-
+        
         public void EndBlockTrace()
         {
         }

@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Concurrency;
+using DotNetty.Common.Utilities;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
@@ -33,7 +34,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class NettyHandshakeHandler : SimpleChannelInboundHandler<IByteBuffer>
     {
-        private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
+        private readonly EncryptionHandshake _handshake = new();
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
         private readonly IEventExecutorGroup _group;
@@ -73,11 +74,10 @@ namespace Nethermind.Network.Rlpx
                 Packet auth = _service.Auth(RemoteId, _handshake);
 
                 if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {RemoteId} @ {context.Channel.RemoteAddress}");
-                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(auth.Data.Length);
                 buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(buffer);
-                Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);
-            }
+                Interlocked.Add(ref Metrics.P2PBytesSent, auth.Data.Length);            }
             else
             {
                 _session.RemoteHost = ((IPEndPoint) context.Channel.RemoteAddress).Address.ToString();
@@ -153,7 +153,7 @@ namespace Nethermind.Network.Rlpx
 
                 //_p2PSession.RemoteNodeId = _remoteId;
                 if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId} @ {context.Channel.RemoteAddress}");
-                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(ack.Data.Length);
                 buffer.WriteBytes(ack.Data);
                 context.WriteAndFlushAsync(buffer);
                 Interlocked.Add(ref Metrics.P2PBytesSent, ack.Data.Length);
@@ -170,8 +170,8 @@ namespace Nethermind.Network.Rlpx
             _initCompletionSource?.SetResult(input);
             _session.Handshake(_handshake.RemoteNodeId);
 
-            FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
-            FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
+            FrameCipher frameCipher = new(_handshake.Secrets.AesSecret);
+            FrameMacProcessor macProcessor = new(_session.RemoteNodeId, _handshake.Secrets);
 
             if (_role == HandshakeRole.Recipient)
             {
@@ -189,12 +189,12 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ZeroPacketSplitter(_logManager));
 
-            PacketSender packetSender = new PacketSender(_serializationService, _logManager);
+            PacketSender packetSender = new(_serializationService, _logManager);
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(packetSender);
 
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-            ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(_session, _logManager);
+            ZeroNettyP2PHandler handler = new(_session, _logManager);
             context.Channel.Pipeline.AddLast(_group, handler);
 
             handler.Init(packetSender, context);
@@ -213,7 +213,7 @@ namespace Nethermind.Network.Rlpx
         private async Task CheckHandshakeInitTimeout()
         {
             Task<object> receivedInitMsgTask = _initCompletionSource.Task;
-            CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            CancellationTokenSource delayCancellation = new();
             Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
 
             if (firstTask != receivedInitMsgTask)

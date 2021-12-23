@@ -19,8 +19,6 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
-using FluentAssertions.Specialized;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -51,19 +49,21 @@ namespace Nethermind.JsonRpc.Test
             Assembly jConfig = typeof(JsonRpcConfig).Assembly;
             _configurationProvider = new ConfigProvider();
             _logManager = LimboLogs.Instance;
+            _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
         private IJsonRpcService _jsonRpcService;
         private IConfigProvider _configurationProvider;
         private ILogManager _logManager;
+        private JsonRpcContext _context;
 
         private JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : IRpcModule
         {
-            RpcModuleProvider moduleProvider = new RpcModuleProvider(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
+            RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
             moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
             _jsonRpcService = new JsonRpcService(moduleProvider, _logManager);
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
-            JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, JsonRpcContext.Http).Result;
+            JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
             Assert.AreEqual(request.Id, response.Id);
             return response;
         }
@@ -91,7 +91,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void CanHandleOptionalArguments()
         {
-            EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+            EthereumJsonSerializer serializer = new();
             string serialized = serializer.Serialize(new TransactionForRpc());
             IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
             ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x1"));

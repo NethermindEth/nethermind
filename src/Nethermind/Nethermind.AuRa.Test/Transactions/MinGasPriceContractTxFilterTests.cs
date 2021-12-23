@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -59,10 +60,10 @@ namespace Nethermind.AuRa.Test.Transactions
                     return true;
                 });
             
-            var txFilter = new MinGasPriceContractTxFilter(minGasPriceFilter, dictionaryContractDataStore);
-            var tx = Build.A.Transaction.WithTo(address).WithGasPrice(gasLimit).WithData(null).TestObject;
+            MinGasPriceContractTxFilter txFilter = new(minGasPriceFilter, dictionaryContractDataStore);
+            Transaction tx = Build.A.Transaction.WithTo(address).WithGasPrice(gasLimit).WithData(null).TestObject;
 
-            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject).Allowed;
+            return txFilter.IsAllowed(tx, Build.A.BlockHeader.TestObject);
         }
     }
 }

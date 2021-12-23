@@ -29,14 +29,14 @@ namespace Nethermind.Core.Test.IO
 
         public string Path { get; }
 
-        public static TempPath GetTempFile() => new TempPath(System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString()));
+        public static TempPath GetTempFile() => new(System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString()));
 
         public static TempPath GetTempFile(string subPath) => string.IsNullOrEmpty(subPath)
             ? GetTempFile()
             : new TempPath(System.IO.Path.Combine(System.IO.Path.GetTempPath(), subPath));
 
-        public static TempPath GetTempDirectory(string subPath = null) => 
-            new TempPath(System.IO.Path.Combine(System.IO.Path.GetTempPath(), subPath ?? Guid.NewGuid().ToString()));
+        public static TempPath GetTempDirectory(string? subPath = null) => 
+            new(System.IO.Path.Combine(System.IO.Path.GetTempPath(), subPath ?? Guid.NewGuid().ToString()));
 
         public void Dispose()
         {

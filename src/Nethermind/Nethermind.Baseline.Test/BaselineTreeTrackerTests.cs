@@ -128,7 +128,6 @@ namespace Nethermind.Baseline.Test
 
             MerkleTreeSHAContract contract = new (_abiEncoder, fromContractAdress);
 
-            UInt256 nonce = 1L;
             for (int i = 0; i < test.ExpectedTreeCounts.Length; i++)
             {
                 InsertLeavesFromArray(test.LeavesInTransactionsAndBlocks[i], testRpc, contract, address);

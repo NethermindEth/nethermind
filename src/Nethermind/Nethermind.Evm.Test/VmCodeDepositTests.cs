@@ -24,8 +24,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
+    [TestFixture]
     [Parallelizable(ParallelScope.Self)]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
@@ -33,11 +32,6 @@ namespace Nethermind.Evm.Test
 
         protected override long BlockNumber => _blockNumber;
 
-        public VmCodeDepositTests(bool useBeamSync)
-        {
-            UseBeamSync = useBeamSync;
-        }
-        
         [SetUp]
         public override void Setup()
         {
@@ -76,7 +70,7 @@ namespace Nethermind.Evm.Test
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
-            var receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
             Assert.AreEqual(98777, receipt.GasSpent, "no refund");
@@ -117,7 +111,7 @@ namespace Nethermind.Evm.Test
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
-            var receipt = Execute(code);
+            TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
             Assert.AreEqual(83199, receipt.GasSpent, "with refund");

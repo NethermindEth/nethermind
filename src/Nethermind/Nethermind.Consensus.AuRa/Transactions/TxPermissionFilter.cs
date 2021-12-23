@@ -25,6 +25,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -44,18 +45,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<PermissionBasedTxFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader)
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader)
         {
             if (parentHeader.Number + 1 < _contract.Activation)
             {
-                return (true, string.Empty);
+                return AcceptTxResult.Accepted;
             }
 
             var txPermissions = GetPermissions(tx, parentHeader);
             var txType = GetTxType(tx, txPermissions.ContractExists);
             if (_logger.IsTrace) _logger.Trace($"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. " +
                                                $"Permissions required: {txType}, got: {txPermissions}.");
-            return (txPermissions.Permissions & txType) == txType ? (true, string.Empty) : (false, $"permission denied for tx type: {txType}, actual permissions: {txPermissions.Permissions}");
+            return (txPermissions.Permissions & txType) == txType ? AcceptTxResult.Accepted : AcceptTxResultAuRa.PermissionDenied.WithMessage($"permission denied for tx type: {txType}, actual permissions: {txPermissions.Permissions}");
         }
 
         private (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) GetPermissions(Transaction tx, BlockHeader parentHeader)

@@ -30,6 +30,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
@@ -46,66 +47,63 @@ namespace Nethermind.Blockchain.Test.Producers
         public void Test()
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            DbProvider dbProvider = new DbProvider(DbModeHint.Mem);
+            DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.BlockInfos, new MemDb());
             dbProvider.RegisterDb(DbNames.Blocks, new MemDb());
             dbProvider.RegisterDb(DbNames.Headers, new MemDb());
             dbProvider.RegisterDb(DbNames.State, new MemDb());
             dbProvider.RegisterDb(DbNames.Code, new MemDb());
 
-            BlockTree blockTree = new BlockTree(
+            BlockTree blockTree = new(
                 dbProvider,
                 new ChainLevelInfoRepository(dbProvider),
                 specProvider,
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
-            TrieStore trieStore = new TrieStore(
+            TrieStore trieStore = new(
                 dbProvider.RegisteredDbs[DbNames.State],
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
-            StateProvider stateProvider = new StateProvider(
+            StateProvider stateProvider = new(
                 trieStore,
                 dbProvider.RegisteredDbs[DbNames.Code],
                 LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
-            BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new VirtualMachine(
-                stateProvider,
-                storageProvider,
+            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 specProvider,
                 LimboLogs.Instance);
-            TransactionProcessor txProcessor = new TransactionProcessor(
+            TransactionProcessor txProcessor = new(
                 specProvider,
                 stateProvider,
                 storageProvider,
                 virtualMachine,
                 LimboLogs.Instance);
-            BlockProcessor blockProcessor = new BlockProcessor(
+            BlockProcessor blockProcessor = new(
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                txProcessor,
+                new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(
+            BlockchainProcessor blockchainProcessor = new(
                 blockTree,
                 blockProcessor,
                 NullRecoveryStep.Instance,
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.Default);
-            BuildBlocksWhenRequested trigger = new BuildBlocksWhenRequested();
+            BuildBlocksWhenRequested trigger = new();
             var timestamper = new ManualTimestamper();
-            DevBlockProducer devBlockProducer = new DevBlockProducer(
+            DevBlockProducer devBlockProducer = new(
                 EmptyTxSource.Instance,
                 blockchainProcessor,
                 stateProvider,
                 blockTree,
-                blockchainProcessor,
                 trigger,
                 timestamper,
                 specProvider,
@@ -113,9 +111,10 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
 
             blockchainProcessor.Start();
+            var suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
             devBlockProducer.Start();
 
-            AutoResetEvent autoResetEvent = new AutoResetEvent(false);
+            AutoResetEvent autoResetEvent = new(false);
 
             blockTree.NewHeadBlock += (s, e) => autoResetEvent.Set();
             blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);

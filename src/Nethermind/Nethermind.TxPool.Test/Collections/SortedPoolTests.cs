@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Core;
@@ -99,6 +100,20 @@ namespace Nethermind.TxPool.Test.Collections
                 Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
                 Assert.AreEqual(gasPrice, tx.GasPrice);
             }
+        }
+
+        [Test]
+        public void should_remove_empty_buckets()
+        {
+            Transaction tx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithHash(TestItem.KeccakA).TestObject;
+                
+            _sortedPool.TryInsert(tx.Hash, tx);
+            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeTrue(); 
+                
+            _sortedPool.TryRemove(tx.Hash);
+            _sortedPool.TryGetBucket(tx.SenderAddress, out _).Should().BeFalse();
         }
     }
 }

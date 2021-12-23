@@ -14,13 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -49,23 +49,21 @@ namespace Nethermind.Network.Test
         public void Will_unregister_on_disconnect()
         {
             ISession session = CreateSession();
-            SessionMonitor sessionMonitor = new SessionMonitor(new NetworkConfig(), LimboLogs.Instance);
+            SessionMonitor sessionMonitor = new(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         }
         
-        [TestCase(0)]
-        [TestCase(1)]
+        [Test]
         [Explicit("Travis fails here")]
-        public async Task Will_keep_pinging(int randomResult)
+        public async Task Will_keep_pinging()
         {
             ISession session1 = CreateSession();
             ISession session2 = CreateUnresponsiveSession();
 
-            NetworkConfig networkConfig = new NetworkConfig();
+            NetworkConfig networkConfig = new();
             networkConfig.P2PPingInterval = 50;
-            TestRandom testRandom = new TestRandom((i) => randomResult);
-            SessionMonitor sessionMonitor = new SessionMonitor(networkConfig, LimboLogs.Instance);
+            SessionMonitor sessionMonitor = new(networkConfig, LimboLogs.Instance);
             sessionMonitor.AddSession(session1);
             sessionMonitor.AddSession(session2);
             sessionMonitor.Start();
@@ -76,7 +74,7 @@ namespace Nethermind.Network.Test
             await _noPong.Received().SendPing();
             
             Assert.AreEqual(SessionState.Initialized, session1.State);
-            Assert.AreEqual(randomResult == 0? SessionState.Disconnected : SessionState.Initialized, session2.State);
+            Assert.AreEqual(SessionState.Disconnected, session2.State);
         }
 
         private ISession CreateSession()
@@ -91,6 +89,8 @@ namespace Nethermind.Network.Test
         private ISession CreateUnresponsiveSession()
         {
             ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            session.RemoteHost = "1.2.3.4";
+            session.RemotePort = 12345;
             session.PingSender = _noPong;
             session.Handshake(TestItem.PublicKeyB);
             session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());

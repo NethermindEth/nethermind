@@ -29,13 +29,13 @@ namespace Nethermind.Core.Test.Encoding
         [TestCase(false)]
         public void Can_do_roundtrip(bool valueDecode)
         {
-            BlockInfo blockInfo = new BlockInfo(TestItem.KeccakA, 1);
+            BlockInfo blockInfo = new(TestItem.KeccakA, 1);
             blockInfo.WasProcessed = true;
 
-            BlockInfo blockInfo2 = new BlockInfo(TestItem.KeccakB, 2);
+            BlockInfo blockInfo2 = new(TestItem.KeccakB, 2);
             blockInfo2.WasProcessed = false;
 
-            ChainLevelInfo chainLevelInfo = new ChainLevelInfo(true, new[] {blockInfo, blockInfo2});
+            ChainLevelInfo chainLevelInfo = new(true, new[] {blockInfo, blockInfo2});
             chainLevelInfo.HasBlockOnMainChain = true;
 
             Rlp rlp = Rlp.Encode(chainLevelInfo);

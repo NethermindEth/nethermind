@@ -25,7 +25,7 @@ namespace Nethermind.Serialization.Json
     {
         private readonly TextWriter _textWriter;
 
-        public long Size { get; set; }
+        public long Size { get; private set; }
 
         public CountingTextWriter(TextWriter textWriter)
         {

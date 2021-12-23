@@ -60,6 +60,13 @@ namespace Nethermind.Blockchain.Contracts.Json
     
     public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : AbiParameter, new()
     {
+        private readonly IList<IAbiTypeFactory> _abiTypeFactories;
+
+        protected AbiParameterConverterBase(IList<IAbiTypeFactory> abiTypeFactories)
+        {
+            _abiTypeFactories = abiTypeFactories;
+        }
+
         public override void WriteJson(JsonWriter writer, T value, JsonSerializer serializer)
         {
             throw new NotSupportedException();
@@ -82,12 +89,16 @@ namespace Nethermind.Blockchain.Contracts.Json
         }
         
         private AbiType GetAbiType(JToken token) => 
-            GetParameterType(token[nameof(AbiParameter.Type).ToLowerInvariant()]!.Value<string>(), token["components"]);
+            GetParameterType(token[TypePropertyName]!.Value<string>(), token["components"]);
+
+        private static string TypePropertyName => nameof(AbiParameter.Type).ToLowerInvariant();
 
         private static string GetName(JToken token) => 
-            token[nameof(AbiParameter.Name).ToLowerInvariant()]!.Value<string>();
+            token[NamePropertyName]!.Value<string>();
 
-        private AbiType GetParameterType(string type, JToken components)
+        private static string NamePropertyName => nameof(AbiParameter.Name).ToLowerInvariant();
+
+        private AbiType GetParameterType(string type, JToken? components)
         {
             var match = AbiParameterConverterStatics.TypeExpression.Match(type);
             if (match.Success)
@@ -106,8 +117,31 @@ namespace Nethermind.Blockchain.Contracts.Json
             }
         }
 
-        private AbiType GetBaseType(string baseType, Match match, JToken components)
+        private AbiType GetBaseType(string baseType, Match match, JToken? components)
         {
+            string GetAbiTypeName()
+            {
+                string name = baseType;
+                if (components is not null)
+                {
+                    IEnumerable<string> innerTypes = components.SelectTokens($"$..{TypePropertyName}").Select(t => t.Value<string>());
+                    name = $"({string.Join(",", innerTypes)})";
+                }
+
+                return name;
+            }
+
+            string abiTypeName = GetAbiTypeName();
+
+            foreach (IAbiTypeFactory factory in _abiTypeFactories)
+            {
+                AbiType? abiType = factory.Create(abiTypeName);
+                if (abiType is not null)
+                {
+                    return abiType;
+                }
+            }
+
             if (AbiParameterConverterStatics.SimpleTypeFactories.TryGetValue(baseType, out var simpleTypeFactory))
             {
                 int? m = match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Value) : (int?) null;
@@ -116,7 +150,8 @@ namespace Nethermind.Blockchain.Contracts.Json
             }
             else if (baseType == "tuple")
             {
-                return new AbiTuple(components.Children().ToDictionary(GetName, GetAbiType));
+                JEnumerable<JToken> children = components!.Children();
+                return new AbiTuple(children.Select(GetAbiType).ToArray(), children.Select(GetName).ToArray());
             }
             else
             {
@@ -127,11 +162,17 @@ namespace Nethermind.Blockchain.Contracts.Json
 
     public class AbiParameterConverter : AbiParameterConverterBase<AbiParameter>
     {
-        
+        public AbiParameterConverter(IList<IAbiTypeFactory> abiTypeFactories) : base(abiTypeFactories)
+        {
+        }
     }
 
     public class AbiEventParameterConverter : AbiParameterConverterBase<AbiEventParameter>
     {
+        public AbiEventParameterConverter(IList<IAbiTypeFactory> abiTypeFactories) : base(abiTypeFactories)
+        {
+        }
+
         protected override void Populate(AbiEventParameter item, JToken token)
         {
             base.Populate(item, token);

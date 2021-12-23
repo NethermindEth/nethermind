@@ -52,46 +52,46 @@ namespace Nethermind.Serialization.Rlp
 
             rlpStream.Check(transactionsCheck);
 
-            int ommersSequenceLength = rlpStream.ReadSequenceLength();
-            int ommersCheck = rlpStream.Position + ommersSequenceLength;
-            List<BlockHeader> ommerHeaders = new();
-            while (rlpStream.Position < ommersCheck)
+            int unclesSequenceLength = rlpStream.ReadSequenceLength();
+            int unclesCheck = rlpStream.Position + unclesSequenceLength;
+            List<BlockHeader> uncleHeaders = new();
+            while (rlpStream.Position < unclesCheck)
             {
-                ommerHeaders.Add(Rlp.Decode<BlockHeader>(rlpStream, rlpBehaviors));
+                uncleHeaders.Add(Rlp.Decode<BlockHeader>(rlpStream, rlpBehaviors));
             }
 
-            rlpStream.Check(ommersCheck);
+            rlpStream.Check(unclesCheck);
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(blockCheck);
             }
 
-            return new Block(header, transactions, ommerHeaders);
+            return new Block(header, transactions, uncleHeaders);
         }
 
-        private (int Total, int Txs, int Ommers) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
+        private (int Total, int Txs, int Uncles) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {   
             int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
             
             int txLength = GetTxLength(item, rlpBehaviors);
-            contentLength += Rlp.GetSequenceRlpLength(txLength);
+            contentLength += Rlp.LengthOfSequence(txLength);
 
-            int ommersLength = GetOmmersLength(item, rlpBehaviors);
-            contentLength += Rlp.GetSequenceRlpLength(ommersLength);
+            int unclesLength = GetUnclesLength(item, rlpBehaviors);
+            contentLength += Rlp.LengthOfSequence(unclesLength);
 
-            return (contentLength, txLength, ommersLength);
+            return (contentLength, txLength, unclesLength);
         }
 
-        private int GetOmmersLength(Block item, RlpBehaviors rlpBehaviors)
+        private int GetUnclesLength(Block item, RlpBehaviors rlpBehaviors)
         {
-            int ommersLength = 0;
-            for (int i = 0; i < item.Ommers.Length; i++)
+            int unclesLength = 0;
+            for (int i = 0; i < item.Uncles.Length; i++)
             {
-                ommersLength += _headerDecoder.GetLength(item.Ommers[i], rlpBehaviors);
+                unclesLength += _headerDecoder.GetLength(item.Uncles[i], rlpBehaviors);
             }
 
-            return ommersLength;
+            return unclesLength;
         }
 
         private int GetTxLength(Block item, RlpBehaviors rlpBehaviors)
@@ -138,22 +138,22 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.Check(transactionsCheck);
 
-            int ommersSequenceLength = decoderContext.ReadSequenceLength();
-            int ommersCheck = decoderContext.Position + ommersSequenceLength;
-            List<BlockHeader> ommerHeaders = new();
-            while (decoderContext.Position < ommersCheck)
+            int unclesSequenceLength = decoderContext.ReadSequenceLength();
+            int unclesCheck = decoderContext.Position + unclesSequenceLength;
+            List<BlockHeader> uncleHeaders = new();
+            while (decoderContext.Position < unclesCheck)
             {
-                ommerHeaders.Add(Rlp.Decode<BlockHeader>(ref decoderContext, rlpBehaviors));
+                uncleHeaders.Add(Rlp.Decode<BlockHeader>(ref decoderContext, rlpBehaviors));
             }
 
-            decoderContext.Check(ommersCheck);
+            decoderContext.Check(unclesCheck);
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 decoderContext.Check(blockCheck);
             }
 
-            return new Block(header, transactions, ommerHeaders);
+            return new Block(header, transactions, uncleHeaders);
         }
 
         public Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -176,7 +176,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
             
-            (int contentLength, int txsLength, int ommersLength) = GetContentLength(item, rlpBehaviors);
+            (int contentLength, int txsLength, int unclesLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.Header);
             stream.StartSequence(txsLength);
@@ -185,10 +185,10 @@ namespace Nethermind.Serialization.Rlp
                 stream.Encode(item.Transactions[i]);
             }
             
-            stream.StartSequence(ommersLength);
-            for (int i = 0; i < item.Ommers.Length; i++)
+            stream.StartSequence(unclesLength);
+            for (int i = 0; i < item.Uncles.Length; i++)
             {
-                stream.Encode(item.Ommers[i]);
+                stream.Encode(item.Uncles[i]);
             }
         }
     }

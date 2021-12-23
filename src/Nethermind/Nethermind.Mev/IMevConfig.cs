@@ -14,9 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Mev.Data;
 
 namespace Nethermind.Mev
 {
@@ -37,7 +39,22 @@ namespace Nethermind.Mev
             DefaultValue = "200")]
         int BundlePoolSize { get; set; }
 
-        [ConfigItem(Description = "Defines the maximum number of MEV bundles to be included within a single block", DefaultValue = "0")]
+        [ConfigItem(Description = "Defines the maximum number of MEV bundles to be included within a single block", DefaultValue = "1")]
         int MaxMergedBundles { get; set; }
+        
+        [ConfigItem(Description = "Defines the list of trusted relay addresses to receive megabundles from as a comma separated string",
+            DefaultValue = "")]
+        string TrustedRelays { get; set;  }
+    }
+
+    public static class MevConfigExtensions
+    {
+        public static IEnumerable<Address> GetTrustedRelayAddresses(this IMevConfig mevConfig) =>
+            mevConfig.TrustedRelays
+                .Split(",")
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .Distinct()
+                .Select(s => new Address(s));
     }
 }

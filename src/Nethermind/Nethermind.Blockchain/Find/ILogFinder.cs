@@ -22,8 +22,6 @@ namespace Nethermind.Blockchain.Find
 {
     public interface ILogFinder
     {
-        public const string NotFoundError = "Block not found.";
-        
         IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default);
     }
 }
