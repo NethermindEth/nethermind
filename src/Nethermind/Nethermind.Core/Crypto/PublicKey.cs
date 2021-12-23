@@ -33,7 +33,7 @@ namespace Nethermind.Core.Crypto
             : this(Core.Extensions.Bytes.FromHexString(hexString ?? throw new ArgumentNullException(nameof(hexString))))
         {
         }
-        
+
         public PublicKey(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != LengthInBytes && bytes.Length != PrefixedLengthInBytes)
@@ -61,7 +61,7 @@ namespace Nethermind.Core.Crypto
                 }
 
                 return _address;
-            }   
+            }
         }
 
         public byte[] Bytes { get; }
@@ -89,13 +89,13 @@ namespace Nethermind.Core.Crypto
 
             return Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
-        
+
         private Address ComputeAddress()
         {
             Span<byte> hash = ValueKeccak.Compute(Bytes).BytesAsSpan;
             return new Address(hash.Slice(12).ToArray());
         }
-        
+
         public static Address ComputeAddress(ReadOnlySpan<byte> publicKeyBytes)
         {
             Span<byte> hash = ValueKeccak.Compute(publicKeyBytes).BytesAsSpan;
@@ -127,7 +127,7 @@ namespace Nethermind.Core.Crypto
             string value = Bytes.ToHexString(false);
             return $"{value.Substring(0, 6)}...{value.Substring(value.Length - 6)}";
         }
-        
+
         public static bool operator ==(PublicKey? a, PublicKey? b)
         {
             if (ReferenceEquals(a, null))

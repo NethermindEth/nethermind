@@ -27,14 +27,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
         // TODO: This might be better as a dictionary
         public static RequestCostItem[] DefaultRequestCostTable = new RequestCostItem[]
         {
-            new RequestCostItem(LesMessageCode.GetBlockHeaders, 150_000, 30_000),
-            new RequestCostItem(LesMessageCode.GetBlockBodies, 0, 700_000),
-            new RequestCostItem(LesMessageCode.GetReceipts, 0, 1_000_000),
-            new RequestCostItem(LesMessageCode.GetContractCodes, 0, 450_000),
-            new RequestCostItem(LesMessageCode.GetProofsV2, 0, 600_000),
-            new RequestCostItem(LesMessageCode.GetHelperTrieProofs, 0, 1_000_000),
-            new RequestCostItem(LesMessageCode.SendTxV2, 0, 450_000),
-            new RequestCostItem(LesMessageCode.GetTxStatus, 0, 250_000)
+            new(LesMessageCode.GetBlockHeaders, 150_000, 30_000),
+            new(LesMessageCode.GetBlockBodies, 0, 700_000),
+            new(LesMessageCode.GetReceipts, 0, 1_000_000),
+            new(LesMessageCode.GetContractCodes, 0, 450_000),
+            new(LesMessageCode.GetProofsV2, 0, 600_000),
+            new(LesMessageCode.GetHelperTrieProofs, 0, 1_000_000),
+            new(LesMessageCode.SendTxV2, 0, 450_000),
+            new(LesMessageCode.GetTxStatus, 0, 250_000)
         };
 
     }

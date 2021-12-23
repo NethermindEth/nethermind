@@ -19,7 +19,6 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;

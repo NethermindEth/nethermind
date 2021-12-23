@@ -37,7 +37,7 @@ namespace Nethermind.Network.IP
         {
             try
             {
-                HttpClient httpClient = new HttpClient {Timeout = TimeSpan.FromSeconds(3)};
+                HttpClient httpClient = new() {Timeout = TimeSpan.FromSeconds(3)};
                 if(_logger.IsInfo) _logger.Info($"Using {_url} to get external ip");
                 string ip = httpClient.GetStringAsync(_url).Result.Trim();
                 if(_logger.IsDebug) _logger.Debug($"External ip: {ip}");

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -52,8 +54,8 @@ namespace Nethermind.Init.Steps
                 Metrics.Version = VersionToMetrics.ConvertToNumber(ClientVersion.Version);
                 MetricsUpdater metricsUpdater = new MetricsUpdater(metricsConfig);
                 _api.MonitoringService = new MonitoringService(metricsUpdater, metricsConfig, _api.LogManager);
-                var metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
-                foreach (var metric in metrics)
+                IEnumerable<Type> metrics = new TypeDiscovery().FindNethermindTypes(nameof(Metrics));
+                foreach (Type metric in metrics)
                 {
                     _api.MonitoringService.RegisterMetrics(metric);    
                 }

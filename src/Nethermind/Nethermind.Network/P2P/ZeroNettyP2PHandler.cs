@@ -91,7 +91,7 @@ namespace Nethermind.Network.P2P
                 }
 
                 content.SkipBytes(content.ReadableBytes);
-                ZeroPacket outputPacket = new ZeroPacket(output);
+                ZeroPacket outputPacket = new(output);
                 try
                 {
                     outputPacket.PacketType = input.PacketType;

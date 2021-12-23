@@ -24,13 +24,13 @@ namespace Nethermind.Network.P2P.Messages
     /// </summary>
     public class AddCapabilityMessageSerializer : IMessageSerializer<AddCapabilityMessage>
     {
-        public byte[] Serialize(AddCapabilityMessage message)
-            => Rlp.Encode(Rlp.Encode(message.Capability.ProtocolCode.ToLowerInvariant()),
-                Rlp.Encode(message.Capability.Version)).Bytes;
+        public byte[] Serialize(AddCapabilityMessage msg)
+            => Rlp.Encode(Rlp.Encode(msg.Capability.ProtocolCode.ToLowerInvariant()),
+                Rlp.Encode(msg.Capability.Version)).Bytes;
 
-        public AddCapabilityMessage Deserialize(byte[] bytes)
+        public AddCapabilityMessage Deserialize(byte[] msgBytes)
         {
-            RlpStream context = bytes.AsRlpStream();
+            RlpStream context = msgBytes.AsRlpStream();
             context.ReadSequenceLength();
             string protocolCode = context.DecodeString();
             byte version = context.DecodeByte();

@@ -35,7 +35,7 @@ namespace Nethermind.Network
         private readonly ILogger _logger;
 
         private TimeSpan _pingInterval;
-        private List<Task<bool>> _pingTasks = new List<Task<bool>>();
+        private List<Task<bool>> _pingTasks = new();
 
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
@@ -55,7 +55,7 @@ namespace Nethermind.Network
             StopPingTimer();
         }
 
-        private ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
+        private ConcurrentDictionary<Guid, ISession> _sessions = new();
 
         public void AddSession(ISession session)
         {

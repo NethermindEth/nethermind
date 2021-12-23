@@ -138,7 +138,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder<T> WithSenderAddress(Address address)
+        public TransactionBuilder<T> WithSenderAddress(Address? address)
         {
             TestObjectInternal.SenderAddress = address;
             return this;

@@ -16,7 +16,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Stats;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -28,17 +27,17 @@ namespace Nethermind.Config.Test
         [Test]
         public void Works_fine_with_unset_values()
         {
-            Dictionary<string, string> args = new Dictionary<string, string>();
-            ArgsConfigSource configSource = new ArgsConfigSource(args);
+            Dictionary<string, string> args = new();
+            ArgsConfigSource configSource = new(args);
             Assert.IsFalse(configSource.GetValue(typeof(int), "a", "a").IsSet);
         }
         
         [Test]
         public void Is_case_insensitive()
         {
-            Dictionary<string, string> args = new Dictionary<string, string>();
+            Dictionary<string, string> args = new();
             args.Add("A.a", "12");
-            ArgsConfigSource configSource = new ArgsConfigSource(args);
+            ArgsConfigSource configSource = new(args);
             Assert.IsTrue(configSource.GetValue(typeof(int), "a", "A").IsSet);
         }
         
@@ -51,9 +50,9 @@ namespace Nethermind.Config.Test
         [TestCase(typeof(bool), "false", false)]
         public void Can_parse_various_values(Type valueType, string valueString, object parsedValue)
         {
-            Dictionary<string, string> args = new Dictionary<string, string>();
+            Dictionary<string, string> args = new();
             args.Add("A.a", valueString);
-            ArgsConfigSource configSource = new ArgsConfigSource(args);
+            ArgsConfigSource configSource = new(args);
             Assert.AreEqual(parsedValue, configSource.GetValue(valueType, "a", "A").Value);
         }
     }

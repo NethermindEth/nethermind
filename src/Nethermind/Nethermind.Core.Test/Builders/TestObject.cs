@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -95,6 +96,13 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressD = PublicKeyD.Address;
         public static Address AddressE = PublicKeyE.Address;
         public static Address AddressF = PublicKeyF.Address;
+
+        public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
+        public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");
+        public static IPEndPoint IPEndPointC = IPEndPoint.Parse("10.0.0.3");
+        public static IPEndPoint IPEndPointD = IPEndPoint.Parse("10.0.0.4");
+        public static IPEndPoint IPEndPointE = IPEndPoint.Parse("10.0.0.5");
+        public static IPEndPoint IPEndPointF = IPEndPoint.Parse("10.0.0.6");
 
         public static Bloom NonZeroBloom;
         
