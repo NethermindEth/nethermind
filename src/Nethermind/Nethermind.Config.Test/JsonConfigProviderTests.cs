@@ -14,14 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -29,15 +30,16 @@ namespace Nethermind.Config.Test
     [TestFixture]
     public class JsonConfigProviderTests
     {
-        private JsonConfigProvider _configProvider;
+        private JsonConfigProvider _configProvider = null!;
 
         [SetUp]
+        [SuppressMessage("ReSharper", "UnusedVariable")]
         public void Initialize()
         {
-            var keystoreConfig = new KeyStoreConfig();
-            var networkConfig = new NetworkConfig();
-            var jsonRpcConfig = new JsonRpcConfig();
-            var statsConfig = StatsParameters.Instance;
+            KeyStoreConfig keystoreConfig = new();
+            NetworkConfig networkConfig = new();
+            JsonRpcConfig jsonRpcConfig = new();
+            StatsParameters statsConfig = StatsParameters.Instance;
 
             _configProvider = new JsonConfigProvider("SampleJson/SampleJsonConfig.cfg");
         }
@@ -51,18 +53,21 @@ namespace Nethermind.Config.Test
         [Test]
         public void Can_load_config_from_file()
         {
-            var keystoreConfig = _configProvider.GetConfig<IKeyStoreConfig>();
-            var networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
-            var jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
+            IKeyStoreConfig? keystoreConfig = _configProvider.GetConfig<IKeyStoreConfig>();
+            IDiscoveryConfig? networkConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+            IJsonRpcConfig? jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
 
             Assert.AreEqual(100, keystoreConfig.KdfparamsDklen);
             Assert.AreEqual("test", keystoreConfig.Cipher);
           
             Assert.AreEqual(2, jsonRpcConfig.EnabledModules.Count());
-            new[] { ModuleType.Eth, ModuleType.Debug }.ToList().ForEach(x =>
+
+            void CheckIfEnabled(string x)
             {
-                Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x.ToString()));
-            });
+                Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x));
+            }
+
+            new[] { ModuleType.Eth, ModuleType.Debug }.ToList().ForEach(CheckIfEnabled);
 
             Assert.AreEqual(4, networkConfig.Concurrency);
         }

@@ -74,7 +74,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task CheckProtocolInitTimeout()
         {
             Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
-            CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            CancellationTokenSource delayCancellation = new();
             Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
             
             if (firstTask != receivedInitMsgTask)

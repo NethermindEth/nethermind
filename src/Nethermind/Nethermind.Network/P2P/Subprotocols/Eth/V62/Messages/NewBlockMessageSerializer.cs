@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class NewBlockMessageSerializer : IZeroInnerMessageSerializer<NewBlockMessage>
     {
-        private BlockDecoder _blockDecoder = new BlockDecoder();
+        private BlockDecoder _blockDecoder = new();
         
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message)
         {
@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private static NewBlockMessage Deserialize(RlpStream rlpStream)
         {
-            NewBlockMessage message = new NewBlockMessage();
+            NewBlockMessage message = new();
             rlpStream.ReadSequenceLength();
             message.Block = Rlp.Decode<Block>(rlpStream);
             message.TotalDifficulty = rlpStream.DecodeUInt256();

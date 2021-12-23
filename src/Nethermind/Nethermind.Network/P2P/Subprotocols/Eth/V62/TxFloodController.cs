@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly ILogger _logger;
         private readonly TimeSpan _checkInterval = TimeSpan.FromSeconds(60);
         private long _notAcceptedSinceLastCheck;
-        private readonly Random _random = new Random();
+        private readonly Random _random = new();
         
         internal bool IsDowngraded { get; private set; }
 

@@ -161,7 +161,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
-            using (var timer = new Timer(1000) {Enabled = true})
+            using (Timer timer = new Timer(1000) {Enabled = true})
             {
                 timer.Elapsed += (ElapsedEventHandler) ((o, e) =>
                 {
@@ -182,8 +182,8 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
                     {
-                        using var batch = chainLevelInfoRepository.StartBatch();
-                        var level = chainLevelInfoRepository.LoadLevel(number);
+                        using BatchWrite batch = chainLevelInfoRepository.StartBatch();
+                        ChainLevelInfo level = chainLevelInfoRepository.LoadLevel(number);
                         if (level != null)
                         {
                             if (!level.HasBlockOnMainChain)
@@ -216,7 +216,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                         if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                         {
-                            var header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+                            BlockHeader header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlockHeader(i);
                         }
                         else
@@ -250,12 +250,12 @@ namespace Nethermind.Init.Steps.Migrations
                 _builder.Append("Average bloom saturation: ");
                 for (int index = 0; index < _averages.Length; index++)
                 {
-                    var average = _averages[index];
+                    Average average = _averages[index];
                     _builder.Append((average.Value / Bloom.BitLength).ToString("P2"));
                     decimal count = 0;
                     decimal length = 0;
                     decimal safeBitCount = Bloom.BitLength * 0.6m;
-                    foreach (var bucket in average.Buckets)
+                    foreach (KeyValuePair<uint, uint> bucket in average.Buckets)
                     {
                         if (bucket.Key > safeBitCount)
                         {

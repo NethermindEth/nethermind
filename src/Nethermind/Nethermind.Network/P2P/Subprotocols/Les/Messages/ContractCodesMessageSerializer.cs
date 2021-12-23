@@ -50,13 +50,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
         public ContractCodesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
 
         public static ContractCodesMessage Deserialize(RlpStream rlpStream)
         {
-            ContractCodesMessage contractCodesMessage = new ContractCodesMessage();
+            ContractCodesMessage contractCodesMessage = new();
             rlpStream.ReadSequenceLength();
             contractCodesMessage.RequestId = rlpStream.DecodeLong();
             contractCodesMessage.BufferValue = rlpStream.DecodeInt();

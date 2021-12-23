@@ -48,7 +48,7 @@ namespace Nethermind.Network
                 // regression - old format
             }
 
-            NetworkNode networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, reputation);
+            NetworkNode networkNode = new(publicKey, ip != string.Empty ? ip : null, port, reputation);
             return networkNode;
         }
 
@@ -60,7 +60,7 @@ namespace Nethermind.Network
         public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int contentLength = GetContentLength(item, rlpBehaviors);
-            RlpStream stream = new RlpStream(Rlp.LengthOfSequence(contentLength));
+            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
             stream.StartSequence(contentLength);
             stream.Encode(item.NodeId.Bytes);
             stream.Encode(item.Host);

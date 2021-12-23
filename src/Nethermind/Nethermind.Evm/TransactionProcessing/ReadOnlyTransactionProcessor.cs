@@ -38,20 +38,19 @@ namespace Nethermind.Evm.TransactionProcessing
             _stateProvider.StateRoot = startState ?? throw new ArgumentException(nameof(startState));
         }
         
-        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)
-        {
+        public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
             _transactionProcessor.Execute(transaction, block, txTracer);
-        }
+        
 
-        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
-        {
+        public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
             _transactionProcessor.CallAndRestore(transaction, block, txTracer);
-        }
 
-        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer)
-        {
+        public void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
             _transactionProcessor.BuildUp(transaction, block, txTracer);
-        }
+
+        public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
+            _transactionProcessor.Trace(transaction, block, txTracer);
+
 
         public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);
 

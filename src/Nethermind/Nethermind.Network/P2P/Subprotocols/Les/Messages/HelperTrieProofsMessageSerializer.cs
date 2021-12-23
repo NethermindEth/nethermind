@@ -63,13 +63,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
         public HelperTrieProofsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
 
         public HelperTrieProofsMessage Deserialize(RlpStream rlpStream)
         {
-            HelperTrieProofsMessage message = new HelperTrieProofsMessage();
+            HelperTrieProofsMessage message = new();
             rlpStream.ReadSequenceLength();
             message.RequestId = rlpStream.DecodeLong();
             message.BufferValue = rlpStream.DecodeInt();

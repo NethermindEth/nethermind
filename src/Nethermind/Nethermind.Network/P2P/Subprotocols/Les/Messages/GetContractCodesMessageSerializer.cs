@@ -51,18 +51,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
         public GetContractCodesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
 
         public static GetContractCodesMessage Deserialize(RlpStream rlpStream)
         {
-            GetContractCodesMessage getContractCodesMessage = new GetContractCodesMessage();
+            GetContractCodesMessage getContractCodesMessage = new();
             rlpStream.ReadSequenceLength();
             getContractCodesMessage.RequestId = rlpStream.DecodeLong();
             getContractCodesMessage.Requests = rlpStream.DecodeArray(stream =>
             {
-                CodeRequest request = new CodeRequest();
+                CodeRequest request = new();
                 stream.ReadSequenceLength();
                 request.BlockHash = stream.DecodeKeccak();
                 request.AccountKey = stream.DecodeKeccak();

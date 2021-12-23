@@ -25,14 +25,14 @@ namespace Nethermind.Config.Test
         [Test]
         public void Works_fine_with_unset_values()
         {
-            EnvConfigSource configSource = new EnvConfigSource();
+            EnvConfigSource configSource = new();
             Assert.IsFalse(configSource.GetValue(typeof(int), "b", "a").IsSet);
         }
         
         [Test]
         public void Is_case_insensitive()
         {
-            EnvConfigSource configSource = new EnvConfigSource();
+            EnvConfigSource configSource = new();
             Environment.SetEnvironmentVariable("NETHERMIND_A_A", "12", EnvironmentVariableTarget.Process);
             Assert.IsTrue(configSource.GetValue(typeof(int), "a", "A").IsSet);
         }
@@ -47,7 +47,7 @@ namespace Nethermind.Config.Test
         public void Can_parse_various_values(Type valueType, string valueString, object parsedValue)
         {
             Environment.SetEnvironmentVariable("NETHERMIND_A_A", valueString, EnvironmentVariableTarget.Process);
-            EnvConfigSource configSource = new EnvConfigSource();
+            EnvConfigSource configSource = new();
             Assert.AreEqual(parsedValue, configSource.GetValue(valueType, "a", "A").Value);
         }
     }

@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
 
