@@ -239,10 +239,7 @@ namespace Nethermind.Evm.Tracing
                 return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx, releaseSpec));
 
             UInt256 leftBound = Transaction.BaseTxGasCost - 1;
-            
-            if (tx.SenderAddress == null)
-                tx.SenderAddress = Address.Zero;
-
+            tx.SenderAddress ??= Address.Zero;
             UInt256 rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost)? (UInt256)tx.GasLimit : (UInt256)header.GasLimit;
             UInt256 feeCap;
             
