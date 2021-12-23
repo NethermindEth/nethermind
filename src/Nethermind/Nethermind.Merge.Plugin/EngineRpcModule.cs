@@ -42,10 +42,10 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
+        private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
         private readonly ILogger _logger;
-        private readonly IBlockTree _blockTree;
 
         public EngineRpcModule(
             IHandler<PreparePayloadRequest, PreparePayloadResult> preparePayloadHandler,
@@ -56,8 +56,8 @@ namespace Nethermind.Merge.Plugin
             IHandler<ForkChoiceUpdatedRequest, string> forkChoiceUpdateHandler,
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
-            ILogManager logManager,
-            IBlockTree blockTree)
+            IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> executionPayloadBodiesHandler,
+            ILogManager logManager)
         {
             _preparePayloadHandler = preparePayloadHandler;
             _getPayloadHandler = getPayloadHandler;
@@ -67,8 +67,8 @@ namespace Nethermind.Merge.Plugin
             _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
             _executionStatusHandler = executionStatusHandler;
+            _executionPayloadBodiesHandler = executionPayloadBodiesHandler;
             _logger = logManager.GetClassLogger();
-            _blockTree = blockTree;
         }
 
         public ResultWrapper<PreparePayloadResult> engine_preparePayload(
@@ -208,6 +208,23 @@ namespace Nethermind.Merge.Plugin
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdated)} timeout.");
                 return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdated)} timeout.", ErrorCodes.Timeout);
             }
+        }
+
+        public async Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesV1(Keccak[] blockHashes)
+        {
+            if (await _locker.WaitAsync(Timeout))
+            {
+                try
+                {
+                    return await _executionPayloadBodiesHandler.HandleAsync(blockHashes);
+                }
+                finally
+                {
+                    _locker.Release();
+                }
+            }
+            if (_logger.IsWarn) _logger.Warn($"{nameof(engine_getPayloadBodiesV1)} timeout.");
+                return ResultWrapper<ExecutionPayloadBodyV1Result[]>.Fail($"{nameof(engine_getPayloadBodiesV1)} timeout.", ErrorCodes.Timeout);
         }
     }
 }

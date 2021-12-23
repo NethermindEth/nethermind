@@ -42,7 +42,6 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class PayloadService : IPayloadService
     {
         private readonly Eth2BlockProductionContext _idealBlockContext;
-        private readonly Eth2BlockProductionContext _emptyBlockContext;
         private readonly IInitConfig _initConfig;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
@@ -52,17 +51,16 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IdealBlockContext> _payloadStorage = new();
+        private readonly ConcurrentDictionary<Keccak, Transaction[]> _payloadBodyStorage = new();
         private TaskQueue _taskQueue = new();
 
         public PayloadService(
             Eth2BlockProductionContext idealBlockContext,
-            Eth2BlockProductionContext emptyBlockContext,
             IInitConfig initConfig,
             ISealer sealer,
             ILogManager logManager)
         {
             _idealBlockContext = idealBlockContext;
-            _emptyBlockContext = emptyBlockContext;
             _initConfig = initConfig;
             _sealer = sealer;
             _logger = logManager.GetClassLogger();
@@ -80,9 +78,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private Task PreparePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
-            if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
-            Block emptyBlock = _idealBlockContext.BlockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
-            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
+            Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
             return GeneratePayload(payloadId, parentHeader, payloadAttributes, emptyBlock);
         }
         
@@ -99,6 +95,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             //     });
             // await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
         }
+
+        private Block ProduceEmptyBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
+            Block emptyBlock = _idealBlockContext.BlockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
+            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
+            return emptyBlock;
+        }
         
         private Task ProduceIdealBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock, CancellationTokenSource cts)
         {
@@ -106,10 +110,13 @@ namespace Nethermind.Merge.Plugin.Handlers
             Task<Block?> idealBlockTask =
                 _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
                     // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
-                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token) 
-                    .ContinueWith(LogProductionResult, cts.Token);
-            
+                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv),
+                        cts.Token)
+                    .ContinueWith(LogProductionResult, cts.Token)
+                    .ContinueWith((x) => SetPayloadBody(x.Result, emptyBlock.Hash));
+
             _payloadStorage[payloadId.ToHexString()] = new IdealBlockContext(emptyBlock, idealBlockTask, cts);
+            _payloadBodyStorage.TryAdd(emptyBlock.Hash, Array.Empty<Transaction>());
             if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlockTask.Result}");
             return idealBlockTask;
         }
@@ -155,6 +162,28 @@ namespace Nethermind.Merge.Plugin.Handlers
             return null;
         }
 
+        public Transaction[]? GetPayloadBody(Keccak blockHash)
+        {
+            if (_payloadBodyStorage.ContainsKey(blockHash))
+            {
+                _payloadBodyStorage.TryRemove(blockHash, out Transaction[]? transactions);
+                return transactions;
+            }
+
+            return null;
+        }
+
+        private Block? SetPayloadBody(Block? block, Keccak oldBlockHash)
+        {
+            if (block is not null)
+            {
+                _payloadBodyStorage.TryRemove(oldBlockHash, out _);
+                _payloadBodyStorage.TryAdd(block.Hash, block.Transactions);
+            }
+
+            return block;
+        }
+
         private byte[] ComputeNextPayloadId(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             byte[] input = new byte[32 + 32 + 32 + 20];
@@ -167,18 +196,24 @@ namespace Nethermind.Merge.Plugin.Handlers
             return inputHash.Bytes.Slice(0, 8);
         }
 
-        private async Task CleanupOldPayloadWithDelay(byte[] payloadId, TimeSpan delay)
+        private async Task CleanupOldPayloadWithDelay(byte[] payloadId, Keccak blockHash, TimeSpan delay)
         {
             await Task.Delay(delay, CancellationToken.None);
-            CleanupOldPayload(payloadId);
+            CleanupOldPayload(payloadId, blockHash);
         }
 
-        private void CleanupOldPayload(byte[] payloadId)
+        private void CleanupOldPayload(byte[] payloadId, Keccak blockHash)
         {
             if (_payloadStorage.ContainsKey(payloadId.ToHexString()))
             {
                 _payloadStorage.Remove(payloadId.ToHexString(), out _);
                 if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadId.ToHexString()} as it was not requested");
+            }
+
+            if (_payloadBodyStorage.ContainsKey(blockHash))
+            {
+                _payloadBodyStorage.Remove(blockHash, out _);
+                if (_logger.IsInfo) _logger.Info($"Cleaned up payload body with hash={blockHash} as it was not requested");
             }
         }
 

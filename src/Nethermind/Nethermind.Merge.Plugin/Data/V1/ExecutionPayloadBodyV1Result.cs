@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,19 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
-using Nethermind.Consensus.Producers;
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Merge.Plugin.Data.V1;
+
+public class ExecutionPayloadBodyV1Result
 {
-    public interface IPayloadService
+    public ExecutionPayloadBodyV1Result(Transaction[] transactions)
     {
-        Task<byte[]> StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
-
-        Block? GetPayload(byte[] payloadId);
-
-        Transaction[]? GetPayloadBody(Keccak blockHash);
+        Transactions = new byte[transactions.Length][];
+        for (int i = 0; i < Transactions.Length; i++)
+        {
+            Transactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+        }
     }
+    
+    public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
 }

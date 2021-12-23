@@ -119,5 +119,12 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
+        
+        [JsonRpcMethod(
+            Description =
+                "Returns an array of execution payload bodies for the list of provided block hashes.",
+            IsSharable = true,
+            IsImplemented = true)]
+        Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesV1(Keccak[] blockHashes);
     }
 }
