@@ -22,20 +22,18 @@ namespace Nethermind.AccountAbstraction.Bundler
             _bundlePool = bundlePool;
             _logger = logger;
 
-            _logger.Info("AA: Starting Mev Bundler...");
+            if (_logger.IsInfo) _logger.Info("Starting Mev Bundler for Account Abstraction");
 
             _trigger.TriggerBundle += OnTriggerBundle;
         }
 
         public void OnTriggerBundle(object? sender, BundleUserOpsEventArgs args)
         {
-            _logger.Info("Trigger maybe Works");
             Bundle(args.Head);
         }
 
         public void Bundle(Block head)
         {
-            _logger.Info($"Trigger Works --> {head.Author!}");
             // turn ops into txs
             var transactions =
                 _txSource.GetTransactions(head.Header, head.GasLimit)
@@ -66,12 +64,15 @@ namespace Nethermind.AccountAbstraction.Bundler
             // turn txs into MevBundle
             MevBundle bundle = new(head.Header.Number + 1, transactions);
 
-            _logger.Info("Trying to add bundle from AA to MEV bundle pool");
+            if (_logger.IsDebug) _logger.Debug($"Trying to add bundle {bundle.Hash} from AA to MEV bundle pool");
             // add MevBundle to MevPlugin bundle pool
             bool result = _bundlePool.AddBundle(bundle);
 
-            if (result) _logger.Info("Bundle from AA successfuly added to MEV bundle pool");
-            else _logger.Info("Bundle from AA failed to be added to MEV bundle pool");
+            if (result)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Bundle {bundle.Hash} from AA successfuly added to MEV bundle pool");
+            }
+            else if (_logger.IsDebug) _logger.Debug("Bundle from AA failed to be added to MEV bundle pool");
         }
     }
 }

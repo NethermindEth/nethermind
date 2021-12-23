@@ -146,10 +146,8 @@ namespace Nethermind.Mev.Source
             BundleEventArgs bundleEventArgs = new(bundle);
             NewReceived?.Invoke(this, bundleEventArgs);
             
-            _logger.Info("Validating new bundle");
             if (ValidateBundle(bundle))
             {
-                _logger.Info("Trying to insert bundle");
                 bool result = _bundles.TryInsert(bundle, bundle);
 
                 if (result)
@@ -158,17 +156,13 @@ namespace Nethermind.Mev.Source
                     NewPending?.Invoke(this, bundleEventArgs);
                     if (bundle.BlockNumber == HeadNumber + 1)
                     { 
-                        _logger.Info($"Trying to simulate bundle");
                         TrySimulateBundle(bundle);
-                        _logger.Info($"Simulated bundle");
                     }
                 }
 
-                _logger.Info($"Bundle insertion result {result}");
                 return result;
             }
 
-            _logger.Info("Easy fail");
             return false;
         }
 
@@ -262,7 +256,6 @@ namespace Nethermind.Mev.Source
                 {
                     if (!_txValidator.IsWellFormed(tx, spec))
                     {
-                _logger.Info("No way =(");
                         return false;
                     }
 

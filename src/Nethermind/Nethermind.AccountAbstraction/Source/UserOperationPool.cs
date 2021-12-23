@@ -83,7 +83,8 @@ namespace Nethermind.AccountAbstraction.Source
             _accountAbstractionConfig = accountAbstractionConfig;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
-
+                
+            // topic hash emitted by a successful user operation
             _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
@@ -125,8 +126,6 @@ namespace Nethermind.AccountAbstraction.Source
                         catch (Exception e)
                         {
                             if (_logger.IsDebug) _logger.Debug($"UserOperationPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
-                            // TODO: Delete log, just for testing
-                            _logger.Info($"UserOperationPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
                         }
                     }
                 }
@@ -159,35 +158,25 @@ namespace Nethermind.AccountAbstraction.Source
         {
             Metrics.UserOperationsReceived++;
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
-            // TODO: delete logging, just for testing
-            _logger.Info($"UserOperation {userOperation.Hash} received");
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
             {
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} validation succeeded");
-                // TODO: delete logging, just for testing
-                _logger.Info($"UserOperation {userOperation.Hash} validation succeeded");
                 if (_userOperationSortedPool.TryInsert(userOperation.Hash, userOperation))
                 {
                     Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
-                    // TODO: delete logging, just for testing
-                    _logger.Info($"UserOperation {userOperation.Hash} inserted into pool");
                     _broadcaster.BroadcastOnce(userOperation);
                     return ResultWrapper<Keccak>.Success(userOperation.Hash);
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} failed to be inserted into pool");
-                // TODO: delete logging, just for testing
-                _logger.Info($"UserOperation {userOperation.Hash} failed to be inserted into pool");
                 return ResultWrapper<Keccak>.Fail("failed to insert userOp into pool");
             }
 
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} validation failed because: {result.Result.Error}");
 
-            // TODO: delete logging, just for testing
-            _logger.Info($"UserOperation {userOperation.Hash} validation failed because: {result.Result.Error}");
             return result;
         }
 
@@ -228,8 +217,6 @@ namespace Nethermind.AccountAbstraction.Source
                                     if (op.Nonce == nonce && op.Paymaster == paymasterAddress)
                                     {
                                         if (_logger.IsDebug) _logger.Debug($"UserOperation {op.Hash} removed from pool after being included by miner");
-                                        // TODO: Remove logging, just for testing
-                                        _logger.Info($"UserOperation {op.Hash} removed from pool after being included by miner");
                                         Metrics.UserOperationsIncluded++;
                                         _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
                                         RemoveUserOperation(op.Hash);

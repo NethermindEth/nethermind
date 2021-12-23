@@ -23,12 +23,12 @@ namespace Nethermind.AccountAbstraction.Bundler
             _timer.AutoReset = true;
             _timer.Start();
 
-            _logger.Info("Trigger initialized");
+            if (_logger.IsInfo) _logger.Info("Period bundle trigger initialized");
         }
 
         private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
-            _logger.Info("Trigger Called");
+            if (_logger.IsTrace) _logger.Trace("Period Bundle Trigger Called");
             try
             {
                 TriggerBundle?.Invoke(this, new BundleUserOpsEventArgs(_blockTree.Head!));

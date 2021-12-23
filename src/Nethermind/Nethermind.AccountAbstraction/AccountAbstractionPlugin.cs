@@ -142,10 +142,10 @@ namespace Nethermind.AccountAbstraction
                     _accountAbstractionConfig.EntryPointContractAddress,
                     out Address? entryPointContractAddress);
                 if (!parsed)
-                    _logger.Error("Account Abstraction Plugin: EntryPoint contract address could not be parsed");
+                    if (_logger.IsError) _logger.Error("Account Abstraction Plugin: EntryPoint contract address could not be parsed");
                 else
                 {
-                    _logger.Info($"Parsed EntryPoint Address: {entryPointContractAddress}");
+                    if (_logger.IsInfo) _logger.Info($"Parsed EntryPoint Address: {entryPointContractAddress}");
                     _entryPointContractAddress = entryPointContractAddress!;
                 }
 
@@ -153,10 +153,10 @@ namespace Nethermind.AccountAbstraction
                     _accountAbstractionConfig.Create2FactoryAddress,
                     out Address? create2FactoryAddress);
                 if (!parsedCreate2Factory)
-                    _logger.Error("Account Abstraction Plugin: Create2Factory contract address could not be parsed");
+                    if (_logger.IsError) _logger.Error("Account Abstraction Plugin: Create2Factory contract address could not be parsed");
                 else
                 {
-                    _logger.Info($"Parsed Create2Factory Address: {create2FactoryAddress}");
+                    if (_logger.IsInfo) _logger.Info($"Parsed Create2Factory Address: {create2FactoryAddress}");
                     _create2FactoryAddress = create2FactoryAddress!;
                 }
 
@@ -221,12 +221,11 @@ namespace Nethermind.AccountAbstraction
 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
 
-                _logger.Info("Checking whether AA AND MEV are enabled");
                 if (BundleMiningEnabled && MevPluginEnabled)
                 {
-                    _logger.Info("Both AA and MEV Enabled!!");
+                    if (_logger!.IsInfo) _logger.Info("Both AA and MEV Plugins enabled, sending user operations to mev bundle pool instead");
                     _bundler = new MevBundler(
-                        new PeriodicBundleTrigger(TimeSpan.FromSeconds(5), _nethermindApi.BlockTree!, _logger),
+                        new OnNewBlockBundleTrigger(_nethermindApi.BlockTree!, _logger),
                         UserOperationTxSource, MevPlugin.BundlePool,
                         _logger
                     );
@@ -254,7 +253,7 @@ namespace Nethermind.AccountAbstraction
 
             UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
             if (minerBalance < 1.Ether())
-                _logger.Warn(
+                if (_logger.IsWarn) _logger.Warn(
                     $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance / 1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
             else
             {
