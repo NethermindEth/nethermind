@@ -32,5 +32,5 @@ public class ExecutionPayloadBodyV1Result
         }
     }
     
-    public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
+    public byte[][] Transactions { get; set; }
 }
