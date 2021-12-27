@@ -211,6 +211,17 @@ namespace Nethermind.Hive
                 }
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
+                int i = 1;
+
+                while (result.Equals(AddBlockResult.CannotAccept) && i < 10)
+                {
+                    i++;
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Cannot accept block {block} - block tree already in use, trying again (try {i} out of 10)");
+                    Thread.Sleep(50);
+                    result = _blockTree.SuggestBlock(block);
+                }
+                
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
                 {
                     if (_logger.IsError)
