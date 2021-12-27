@@ -55,6 +55,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IMergeConfig _mergeConfig;
         private readonly ISynchronizer _synchronizer;
         private readonly IDb _db;
+        private readonly BeaconBlocksQueue _beaconBlocksQueue;
         private readonly ILogger _logger;
         private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
@@ -70,6 +71,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IMergeConfig mergeConfig,
             ISynchronizer synchronizer,
             IDb db,
+            BeaconBlocksQueue beaconBlocksQueue,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -80,6 +82,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _mergeConfig = mergeConfig;
             _synchronizer = synchronizer;
             _db = db;
+            _beaconBlocksQueue = beaconBlocksQueue;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
             _processor.BlockProcessed += (s, e) =>
@@ -103,22 +106,36 @@ namespace Nethermind.Merge.Plugin.Handlers
             //     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             // }
 
+
+
+            if (_ethSyncingInfo.IsSyncing() && synced == false)
+            {
+                if (request.TryGetBlock(out Block? block) && block != null)
+                {
+                    _blockTree.SuggestBlock(block, false);
+                    
+                }
+
+                if (block != null)
+                {
+                    _beaconBlocksQueue.Enqueue(block);
+                }
+
+                executePayloadResult.EnumStatus = VerificationStatus.Syncing;
+                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+            }
+            else if (synced == false)
+            {
+           //     await _synchronizer.StopAsync();
+                synced = true;
+            }
+            
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
                 // ToDo wait for final PostMerge sync
                 executePayloadResult.EnumStatus = VerificationStatus.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
-            }
-            if (_ethSyncingInfo.IsSyncing() && synced == false)
-            {
-                executePayloadResult.EnumStatus = VerificationStatus.Syncing;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
-            }
-            else if (synced == false)
-            {
-                await _synchronizer.StopAsync();
-                synced = true;
             }
 
 
@@ -230,7 +247,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private ProcessingOptions GetProcessingOptions()
         {
-            ProcessingOptions options = ProcessingOptions.EthereumMerge;
+            ProcessingOptions options = ProcessingOptions.ExecutePayloadValidation;
             if (_initConfig.StoreReceipts)
             {
                 options |= ProcessingOptions.StoreReceipts;

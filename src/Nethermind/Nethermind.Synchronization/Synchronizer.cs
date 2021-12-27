@@ -101,8 +101,8 @@ namespace Nethermind.Synchronization
             {
                 return;
             }
-
-        //    StartFullSyncComponents();
+            
+            StartFullSyncComponents();
             if (_syncConfig.FastSync)
             {
                 if (_syncConfig.FastBlocks)

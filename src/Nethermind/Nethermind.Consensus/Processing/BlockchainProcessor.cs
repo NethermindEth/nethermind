@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Processing
         private readonly Options _options;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
-
+        
         private readonly BlockingCollection<BlockRef> _recoveryQueue = new(new ConcurrentQueue<BlockRef>());
         private readonly BlockingCollection<BlockRef> _blockQueue = new(new ConcurrentQueue<BlockRef>(), MaxProcessingQueueSize);
         private readonly ProcessingStats _stats;

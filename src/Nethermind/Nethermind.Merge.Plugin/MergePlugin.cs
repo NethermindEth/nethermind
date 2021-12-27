@@ -107,9 +107,10 @@ namespace Nethermind.Merge.Plugin
                 if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
+                if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
                 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
-
+                BeaconBlocksQueue beaconBlocksQueue = new BeaconBlocksQueue(_poSSwitcher, _api.BlockTree, _api.BlockProcessingQueue);
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
                 PayloadService payloadService = new (_idealBlockProductionContext,
                     _emptyBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
@@ -135,6 +136,7 @@ namespace Nethermind.Merge.Plugin
                         _mergeConfig,
                         _api.Synchronizer!,
                         _api.DbProvider!.StateDb,
+                        beaconBlocksQueue,
                         _api.LogManager),
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),

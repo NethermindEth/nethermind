@@ -223,7 +223,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private ProcessingOptions GetProcessingOptions()
         {
-            ProcessingOptions options = ProcessingOptions.EthereumMerge | ProcessingOptions.NoValidation;
+            ProcessingOptions options = ProcessingOptions.ExecutePayloadValidation | ProcessingOptions.NoValidation;
             if (_initConfig.StoreReceipts)
             {
                 options |= ProcessingOptions.StoreReceipts;

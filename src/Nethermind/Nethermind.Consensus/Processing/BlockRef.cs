@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Processing
 {
-    internal class BlockRef
+    public class BlockRef
     {
         public BlockRef(Block block, ProcessingOptions processingOptions = ProcessingOptions.None)
         {

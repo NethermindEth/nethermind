@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
-        private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+        private readonly TimeSpan Timeout = TimeSpan.FromSeconds(100);
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
 
