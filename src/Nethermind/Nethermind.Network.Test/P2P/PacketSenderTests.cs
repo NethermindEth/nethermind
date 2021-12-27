@@ -18,6 +18,7 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -38,7 +39,7 @@ namespace Nethermind.Network.Test.P2P
             channel.Active.Returns(true);
             context.Channel.Returns(channel);
             
-            PacketSender packetSender = new PacketSender(serializer, LimboLogs.Instance);
+            PacketSender packetSender = new(serializer, LimboLogs.Instance);
             packetSender.HandlerAdded(context);
             packetSender.Enqueue(PingMessage.Instance);
 
@@ -56,7 +57,7 @@ namespace Nethermind.Network.Test.P2P
             channel.Active.Returns(false);
             context.Channel.Returns(channel);
             
-            PacketSender packetSender = new PacketSender(serializer ,LimboLogs.Instance);
+            PacketSender packetSender = new(serializer ,LimboLogs.Instance);
             packetSender.HandlerAdded(context);
             packetSender.Enqueue(PingMessage.Instance);
 

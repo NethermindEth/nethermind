@@ -24,7 +24,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
 {
-    public class BlockReceiptsTracer : IBlockTracer, ITxTracer
+    public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>
     {
         private Block _block = null!;
         public bool IsTracingReceipt => true;
@@ -200,10 +200,9 @@ namespace Nethermind.Evm.Tracing
         public TxReceipt LastReceipt => _txReceipts[^1];
         public bool IsTracingRewards => _otherTracer.IsTracingRewards;
         public int TakeSnapshot() => _txReceipts.Count;
-        
-        public void RestoreSnapshot(int length)
+        public void Restore(int snapshot)
         {
-            int numToRemove = _txReceipts.Count - length;
+            int numToRemove = _txReceipts.Count - snapshot;
             
             for (int i = 0; i < numToRemove; i++)
             {

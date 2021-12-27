@@ -60,7 +60,7 @@ namespace Nethermind.Core.Crypto
             V = v;
         }
 
-        public Signature(UInt256 r, UInt256 s, ulong v)
+        public Signature(in UInt256 r, in UInt256 s, ulong v)
         {
             if (v < VOffset)
             {

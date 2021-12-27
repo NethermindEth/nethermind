@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Extensions;
 using Nethermind.Network.Rlpx;
 using NUnit.Framework;
 
@@ -31,7 +30,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] encrypted = new byte[16];
             byte[] decrypted = new byte[16];
 
-            FrameCipher frameCipher = new FrameCipher(NetTestVectors.AesSecret);
+            FrameCipher frameCipher = new(NetTestVectors.AesSecret);
             frameCipher.Encrypt(message, 0, 16, encrypted, 0);
             frameCipher.Decrypt(encrypted, 0, 16, decrypted, 0);
             Assert.AreEqual(message, decrypted);
@@ -44,7 +43,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] encrypted = new byte[16];
             byte[] decrypted = new byte[16];
 
-            FrameCipher frameCipher = new FrameCipher(NetTestVectors.AesSecret);
+            FrameCipher frameCipher = new(NetTestVectors.AesSecret);
             frameCipher.Encrypt(message, 0, 16, encrypted, 0);
             frameCipher.Decrypt(encrypted, 0, 16, decrypted, 0);
             Assert.AreEqual(message, decrypted);
@@ -63,7 +62,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] encrypted1 = new byte[16];
             byte[] encrypted2 = new byte[16];
 
-            FrameCipher frameCipher = new FrameCipher(NetTestVectors.AesSecret);
+            FrameCipher frameCipher = new(NetTestVectors.AesSecret);
             frameCipher.Encrypt(message, 0, 16, encrypted1, 0);
             frameCipher.Encrypt(message, 0, 16, encrypted2, 0);
             Assert.AreNotEqual(encrypted1, encrypted2);
@@ -82,7 +81,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] encrypted = new byte[length];
             byte[] decrypted = new byte[2 * length];
 
-            FrameCipher frameCipher = new FrameCipher(NetTestVectors.AesSecret);
+            FrameCipher frameCipher = new(NetTestVectors.AesSecret);
             frameCipher.Encrypt(message, 0, length, encrypted, 0);
             frameCipher.Decrypt(encrypted, 0, length, decrypted, 0);
             Assert.AreEqual(message, decrypted);
@@ -100,7 +99,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] message = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
             byte[] messageClone = (byte[])message.Clone();
 
-            FrameCipher frameCipher = new FrameCipher(NetTestVectors.AesSecret);
+            FrameCipher frameCipher = new(NetTestVectors.AesSecret);
             frameCipher.Encrypt(messageClone, 0, 16, messageClone, 0);
             frameCipher.Decrypt(messageClone, 0, 16, messageClone, 0);
             Assert.AreEqual(message, messageClone);

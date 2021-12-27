@@ -28,12 +28,7 @@ namespace Nethermind.State
         {
             return stateProvider.GetCode(stateProvider.GetCodeHash(address));
         }
-        
-        public static bool HasCode(this IStateProvider stateProvider, Address address)
-        {
-            return stateProvider.GetCodeHash(address) != Keccak.OfAnEmptyString;
-        }
-        
+
         public static string DumpState(this IStateProvider stateProvider)
         {
             TreeDumper dumper = new();

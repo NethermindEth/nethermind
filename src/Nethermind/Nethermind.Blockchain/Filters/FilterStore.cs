@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -28,7 +29,8 @@ namespace Nethermind.Blockchain.Filters
 {
     public class FilterStore : IFilterStore
     {
-        private int _nextFilterId;
+        private int _currentFilterId = -1;
+        private object _locker = new object();
 
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
 
@@ -51,34 +53,22 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        public T[] GetFilters<T>() where T : FilterBase
-        {
-            return _filters.Select(f => f.Value).OfType<T>().ToArray();
-        }
+        public IEnumerable<T> GetFilters<T>() where T : FilterBase => 
+            _filters.Select(f => f.Value).OfType<T>();
 
-        public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true)
-        {
-            var filterId = setId ? GetFilterId() : 0;
-            var blockFilter = new BlockFilter(filterId, startBlockNumber);
-            return blockFilter;
-        }
+        public BlockFilter CreateBlockFilter(long startBlockNumber, bool setId = true) => 
+            new(GetFilterId(setId), startBlockNumber);
 
-        public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true)
-        {
-            var filterId = setId ? GetFilterId() : 0;
-            var pendingTransactionFilter = new PendingTransactionFilter(filterId);
-            return pendingTransactionFilter;
-        }
+        public PendingTransactionFilter CreatePendingTransactionFilter(bool setId = true) => 
+            new(GetFilterId(setId));
 
         public LogFilter CreateLogFilter(BlockParameter fromBlock, BlockParameter toBlock,
-            object? address = null, IEnumerable<object?>? topics = null, bool setId = true)
-        {
-            var filterId = setId ? GetFilterId() : 0;
-            var filter = new LogFilter(filterId, fromBlock, toBlock,
-                GetAddress(address), GetTopicsFilter(topics));
-
-            return filter;
-        }
+            object? address = null, IEnumerable<object?>? topics = null, bool setId = true) =>
+            new(GetFilterId(setId), 
+                fromBlock, 
+                toBlock, 
+                GetAddress(address), 
+                GetTopicsFilter(topics));
 
         public void RemoveFilter(int filterId)
         {
@@ -95,11 +85,26 @@ namespace Nethermind.Blockchain.Filters
                 throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
             }
 
-            _nextFilterId = Math.Max(filter.Id + 1, _nextFilterId);
+            lock (_locker)
+            {
+                _currentFilterId = Math.Max(filter.Id, _currentFilterId);
+            }
+
             _filters[filter.Id] = filter;
         }
 
-        private int GetFilterId() => _nextFilterId++;
+        private int GetFilterId(bool generateId)
+        {
+            if (generateId)
+            {
+                lock (_locker)
+                {
+                    return ++_currentFilterId;
+                }
+            }
+
+            return 0;
+        }
 
         private TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
         {

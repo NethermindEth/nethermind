@@ -163,6 +163,8 @@ namespace Nethermind.Serialization.Rlp
 
         public virtual int Length => Data!.Length;
 
+        public virtual bool HasBeenRead => Position >= Data!.Length;
+
         public bool IsSequenceNext()
         {
             return PeekByte() >= 192;
@@ -395,7 +397,7 @@ namespace Nethermind.Serialization.Rlp
             Encode((UInt256)value);
         }
 
-        public void Encode(UInt256 value, int length = -1)
+        public void Encode(in UInt256 value, int length = -1)
         {
             if (value.IsZero && length == -1)
             {
@@ -647,7 +649,7 @@ namespace Nethermind.Serialization.Rlp
             Position += length;
         }
 
-        protected virtual Span<byte> Read(int length)
+        public virtual Span<byte> Read(int length)
         {
             Span<byte> data = Data.AsSpan(Position, length);
             Position += length;

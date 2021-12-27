@@ -46,9 +46,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
     [TestFixture]
     public class ParityStyleTracerTests
     {
-        private BlockchainProcessor _processor;
-        private BlockTree _blockTree;
-        private Tracer _tracer;
+        private BlockchainProcessor? _processor;
+        private BlockTree? _blockTree;
+        private Tracer? _tracer;
         private readonly IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
 
         [SetUp]
@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
-            VirtualMachine virtualMachine = new(stateProvider, storageProvider, blockhashProvider, specProvider, LimboLogs.Instance);
+            VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new(specProvider, stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
             
             BlockProcessor blockProcessor = new(

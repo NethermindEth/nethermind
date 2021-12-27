@@ -37,6 +37,7 @@ using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
@@ -46,10 +47,6 @@ namespace Nethermind.Runner.JsonRpc
 {
     public class Startup
     {
-        private IJsonSerializer _jsonSerializer = CreateJsonSerializer();
-        
-        private static EthereumJsonSerializer CreateJsonSerializer() => new();
-
         public void ConfigureServices(IServiceCollection services)
         {
             // ReSharper disable once ASP0000
@@ -82,17 +79,14 @@ namespace Nethermind.Runner.JsonRpc
             });
         }
 
-        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats)
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
         {
             long SerializeTimeoutException(IJsonRpcService service, Stream resultStream)
             {
                 JsonRpcErrorResponse? error = service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                return _jsonSerializer.Serialize(resultStream, error);
+                return jsonSerializer.Serialize(resultStream, error);
             }
 
-            _jsonSerializer = CreateJsonSerializer();
-            _jsonSerializer.RegisterConverters(jsonRpcService.Converters);
-            
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -112,12 +106,15 @@ namespace Nethermind.Runner.JsonRpc
             ILogger logger = logManager.GetClassLogger();
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
             if (initConfig.WebSocketsEnabled)
             {
                 app.UseWebSockets(new WebSocketOptions());
-                app.UseWhen(ctx => ctx.WebSockets.IsWebSocketRequest 
-                                   && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketsPort,
+                app.UseWhen(ctx =>
+                    ctx.WebSockets.IsWebSocketRequest &&
+                    jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+                    jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
                 builder => builder.UseWebSocketsModules());
             }
             
@@ -144,20 +141,22 @@ namespace Nethermind.Runner.JsonRpc
                 }
             });
             
-            app.Use(async (ctx, next) =>
+            app.Run(async (ctx) =>
             {
                 if (ctx.Request.Method == "GET")
                 {
                     await ctx.Response.WriteAsync("Nethermind JSON RPC");
                 }
 
-                if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
+                if (ctx.Request.Method == "POST" &&
+                    jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+                    jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));
                     try
                     {
-                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http))
+                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http(jsonRpcUrl)))
                         {
                             using (result)
                             {
@@ -170,8 +169,8 @@ namespace Nethermind.Runner.JsonRpc
                                     ctx.Response.StatusCode = GetStatusCode(result);
 
                                     responseSize = result.IsCollection
-                                        ? _jsonSerializer.Serialize(resultStream, result.Responses)
-                                        : _jsonSerializer.Serialize(resultStream, result.Response);
+                                        ? jsonSerializer.Serialize(resultStream, result.Responses)
+                                        : jsonSerializer.Serialize(resultStream, result.Response);
 
                                     if (jsonRpcConfig.BufferResponses)
                                     {

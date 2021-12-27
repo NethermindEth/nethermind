@@ -30,14 +30,15 @@ namespace Nethermind.JsonRpc.Test.Modules
     public class RpcModuleProviderTests
     {
         private RpcModuleProvider _moduleProvider;
-
         private IFileSystem _fileSystem;
+        private JsonRpcContext _context;
 
         [SetUp]
         public void Initialize()
         {
             _fileSystem = Substitute.For<IFileSystem>();
             _moduleProvider = new RpcModuleProvider(_fileSystem, new JsonRpcConfig(), LimboLogs.Instance);
+            _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
         [Test]
@@ -47,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             jsonRpcConfig.EnabledModules = new string[0];
             _moduleProvider = new RpcModuleProvider(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
             _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
-            ModuleResolution resolution = _moduleProvider.Check("proof_call", RpcEndpoint.Http);
+            ModuleResolution resolution = _moduleProvider.Check("proof_call", _context);
             Assert.AreEqual(ModuleResolution.Disabled, resolution);
         }
 
@@ -57,10 +58,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
-            _moduleProvider.Check("net_VeRsIoN", RpcEndpoint.Http).Should().Be(ModuleResolution.Unknown);
-            _moduleProvider.Check("net_Version", RpcEndpoint.Http).Should().Be(ModuleResolution.Unknown);
-            _moduleProvider.Check("Net_Version", RpcEndpoint.Http).Should().Be(ModuleResolution.Unknown);
-            _moduleProvider.Check("net_version", RpcEndpoint.Http).Should().Be(ModuleResolution.Enabled);
+            _moduleProvider.Check("net_VeRsIoN", _context).Should().Be(ModuleResolution.Unknown);
+            _moduleProvider.Check("net_Version", _context).Should().Be(ModuleResolution.Unknown);
+            _moduleProvider.Check("Net_Version", _context).Should().Be(ModuleResolution.Unknown);
+            _moduleProvider.Check("net_version", _context).Should().Be(ModuleResolution.Enabled);
         }
 
         [TestCase("eth_.*", ModuleResolution.Unknown)]
@@ -75,7 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             SingletonModulePool<INetRpcModule> pool = new(new NetRpcModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
-            ModuleResolution resolution = _moduleProvider.Check("net_version", RpcEndpoint.Http);
+            ModuleResolution resolution = _moduleProvider.Check("net_version", _context);
             resolution.Should().Be(expectedResult);
         }
 
@@ -85,8 +86,26 @@ namespace Nethermind.JsonRpc.Test.Modules
             SingletonModulePool<INetRpcModule> pool = new(Substitute.For<INetRpcModule>(), true);
             _moduleProvider.Register(pool);
 
-            ModuleResolution resolution = _moduleProvider.Check("unknown_method", RpcEndpoint.Http);
+            ModuleResolution resolution = _moduleProvider.Check("unknown_method", _context);
             Assert.AreEqual(ModuleResolution.Unknown, resolution);
+        }
+
+        [Test]
+        public void Method_resolution_is_scoped_to_url_enabled_modules()
+        {
+            _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>(), true));
+            _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), true));
+
+            JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http, new[] { "net" });
+
+            ModuleResolution inScopeResolution = _moduleProvider.Check("net_version", JsonRpcContext.Http(url));
+            Assert.AreEqual(ModuleResolution.Enabled, inScopeResolution);
+
+            ModuleResolution outOfScopeResolution = _moduleProvider.Check("proof_call", JsonRpcContext.Http(url));
+            Assert.AreEqual(ModuleResolution.Disabled, outOfScopeResolution);
+
+            ModuleResolution fallbackResolution = _moduleProvider.Check("proof_call", new JsonRpcContext(RpcEndpoint.Http));
+            Assert.AreEqual(ModuleResolution.Enabled, fallbackResolution);
         }
     }
 }

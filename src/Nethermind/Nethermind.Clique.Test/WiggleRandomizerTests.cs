@@ -32,11 +32,11 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Wiggle_is_fine()
         {
-            Queue<int> randoms = new Queue<int>(new List<int> {100, 600, 1000, 2000, 50});
+            Queue<int> randoms = new(new List<int> {100, 600, 1000, 2000, 50});
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
             cryptoRandom.NextInt(Arg.Any<int>()).Returns(ci => randoms.Dequeue());
 
-            Snapshot snapshot = new Snapshot(1, Keccak.Zero, new SortedList<Address, long>(AddressComparer.Instance)
+            Snapshot snapshot = new(1, Keccak.Zero, new SortedList<Address, long>(AddressComparer.Instance)
             {
                 {TestItem.AddressA, 1},
                 {TestItem.AddressB, 2},
@@ -45,7 +45,7 @@ namespace Nethermind.Clique.Test
             });
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(snapshot);
-            WiggleRandomizer randomizer = new WiggleRandomizer(cryptoRandom, snapshotManager);
+            WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager);
 
             BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).TestObject;
             for (int i = 0; i < 5; i++)
@@ -57,11 +57,11 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Wiggle_has_no_min_value()
         {
-            Queue<int> randoms = new Queue<int>(new List<int> {Consensus.Clique.Clique.WiggleTime / 2, Consensus.Clique.Clique.WiggleTime, Consensus.Clique.Clique.WiggleTime * 2, Consensus.Clique.Clique.WiggleTime * 3});
+            Queue<int> randoms = new(new List<int> {Consensus.Clique.Clique.WiggleTime / 2, Consensus.Clique.Clique.WiggleTime, Consensus.Clique.Clique.WiggleTime * 2, Consensus.Clique.Clique.WiggleTime * 3});
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
             cryptoRandom.NextInt(Arg.Any<int>()).Returns(ci => randoms.Dequeue());
 
-            Snapshot snapshot = new Snapshot(1, Keccak.Zero, new SortedList<Address, long>(AddressComparer.Instance)
+            Snapshot snapshot = new(1, Keccak.Zero, new SortedList<Address, long>(AddressComparer.Instance)
             {
                 {TestItem.AddressA, 1},
                 {TestItem.AddressB, 2},
@@ -71,7 +71,7 @@ namespace Nethermind.Clique.Test
             
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(snapshot);
-            WiggleRandomizer randomizer = new WiggleRandomizer(cryptoRandom, snapshotManager);
+            WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager);
 
             BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).TestObject;
             BlockHeader header2 = Build.A.BlockHeader.WithNumber(2).TestObject;
@@ -89,11 +89,11 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Returns_zero_for_in_turn_blocks()
         {
-            Queue<int> randoms = new Queue<int>(new List<int> {Consensus.Clique.Clique.WiggleTime / 2, Consensus.Clique.Clique.WiggleTime, Consensus.Clique.Clique.WiggleTime * 2, Consensus.Clique.Clique.WiggleTime * 3});
+            Queue<int> randoms = new(new List<int> {Consensus.Clique.Clique.WiggleTime / 2, Consensus.Clique.Clique.WiggleTime, Consensus.Clique.Clique.WiggleTime * 2, Consensus.Clique.Clique.WiggleTime * 3});
             ICryptoRandom cryptoRandom = Substitute.For<ICryptoRandom>();
             cryptoRandom.NextInt(Arg.Any<int>()).Returns(ci => randoms.Dequeue());
 
-            Snapshot snapshot = new Snapshot(1, Keccak.Zero, new SortedList<Address, long>(AddressComparer.Instance)
+            Snapshot snapshot = new(1, Keccak.Zero, new SortedList<Address, long>(AddressComparer.Instance)
             {
                 {TestItem.AddressA, 1},
                 {TestItem.AddressB, 2},
@@ -103,7 +103,7 @@ namespace Nethermind.Clique.Test
             
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(snapshot);
-            WiggleRandomizer randomizer = new WiggleRandomizer(cryptoRandom, snapshotManager);
+            WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager);
 
             BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).WithDifficulty(Consensus.Clique.Clique.DifficultyInTurn).TestObject;
             int wiggle = randomizer.WiggleFor(header1);

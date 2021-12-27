@@ -31,6 +31,8 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Stats;
@@ -47,12 +49,10 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task Can_start_and_stop()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.PeerManager.Start();
             await ctx.PeerManager.StopAsync();
         }
-
-        private const string enodesString = enode1String + "," + enode2String;
 
         private const string enode1String =
             "enode://22222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222222@51.141.78.53:30303";
@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test
         [Test, Retry(10)]
         public async Task Will_connect_to_a_candidate_node()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.SetupPersistedPeers(1);
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
@@ -80,7 +80,7 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task Will_only_connect_up_to_max_peers()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
@@ -91,11 +91,11 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task Will_discard_a_duplicate_incoming_session()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.PeerManager.Init();
-            Session session1 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
-            Session session2 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session2 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
@@ -109,39 +109,39 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public async Task Will_return_exception_in_port()
+        public void Will_return_exception_in_port()
         {
             Assert.Throws<ArgumentException>(delegate
             {
-                Enode enode = new Enode(enode3String);
+                Enode unused = new(enode3String);
             });
         }
 
         [Test]
-        public async Task Will_return_exception_in_dns()
+        public void Will_return_exception_in_dns()
         {
             Assert.Throws<ArgumentException>(delegate
             {
-                Enode enode = new Enode(enode4String);
+                Enode unused = new(enode4String);
             });
         }
 
         [Test]
         public async Task Will_accept_static_connection()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.NetworkConfig.ActivePeersMaxCount = 1;
             ctx.StaticNodesManager.IsStatic(enode2String).Returns(true);
 
             ctx.PeerManager.Init();
             var enode1 = new Enode(enode1String);
-            Node node1 = new Node(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
-            Session session1 = new Session(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Node node1 = new(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
+            Session session1 = new(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
             var enode2 = new Enode(enode2String);
-            Node node2 = new Node(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));
-            Session session2 = new Session(30303, node2, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Node node2 = new(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));
+            Session session2 = new(30303, node2, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
             ctx.RlpxPeer.CreateIncoming(session1, session2);
@@ -155,9 +155,9 @@ namespace Nethermind.Network.Test
         public async Task Will_agree_on_which_session_to_disconnect_when_connecting_at_once(bool shouldLose,
             ConnectionDirection firstDirection)
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.PeerManager.Init();
-            Session session1 = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
@@ -192,7 +192,7 @@ namespace Nethermind.Network.Test
         [Test, Retry(5)]
         public async Task Will_fill_up_on_disconnects()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
@@ -207,7 +207,7 @@ namespace Nethermind.Network.Test
         [Test, Retry(5)]
         public async Task Ok_if_fails_to_connect()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
             ctx.RlpxPeer.MakeItFail();
             ctx.PeerManager.Init();
@@ -220,7 +220,7 @@ namespace Nethermind.Network.Test
         [Test, Retry(3)]
         public async Task Will_fill_up_over_and_over_again_on_disconnects()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
@@ -238,7 +238,7 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task Will_fill_up_over_and_over_again_on_newly_discovered()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.SetupPersistedPeers(0);
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
@@ -259,7 +259,7 @@ namespace Nethermind.Network.Test
         [Ignore("Behaviour changed that allows peers to go over max if awaiting response")]
         public async Task Will_fill_up_with_incoming_over_and_over_again_on_disconnects()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.SetupPersistedPeers(0);
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
@@ -275,7 +275,7 @@ namespace Nethermind.Network.Test
         [Test, Retry(3)]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.SetupPersistedPeers(50);
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
@@ -301,7 +301,7 @@ namespace Nethermind.Network.Test
         public async Task
             Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.NetworkConfig.MaxCandidatePeerCount = 40;
             ctx.NetworkConfig.CandidatePeerCountCleanupThreshold = 30;
             ctx.NetworkConfig.PersistedPeerCountCleanupThreshold = 40;
@@ -325,7 +325,7 @@ namespace Nethermind.Network.Test
         public async Task
             Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.NetworkConfig.MaxCandidatePeerCount = 40;
             ctx.NetworkConfig.CandidatePeerCountCleanupThreshold = 30;
             ctx.NetworkConfig.PersistedPeerCountCleanupThreshold = 40;
@@ -350,7 +350,7 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task Will_load_static_nodes_and_connect_to_them()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             const int nodesCount = 5;
             var staticNodes = ctx.CreateNodes(nodesCount);
             ctx.StaticNodesManager.Nodes.Returns(staticNodes);
@@ -368,7 +368,7 @@ namespace Nethermind.Network.Test
         [Test, Retry(5)]
         public async Task Will_disconnect_on_remove_static_node()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             const int nodesCount = 5;
             var disconnections = 0;
             var staticNodes = ctx.CreateNodes(nodesCount);
@@ -389,7 +389,7 @@ namespace Nethermind.Network.Test
         [Test, Retry(3)]
         public async Task Will_connect_and_disconnect_on_peer_management()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var disconnections = 0;
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
@@ -398,7 +398,7 @@ namespace Nethermind.Network.Test
             await Task.Delay(_travisDelayLong);
 
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
-            ctx.PeerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(node.NodeId);
+            ctx.PeerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(new[] { node.NodeId });
 
             ctx.Sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
@@ -410,7 +410,7 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task Will_only_add_same_peer_once()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
@@ -424,7 +424,7 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task RemovePeer_should_fail_if_peer_not_added()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.PeerManager.Init();
             ctx.PeerManager.Start();
             var node = new NetworkNode(ctx.GenerateEnode());
@@ -442,7 +442,7 @@ namespace Nethermind.Network.Test
             public PeerManager PeerManager { get; }
             public INetworkConfig NetworkConfig { get; }
             public IStaticNodesManager StaticNodesManager { get; }
-            public List<Session> Sessions { get; } = new List<Session>();
+            public List<Session> Sessions { get; } = new();
 
             public Context()
             {
@@ -451,8 +451,7 @@ namespace Nethermind.Network.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 Stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
                 Storage = new InMemoryStorage();
-                PeerLoader = new PeerLoader(new NetworkConfig(), new DiscoveryConfig(), Stats, Storage,
-                    LimboLogs.Instance);
+                PeerLoader = new PeerLoader(new NetworkConfig(), Stats, Storage, LimboLogs.Instance);
                 NetworkConfig = new NetworkConfig();
                 NetworkConfig.ActivePeersMaxCount = 25;
                 NetworkConfig.PeersPersistenceInterval = 50;
@@ -507,7 +506,7 @@ namespace Nethermind.Network.Test
                 {
                     var generator = new PrivateKeyGenerator();
                     var enode = GenerateEnode(generator);
-                    NetworkNode node = new NetworkNode(enode);
+                    NetworkNode node = new(enode);
                     nodes.Add(node);
                 }
 
@@ -612,12 +611,12 @@ namespace Nethermind.Network.Test
             }
 
             public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
-            public int LocalPort { get; }
+            public int LocalPort => 0;
             public event EventHandler<SessionEventArgs> SessionCreated;
 
             public void CreateIncoming(params Session[] sessions)
             {
-                List<Session> incomingSessions = new List<Session>();
+                List<Session> incomingSessions = new();
                 foreach (Session session in sessions)
                 {
                     var sessionIn = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
@@ -635,7 +634,7 @@ namespace Nethermind.Network.Test
                 }
             }
 
-            private bool _isFailing = false;
+            private bool _isFailing;
 
             public void MakeItFail()
             {
@@ -645,8 +644,8 @@ namespace Nethermind.Network.Test
 
         private class InMemoryStorage : INetworkStorage
         {
-            private ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
-                new ConcurrentDictionary<PublicKey, NetworkNode>();
+            private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
+                new();
 
             public NetworkNode[] GetPersistedNodes()
             {

@@ -163,7 +163,7 @@ namespace Nethermind.Core.Extensions
             return bytes.ToHexString(true, skipLeadingZeros, false);
         }
 
-        public static string ToHexString(this UInt256 value, bool skipLeadingZeros)
+        public static string ToHexString(this in UInt256 value, bool skipLeadingZeros)
         {
             if (skipLeadingZeros)
             {

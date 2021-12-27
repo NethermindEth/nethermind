@@ -1,13 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
         <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
         <OutputType>Exe</OutputType>
         <PackageId>Nethermind CLI</PackageId>
         <Authors>Nethermind</Authors>
         <PackageVersion>1.0.0</PackageVersion>
-        <LangVersion>9</LangVersion>
+        <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
     </PropertyGroup>
     
@@ -27,9 +27,5 @@
 
     <ItemGroup>
       <None Remove="plugins\readme.txt" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="plugins" />
     </ItemGroup>
 </Project>

@@ -89,7 +89,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             byte[] frameBytes = Bytes.FromHexString(frame);
             IByteBuffer input = Unpooled.Buffer(256);
-            ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper = new ZeroFrameDecoderTestWrapper(_frameCipher, _macProcessor);
+            ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper = new(_frameCipher, _macProcessor);
 
             IByteBuffer result = deliveryStrategy(frameBytes, input, zeroFrameDecoderTestWrapper);
             Assert.NotNull(result, "did not decode frame");

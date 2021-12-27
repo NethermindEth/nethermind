@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test
             }
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
             if (IsError)
             {

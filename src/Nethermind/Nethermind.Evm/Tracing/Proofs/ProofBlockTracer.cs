@@ -19,11 +19,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing.Proofs
 {
-    public class ProofBlockTracer : BlockTracerBase<ProofTxTracer, ProofTxTracer>, IBlockTracer
+    public class ProofBlockTracer : BlockTracerBase<ProofTxTracer, ProofTxTracer>
     {
         private readonly bool _treatSystemAccountDifferently;
 
-        public ProofBlockTracer(Keccak txHash, bool treatSystemAccountDifferently) : base(txHash)
+        public ProofBlockTracer(Keccak? txHash, bool treatSystemAccountDifferently) : base(txHash)
         {
             _treatSystemAccountDifferently = treatSystemAccountDifferently;
         }

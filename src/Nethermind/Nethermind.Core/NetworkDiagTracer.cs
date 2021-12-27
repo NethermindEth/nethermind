@@ -22,6 +22,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Timers;
+using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
@@ -35,9 +36,11 @@ namespace Nethermind.Core
         public static bool IsEnabled { get; set; }
 
         private static readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _events = new();
+        private static ILogger? _logger;
 
-        public static void Start()
+        public static void Start(ILogManager logManager)
         {
+            _logger = logManager.GetClassLogger();
             Timer timer = new();
             timer.Interval = 60000;
             timer.Elapsed += (_, _) => DumpEvents(); 
@@ -56,45 +59,48 @@ namespace Nethermind.Core
                     stringBuilder.AppendLine("  " + s);    
                 }
             }
-            
-            File.WriteAllText(NetworkDiagTracerPath, stringBuilder.ToString());
+
+            string contents = stringBuilder.ToString();
+            File.WriteAllText(NetworkDiagTracerPath, contents);
+            _logger?.Info(contents);
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         private static void Add(IPEndPoint? farAddress, string line)
         {
-            _events.AddOrUpdate(farAddress?.Address.MapToIPv4().ToString() ?? "null", ni => new ConcurrentQueue<string>(), (s, list) =>
+            string address = farAddress?.Address.MapToIPv4().ToString() ?? "null";
+            _events.AddOrUpdate(address, _ => new ConcurrentQueue<string>(), (_, list) =>
             {
                 list.Enqueue(line);
                 return list;
             });
         }
 
-        public static void ReportOutgoingMessage(IPEndPoint nodeInfo, string protocol, string messageCode)
+        public static void ReportOutgoingMessage(IPEndPoint? nodeInfo, string protocol, string messageCode)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol} {messageCode}");
         }
         
-        public static void ReportIncomingMessage(IPEndPoint nodeInfo, string protocol, string info)
+        public static void ReportIncomingMessage(IPEndPoint? nodeInfo, string protocol, string info)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol} {info}");
         }
         
-        public static void ReportConnect(IPEndPoint nodeInfo, string clientId)
+        public static void ReportConnect(IPEndPoint? nodeInfo, string clientId)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} CONNECT {clientId}");
         }
         
-        public static void ReportDisconnect(IPEndPoint nodeInfo, string details)
+        public static void ReportDisconnect(IPEndPoint? nodeInfo, string details)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} DISCONNECT {details}");
         }
         
-        public static void ReportInterestingEvent(IPEndPoint nodeInfo, string details)
+        public static void ReportInterestingEvent(IPEndPoint? nodeInfo, string details)
         {
             if(!IsEnabled) return;
             Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} {details}");

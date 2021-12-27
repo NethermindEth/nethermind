@@ -110,13 +110,13 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public async Task<T> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
         {
             BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             specProvider ??= new TestSpecProvider(Berlin.Instance) {ChainId = ChainId.Mainnet};
@@ -134,7 +134,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 LimboLogs.Instance);
             
-            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false, false);
+            Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
             ReceiptFinder ??= ReceiptStorage;

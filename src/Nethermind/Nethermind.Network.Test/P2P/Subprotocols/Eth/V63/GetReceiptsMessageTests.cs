@@ -18,7 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -30,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Sets_values_from_contructor_argument()
         {
             Keccak[] hashes = {TestItem.KeccakA, TestItem.KeccakB};
-            GetReceiptsMessage message = new GetReceiptsMessage(hashes);
+            GetReceiptsMessage message = new(hashes);
             Assert.AreSame(hashes, message.Hashes);
         }
 
@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void To_string()
         {
-            GetReceiptsMessage statusMessage = new GetReceiptsMessage(new List<Keccak>());
+            GetReceiptsMessage statusMessage = new(new List<Keccak>());
             _ = statusMessage.ToString();
         }
     }

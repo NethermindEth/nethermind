@@ -108,7 +108,7 @@ namespace Nethermind.Trie
             {
                 int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value) : 1;
                 int contentLength = valueRlpLength + GetChildrenRlpLength(tree, item);
-                int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
+                int sequenceLength = Rlp.LengthOfSequence(contentLength);
                 byte[] result = new byte[sequenceLength];
                 Span<byte> resultSpan = result.AsSpan();
                 int position = Rlp.StartSequence(result, 0, contentLength);

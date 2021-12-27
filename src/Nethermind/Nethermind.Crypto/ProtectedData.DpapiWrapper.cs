@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Runtime.Versioning;
 using System.Security.Cryptography;
 
 namespace Nethermind.Crypto
 {
     public abstract partial class ProtectedData
     {
+        [SupportedOSPlatform("windows")]
         private sealed class DpapiWrapper : IProtector
         {
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)

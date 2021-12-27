@@ -18,11 +18,9 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Network.P2P.Subprotocols.Eth;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx
@@ -52,10 +50,10 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(3, "000400c580018208020000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000400c280010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002c280010000000000000000000000000000000000000000000000000000")]
         public void Splits_packet_into_frames(int framesCount, string outputHex)
         {
-            Packet packet = new Packet("eth", 2, new byte[(framesCount - 1) * Frame.DefaultMaxFrameSize + 1]);
+            Packet packet = new("eth", 2, new byte[(framesCount - 1) * Frame.DefaultMaxFrameSize + 1]);
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
-            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
+            ZeroPacketSplitterTestWrapper packetSplitter = new();
             _output = packetSplitter.Encode(_input);
 
             byte[] outputBytes = new byte[_output.ReadableBytes];
@@ -67,11 +65,11 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Single_frame_is_handled_properly()
         {
-            Packet packet = new Packet("eth", 2, new byte[Frame.DefaultMaxFrameSize / 2]);
+            Packet packet = new("eth", 2, new byte[Frame.DefaultMaxFrameSize / 2]);
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
 
-            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
+            ZeroPacketSplitterTestWrapper packetSplitter = new();
             _output = packetSplitter.Encode(_input);
 
             byte[] outputBytes = new byte[_output.ReadableBytes];
@@ -87,15 +85,15 @@ namespace Nethermind.Network.Test.Rlpx
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(a, b).TestObject;
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
-            NewBlockMessageSerializer newBlockMessageSerializer = new NewBlockMessageSerializer();
-            Packet packet = new Packet("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
+            NewBlockMessageSerializer newBlockMessageSerializer = new();
+            Packet packet = new("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
 
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
-            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
+            ZeroPacketSplitterTestWrapper packetSplitter = new();
             _output = packetSplitter.Encode(_input);
 
             byte[] outputBytes = new byte[_output.ReadableBytes];
@@ -110,15 +108,15 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction[] a = Build.A.Transaction.TestObjectNTimes(64);
             Block block = Build.A.Block.WithTransactions(a).TestObject;
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
-            NewBlockMessageSerializer newBlockMessageSerializer = new NewBlockMessageSerializer();
-            Packet packet = new Packet("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
+            NewBlockMessageSerializer newBlockMessageSerializer = new();
+            Packet packet = new("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
 
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
-            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
+            ZeroPacketSplitterTestWrapper packetSplitter = new();
             _output = packetSplitter.Encode(_input);
 
             byte[] outputBytes = new byte[_output.ReadableBytes];
@@ -134,15 +132,15 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction[] a = Build.A.Transaction.TestObjectNTimes(64);
             Block block = Build.A.Block.WithTransactions(a).TestObject;
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
-            NewBlockMessageSerializer newBlockMessageSerializer = new NewBlockMessageSerializer();
-            Packet packet = new Packet("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
+            NewBlockMessageSerializer newBlockMessageSerializer = new();
+            Packet packet = new("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
 
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
-            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
+            ZeroPacketSplitterTestWrapper packetSplitter = new();
             packetSplitter.DisableFraming();
             _output = packetSplitter.Encode(_input);
 
@@ -157,11 +155,11 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Splits_packet_into_two_frames()
         {
-            Packet packet = new Packet("eth", 2, new byte[Frame.DefaultMaxFrameSize + 1]);
+            Packet packet = new("eth", 2, new byte[Frame.DefaultMaxFrameSize + 1]);
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
 
-            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
+            ZeroPacketSplitterTestWrapper packetSplitter = new();
             _output = packetSplitter.Encode(_input);
 
             byte[] outputBytes = new byte[_output.ReadableBytes];
@@ -174,11 +172,11 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Padding_is_done_after_adding_packet_size()
         {
-            Packet packet = new Packet("eth", 2, new byte[Frame.DefaultMaxFrameSize - 1]);
+            Packet packet = new("eth", 2, new byte[Frame.DefaultMaxFrameSize - 1]);
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
 
-            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
+            ZeroPacketSplitterTestWrapper packetSplitter = new();
             _output = packetSplitter.Encode(_input);
 
             byte[] outputBytes = new byte[_output.ReadableBytes];

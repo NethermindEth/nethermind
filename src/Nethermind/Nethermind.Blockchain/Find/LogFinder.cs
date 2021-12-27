@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Find
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) => 
-                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ArgumentException(ILogFinder.NotFoundError, name);
+                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ArgumentException("Block not found.", name);
 
             cancellationToken.ThrowIfCancellationRequested();
             var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), true);
@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Find
 
             if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
             {
-                throw new ArgumentException("'From' block is later than 'to' block.");
+                throw new ArgumentException($"'From' block '{fromBlock.Number}' is later than 'to' block '{toBlock.Number}'.");
             }
             
             cancellationToken.ThrowIfCancellationRequested();

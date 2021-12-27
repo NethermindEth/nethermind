@@ -21,7 +21,7 @@
 [Linux x64/arm64](http://downloads.nethermind.io)<br/>
 [MacOS](http://downloads.nethermind.io)<br/>
 
-It syncs fully on: 
+It syncs fully on:
 * `Mainnet`
 * `Goerli`
 * `Rinkeby`
@@ -40,7 +40,7 @@ It syncs fully on:
 1. To execute the launcher
 ``nethermind``
 1. To execute the runner
-``nethermind --config mainnet``
+``nethermind --config mainnet_pruned``
 
 **Homebrew**
 1. `brew tap nethermindeth/nethermind`
@@ -48,13 +48,13 @@ It syncs fully on:
 1. To execute the launcher
 ``nethermind-launcher``
 1. To execute the runner
-``nethermind --config mainnet``
+``nethermind --config mainnet_pruned``
 
 # Build from Source
 
 ## Prerequisites :construction:
 
-**.NET 5.0** SDK
+**.NET 6.0** SDK
 
 ### Windows
 
@@ -68,8 +68,11 @@ It syncs fully on:
 * Install dependencies
 ```sh
 sudo apt-get install libsnappy-dev libc6-dev libc6
+
+# Link libraries (only for Ubuntu 21.10)
+sudo ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so
 ```
-*Tested on Ubuntu 21.04, 20.04 and 18.04 LTS*
+*Tested on Ubuntu 21.04, 20.04 and 18.04 LTS and 21.10*
 
 #### Debian
 * [Install .NET](https://docs.microsoft.com/en-gb/dotnet/core/install/linux-debian)
@@ -100,6 +103,8 @@ sudo yum install -y glibc-devel snappy libzstd
 # Link libraries
 sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
 sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
+# also required for Fedora 35
+sudo ln -s `find /usr/lib64/ -type f -name "libdl.so.2*"` /usr/lib64/libdl.so
 ```
 *Tested on Fedora 32*
 
@@ -118,7 +123,7 @@ git clone https://github.com/NethermindEth/nethermind --recursive
 cd nethermind/src/Nethermind
 dotnet build Nethermind.sln -c Release
 cd Nethermind.Runner
-dotnet run -c Release --no-build -- --config mainnet
+dotnet run -c Release --no-build -- --config mainnet_pruned
 ```
 
 ## Docker Image
@@ -163,4 +168,3 @@ Nethermind client can be used in your projects, when setting up private Ethereum
 
 # License
 [![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE)
-

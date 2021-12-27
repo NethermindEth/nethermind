@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -41,14 +40,14 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_sort_by_Reputation()
         {
-            Node a = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            Peer peerA = new Peer(a);
+            Node a = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            Peer peerA = new(a);
 
-            Node b = new Node(TestItem.PublicKeyB, "127.0.0.1", 30303);
-            Peer peerB = new Peer(b);
+            Node b = new(TestItem.PublicKeyB, "127.0.0.1", 30303);
+            Peer peerB = new(b);
 
-            Node c = new Node(TestItem.PublicKeyC, "127.0.0.1", 30303);
-            Peer peerC = new Peer(c);
+            Node c = new(TestItem.PublicKeyC, "127.0.0.1", 30303);
+            Peer peerC = new(c);
 
             _statsManager.GetCurrentReputation(a).Returns(100);
             _statsManager.GetCurrentReputation(b).Returns(50);
@@ -67,17 +66,17 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_sort()
         {
-            Node a = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
-            Peer peerA = new Peer(a);
+            Node a = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            Peer peerA = new(a);
 
-            Node b = new Node(TestItem.PublicKeyB, "127.0.0.1", 30304);
-            Peer peerB = new Peer(b);
+            Node b = new(TestItem.PublicKeyB, "127.0.0.1", 30304);
+            Peer peerB = new(b);
 
-            Node c = new Node(TestItem.PublicKeyC, "127.0.0.1", 30305);
-            Peer peerC = new Peer(c);
+            Node c = new(TestItem.PublicKeyC, "127.0.0.1", 30305);
+            Peer peerC = new(c);
             
-            Node d = new Node(TestItem.PublicKeyD, "127.0.0.1", 30306);
-            Peer peerD = new Peer(d);
+            Node d = new(TestItem.PublicKeyD, "127.0.0.1", 30306);
+            Peer peerD = new(d);
             Peer peerE = null;
 
             _statsManager.GetCurrentReputation(a).Returns(100);
@@ -85,7 +84,7 @@ namespace Nethermind.Network.Test
             _statsManager.GetCurrentReputation(c).Returns(200);
             _statsManager.GetCurrentReputation(d).Returns(10);
 
-            List<Peer> peers = new List<Peer> {peerA, peerB, peerC, peerD, peerE};
+            List<Peer> peers = new() {peerA, peerB, peerC, peerD, peerE};
             
             _statsManager.UpdateCurrentReputation(peers);
             peers.Sort(_comparer);

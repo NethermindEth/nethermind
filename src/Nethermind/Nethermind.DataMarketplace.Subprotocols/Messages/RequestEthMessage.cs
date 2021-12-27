@@ -17,6 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Messages
 {

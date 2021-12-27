@@ -36,6 +36,19 @@ namespace Nethermind.JsonRpc.Modules.Trace
             TransactionHash = includeTransactionHash ? txTrace.TransactionHash : null;
         }
         
+        public ParityTxTraceFromReplay(IReadOnlyCollection<ParityLikeTxTrace> txTraces, bool includeTransactionHash = false)
+        {
+            foreach (ParityLikeTxTrace txTrace in txTraces)
+            {
+                Output = txTrace.Output;
+                VmTrace = txTrace.VmTrace;
+                Action = txTrace.Action;
+                StateChanges = txTrace.StateChanges;
+                TransactionHash = includeTransactionHash ? txTrace.TransactionHash : null;
+            }
+            
+        }
+        
         public byte[] Output { get; set; }
         
         public Keccak TransactionHash { get; set; }

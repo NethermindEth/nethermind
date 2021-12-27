@@ -26,7 +26,6 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -93,23 +92,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure.Persistence.R
             Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerSessions) is ReadOnlyDb);
             Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(ConsumerNdmDbNames.Deposits) is ReadOnlyDb);
         }
-
-        [Test]
-        public async Task ProviderInitTests_BeamSyncDbProvider()
-        {
-            ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
-            using IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
-            RocksDbFactory rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "beam"));
-            IDbProvider beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
-            ConsumerNdmDbInitializer initializer = new ConsumerNdmDbInitializer(beamSyncDbProvider, new NdmConfig(), rocksDbFactory, new MemDbFactory());
-            initializer.Reset();
-            await initializer.InitAsync();
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerDepositApprovals) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerReceipts) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.ConsumerSessions) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(ConsumerNdmDbNames.Deposits) is MemDb);
-        }
-
+        
         [OneTimeTearDown]
         public void TearDown()
         {

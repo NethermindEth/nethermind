@@ -16,7 +16,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
@@ -27,8 +27,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     {
         private static void Test(Keccak[] keys)
         {
-            GetNodeDataMessage message = new GetNodeDataMessage(keys);
-            GetNodeDataMessageSerializer serializer = new GetNodeDataMessageSerializer();
+            GetNodeDataMessage message = new(keys);
+            GetNodeDataMessageSerializer serializer = new();
             
             SerializerTester.TestZero(serializer, message);
         }

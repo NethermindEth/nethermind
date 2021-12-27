@@ -101,7 +101,7 @@ namespace Nethermind.State
             return storageTree.RootHash;
         }
 
-        public int TakeSnapshot(bool newTransactionStart)
+        int IStorageProvider.TakeSnapshot(bool newTransactionStart)
         {
             if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
             if (newTransactionStart && _currentPosition != Resettable.EmptyPosition)

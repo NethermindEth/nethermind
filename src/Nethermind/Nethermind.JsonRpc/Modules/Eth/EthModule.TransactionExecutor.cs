@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         ErrorCodes.ResourceUnavailable);
                 }
 
-                FixCallTx(transactionCall);
+                transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
@@ -72,20 +72,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
                 ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
-            
-            private void FixCallTx(TransactionForRpc transactionCall)
-            {
-                if (transactionCall.Gas == null || transactionCall.Gas == 0)
-                {
-                    transactionCall.Gas = _rpcConfig.GasCap ?? long.MaxValue;
-                }
-                else
-                {
-                    transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, transactionCall.Gas.Value);
-                }
-
-                transactionCall.From ??= Address.SystemUser;
-            }
         }
 
         private class CallTxExecutor : TxExecutor<string>

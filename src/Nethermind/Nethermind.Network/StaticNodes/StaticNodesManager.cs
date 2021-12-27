@@ -31,8 +31,7 @@ namespace Nethermind.Network.StaticNodes
 {
     public class StaticNodesManager : IStaticNodesManager
     {
-        private ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
-            new ConcurrentDictionary<PublicKey, NetworkNode>();
+        private ConcurrentDictionary<PublicKey, NetworkNode> _nodes = new();
 
         private readonly string _staticNodesPath;
         private readonly ILogger _logger;
@@ -100,7 +99,7 @@ namespace Nethermind.Network.StaticNodes
 
         public async Task<bool> AddAsync(string enode, bool updateFile = true)
         {
-            NetworkNode node = new NetworkNode(enode);
+            NetworkNode node = new(enode);
             if (!_nodes.TryAdd(node.NodeId, node))
             {
                 if (_logger.IsInfo) _logger.Info($"Static node was already added: {enode}");
@@ -119,7 +118,7 @@ namespace Nethermind.Network.StaticNodes
 
         public async Task<bool> RemoveAsync(string enode, bool updateFile = true)
         {
-            NetworkNode node = new NetworkNode(enode);
+            NetworkNode node = new(enode);
             if (!_nodes.TryRemove(node.NodeId, out _))
             {
                 if (_logger.IsInfo) _logger.Info($"Static node was not found: {enode}");
@@ -138,7 +137,7 @@ namespace Nethermind.Network.StaticNodes
 
         public bool IsStatic(string enode)
         {
-            NetworkNode node = new NetworkNode(enode);
+            NetworkNode node = new(enode);
             return _nodes.TryGetValue(node.NodeId, out NetworkNode staticNode) && string.Equals(staticNode.Host,
                 node.Host, StringComparison.InvariantCultureIgnoreCase);
         }

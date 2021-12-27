@@ -18,7 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Address to = Build.An.Address.FromNumber(1).TestObject;
             Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumEcdsa(ChainId.Ropsten, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
             tx.SenderAddress = null;
-            BlockBodiesMessage message = new BlockBodiesMessage();
+            BlockBodiesMessage message = new();
             message.Bodies = new [] {new BlockBody(new [] {tx}, new [] {header})};
             
             var serializer = new BlockBodiesMessageSerializer();
@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip_with_nulls()
         {
-            BlockBodiesMessage message = new BlockBodiesMessage {Bodies = new BlockBody[1] {null}};
+            BlockBodiesMessage message = new() {Bodies = new BlockBody[1] {null}};
             var serializer = new BlockBodiesMessageSerializer();
             SerializerTester.TestZero(serializer, message);
         }

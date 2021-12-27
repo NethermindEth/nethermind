@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.Test
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
                 {
@@ -195,12 +195,12 @@ namespace Nethermind.Synchronization.Test
             
             public void SendNewTransactions(IEnumerable<Transaction> txs) { }
 
-            public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -298,7 +298,6 @@ namespace Nethermind.Synchronization.Test
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
-                    new MemDb(),
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     _logManager);

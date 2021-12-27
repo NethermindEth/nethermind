@@ -14,8 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.IO;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core.Test.IO;
@@ -37,7 +35,7 @@ namespace Nethermind.Network.Test
         {
             NetworkNodeDecoder.Init();
             ILogManager logManager = LimboLogs.Instance;
-            ConfigProvider configSource = new ConfigProvider();
+            ConfigProvider configSource = new();
             _tempDir = TempPath.GetTempDirectory();
 
             var db = new SimpleFilePublicKeyDb("Test",_tempDir.Path, logManager);

@@ -31,6 +31,8 @@ using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Int256;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;

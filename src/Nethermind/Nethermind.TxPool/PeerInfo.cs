@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
     {
         private ITxPoolPeer Peer { get; }
 
-        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
+        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         public PeerInfo(ITxPoolPeer peer)
         {
@@ -34,6 +34,14 @@ namespace Nethermind.TxPool
         }
 
         public PublicKey Id => Peer.Id;
+
+        public void SendNewTransaction(Transaction tx)
+        {
+            if (NotifiedTransactions.Set(tx.Hash))
+            {
+                Peer.SendNewTransaction(tx);
+            }
+        }
 
         public void SendNewTransactions(IEnumerable<Transaction> txs)
         {
@@ -44,9 +52,8 @@ namespace Nethermind.TxPool
         {
             foreach (Transaction tx in txs)
             {
-                if (!NotifiedTransactions.Get(tx.Hash))
+                if (NotifiedTransactions.Set(tx.Hash))
                 {
-                    NotifiedTransactions.Set(tx.Hash);
                     yield return tx;
                 }
             }

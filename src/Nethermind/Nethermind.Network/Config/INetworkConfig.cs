@@ -23,13 +23,13 @@ namespace Nethermind.Network.Config
         public const int DefaultNettyArenaOrder = 11;
         
         [ConfigItem(Description = "Use only if your node cannot resolve external IP automatically.", DefaultValue = "null")]
-        string ExternalIp { get; set; }
+        string? ExternalIp { get; set; }
         
         [ConfigItem(Description = "Use only if your node cannot resolve local IP automatically.", DefaultValue = "null")]
-        string LocalIp { get; set; }
+        string? LocalIp { get; set; }
 
         [ConfigItem(Description = "List of nodes for which we will keep the connection on. Static nodes are not counted to the max number of nodes limit.", DefaultValue = "null")]
-        string StaticPeers { get; set; }
+        string? StaticPeers { get; set; }
         
         [ConfigItem(Description = "If set to 'true' then no connections will be made to non-static peers.", DefaultValue = "false")]
         bool OnlyStaticPeers { get; set; }
@@ -75,5 +75,8 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(DefaultValue = "11", Description = "[TECHNICAL] Defines the size of a buffer allocated to each peer - default is 8192 << 11 so 16MB where order is 11.")]
         int NettyArenaOrder { get; set; }
+        
+        [ConfigItem(DefaultValue = "", Description = "Bootnodes")]
+        string Bootnodes { get; set; }
     }
 }

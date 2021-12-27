@@ -53,7 +53,7 @@ namespace Nethermind.Api
         IFilterStore? FilterStore { get; set; }
         IFilterManager? FilterManager { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
-        IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; }
+        IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         ISealer? Sealer { get; set; }

@@ -135,8 +135,10 @@ namespace Nethermind.Evm.Tracing.Proofs
         
         public void ReportAccountRead(Address address)
         {
-            if (!_wasSystemAccountAccessedOnceAlready && address == Address.SystemUser)
+            if (_treatSystemAccountDifferently && !_wasSystemAccountAccessedOnceAlready && address == Address.SystemUser)
             {
+                // we want to ignore the system account the first time only
+                // TODO: I think this should only be done if the system account should be treated differently?
                 _wasSystemAccountAccessedOnceAlready = true;
                 return;
             }

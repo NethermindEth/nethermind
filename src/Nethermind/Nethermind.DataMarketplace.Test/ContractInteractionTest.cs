@@ -125,8 +125,8 @@ namespace Nethermind.DataMarketplace.Test
             _state.Commit(spec);
             _state.CommitTree(0);
 
-            VirtualMachine machine = new VirtualMachine(_state, storageProvider, Substitute.For<IBlockhashProvider>(),
-                specProvider, _logManager);
+            VirtualMachine machine =
+                new VirtualMachine(Substitute.For<IBlockhashProvider>(), specProvider, _logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor);
 
@@ -179,7 +179,7 @@ namespace Nethermind.DataMarketplace.Test
                 return 99;
             }
 
-            public Block BeamHead => _headBlock;
+            public Block HeadBlock => _headBlock;
 
             public GethLikeBlockTracer GethTracer { get; set; } = new GethLikeBlockTracer(GethTraceOptions.Default);
 
@@ -310,7 +310,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public byte[] GetStorage(Keccak storageRoot, UInt256 index)
+            public byte[] GetStorage(Keccak storageRoot, in UInt256 index)
             {
                 throw new NotImplementedException();
             }

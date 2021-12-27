@@ -15,11 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Infrastructure.Database;
 using Nethermind.Db;
@@ -29,8 +27,6 @@ using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Synchronization.BeamSync;
-using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -88,21 +84,6 @@ namespace Nethermind.DataMarketplace.Test
             Assert.AreEqual(2, readonlyDbProvider.RegisteredDbs.Count());
             Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(NdmDbNames.Configs) is ReadOnlyDb);
             Assert.IsTrue(readonlyDbProvider.GetDb<IDb>(NdmDbNames.EthRequests) is ReadOnlyDb);
-        }
-
-        [Test]
-        public async Task ProviderInitTests_BeamSyncDbProvider()
-        {
-            var syncModeSelector = Substitute.For<ISyncModeSelector>();
-            var dbProvider = TestMemDbProvider.Init();
-            var rocksDbFactory = new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "beam"));
-            IDbProvider beamSyncDbProvider = new BeamSyncDbProvider(syncModeSelector, dbProvider, new SyncConfig(), LimboLogs.Instance);
-            var initializer = new NdmDbInitializer(new NdmConfig(), beamSyncDbProvider, rocksDbFactory, new MemDbFactory());
-            await initializer.Init();
-            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(NdmDbNames.Configs));
-            Assert.NotNull(beamSyncDbProvider.GetDb<IDb>(NdmDbNames.EthRequests));
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(NdmDbNames.Configs) is MemDb);
-            Assert.IsTrue(beamSyncDbProvider.GetDb<IDb>(NdmDbNames.EthRequests) is MemDb);
         }
 
         [Test]

@@ -24,8 +24,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
+    [TestFixture]
     [Parallelizable(ParallelScope.Self)]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
@@ -33,11 +32,6 @@ namespace Nethermind.Evm.Test
 
         protected override long BlockNumber => _blockNumber;
 
-        public VmCodeDepositTests(bool useBeamSync)
-        {
-            UseBeamSync = useBeamSync;
-        }
-        
         [SetUp]
         public override void Setup()
         {

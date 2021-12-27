@@ -28,7 +28,7 @@ namespace Nethermind.Cli.Modules
     [CliModule("eth")]
     public class EthCliModule : CliModuleBase
     {
-        private string? SendEth(Address from, Address address, UInt256 amountInWei)
+        private string? SendEth(Address from, Address address, in UInt256 amountInWei)
         {
             long blockNumber = NodeManager.Post<long>("eth_blockNumber").Result;
 
@@ -233,9 +233,9 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliFunction("eth", "feeHistory")]
-        public JsValue FeeHistory(int blockCount, string newestBlock, double[]? rewardPercentiles = null)
+        public JsValue FeeHistory(long blockCount, string newestBlock, double[]? rewardPercentiles = null)
         {
-            return NodeManager.PostJint("eth_feeHistory", blockCount, newestBlock, rewardPercentiles).Result;
+            return NodeManager.PostJint("eth_feeHistory", blockCount, newestBlock, rewardPercentiles!).Result;
         }
 
         [CliFunction("eth", "gasPrice")]
