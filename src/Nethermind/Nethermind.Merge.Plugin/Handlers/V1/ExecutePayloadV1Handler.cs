@@ -54,8 +54,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IInitConfig _initConfig;
         private readonly IMergeConfig _mergeConfig;
         private readonly ISynchronizer _synchronizer;
-        private readonly IDb _db;
-        private readonly BeaconBlocksQueue _beaconBlocksQueue;
         private readonly ILogger _logger;
         private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
@@ -70,8 +68,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             IInitConfig initConfig,
             IMergeConfig mergeConfig,
             ISynchronizer synchronizer,
-            IDb db,
-            BeaconBlocksQueue beaconBlocksQueue,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -81,8 +77,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             _initConfig = initConfig;
             _mergeConfig = mergeConfig;
             _synchronizer = synchronizer;
-            _db = db;
-            _beaconBlocksQueue = beaconBlocksQueue;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
             _processor.BlockProcessed += (s, e) =>
@@ -100,12 +94,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             ExecutePayloadV1Result executePayloadResult = new();
 
             // ToDo wait for final PostMerge sync
-            // if (_db.KeyExists(request.ParentHash) == false)
-            // {
-            //     executePayloadResult.EnumStatus = VerificationStatus.Syncing;
-            //     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
-            // }
-
             if (request.TryGetBlock(out Block? block) && block != null)
             {
                 var shouldProcess = false;
@@ -123,8 +111,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                     _blockTree.SuggestBlock(block, shouldProcess);
                 else
                 {
-                    _blockTree.Insert(block.Header);
-                    _blockTree.Insert(block);
+                    _blockTree.Insert(block, true);
                 }
 
                 if (shouldProcess == false)

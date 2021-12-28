@@ -342,7 +342,7 @@ namespace Nethermind.Blockchain
             }
 
             BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
-            var bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
+            BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
             BestSuggestedBody = bestSuggestedBodyHeader is null ? null : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
         }
 
@@ -452,7 +452,7 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        public AddBlockResult Insert(Block block)
+        public AddBlockResult Insert(Block block, bool saveHeader = false)
         {
             if (!CanAcceptNewBlocks)
             {
@@ -473,6 +473,18 @@ namespace Nethermind.Blockchain
             // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
             Rlp newRlp = _blockDecoder.Encode(block);
             _blockDb.Set(block.Hash, newRlp.Bytes);
+
+            if (saveHeader)
+            {
+                BlockHeader header = block.Header!;
+                Rlp newHeaderRlp = _headerDecoder.Encode(header);
+                _headerDb.Set(header.Hash!, newHeaderRlp.Bytes);
+
+                BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+                ChainLevelInfo chainLevel = new(true, blockInfo);
+                _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
+                _bloomStorage.Store(header.Number, header.Bloom!);
+            }
 
             return AddBlockResult.Added;
         }
@@ -533,8 +545,8 @@ namespace Nethermind.Blockchain
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
             {
-                if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
-      //          return AddBlockResult.UnknownParent;
+                if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}"); 
+              //  return AddBlockResult.UnknownParent;
             }
 
             SetTotalDifficulty(header);
@@ -1264,7 +1276,7 @@ namespace Nethermind.Blockchain
 
         private ChainLevelInfo UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
         {
-            using (var batch = _chainLevelInfoRepository.StartBatch())
+            using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
             {
                 ChainLevelInfo level = LoadLevel(number, false);
 

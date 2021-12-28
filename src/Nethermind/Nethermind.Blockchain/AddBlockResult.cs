@@ -22,7 +22,6 @@ namespace Nethermind.Blockchain
         CannotAccept,
         UnknownParent,
         InvalidBlock,
-        Added,
-        Skip
+        Added
     }
 }
