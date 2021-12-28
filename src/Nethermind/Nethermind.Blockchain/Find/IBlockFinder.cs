@@ -142,6 +142,6 @@ namespace Nethermind.Blockchain.Find
         /// <summary>
         /// Highest state persisted
         /// </summary>
-        long? BestState { get; set; }
+        long? BestPersistedState { get; set; }
     }
 }

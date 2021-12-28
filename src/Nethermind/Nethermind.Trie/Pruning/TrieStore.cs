@@ -722,6 +722,7 @@ namespace Nethermind.Trie.Pruning
 
         private void PersistOnShutdown()
         {
+            // If we are in archive mode, we don't need to change reorg boundaries.
             if (_pruningStrategy.PruningEnabled)
             {
                 // here we try to shorten the number of blocks recalculated when restarting (so we force persist)

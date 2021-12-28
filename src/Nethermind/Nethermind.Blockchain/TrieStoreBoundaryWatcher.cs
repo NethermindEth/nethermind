@@ -16,11 +16,15 @@
 // 
 
 using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain
 {
+    /// <summary>
+    /// Watches state persistence in <see cref="ITrieStore"/> with <see cref="ITrieStore.ReorgBoundaryReached"/> and saves it in <see cref="IBlockFinder.BestPersistedState"/>.
+    /// </summary>
     public class TrieStoreBoundaryWatcher : IDisposable
     {
         private readonly ITrieStore _trieStore;
@@ -38,7 +42,7 @@ namespace Nethermind.Blockchain
         private void OnReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
         {
             if (_logger.IsDebug) _logger.Debug($"Saving reorg boundary {e.BlockNumber}");
-            _blockTree.BestState = e.BlockNumber;
+            _blockTree.BestPersistedState = e.BlockNumber;
         }
 
         public void Dispose()

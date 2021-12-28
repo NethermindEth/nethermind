@@ -22,6 +22,13 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.FullPruning;
 
+/// <summary>
+/// Forces to persist state trie to DB after next block of full pruning trigger <see cref="IPruningTrigger.Prune"/>.
+/// </summary>
+/// <remarks>
+/// Used when both memory pruning and full pruning are enabled.
+/// We need to store state trie to DB to be able to copy this trie into new database in full pruning.
+/// </remarks>
 public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposable
 {
     private readonly IPruningTrigger _pruningTrigger;
@@ -57,6 +64,7 @@ public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposab
         return shouldPersist;
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         _pruningTrigger.Prune -= OnPrune;

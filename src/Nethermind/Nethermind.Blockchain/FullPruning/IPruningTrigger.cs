@@ -16,26 +16,17 @@
 // 
 
 using System;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
 
 namespace Nethermind.Blockchain.FullPruning
 {
+    /// <summary>
+    /// Triggers Full Pruning
+    /// </summary>
     public interface IPruningTrigger
     {
+        /// <summary>
+        /// Triggers Full Pruning
+        /// </summary>
         event EventHandler<PruningEventArgs> Prune;
-    }
-
-    public class PruningEventArgs : EventArgs
-    {
-        public PruningStatus Status { get; set; }
-    }
-
-    [JsonConverter(typeof(StringEnumConverter))]
-    public enum PruningStatus
-    {
-        Disabled,
-        InProgress,
-        Starting,
     }
 }

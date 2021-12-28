@@ -15,25 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace Nethermind.Blockchain.FullPruning;
 
 /// <summary>
-/// Allows manually trigger Full Pruning.
+/// Status of Full Pruning
 /// </summary>
-public class ManualPruningTrigger : IPruningTrigger
+[JsonConverter(typeof(StringEnumConverter))]
+public enum PruningStatus
 {
-    public event EventHandler<PruningEventArgs>? Prune;
+    /// <summary>
+    /// Default - full pruning is disabled.
+    /// </summary>
+    Disabled,
         
     /// <summary>
-    /// Triggers full pruning.
+    /// Full pruning is already in progress.
     /// </summary>
-    /// <returns>Status of triggering full pruning.</returns>
-    public PruningStatus Trigger()
-    {
-        PruningEventArgs args = new PruningEventArgs();
-        Prune?.Invoke(this, args);
-        return args.Status;
-    }
+    InProgress,
+        
+    /// <summary>
+    /// Full pruning was triggered and is starting.
+    /// </summary>
+    Starting,
 }

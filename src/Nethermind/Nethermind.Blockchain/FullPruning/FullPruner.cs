@@ -114,11 +114,11 @@ namespace Nethermind.Blockchain.FullPruning
             }
             else if (_waitingForStateReady == 1)
             {
-                if (_blockTree.BestState >= _blockToWaitFor && _currentPruning is not null)
+                if (_blockTree.BestPersistedState >= _blockToWaitFor && _currentPruning is not null)
                 {
                     if (_stateToCopy == long.MaxValue)
                     {
-                        _stateToCopy = _blockTree.BestState.Value;
+                        _stateToCopy = _blockTree.BestPersistedState.Value;
                     }
 
                     long blockToPruneAfter = _stateToCopy + Reorganization.MaxDepth;
@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.FullPruning
                 }
                 else
                 {
-                    if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved state {_blockTree.BestState}, waiting for saved state {_blockToWaitFor} in order to not loose any cached state.");
+                    if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved state {_blockTree.BestPersistedState}, waiting for saved state {_blockToWaitFor} in order to not loose any cached state.");
                 }
             }
             else

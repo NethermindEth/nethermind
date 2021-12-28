@@ -48,10 +48,10 @@ namespace Nethermind.Blockchain
           set => _wrapped.LowestInsertedBodyNumber = value;
         }
 
-        public long? BestState
+        public long? BestPersistedState
         {
-            get => _wrapped.BestState;
-            set => _wrapped.BestState = value;
+            get => _wrapped.BestPersistedState;
+            set => _wrapped.BestPersistedState = value;
         }
 
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;

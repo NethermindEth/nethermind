@@ -19,10 +19,25 @@ using System;
 
 namespace Nethermind.Db.FullPruning
 {
+    /// <summary>
+    /// Context of Full pruning.
+    /// </summary>
     public interface IPruningContext : IDisposable
     {
+        /// <summary>
+        /// Sets key/value pairs in the cloning DB.
+        /// </summary>
+        /// <param name="key">key</param>
         public byte[]? this[byte[] key] { set; }
+        
+        /// <summary>
+        /// Commits pruning, marking the end of cloning state to new DB.
+        /// </summary>
         void Commit();
+        
+        /// <summary>
+        /// Marks that pruning is starting.
+        /// </summary>
         void MarkStart();
     }
 }

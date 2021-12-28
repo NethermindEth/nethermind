@@ -17,10 +17,24 @@
 
 namespace Nethermind.Db
 {
+    /// <summary>
+    /// Triggers for Full Pruning.
+    /// </summary>
     public enum FullPruningTrigger
     {
-        StateDbSize,
-        VolumeFreeSpace,
+        /// <summary>
+        /// Only Manual trigger is supported.
+        /// </summary>
         Manual,
+        
+        /// <summary>
+        /// Automatically triggers on State DB size.
+        /// </summary>
+        StateDbSize,
+        
+        /// <summary>
+        /// Automatically triggers on Volume free space on volume with State DB.
+        /// </summary>
+        VolumeFreeSpace
     }
 }

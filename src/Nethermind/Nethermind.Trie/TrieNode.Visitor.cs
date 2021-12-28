@@ -73,28 +73,38 @@ namespace Nethermind.Trie
                     trieVisitContext.Level++;
                     if (trieVisitContext.MaxDegreeOfParallelism != 1)
                     {
+                        // we go multithreaded route
+                        
+                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
                         TrieVisitContext GetChildContext(TrieVisitContext context)
                         {
-                            TrieVisitContext childContext = context.Clone();
-                            int maxDegreeOfParallelism = context.MaxDegreeOfParallelism;
-                            childContext.MaxDegreeOfParallelism =
-                                maxDegreeOfParallelism > 1
-                                    ? Math.Max(1, maxDegreeOfParallelism / BranchesCount)
-                                    : maxDegreeOfParallelism;
-                            return childContext;
+                            if (context.MaxDegreeOfParallelism == 0)
+                            {
+                                return context;
+                            }
+                            else
+                            {
+                                TrieVisitContext childContext = context.Clone();
+                                childContext.MaxDegreeOfParallelism = Math.Max(1, context.MaxDegreeOfParallelism / BranchesCount);
+                                return childContext;   
+                            }
                         }
                         
+                        // we need to preallocate children
                         TrieNode?[] children = new TrieNode?[BranchesCount];
                         for (int i = 0; i < BranchesCount; i++)
                         {
                             children[i] = GetChild(nodeResolver, i);
                         }
 
+                        // run in parallel
+                        TrieVisitContext childContext = GetChildContext(trieVisitContext);
                         ParallelOptions options = trieVisitContext.MaxDegreeOfParallelism == 0 ? _defaultOptions : new ParallelOptions() {MaxDegreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism % (BranchesCount + 1)};
-                        Parallel.For(0, BranchesCount, options, i => VisitChild(i, children[i], nodeResolver, visitor, GetChildContext(trieVisitContext)));
+                        Parallel.For(0, BranchesCount, options, i => VisitChild(i, children[i], nodeResolver, visitor, childContext));
                     }
                     else
                     {
+                        // single threaded route
                         for (int i = 0; i < BranchesCount; i++)
                         {
                             VisitChild(i, GetChild(nodeResolver, i), nodeResolver, visitor, trieVisitContext);

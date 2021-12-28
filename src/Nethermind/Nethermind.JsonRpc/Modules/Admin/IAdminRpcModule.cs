@@ -74,7 +74,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
             IsImplemented = false)]
         ResultWrapper<bool> admin_setSolc();
         
-        [JsonRpcMethod(Description = "Runs full pruning if enabled.")]
+        [JsonRpcMethod(Description = "Runs full pruning if enabled.",
+            EdgeCaseHint = "",
+            ExampleResponse = "\"Starting\"",
+            IsImplemented = true)]
         ResultWrapper<PruningStatus> admin_prune();
     }
 }

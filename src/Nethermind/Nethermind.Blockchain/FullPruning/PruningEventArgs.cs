@@ -19,21 +19,10 @@ using System;
 
 namespace Nethermind.Blockchain.FullPruning;
 
-/// <summary>
-/// Allows manually trigger Full Pruning.
-/// </summary>
-public class ManualPruningTrigger : IPruningTrigger
+public class PruningEventArgs : EventArgs
 {
-    public event EventHandler<PruningEventArgs>? Prune;
-        
     /// <summary>
-    /// Triggers full pruning.
+    /// Result of triggering Full Pruning
     /// </summary>
-    /// <returns>Status of triggering full pruning.</returns>
-    public PruningStatus Trigger()
-    {
-        PruningEventArgs args = new PruningEventArgs();
-        Prune?.Invoke(this, args);
-        return args.Status;
-    }
+    public PruningStatus Status { get; set; }
 }

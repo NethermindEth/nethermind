@@ -19,18 +19,30 @@ using System;
 
 namespace Nethermind.Db
 {
+    /// <summary>
+    /// Defines pruning mode.
+    /// </summary>
     [Flags]
     public enum PruningMode
     {
-        None,
-        Memory,
-        Full,
+        /// <summary>
+        /// No pruning - full archive.
+        /// </summary>
+        None = 0,
+        
+        /// <summary>
+        /// In memory pruning.
+        /// </summary>
+        Memory = 1,
+        
+        /// <summary>
+        /// Full pruning.
+        /// </summary>
+        Full = 2,
+        
+        /// <summary>
+        /// Both in memory and full pruning.
+        /// </summary>
         Both = Memory | Full
-    }
-
-    public static class PruningModeExtensions
-    {
-        public static bool IsMemory(this PruningMode mode) => (mode & PruningMode.Memory) == PruningMode.Memory;
-        public static bool IsFull(this PruningMode mode) => (mode & PruningMode.Full) == PruningMode.Full;
     }
 }

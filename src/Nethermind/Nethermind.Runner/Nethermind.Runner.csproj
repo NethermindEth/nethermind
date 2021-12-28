@@ -24,7 +24,7 @@
     <PackageReference Include="NLog.Targets.Seq" Version="2.0.0" />
     <PackageReference Include="NLog" Version="4.7.12" />
     <PackageReference Include="Seq.Api" Version="2021.3.1" />
-    <PackageReference Include="System.IO.Abstractions" Version="13.2.47" />
+    <PackageReference Include="System.IO.Abstractions" Version="16.0.1" />
     <PackageReference Include="YamlDotNet" Version="11.2.1" />
   </ItemGroup>
   <ItemGroup>

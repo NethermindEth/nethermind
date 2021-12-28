@@ -28,6 +28,9 @@ namespace Nethermind.Blockchain.FullPruning
     /// <summary>
     /// Visits the state trie and copies the nodes to pruning context.
     /// </summary>
+    /// <remarks>
+    /// During visiting of the state trie at specified state root it copies the existing trie into <see cref="IPruningContext"/>.
+    /// </remarks>
     public class CopyTreeVisitor : ITreeVisitor, IDisposable
     {
         private readonly IPruningContext _pruningContext;
@@ -64,15 +67,17 @@ namespace Nethermind.Blockchain.FullPruning
             if (_logger.IsWarn)
             {
                 _logger.Warn($"Full Pruning Failed: Missing node {nodeHash}.");
-                _cancellationTokenSource.Cancel();
             }
+            
+            // if nodes are missing then state trie is not valid and we need to stop copying it
+            _cancellationTokenSource.Cancel();
         }
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(node);
 
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(node);
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null) => PersistNode(node);
+        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[]? value = null) => PersistNode(node);
 
         public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext) { }
         
@@ -80,9 +85,11 @@ namespace Nethermind.Blockchain.FullPruning
         {
             if (node.Keccak is not null)
             {
-                _pruningContext[node.Keccak!.Bytes] = node.FullRlp;
+                // simple copy of nodes RLP
+                _pruningContext[node.Keccak.Bytes] = node.FullRlp;
                 Interlocked.Increment(ref _persistedNodes);
                 
+                // log message every 1 mln nodes
                 if (_persistedNodes % Million == 0)
                 {
                     LogProgress("In Progress");

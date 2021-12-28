@@ -15,25 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+namespace Nethermind.Db;
 
-namespace Nethermind.Blockchain.FullPruning;
-
-/// <summary>
-/// Allows manually trigger Full Pruning.
-/// </summary>
-public class ManualPruningTrigger : IPruningTrigger
+public static class PruningModeExtensions
 {
-    public event EventHandler<PruningEventArgs>? Prune;
-        
-    /// <summary>
-    /// Triggers full pruning.
-    /// </summary>
-    /// <returns>Status of triggering full pruning.</returns>
-    public PruningStatus Trigger()
-    {
-        PruningEventArgs args = new PruningEventArgs();
-        Prune?.Invoke(this, args);
-        return args.Status;
-    }
+    public static bool IsMemory(this PruningMode mode) => (mode & PruningMode.Memory) == PruningMode.Memory;
+    public static bool IsFull(this PruningMode mode) => (mode & PruningMode.Full) == PruningMode.Full;
 }
