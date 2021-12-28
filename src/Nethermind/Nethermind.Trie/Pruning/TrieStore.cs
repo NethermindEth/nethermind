@@ -722,43 +722,46 @@ namespace Nethermind.Trie.Pruning
 
         private void PersistOnShutdown()
         {
-            // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
-            // and we need to speed up the standard announcement procedure so we persists a block
-            // from the past (by going max reorg back)
-
-            BlockCommitSet? persistenceCandidate = null;
-            bool firstCandidateFound = false;
-            while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
+            if (_pruningStrategy.PruningEnabled)
             {
-                if (blockCommitSet is not null)
+                // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
+                // and we need to speed up the standard announcement procedure so we persists a block
+                // from the past (by going max reorg back)
+                
+                BlockCommitSet? persistenceCandidate = null;
+                bool firstCandidateFound = false;
+                while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
                 {
-                    if (firstCandidateFound == false)
+                    if (blockCommitSet is not null)
                     {
-                        persistenceCandidate = blockCommitSet;
-                        if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
-                        firstCandidateFound = true;
-                        continue;
-                    }
+                        if (firstCandidateFound == false)
+                        {
+                            persistenceCandidate = blockCommitSet;
+                            if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
+                            firstCandidateFound = true;
+                            continue;
+                        }
 
-                    if (blockCommitSet.BlockNumber <= LatestCommittedBlockNumber - Reorganization.MaxDepth)
+                        if (blockCommitSet.BlockNumber <= LatestCommittedBlockNumber - Reorganization.MaxDepth)
+                        {
+                            persistenceCandidate = blockCommitSet;
+                            if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
+                        }
+                    }
+                    else
                     {
-                        persistenceCandidate = blockCommitSet;
-                        if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
+                        if (_logger.IsDebug) _logger.Debug("Block commit was null...");
                     }
                 }
-                else
-                {
-                    if (_logger.IsDebug) _logger.Debug("Block commit was null...");
-                }
-            }
 
-            if (_logger.IsDebug)
-                _logger.Debug(
-                    $"Persisting on disposal {persistenceCandidate} (cache memory at {MemoryUsedByDirtyCache})");
-            if (persistenceCandidate is not null)
-            {
-                Persist(persistenceCandidate);
-                AnnounceReorgBoundaries();
+                if (_logger.IsDebug)
+                    _logger.Debug(
+                        $"Persisting on disposal {persistenceCandidate} (cache memory at {MemoryUsedByDirtyCache})");
+                if (persistenceCandidate is not null)
+                {
+                    Persist(persistenceCandidate);
+                    AnnounceReorgBoundaries();
+                }
             }
         }
 

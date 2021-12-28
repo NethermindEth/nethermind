@@ -21,7 +21,7 @@ namespace Nethermind.Db
     {
         public bool Enabled
         {
-            get => (Mode & PruningMode.Memory) != 0;
+            get => Mode.IsMemory();
             set
             {
                 if (value)

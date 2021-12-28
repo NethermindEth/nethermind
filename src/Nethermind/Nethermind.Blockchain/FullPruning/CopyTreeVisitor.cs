@@ -25,6 +25,9 @@ using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.FullPruning
 {
+    /// <summary>
+    /// Visits the state trie and copies the nodes to pruning context.
+    /// </summary>
     public class CopyTreeVisitor : ITreeVisitor, IDisposable
     {
         private readonly IPruningContext _pruningContext;
@@ -53,7 +56,7 @@ namespace Nethermind.Blockchain.FullPruning
         public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
         {
             _stopwatch.Start();
-            if (_logger.IsWarn) _logger.Warn($"Full Pruning Started: do not close the node until finished or progress will be lost.");
+            if (_logger.IsWarn) _logger.Warn($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
         }
 
         public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)

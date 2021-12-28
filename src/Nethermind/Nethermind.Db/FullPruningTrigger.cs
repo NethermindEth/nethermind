@@ -20,6 +20,7 @@ namespace Nethermind.Db
     public enum FullPruningTrigger
     {
         StateDbSize,
-        VolumeFreeSpace
+        VolumeFreeSpace,
+        Manual,
     }
 }

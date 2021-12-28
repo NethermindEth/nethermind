@@ -84,7 +84,7 @@ namespace Nethermind.Db.Test
             return dbProvider;
         }
         
-        private static Type GetReceiptsType(bool useReceipts, Type? receiptType = null) => useReceipts ? receiptType ?? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
+        private static Type GetReceiptsType(bool useReceipts, Type receiptType = null) => useReceipts ? receiptType ?? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
         
         private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
         {

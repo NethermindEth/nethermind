@@ -311,15 +311,22 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
-            int nibblesCount = 2 * rawKey.Length;
-            byte[] array = null;
-            Span<byte> nibbles = rawKey.Length <= 64
-                ? stackalloc byte[nibblesCount]
-                : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
-            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
-            if (array != null) ArrayPool<byte>.Shared.Return(array);
-            return result;
+            try
+            {
+                int nibblesCount = 2 * rawKey.Length;
+                byte[] array = null;
+                Span<byte> nibbles = rawKey.Length <= 64
+                    ? stackalloc byte[nibblesCount]
+                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
+                if (array != null) ArrayPool<byte>.Shared.Return(array);
+                return result;
+            }
+            catch (TrieException e)
+            {
+                throw new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+            }
         }
 
         [DebuggerStepThrough]

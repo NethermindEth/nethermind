@@ -16,6 +16,8 @@
 // 
 
 using System;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 
 namespace Nethermind.Blockchain.FullPruning
 {
@@ -27,17 +29,13 @@ namespace Nethermind.Blockchain.FullPruning
     public class PruningEventArgs : EventArgs
     {
         public PruningStatus Status { get; set; }
-        
-        public PruningEventArgs()
-        {
-            
-        }
     }
 
+    [JsonConverter(typeof(StringEnumConverter))]
     public enum PruningStatus
     {
         Disabled,
-        AlreadyInProgress,
+        InProgress,
         Starting,
     }
 }

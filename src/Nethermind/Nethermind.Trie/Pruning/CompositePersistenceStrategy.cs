@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,22 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using System.Collections.Generic;
+using System.Linq;
 
-namespace Nethermind.Db
+namespace Nethermind.Trie.Pruning;
+
+public class CompositePersistenceStrategy : IPersistenceStrategy
 {
-    [Flags]
-    public enum PruningMode
+    private readonly List<IPersistenceStrategy> _strategies = new();
+
+    public CompositePersistenceStrategy(params IPersistenceStrategy[] strategies)
     {
-        None,
-        Memory,
-        Full,
-        Both = Memory | Full
+        _strategies.AddRange(strategies);
     }
 
-    public static class PruningModeExtensions
+    public IPersistenceStrategy AddStrategy(IPersistenceStrategy strategy)
     {
-        public static bool IsMemory(this PruningMode mode) => (mode & PruningMode.Memory) == PruningMode.Memory;
-        public static bool IsFull(this PruningMode mode) => (mode & PruningMode.Full) == PruningMode.Full;
+        _strategies.Add(strategy);
+        return this;
     }
+
+    public bool ShouldPersist(long blockNumber) => _strategies.Any(strategy => strategy.ShouldPersist(blockNumber));
 }

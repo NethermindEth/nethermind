@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,21 +16,21 @@
 // 
 
 using System;
+using System.Collections.Generic;
 
-namespace Nethermind.Db
+namespace Nethermind.Blockchain.FullPruning;
+
+public class CompositePruningTrigger : IPruningTrigger
 {
-    [Flags]
-    public enum PruningMode
+    public void Add(IPruningTrigger trigger)
     {
-        None,
-        Memory,
-        Full,
-        Both = Memory | Full
+        trigger.Prune += OnPrune;
     }
 
-    public static class PruningModeExtensions
+    private void OnPrune(object? sender, PruningEventArgs e)
     {
-        public static bool IsMemory(this PruningMode mode) => (mode & PruningMode.Memory) == PruningMode.Memory;
-        public static bool IsFull(this PruningMode mode) => (mode & PruningMode.Full) == PruningMode.Full;
+        Prune?.Invoke(sender, e);
     }
+
+    public event EventHandler<PruningEventArgs>? Prune;
 }

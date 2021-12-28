@@ -19,6 +19,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -35,7 +36,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
         private readonly IStaticNodesManager _staticNodesManager;
         private readonly IEnode _enode;
         private readonly string _dataDir;
-        
+        private readonly ManualPruningTrigger _pruningTrigger;
+
         [NotNull]
         private NodeInfo _nodeInfo;
 
@@ -45,7 +47,8 @@ namespace Nethermind.JsonRpc.Modules.Admin
             IPeerManager peerManager,
             IStaticNodesManager staticNodesManager,
             IEnode enode,
-            string dataDir)
+            string dataDir,
+            ManualPruningTrigger pruningTrigger)
         {
             _enode = enode ?? throw new ArgumentNullException(nameof(enode));
             _dataDir = dataDir ?? throw new ArgumentNullException(nameof(dataDir));
@@ -53,6 +56,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
+            _pruningTrigger = pruningTrigger;
 
             BuildNodeInfo();
         }
@@ -134,9 +138,9 @@ namespace Nethermind.JsonRpc.Modules.Admin
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<bool> admin_prune()
+        public ResultWrapper<PruningStatus> admin_prune()
         {
-            throw new NotImplementedException();
+            return ResultWrapper<PruningStatus>.Success(_pruningTrigger.Trigger());
         }
     }
 }

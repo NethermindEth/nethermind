@@ -57,10 +57,9 @@ namespace Nethermind.Init.Steps
 
             try
             {
-                bool fullPruning = (pruningConfig.Mode & PruningMode.Full) != PruningMode.None;
                 bool useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.FileSystem, fullPruning);
+                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.FileSystem, pruningConfig.Mode.IsFull());
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb);
             }
             catch(TypeInitializationException e)

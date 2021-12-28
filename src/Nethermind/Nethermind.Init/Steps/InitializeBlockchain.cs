@@ -82,6 +82,7 @@ namespace Nethermind.Init.Steps
             if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
             if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
             if (getApi.SpecProvider == null) throw new StepDependencyException(nameof(getApi.SpecProvider));
+            if (getApi.BlockTree == null) throw new StepDependencyException(nameof(getApi.BlockTree));
             
             _logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
@@ -117,12 +118,20 @@ namespace Nethermind.Init.Steps
                 .WitnessedBy(witnessCollector);
 
             TrieStore trieStore;
-            if ((pruningConfig.Mode & PruningMode.Memory) != PruningMode.None)
+            if (pruningConfig.Mode.IsMemory())
             {
+                IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+                if (pruningConfig.Mode.IsFull())
+                {
+                    PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(_api.PruningTrigger, getApi.BlockTree, getApi.LogManager);
+                    getApi.DisposeStack.Push(triggerPersistenceStrategy);
+                    persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+                }
+                
                 setApi.TrieStore = trieStore = new TrieStore(
                     setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
-                    Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval), // TODO: this should be based on time
+                    persistenceStrategy, 
                     getApi.LogManager);
             }
             else
@@ -250,7 +259,7 @@ namespace Nethermind.Init.Steps
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             
-            InitializeFullPruning(pruningConfig, initConfig, getApi, stateReader);
+            InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
             
             return Task.CompletedTask;
         }
@@ -258,34 +267,33 @@ namespace Nethermind.Init.Steps
         private static void InitializeFullPruning(
             IPruningConfig pruningConfig,
             IInitConfig initConfig, 
-            IApiWithStores getApi, 
+            INethermindApi api, 
             IStateReader stateReader)
         {
             IPruningTrigger CreateTrigger(string dbPath)
             {
                 long threshold = pruningConfig.FullPruningThresholdMb.MB();
-        
-
 
                 switch (pruningConfig.FullPruningTrigger)
                 {
                     case FullPruningTrigger.StateDbSize:
-                        return new PathSizePruningTrigger(dbPath, threshold, getApi.TimerFactory, getApi.FileSystem);
+                        return new PathSizePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
                     case FullPruningTrigger.VolumeFreeSpace:
-                        return new DiskFreeSpacePruningTrigger(dbPath, threshold, getApi.TimerFactory, getApi.FileSystem);
+                        return new DiskFreeSpacePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
                     default:
                         throw new ArgumentOutOfRangeException(nameof(pruningConfig.FullPruningTrigger));
                 }
             }
 
-            if ((pruningConfig.Mode & PruningMode.Full) != PruningMode.None)
+            if (pruningConfig.Mode.IsFull())
             {
-                IDb stateDb = getApi.DbProvider!.StateDb;
+                IDb stateDb = api.DbProvider!.StateDb;
                 if (stateDb is IFullPruningDb fullPruningDb)
                 {
                     IPruningTrigger pruningTrigger = CreateTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
-                    FullPruner pruner = new(fullPruningDb, pruningTrigger, pruningConfig, getApi.BlockTree!, stateReader, getApi.LogManager);
-                    getApi.DisposeStack.Push(pruner);
+                    api.PruningTrigger.Add(pruningTrigger);
+                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.LogManager);
+                    api.DisposeStack.Push(pruner);
                 }
             }
         }

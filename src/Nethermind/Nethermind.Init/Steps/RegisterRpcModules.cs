@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Init.Steps.Migrations;
@@ -162,13 +163,16 @@ namespace Nethermind.Init.Steps
             if (_api.StaticNodesManager == null) throw new StepDependencyException(nameof(_api.StaticNodesManager));
             if (_api.Enode == null) throw new StepDependencyException(nameof(_api.Enode));
 
+            ManualPruningTrigger pruningTrigger = new();
+            _api.PruningTrigger.Add(pruningTrigger);
             AdminRpcModule adminRpcModule = new(
                 _api.BlockTree,
                 networkConfig,
                 _api.PeerManager,
                 _api.StaticNodesManager,
                 _api.Enode,
-                initConfig.BaseDbPath);
+                initConfig.BaseDbPath,
+                pruningTrigger);
             _api.RpcModuleProvider.RegisterSingle<IAdminRpcModule>(adminRpcModule);
             
             if (_api.TxPoolInfoProvider == null) throw new StepDependencyException(nameof(_api.TxPoolInfoProvider));

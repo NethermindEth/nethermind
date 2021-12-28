@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             TestContext test = CreateTest();
             test.FullPruningDb.CanStartPruning.Should().BeTrue();
             
-            test.PruningTrigger.Prune += Raise.Event();
+            test.PruningTrigger.Prune += Raise.Event<EventHandler<PruningEventArgs>>();
             test.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
             test.FullPruningDb.CanStartPruning.Should().BeFalse();
             test.FullPruningDb.Context.WaitForFinish.Set();
@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         public async Task should_not_start_multiple_pruning()
         {
             TestContext test = CreateTest();
-            test.PruningTrigger.Prune += Raise.Event();
+            test.PruningTrigger.Prune += Raise.Event<EventHandler<PruningEventArgs>>();
             await test.WaitForPruning();
             test.FullPruningDb.PruningStarted.Should().Be(1);
         }
@@ -189,7 +189,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             public TestFullPruningDb.TestPruningContext WaitForPruningStart()
             {
-                PruningTrigger.Prune += Raise.Event();
+                PruningTrigger.Prune += Raise.Event<EventHandler<PruningEventArgs>>();
                 BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithStateRoot(_stateRoot).TestObject));
                 TestFullPruningDb.TestPruningContext context = FullPruningDb.Context;
                 if (context is not null)
