@@ -69,6 +69,7 @@ namespace Nethermind.Merge.Plugin.Data
                     BaseFeePerGas = BaseFeePerGas,
                     Nonce = 0,
                     MixHash = Random,
+                    TotalDifficulty = 5000588874
                 };
                 Transaction[] transactions = GetTransactions();
                 header.TxRoot = new TxTrie(transactions).RootHash;

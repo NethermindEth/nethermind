@@ -89,9 +89,7 @@ namespace Nethermind.Merge.Plugin
                 _hasEverReachedTerminalDifficulty = true;
             if (_firstPoSBlockNumber != null && _specProvider.MergeBlockNumber != _firstPoSBlockNumber)
                 _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
-            
-            if (_terminalPoWBlockNumber == null)
-                _blockTree.NewHeadBlock += CheckIfTerminalPoWBlockReached;
+            _blockTree.NewHeadBlock += CheckIfTerminalPoWBlockReached;
 
             if (_terminalPoWBlockNumber != null && _finalizedBlockHash != Keccak.Zero)
                 _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;

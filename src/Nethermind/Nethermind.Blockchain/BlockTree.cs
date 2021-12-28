@@ -439,12 +439,12 @@ namespace Nethermind.Blockchain
                 LowestInsertedHeader = header;
             }
 
-            if (header.Number > BestKnownNumber)
+            if ((header.Number > BestKnownNumber && header.Number <=7051) || (Head?.Number >= 7051 && header.Number > 7051))
             {
                 BestKnownNumber = header.Number;
             }
 
-            if (header.Number > (BestSuggestedHeader?.Number ?? 0))
+            if ((header.Number > (BestSuggestedHeader?.Number ?? 0) && header.Number <=7051) || (Head?.Number >= 7051 && header.Number > 7051))
             {
                 BestSuggestedHeader = header;
             }
@@ -534,7 +534,7 @@ namespace Nethermind.Blockchain
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
             {
                 if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
-                return AddBlockResult.UnknownParent;
+      //          return AddBlockResult.UnknownParent;
             }
 
             SetTotalDifficulty(header);

@@ -106,28 +106,51 @@ namespace Nethermind.Merge.Plugin.Handlers
             //     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             // }
 
+            if (request.TryGetBlock(out Block? block) && block != null)
+            {
+                var shouldProcess = false;
+                var pivotParent = _blockTree.FindBlock(
+                    new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"),
+                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (pivotParent != null)
+                {
+                    shouldProcess = _blockTree.WasProcessed(7051,
+                        new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"));
 
+                }
+                _logger.Info($"Adding {block} to blockTree, shouldProcess: {shouldProcess}");
+                if (shouldProcess)
+                    _blockTree.SuggestBlock(block, shouldProcess);
+                else
+                {
+                    _blockTree.Insert(block.Header);
+                    _blockTree.Insert(block);
+                }
+
+                if (shouldProcess == false)
+                {
+                    executePayloadResult.EnumStatus = VerificationStatus.Syncing;
+                    return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+                }
+            }
 
             if (_ethSyncingInfo.IsSyncing() && synced == false)
             {
-                if (request.TryGetBlock(out Block? block) && block != null)
-                {
-                    _blockTree.SuggestBlock(block, false);
-                    
-                }
 
-                if (block != null)
-                {
-                    _beaconBlocksQueue.Enqueue(block);
-                }
-
+                
                 executePayloadResult.EnumStatus = VerificationStatus.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             else if (synced == false)
-            {
-           //     await _synchronizer.StopAsync();
-                synced = true;
+            { 
+                var shouldProcess = _blockTree.WasProcessed(7051,
+                    new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"));
+                if (shouldProcess)
+                {
+                    _logger.Info("Synced - turning off synchronizer");
+                    await _synchronizer.StopAsync();
+                    synced = true;
+                }
             }
             
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);

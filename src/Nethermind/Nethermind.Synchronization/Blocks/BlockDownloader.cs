@@ -147,6 +147,7 @@ namespace Nethermind.Synchronization.Blocks
 
             int headersSynced = 0;
             int ancestorLookupLevel = 0;
+            int parentBeaconPivotNumber = 7051;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
@@ -207,6 +208,8 @@ namespace Nethermind.Synchronization.Blocks
                         SyncPeerPool.ReportNoSyncProgress(bestPeer, AllocationContexts.Blocks);
                         return 0;
                     }
+                    if (currentHeader.Number > parentBeaconPivotNumber)
+                        break;
 
                     if (_logger.IsTrace) _logger.Trace($"Received {currentHeader} from {bestPeer:s}");
                     bool isValid = i > 1 ? _blockValidator.Validate(currentHeader, headers[i - 1]) : _blockValidator.Validate(currentHeader);
@@ -239,7 +242,8 @@ namespace Nethermind.Synchronization.Blocks
             return headersSynced;
         }
 
-        public async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest, CancellationToken cancellation)
+        public async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
+            CancellationToken cancellation)
         {
             if (bestPeer == null)
             {
@@ -255,19 +259,31 @@ namespace Nethermind.Synchronization.Blocks
 
             int blocksSynced = 0;
             int ancestorLookupLevel = 0;
-            int currentBeaconPivot = 7051;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
+            int parentBeaconPivotNumber = 7051;
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
 
+
+
             bool PreMergeDifficultyRequirementSatisfied()
                 => bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
+
             bool PostMergeRequirementSatisfied()
                 => bestPeer!.HeadNumber > (_blockTree.BestSuggestedHeader?.Number ?? 0);
+
             bool ImprovementRequirementSatisfied()
-                => (PreMergeDifficultyRequirementSatisfied() || PostMergeRequirementSatisfied()) && currentNumber < currentBeaconPivot;
-            bool HasMoreToSync()
+            {
+                var pivotParent = _blockTree.FindBlock(
+                    new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"),
+                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                var shouldImprove = pivotParent == null || !_blockTree.WasProcessed(7051,
+                    new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"));
+                return (PreMergeDifficultyRequirementSatisfied() || PostMergeRequirementSatisfied()) && shouldImprove;
+            }
+
+        bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
             while(ImprovementRequirementSatisfied() && HasMoreToSync())
             {
@@ -332,6 +348,8 @@ namespace Nethermind.Synchronization.Blocks
                     }
 
                     Block currentBlock = blocks[blockIndex];
+                    if (currentBlock.Number > parentBeaconPivotNumber)
+                        break;
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
 
                     // can move this to block tree now?
