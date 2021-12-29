@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -30,11 +31,42 @@ namespace Nethermind.Merge.Plugin.Synchronization
 {
     public class MergeBlockDownloader : BlockDownloader
     {
-        public MergeBlockDownloader(ISyncFeed<BlocksRequest?>? feed, ISyncPeerPool? syncPeerPool, IBlockTree? blockTree, IBlockValidator? blockValidator, ISealValidator? sealValidator, ISyncReport? syncReport, IReceiptStorage? receiptStorage, ISpecProvider? specProvider, ILogManager? logManager)
+        private readonly IBeaconPivot _beaconPivot;
+        private readonly IBlockTree _blockTree;
+
+        public MergeBlockDownloader(
+            IBeaconPivot beaconPivot,
+            ISyncFeed<BlocksRequest?>? feed, 
+            ISyncPeerPool? syncPeerPool, 
+            IBlockTree? blockTree,
+            IBlockValidator? blockValidator, 
+            ISealValidator? sealValidator, 
+            ISyncReport? syncReport, 
+            IReceiptStorage? receiptStorage,
+            ISpecProvider? specProvider, 
+            ILogManager? logManager)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, logManager)
         {
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _beaconPivot = beaconPivot;
         }
-        
-        
+
+
+        protected override long GetUpperDownloadBoundary(PeerInfo bestPeer, BlocksRequest blocksRequest)
+        {
+            long preMergeUpperDownloadBoundary = base.GetUpperDownloadBoundary(bestPeer, blocksRequest);
+            return _beaconPivot.BeaconPivotExists()
+                ? Math.Min(preMergeUpperDownloadBoundary, _beaconPivot.PivotNumber)
+                : preMergeUpperDownloadBoundary;
+        }
+
+        protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
+        {
+            bool preMergeDifficultyRequirementSatisfied = base.ImprovementRequirementSatisfied(bestPeer);
+            bool postMergeRequirementSatisfied = _beaconPivot.BeaconPivotExists() 
+                                                 && Math.Min(bestPeer!.HeadNumber, _beaconPivot.PivotNumber) > (_blockTree.BestSuggestedHeader?.Number ?? 0);
+            
+            return preMergeDifficultyRequirementSatisfied || postMergeRequirementSatisfied;
+        }
     }
 }

@@ -22,7 +22,7 @@ namespace Nethermind.Synchronization
 {
     public interface IPivot
     {
-        long? PivotNumber { get; }
+        long PivotNumber { get; }
 
         Keccak? PivotHash { get; }
 

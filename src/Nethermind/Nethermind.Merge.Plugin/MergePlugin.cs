@@ -114,7 +114,7 @@ namespace Nethermind.Merge.Plugin
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
                 PayloadService payloadService = new (_idealBlockProductionContext,
                     _emptyBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
-                IBeaconPivot beaconPivot = new BeaconPivot(_api.BlockTree);
+                IBeaconPivot beaconPivot = new BeaconPivot(_api.BlockTree, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,

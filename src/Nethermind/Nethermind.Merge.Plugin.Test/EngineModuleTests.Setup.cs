@@ -55,7 +55,7 @@ namespace Nethermind.Merge.Plugin.Test
             PayloadStorage? payloadStorage = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.LogManager);
             IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
             ISynchronizer synchronizer = Substitute.For<ISynchronizer>();
-            IBeaconPivot beaconPivot = new BeaconPivot(chain.BlockTree);
+            IBeaconPivot beaconPivot = new BeaconPivot(chain.BlockTree, chain.LogManager);
 
             return new EngineRpcModule(
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.Timestamper, chain.SealEngine, chain.LogManager),

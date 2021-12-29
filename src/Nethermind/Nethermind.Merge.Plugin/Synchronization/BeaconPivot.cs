@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization
@@ -28,43 +29,48 @@ namespace Nethermind.Merge.Plugin.Synchronization
     public class BeaconPivot : IBeaconPivot
     {
         private readonly IBlockTree _blockTree;
-        private BlockHeader? _currentPivot;
+        private readonly ILogger _logger;
+        private BlockHeader? _currentBeaconPivot;
         private BlockHeader? _pivotParent;
         private bool _pivotParentProcessed;
-        
 
-        public BeaconPivot(IBlockTree blockTree)
+        public BeaconPivot(
+            IBlockTree blockTree,
+            ILogManager logManager)
         {
             _blockTree = blockTree;
+            _logger = logManager.GetClassLogger();
         }
 
-        public long? PivotNumber => _currentPivot?.Number;
+        public long PivotNumber => _currentBeaconPivot?.Number ?? 0;
 
-        public Keccak? PivotHash => _currentPivot?.Hash;
+        public Keccak? PivotHash => _currentBeaconPivot?.Hash;
 
-        public UInt256? PivotTotalDifficulty => _currentPivot?.TotalDifficulty;
+        public UInt256? PivotTotalDifficulty => _currentBeaconPivot?.TotalDifficulty;
 
         public void EnsurePivot(BlockHeader? blockHeader)
         {
-            if (_currentPivot == null)
-                _currentPivot = blockHeader;
+            if (BeaconPivotExists() && blockHeader != null)
+                _currentBeaconPivot = blockHeader;
         }
+
+        public bool BeaconPivotExists() => _currentBeaconPivot != null;
 
         public bool IsPivotParentParentProcessed()
         {
-                EnsurePivotParentProcessed();
-                return _pivotParentProcessed;
+            EnsurePivotParentProcessed();
+            return _pivotParentProcessed;
         }
 
         private void EnsurePivotParentProcessed()
         {
-            if (_pivotParentProcessed || _currentPivot == null)
+            if (_pivotParentProcessed || _currentBeaconPivot == null)
                 return;
-            
+
             if (_pivotParent == null)
-                _pivotParent = _blockTree.FindParentHeader(_currentPivot!,
+                _pivotParent = _blockTree.FindParentHeader(_currentBeaconPivot!,
                     BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            
+
             if (_pivotParent != null)
                 _pivotParentProcessed = _blockTree.WasProcessed(_pivotParent.Number,
                     _pivotParent.Hash ?? _pivotParent.CalculateHash());
@@ -76,5 +82,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         bool IsPivotParentParentProcessed();
 
         void EnsurePivot(BlockHeader? blockHeader);
+
+        bool BeaconPivotExists();
     }
 }

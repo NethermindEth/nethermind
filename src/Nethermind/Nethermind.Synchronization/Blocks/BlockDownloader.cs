@@ -147,10 +147,11 @@ namespace Nethermind.Synchronization.Blocks
 
             int headersSynced = 0;
             int ancestorLookupLevel = 0;
-            int parentBeaconPivotNumber = 7051;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber && currentNumber <= parentBeaconPivotNumber)
+            bool HasMoreToSync()
+                => currentNumber <= bestPeer!.HeadNumber;
+            while (ImprovementRequirementSatisfied(bestPeer) && HasMoreToSync())
             {
                 int headersSyncedInPreviousRequests = headersSynced;
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
@@ -208,8 +209,6 @@ namespace Nethermind.Synchronization.Blocks
                         SyncPeerPool.ReportNoSyncProgress(bestPeer, AllocationContexts.Blocks);
                         return 0;
                     }
-                    if (currentHeader.Number > parentBeaconPivotNumber)
-                        break;
 
                     if (_logger.IsTrace) _logger.Trace($"Received {currentHeader} from {bestPeer:s}");
                     bool isValid = i > 1 ? _blockValidator.Validate(currentHeader, headers[i - 1]) : _blockValidator.Validate(currentHeader);
@@ -261,28 +260,18 @@ namespace Nethermind.Synchronization.Blocks
             int ancestorLookupLevel = 0;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-            int parentBeaconPivotNumber = 7051;
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
 
 
-
-            bool PreMergeDifficultyRequirementSatisfied()
-                => bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
-
-            bool PostMergeRequirementSatisfied()
-                => bestPeer!.HeadNumber > (_blockTree.BestSuggestedHeader?.Number ?? 0);
-
-            bool ImprovementRequirementSatisfied() 
-                => (PreMergeDifficultyRequirementSatisfied() || PostMergeRequirementSatisfied());
-
         bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
-            while(ImprovementRequirementSatisfied() && HasMoreToSync() && currentNumber <= parentBeaconPivotNumber)
+            while(ImprovementRequirementSatisfied(bestPeer!) && HasMoreToSync())
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
-                long blocksLeft = bestPeer.HeadNumber - currentNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
+                long upperDownloadBoundary = GetUpperDownloadBoundary(bestPeer, blocksRequest);
+                long blocksLeft = upperDownloadBoundary - currentNumber;
                 int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
                 {
@@ -341,8 +330,6 @@ namespace Nethermind.Synchronization.Blocks
                     }
 
                     Block currentBlock = blocks[blockIndex];
-                    if (currentBlock.Number > parentBeaconPivotNumber)
-                        break;
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
 
                     // can move this to block tree now?
@@ -402,6 +389,16 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             return blocksSynced;
+        }
+        
+        protected virtual long GetUpperDownloadBoundary(PeerInfo bestPeer, BlocksRequest blocksRequest)
+        {
+            return bestPeer.HeadNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
+        }
+
+        protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
+        {
+            return bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
         }
 
         private ValueTask DownloadFailHandler<T>(Task<T> downloadTask, string entities)
