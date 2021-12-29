@@ -36,7 +36,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    internal class BlockDownloader : SyncDispatcher<BlocksRequest?>
+    public class BlockDownloader : SyncDispatcher<BlocksRequest?>
     {
         public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
 
@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.Blocks
             int parentBeaconPivotNumber = 7051;
 
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
+            while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber && currentNumber <= parentBeaconPivotNumber)
             {
                 int headersSyncedInPreviousRequests = headersSynced;
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
@@ -273,19 +273,12 @@ namespace Nethermind.Synchronization.Blocks
             bool PostMergeRequirementSatisfied()
                 => bestPeer!.HeadNumber > (_blockTree.BestSuggestedHeader?.Number ?? 0);
 
-            bool ImprovementRequirementSatisfied()
-            {
-                var pivotParent = _blockTree.FindBlock(
-                    new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"),
-                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                var shouldImprove = pivotParent == null || !_blockTree.WasProcessed(7051,
-                    new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"));
-                return (PreMergeDifficultyRequirementSatisfied() || PostMergeRequirementSatisfied()) && shouldImprove;
-            }
+            bool ImprovementRequirementSatisfied() 
+                => (PreMergeDifficultyRequirementSatisfied() || PostMergeRequirementSatisfied());
 
         bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
-            while(ImprovementRequirementSatisfied() && HasMoreToSync())
+            while(ImprovementRequirementSatisfied() && HasMoreToSync() && currentNumber <= parentBeaconPivotNumber)
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 

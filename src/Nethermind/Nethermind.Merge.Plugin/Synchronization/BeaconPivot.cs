@@ -23,7 +23,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Synchronization;
 
-namespace Nethermind.Merge.Plugin
+namespace Nethermind.Merge.Plugin.Synchronization
 {
     public class BeaconPivot : IBeaconPivot
     {

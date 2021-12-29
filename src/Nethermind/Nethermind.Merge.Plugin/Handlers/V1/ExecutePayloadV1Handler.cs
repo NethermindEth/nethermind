@@ -36,6 +36,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers
