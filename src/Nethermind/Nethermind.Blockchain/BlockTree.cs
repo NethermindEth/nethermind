@@ -439,12 +439,12 @@ namespace Nethermind.Blockchain
                 LowestInsertedHeader = header;
             }
 
-            if ((header.Number > BestKnownNumber && header.Number <=7051) || (Head?.Number >= 7051 && header.Number > 7051))
+            if (header.Number > BestKnownNumber)
             {
                 BestKnownNumber = header.Number;
             }
 
-            if ((header.Number > (BestSuggestedHeader?.Number ?? 0) && header.Number <=7051) || (Head?.Number >= 7051 && header.Number > 7051))
+            if (header.Number > (BestSuggestedHeader?.Number ?? 0))
             {
                 BestSuggestedHeader = header;
             }

@@ -54,6 +54,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IInitConfig _initConfig;
         private readonly IMergeConfig _mergeConfig;
         private readonly ISynchronizer _synchronizer;
+        private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
         private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
@@ -68,6 +69,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IInitConfig initConfig,
             IMergeConfig mergeConfig,
             ISynchronizer synchronizer,
+            IBeaconPivot beaconPivot,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -77,6 +79,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _initConfig = initConfig;
             _mergeConfig = mergeConfig;
             _synchronizer = synchronizer;
+            _beaconPivot = beaconPivot;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
             _processor.BlockProcessed += (s, e) =>
@@ -96,25 +99,17 @@ namespace Nethermind.Merge.Plugin.Handlers
             // ToDo wait for final PostMerge sync
             if (request.TryGetBlock(out Block? block) && block != null)
             {
-                var shouldProcess = false;
-                var pivotParent = _blockTree.FindBlock(
-                    new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"),
-                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (pivotParent != null)
-                {
-                    shouldProcess = _blockTree.WasProcessed(7051,
-                        new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"));
-
-                }
-                _logger.Info($"Adding {block} to blockTree, shouldProcess: {shouldProcess}");
-                if (shouldProcess)
-                    _blockTree.SuggestBlock(block, shouldProcess);
+                _beaconPivot.EnsurePivot(block.Header);
+                bool pivotParentProcessed = _beaconPivot.IsPivotParentParentProcessed();
+                _logger.Info($"Adding {block} to blockTree, pivotParentProcessed: {pivotParentProcessed}");
+                if (pivotParentProcessed)
+                    _blockTree.SuggestBlock(block);
                 else
                 {
                     _blockTree.Insert(block, true);
                 }
 
-                if (shouldProcess == false)
+                if (pivotParentProcessed == false)
                 {
                     executePayloadResult.EnumStatus = VerificationStatus.Syncing;
                     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
@@ -123,16 +118,13 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             if (_ethSyncingInfo.IsSyncing() && synced == false)
             {
-
-                
                 executePayloadResult.EnumStatus = VerificationStatus.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             else if (synced == false)
             { 
-                var shouldProcess = _blockTree.WasProcessed(7051,
-                    new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"));
-                if (shouldProcess)
+                bool pivotParentProcessed = _beaconPivot.IsPivotParentParentProcessed();
+                if (pivotParentProcessed)
                 {
                     _logger.Info("Synced - turning off synchronizer");
                     await _synchronizer.StopAsync();

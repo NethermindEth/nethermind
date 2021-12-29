@@ -27,10 +27,11 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Merge.Plugin.Synchronization;
 
 namespace Nethermind.Merge.Plugin
 {
-    public partial class MergePlugin : IConsensusWrapperPlugin
+    public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlugin
     {
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
@@ -113,6 +114,7 @@ namespace Nethermind.Merge.Plugin
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
                 PayloadService payloadService = new (_idealBlockProductionContext,
                     _emptyBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
+                IBeaconPivot beaconPivot = new BeaconPivot(_api.BlockTree);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,
@@ -134,6 +136,7 @@ namespace Nethermind.Merge.Plugin
                         _api.Config<IInitConfig>(),
                         _mergeConfig,
                         _api.Synchronizer!,
+                        beaconPivot,
                         _api.LogManager),
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
@@ -145,8 +148,17 @@ namespace Nethermind.Merge.Plugin
                     _api.BlockTree);
 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
-                if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
+                if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
             }
+        }
+
+        public Task InitSynchronization()
+        {
+            if (_api.SyncModeSelector is null) throw new ArgumentNullException(nameof(_api.SyncModeSelector));
+            
+            _api.SyncModeSelector = new MergeSyncModeSelector(_api.SyncModeSelector);
+            
+            return Task.CompletedTask;
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
