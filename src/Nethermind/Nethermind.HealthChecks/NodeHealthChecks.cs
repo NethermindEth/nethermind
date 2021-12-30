@@ -23,7 +23,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Nethermind.HealthChecks
 {
-    public class NodeHealthCheck: IHealthCheck
+    public class NodeHealthCheck : IHealthCheck
     {
         private readonly INodeHealthService _nodeHealthService;
         public NodeHealthCheck(INodeHealthService nodeHealthService)
@@ -31,20 +31,20 @@ namespace Nethermind.HealthChecks
             _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
         }
 
-        public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+        public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {
             try
             {
-                CheckHealthResult healthResult = await Task.Run(() => _nodeHealthService.CheckHealth(), cancellationToken);
+                CheckHealthResult healthResult = _nodeHealthService.CheckHealth();
                 string description = FormatMessages(healthResult.Messages.Select(x => x.LongMessage));
                 if (healthResult.Healthy)
-                    return HealthCheckResult.Healthy(description);
+                    return Task.FromResult(HealthCheckResult.Healthy(description));
                 
-                return HealthCheckResult.Unhealthy(description);
+                return Task.FromResult(HealthCheckResult.Unhealthy(description));
             }
             catch (Exception ex)
             {
-                return new HealthCheckResult(context.Registration.FailureStatus, exception: ex);
+                return Task.FromResult(new HealthCheckResult(context.Registration.FailureStatus, exception: ex));
             }
         }
         
