@@ -20,15 +20,21 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Nethermind.Logging;
 
 namespace Nethermind.HealthChecks
 {
     public class NodeHealthCheck : IHealthCheck
     {
         private readonly INodeHealthService _nodeHealthService;
-        public NodeHealthCheck(INodeHealthService nodeHealthService)
+        private readonly ILogger _logger;
+        
+        public NodeHealthCheck(
+            INodeHealthService nodeHealthService,
+            ILogManager logManager)
         {
             _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
+            _logger = logManager.GetClassLogger();
         }
 
         public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
@@ -36,6 +42,7 @@ namespace Nethermind.HealthChecks
             try
             {
                 CheckHealthResult healthResult = _nodeHealthService.CheckHealth();
+                if (_logger.IsTrace) _logger.Trace($"Checked health result. Healthy: {healthResult.Healthy}");
                 string description = FormatMessages(healthResult.Messages.Select(x => x.LongMessage));
                 if (healthResult.Healthy)
                     return Task.FromResult(HealthCheckResult.Healthy(description));
