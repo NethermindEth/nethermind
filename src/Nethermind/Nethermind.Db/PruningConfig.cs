@@ -40,6 +40,6 @@ namespace Nethermind.Db
         public long PersistenceInterval { get; set; } = 8192;
         public long FullPruningThresholdMb { get; set; } = 256000;
         public FullPruningTrigger FullPruningTrigger { get; set; } = FullPruningTrigger.Manual;
-        public int FullPruningMaxDegreeOfParallelism { get; set; } = 16;
+        public int FullPruningMaxDegreeOfParallelism { get; set; } = 0;
     }
 }

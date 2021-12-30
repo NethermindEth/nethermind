@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
@@ -30,9 +33,8 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private static readonly ParallelOptions _defaultOptions = new();
         private const int BranchesCount = 16;
-            
+        
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
             try
@@ -51,6 +53,7 @@ namespace Nethermind.Trie
             {
                 case NodeType.Branch:
                 {
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
                     void VisitChild(int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor v, TrieVisitContext context)
                     {
                         if (child != null)
@@ -68,28 +71,42 @@ namespace Nethermind.Trie
                             }
                         }
                     }
+                    
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    void VisitSingleThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext)
+                    {
+                        // single threaded route
+                        for (int i = 0; i < BranchesCount; i++)
+                        {
+                            VisitChild(i, GetChild(trieNodeResolver, i), trieNodeResolver, treeVisitor, visitContext);
+                        }
+                    }
+                    
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    void VisitMultiThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, TrieNode?[] children)
+                    {
+                        // multithreaded route
+                        Parallel.For(0, BranchesCount, i =>
+                        {
+                            visitContext.Semaphore.Wait();
+                            try
+                            {
+                                // we need to have separate context for each thread as context tracks level and branch child index
+                                TrieVisitContext childContext = visitContext.Clone();
+                                VisitChild(i, children[i], trieNodeResolver, treeVisitor, childContext);
+                            }
+                            finally
+                            {
+                                visitContext.Semaphore.Release();
+                            }
+                        });
+                    }
 
                     visitor.VisitBranch(this, trieVisitContext);
                     trieVisitContext.Level++;
-                    if (trieVisitContext.MaxDegreeOfParallelism != 1)
+                    
+                    if (trieVisitContext.MaxDegreeOfParallelism != 1 && trieVisitContext.Semaphore.CurrentCount > 1)
                     {
-                        // we go multithreaded route
-                        
-                        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                        TrieVisitContext GetChildContext(TrieVisitContext context)
-                        {
-                            if (context.MaxDegreeOfParallelism == 0)
-                            {
-                                return context;
-                            }
-                            else
-                            {
-                                TrieVisitContext childContext = context.Clone();
-                                childContext.MaxDegreeOfParallelism = Math.Max(1, context.MaxDegreeOfParallelism / BranchesCount);
-                                return childContext;   
-                            }
-                        }
-                        
                         // we need to preallocate children
                         TrieNode?[] children = new TrieNode?[BranchesCount];
                         for (int i = 0; i < BranchesCount; i++)
@@ -97,18 +114,18 @@ namespace Nethermind.Trie
                             children[i] = GetChild(nodeResolver, i);
                         }
 
-                        // run in parallel
-                        TrieVisitContext childContext = GetChildContext(trieVisitContext);
-                        ParallelOptions options = trieVisitContext.MaxDegreeOfParallelism == 0 ? _defaultOptions : new ParallelOptions() {MaxDegreeOfParallelism = trieVisitContext.MaxDegreeOfParallelism % (BranchesCount + 1)};
-                        Parallel.For(0, BranchesCount, options, i => VisitChild(i, children[i], nodeResolver, visitor, childContext));
+                        if (trieVisitContext.Semaphore.CurrentCount > 1)
+                        {
+                            VisitMultiThread(visitor, nodeResolver, trieVisitContext, children);
+                        }
+                        else
+                        {
+                            VisitSingleThread(visitor, nodeResolver, trieVisitContext);
+                        }
                     }
                     else
                     {
-                        // single threaded route
-                        for (int i = 0; i < BranchesCount; i++)
-                        {
-                            VisitChild(i, GetChild(nodeResolver, i), nodeResolver, visitor, trieVisitContext);
-                        }
+                        VisitSingleThread(visitor, nodeResolver, trieVisitContext);
                     }
 
                     trieVisitContext.Level--;
