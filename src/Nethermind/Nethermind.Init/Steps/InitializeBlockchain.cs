@@ -270,7 +270,7 @@ namespace Nethermind.Init.Steps
             INethermindApi api, 
             IStateReader stateReader)
         {
-            IPruningTrigger CreateTrigger(string dbPath)
+            IPruningTrigger CreateAutomaticTrigger(string dbPath)
             {
                 long threshold = pruningConfig.FullPruningThresholdMb.MB();
 
@@ -281,7 +281,7 @@ namespace Nethermind.Init.Steps
                     case FullPruningTrigger.VolumeFreeSpace:
                         return new DiskFreeSpacePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
                     default:
-                        throw new ArgumentOutOfRangeException(nameof(pruningConfig.FullPruningTrigger));
+                        return null;
                 }
             }
 
@@ -290,8 +290,12 @@ namespace Nethermind.Init.Steps
                 IDb stateDb = api.DbProvider!.StateDb;
                 if (stateDb is IFullPruningDb fullPruningDb)
                 {
-                    IPruningTrigger pruningTrigger = CreateTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
-                    api.PruningTrigger.Add(pruningTrigger);
+                    IPruningTrigger pruningTrigger = CreateAutomaticTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
+                    if (pruningTrigger is not null)
+                    {
+                        api.PruningTrigger.Add(pruningTrigger);
+                    }
+
                     FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.LogManager);
                     api.DisposeStack.Push(pruner);
                 }
