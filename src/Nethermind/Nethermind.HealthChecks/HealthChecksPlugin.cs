@@ -61,7 +61,7 @@ namespace Nethermind.HealthChecks
             service.AddHealthChecks()
                 .AddTypeActivatedCheck<NodeHealthCheck>(
                     "node-health", 
-                    args: new object[] { _nodeHealthService });
+                    args: new object[] { _nodeHealthService, _api.LogManager });
             if (_healthChecksConfig.UIEnabled)
             {
                 service.AddHealthChecksUI(setup =>
