@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0-focal AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 
 ARG TARGETPLATFORM
 ARG TARGETOS
@@ -14,12 +14,12 @@ RUN if [ "$TARGETARCH" = "amd64" ] ; \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
     fi
 
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0-focal AS tools
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0 AS tools
 
 RUN dotnet tool install --tool-path /tools dotnet-trace
 RUN dotnet tool install --tool-path /tools dotnet-dump
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0-focal
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6
 
 WORKDIR /nethermind
