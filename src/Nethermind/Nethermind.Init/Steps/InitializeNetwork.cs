@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -52,7 +54,7 @@ namespace Nethermind.Init.Steps
     {
         // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
         private const uint PageSize = 8192;
-        
+
         public static long Estimate(uint cpuCount, int arenaOrder)
         {
             // do not remember why there is 2 in front
@@ -103,12 +105,14 @@ namespace Nethermind.Init.Steps
                 NetworkDiagTracer.Start(_api.LogManager);
             }
 
-            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder",
+                _networkConfig.NettyArenaOrder.ToString());
 
-            var cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
+            CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, _api.LogManager);
+            _api.SyncPeerPool =
+                new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
             SyncProgressResolver syncProgressResolver = new(
@@ -118,7 +122,7 @@ namespace Nethermind.Init.Steps
                 _api.ReadOnlyTrieStore!,
                 _syncConfig,
                 _api.LogManager);
-            
+
             MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
             _api.SyncModeSelector = syncModeSelector;
             _api.DisposeStack.Push(syncModeSelector);
@@ -132,6 +136,12 @@ namespace Nethermind.Init.Steps
                 _api.SyncModeSelector!,
                 _syncConfig,
                 _api.LogManager);
+
+            IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
+            foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
+            {
+                await plugin.InitSynchronization();
+            }
 
             _api.Synchronizer = new Synchronizer(
                 _api.DbProvider,
@@ -225,7 +235,8 @@ namespace Nethermind.Init.Steps
             }
 
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
-            ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
+            ThisNodeInfo.AddInfo("Version      :",
+                $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
             ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
             ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
         }
@@ -239,7 +250,8 @@ namespace Nethermind.Init.Steps
 
             if (!_api.Config<IInitConfig>().DiscoveryEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
+                if (_logger.IsWarn)
+                    _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
                 return Task.CompletedTask;
             }
 
@@ -256,7 +268,9 @@ namespace Nethermind.Init.Steps
 
             if (!_api.Config<IInitConfig>().PeerManagerEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
             }
 
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
@@ -312,7 +326,7 @@ namespace Nethermind.Init.Steps
                 "DiscoveryDB",
                 DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
                 _api.LogManager);
-            
+
             NetworkStorage discoveryStorage = new(
                 discoveryDb,
                 _api.LogManager);
@@ -360,17 +374,23 @@ namespace Nethermind.Init.Steps
 
                 if (syncConfig.SynchronizationEnabled)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            $"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
                     _api.Synchronizer!.Start();
                 }
                 else
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
+                    if (_logger.IsWarn)
+                        _logger.Warn(
+                            $"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
                 }
             }
-            else if (_logger.IsWarn) _logger.Warn($"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
+            else if (_logger.IsWarn)
+                _logger.Warn(
+                    $"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
 
-            
+
             return Task.CompletedTask;
         }
 
@@ -392,7 +412,8 @@ namespace Nethermind.Init.Steps
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
-            if (_api.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
+            if (_api.EthereumJsonSerializer == null)
+                throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
 
             /* rlpx */
             EciesCipher eciesCipher = new(_api.CryptoRandom);
@@ -402,8 +423,9 @@ namespace Nethermind.Init.Steps
             _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
             ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
             _api.MessageSerializationService.Register(receiptsMessageSerializer);
-            _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
-            
+            _api.MessageSerializationService.Register(
+                new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
+
             HandshakeService encryptionHandshakeServiceA = new(
                 _api.MessageSerializationService,
                 eciesCipher,
@@ -414,7 +436,7 @@ namespace Nethermind.Init.Steps
 
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            
+
             _api.DisconnectsAnalyzer = new MetricsDisconnectsAnalyzer();
             _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
             _api.RlpxPeer = new RlpxPeer(
@@ -434,8 +456,9 @@ namespace Nethermind.Init.Steps
             // ToDo: PeersDB is register outside dbProvider - bad
             var dbName = "PeersDB";
             IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                ? (IFullDb) new MemDb(dbName)
-                : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath), _api.LogManager);
+                ? (IFullDb)new MemDb(dbName)
+                : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
+                    _api.LogManager);
 
             NetworkStorage peerStorage = new(peersDb, _api.LogManager);
 
@@ -455,12 +478,12 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider,
                 _api.GossipPolicy,
                 _api.LogManager);
-            
+
             if (_syncConfig.WitnessProtocolEnabled)
             {
                 _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
             }
-            
+
             _api.ProtocolValidator = protocolValidator;
 
             foreach (var plugin in _api.Plugins)
@@ -468,7 +491,8 @@ namespace Nethermind.Init.Steps
                 await plugin.InitNetworkProtocol();
             }
 
-            PeerLoader peerLoader = new(_networkConfig, discoveryConfig, _api.NodeStatsManager, peerStorage, _api.LogManager);
+            PeerLoader peerLoader = new(_networkConfig, discoveryConfig, _api.NodeStatsManager, peerStorage,
+                _api.LogManager);
             _api.PeerManager = new PeerManager(
                 _api.RlpxPeer,
                 _api.DiscoveryApp,
@@ -478,7 +502,7 @@ namespace Nethermind.Init.Steps
                 _networkConfig,
                 _api.LogManager,
                 _api.StaticNodesManager);
-            
+
             _api.PeerManager.Init();
         }
     }

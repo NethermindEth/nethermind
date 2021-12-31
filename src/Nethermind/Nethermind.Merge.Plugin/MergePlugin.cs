@@ -19,8 +19,10 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
@@ -37,6 +39,7 @@ namespace Nethermind.Merge.Plugin
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
         private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
+        private IBeaconPivot? _beaconPivot;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
         public string Name => "Merge";
@@ -54,8 +57,8 @@ namespace Nethermind.Merge.Plugin
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
-                
 
+                _beaconPivot = new BeaconPivot(_api.BlockTree, _api.LogManager);
                 _poSSwitcher = new PoSSwitcher(_mergeConfig,
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
@@ -96,7 +99,7 @@ namespace Nethermind.Merge.Plugin
             return Task.CompletedTask;
         }
 
-        public async Task InitRpcModules()
+        public Task InitRpcModules()
         {
             if (_mergeConfig.Enabled)
             {
@@ -109,12 +112,12 @@ namespace Nethermind.Merge.Plugin
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
                 PayloadService payloadService = new (_idealBlockProductionContext,
                     _emptyBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
-                IBeaconPivot beaconPivot = new BeaconPivot(_api.BlockTree, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,
@@ -136,7 +139,7 @@ namespace Nethermind.Merge.Plugin
                         _api.Config<IInitConfig>(),
                         _mergeConfig,
                         _api.Synchronizer!,
-                        beaconPivot,
+                        _beaconPivot,
                         _api.LogManager),
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
@@ -150,13 +153,33 @@ namespace Nethermind.Merge.Plugin
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Engine Module has been enabled");
             }
+            
+            return Task.CompletedTask;
         }
 
         public Task InitSynchronization()
         {
             if (_api.SyncModeSelector is null) throw new ArgumentNullException(nameof(_api.SyncModeSelector));
+            if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+            if (_api.SyncPeerPool is null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
+            if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+            if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
+            
+            // ToDo strange place for validators initialization
+            _api.HeaderValidator = new PostMergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, Always.Valid, _api.LogManager);
+            _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
+                _api.SpecProvider, _api.LogManager);
             
             _api.SyncModeSelector = new MergeSyncModeSelector(_api.SyncModeSelector);
+            _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(_beaconPivot, _api.SpecProvider, _api.BlockTree,
+                _api.ReceiptStorage!,
+                _api.BlockValidator!,
+                _api.SealValidator!,
+                _api.SyncPeerPool,
+                _api.NodeStatsManager!,
+                _api.SyncModeSelector!,
+                _api.Config<ISyncConfig>(),
+                _api.LogManager);
             
             return Task.CompletedTask;
         }

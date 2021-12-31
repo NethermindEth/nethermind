@@ -50,7 +50,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public void EnsurePivot(BlockHeader? blockHeader)
         {
-            if (BeaconPivotExists() && blockHeader != null)
+            bool beaconPivotNotExists = !BeaconPivotExists();
+            if (beaconPivotNotExists && blockHeader != null)
                 _currentBeaconPivot = blockHeader;
         }
 
