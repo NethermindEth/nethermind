@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+
 namespace Nethermind.Db.FullPruning
 {
     /// <summary>
@@ -45,5 +47,8 @@ namespace Nethermind.Db.FullPruning
         /// Gets the name of inner DB.
         /// </summary>
         string InnerDbName { get; }
+        
+        event EventHandler PruningStarted;
+        event EventHandler PruningFinished;
     }
 }

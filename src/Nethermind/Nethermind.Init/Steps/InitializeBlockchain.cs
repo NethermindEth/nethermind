@@ -123,7 +123,7 @@ namespace Nethermind.Init.Steps
                 IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
                 if (pruningConfig.Mode.IsFull())
                 {
-                    PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new(_api.PruningTrigger, getApi.BlockTree, getApi.LogManager);
+                    PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb);
                     getApi.DisposeStack.Push(triggerPersistenceStrategy);
                     persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
                 }

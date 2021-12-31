@@ -16,7 +16,9 @@
 // 
 
 using System;
+using System.Threading;
 using Nethermind.Core;
+using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -31,42 +33,32 @@ namespace Nethermind.Blockchain.FullPruning;
 /// </remarks>
 public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposable
 {
-    private readonly IPruningTrigger _pruningTrigger;
-    private readonly IBlockTree _blockTree;
-    private long? _shouldPersistBlockNumber = null;
-    private readonly ILogger _logger;
+    private readonly IFullPruningDb _fullPruningDb;
+    private int _inPruning = 0;
 
-    public PruningTriggerPersistenceStrategy(IPruningTrigger pruningTrigger, IBlockTree blockTree, ILogManager logManager)
+    public PruningTriggerPersistenceStrategy(IFullPruningDb fullPruningDb)
     {
-        _pruningTrigger = pruningTrigger;
-        _blockTree = blockTree;
-        _pruningTrigger.Prune += OnPrune;
-        _logger = logManager.GetClassLogger();
+        _fullPruningDb = fullPruningDb;
+        _fullPruningDb.PruningFinished += OnPruningFinished;
+        _fullPruningDb.PruningStarted += OnPruningStarted;
     }
 
-    private void OnPrune(object? sender, PruningEventArgs e)
+    private void OnPruningFinished(object? sender, EventArgs e)
     {
-        _shouldPersistBlockNumber = (_blockTree.Head?.Number ?? 0) + 1;
+        Interlocked.CompareExchange(ref _inPruning, 0, 1);
     }
 
-    public bool ShouldPersist(long blockNumber)
+    private void OnPruningStarted(object? sender, EventArgs e)
     {
-        bool shouldPersist = blockNumber > _shouldPersistBlockNumber;
-        if (shouldPersist)
-        {
-            if (_logger.IsInfo) _logger.Info($"Full Pruning Persisting state after block {_shouldPersistBlockNumber}.");
-            _shouldPersistBlockNumber = null;
-        }
-        else if (_shouldPersistBlockNumber is not null)
-        {
-            if (_logger.IsInfo) _logger.Info($"Full Pruning Scheduled persisting state after block {_shouldPersistBlockNumber}.");
-        }
-        return shouldPersist;
+        Interlocked.CompareExchange(ref _inPruning, 1, 0);
     }
+
+    public bool ShouldPersist(long blockNumber) => _inPruning != 0;
 
     /// <inheritdoc/>
     public void Dispose()
     {
-        _pruningTrigger.Prune -= OnPrune;
+        _fullPruningDb.PruningStarted -= OnPruningStarted;
+        _fullPruningDb.PruningFinished -= OnPruningFinished;
     }
 }

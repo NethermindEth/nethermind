@@ -143,7 +143,13 @@ namespace Nethermind.Db.FullPruning
             PruningContext newContext = new(this, CreateDb(ClonedDbSettings()), _updateDuplicateWriteMetrics);
             PruningContext? pruningContext = Interlocked.CompareExchange(ref _pruningContext, newContext, null);
             context = pruningContext ?? newContext;
-            return pruningContext is null;
+            if (pruningContext is null)
+            {
+                PruningStarted?.Invoke(this, EventArgs.Empty);
+                return true;
+            }
+
+            return false;
         }
         
         /// <inheritdoc />
@@ -151,6 +157,9 @@ namespace Nethermind.Db.FullPruning
         
         /// <inheritdoc />
         public string InnerDbName => _currentDb.Name;
+
+        public event EventHandler? PruningStarted;
+        public event EventHandler? PruningFinished;
 
         private void FinishPruning()
         {
@@ -165,6 +174,7 @@ namespace Nethermind.Db.FullPruning
 
         private void CancelPruning(PruningContext pruningContext)
         {
+            PruningFinished?.Invoke(this, EventArgs.Empty);
             Interlocked.CompareExchange(ref _pruningContext, null, pruningContext);
         }
 
