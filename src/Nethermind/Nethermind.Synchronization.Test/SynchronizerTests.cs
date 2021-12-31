@@ -302,9 +302,7 @@ namespace Nethermind.Synchronization.Test
                     syncConfig,
                     _logManager);
                 MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
-                Synchronizer = new Synchronizer(
-                    dbProvider,
-                    MainnetSpecProvider.Instance,
+                BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(MainnetSpecProvider.Instance,
                     BlockTree,
                     NullReceiptStorage.Instance,
                     Always.Valid,
@@ -313,6 +311,17 @@ namespace Nethermind.Synchronization.Test
                     stats,
                     syncModeSelector,
                     syncConfig,
+                    _logManager);
+                Synchronizer = new Synchronizer(
+                    dbProvider,
+                    MainnetSpecProvider.Instance,
+                    BlockTree,
+                    NullReceiptStorage.Instance,
+                    SyncPeerPool,
+                    stats,
+                    syncModeSelector,
+                    syncConfig,
+                    blockDownloaderFactory,
                     _logManager);
 
                 SyncServer = new SyncServer(

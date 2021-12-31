@@ -30,6 +30,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
+using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Api
 {
@@ -54,6 +55,7 @@ namespace Nethermind.Api
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; set; }
+        IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }

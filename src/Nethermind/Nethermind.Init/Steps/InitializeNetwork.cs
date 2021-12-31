@@ -41,6 +41,7 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -121,18 +122,27 @@ namespace Nethermind.Init.Steps
             MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
             _api.SyncModeSelector = syncModeSelector;
             _api.DisposeStack.Push(syncModeSelector);
-
-            _api.Synchronizer = new Synchronizer(
-                _api.DbProvider,
-                _api.SpecProvider!,
+            _api.BlockDownloaderFactory = new BlockDownloaderFactory(_api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,
                 _api.SyncPeerPool,
                 _api.NodeStatsManager!,
+                _api.SyncModeSelector!,
+                _syncConfig,
+                _api.LogManager);
+
+            _api.Synchronizer = new Synchronizer(
+                _api.DbProvider,
+                _api.SpecProvider!,
+                _api.BlockTree!,
+                _api.ReceiptStorage!,
+                _api.SyncPeerPool,
+                _api.NodeStatsManager!,
                 _api.SyncModeSelector,
                 _syncConfig,
+                _api.BlockDownloaderFactory,
                 _api.LogManager);
             _api.DisposeStack.Push(_api.Synchronizer);
 

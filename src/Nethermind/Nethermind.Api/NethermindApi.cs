@@ -65,6 +65,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
+using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Api
 {
@@ -179,6 +180,7 @@ namespace Nethermind.Api
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
+        public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
