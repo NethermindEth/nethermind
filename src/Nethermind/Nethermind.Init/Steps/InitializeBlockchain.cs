@@ -118,6 +118,7 @@ namespace Nethermind.Init.Steps
                 .WitnessedBy(witnessCollector);
 
             TrieStore trieStore;
+            IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
             if (pruningConfig.Mode.IsMemory())
             {
                 IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
@@ -129,7 +130,7 @@ namespace Nethermind.Init.Steps
                 }
                 
                 setApi.TrieStore = trieStore = new TrieStore(
-                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
+                    stateWitnessedBy,
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
                     persistenceStrategy, 
                     getApi.LogManager);
@@ -137,7 +138,7 @@ namespace Nethermind.Init.Steps
             else
             {
                 setApi.TrieStore = trieStore = new TrieStore(
-                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
+                    stateWitnessedBy,
                     No.Pruning,
                     Persist.EveryBlock,
                     getApi.LogManager);

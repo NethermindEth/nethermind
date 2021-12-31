@@ -28,6 +28,7 @@ using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using Org.BouncyCastle.Bcpg;
 using Org.BouncyCastle.Crypto.Generators;
 
@@ -36,6 +37,78 @@ namespace Nethermind.Blockchain.FullPruning
     /// <summary>
     /// Main orchestrator of Full Pruning.
     /// </summary>
+    /// <remarks>
+    /// Without full pruning architecture is simple. <see cref="StateTree"/> uses <see cref="TrieStore"/> to store its data.
+    /// <see cref="TrieStore"/> based on in memory pruning settings will from time to time save data to State DB.
+    /// When saved data is considered safe for reorganisation it will announce reorg boundary of saved state to <see cref="BlockTree"/>.
+    ///                                                                   
+    ///                                             Announces                          
+    ///     +------------+          +------------+  Reorg boundary        +------------+
+    ///     |            |          |            |  (safe saved state)   |            |
+    ///     | State Trie -----------> Trie Store +-----------------------> Block Tree |
+    ///     |            |          |            |                       |            |
+    ///     +------------+          +------|-----+                       +------------+
+    ///                                    |                                           
+    ///                           Persists |                                            
+    ///                                    |                                           
+    ///                             +------v-----+                                     
+    ///                             |            |                                     
+    ///                             |  State DB  |                                     
+    ///                             |            |                                     
+    ///                             +------------+                 
+    ///
+    /// When full pruning gets enabled the situation is more complicated.
+    /// Between <see cref="TrieStore"/> and State DB we now have a <see cref="FullPruningDb"/>.
+    /// This <see cref="FullPruningDb"/> is responsible for managing an optional new DB that will be created on demand.
+    /// It will be write only. All writes to <see cref="FullPruningDb"/> will be duplicated between current DB (used for reads too) and new DB.
+    /// When <see cref="IPruningTrigger"/> will be triggered, <see cref="FullPruner"/> will initiate full pruning.
+    /// First it will call <see cref="FullPruningDb"/> to spawn ne DB, to mirror state into. All the written state through block processing will be mirrored.
+    /// Then it will watch <see cref="BlockTree"/> for appropriate time to copy whole <see cref="StateTree"/> on safe <see cref="BlockHeader.StateRoot"/>.
+    /// When safe <see cref="BlockTree.Head"/> is reached then it spawns new <see cref="CopyTreeVisitor"/> to copy the tree.
+    /// When tree is copied it will commit pruning to <see cref="FullPruningDb"/>.
+    /// This will switch the mirrored DB to be the current DB.
+    /// Previous current DB is now useless and can be dropped for file system. This deletes all the accumulated garbage in it as we copied only recent state.
+    /// 
+    ///                                                            Announces                                                                                                          
+    ///                +------------+          +------------+  Reorg boundry        +------------+                                                                                
+    ///                |            |          |            |  (safe saved state)   |            |                                                                                
+    ///                | State Trie -----------> Trie Store +-----------------------> Block Tree |                                                                                
+    ///                |            |          |            |                       |            |                                                                                
+    ///                +--^---------+          +------|-----+                       +------^-----+                                                                                
+    ///                   |                           |                                    |                                                                                      
+    ///     Crawls through                   Persists                                      |                                                                                      
+    ///     whole Tree    |                           |                                    |                                                                                      
+    ///                   |                   +-------v-------+                            |                                                                                      
+    ///                   |                   |               |                            |                                                                                      
+    ///     +-------------|---+               |FullPruningDB |                            |                                                                                      
+    ///     |                 |               |               |                            |                                                                                      
+    ///     | CopyTreeVisitor |        +--------------^-----------+                        |                                                                                      
+    ///     |                 |        |              |           |                        |                                                                                      
+    ///     ^--------|--------+        | Write only   |           | Read/Write             |                                                                                      
+    ///     |        |                 |              |           |                        |                                                                                      
+    ///     |        |                 |              |           |                        |                                                                                      
+    ///     |        |          +------v-----+        |    +------v-----+                  |                                                                                      
+    ///     |        |          | Mirrored DB|        |    | Current DB |                  |                                                                                      
+    ///     |  Duplicates Tree-> State DB N+1|        |    | State DB N |                  |                                                                                      
+    ///     |  into new DB      |            |        |    |            |                  |                                                                                      
+    ///     |                   +------------+        |    +------------+                  |                                                                                      
+    ///     |                         Commits pruning |                                    |                                                                                      
+    ///     |                         Switch to new DB|                                    |                                                                                      
+    ///     |                         Delete old DB   |                                    |                                                                                      
+    ///     |--------------+--------------------------+                                    |                                                                                      
+    ///     |              |                 Watches when it can safely start copying Trie |                                                                                      
+    ///     |  FullPruner  ----------------------------------------------------------------+                                                                                      
+    ///     |              |                                                                                                                                                      
+    ///     +-------^------+                                                                                                                                                      
+    ///             |                                                                                                                                                             
+    ///             |                                                                                                                                                             
+    ///             |                                                                                                                                                             
+    ///    +--------|-------+                                                                                                                                                     
+    ///    |                |                                                                                                                                                     
+    ///    | PruningTrigger |                                                                                                                                                     
+    ///    |                |                                                                                                                                                     
+    ///    +----------------+ 
+    /// </remarks>
     public class FullPruner : IDisposable
     {
         private readonly IFullPruningDb _fullPruningDb;
@@ -79,7 +152,7 @@ namespace Nethermind.Blockchain.FullPruning
             e.Status = PruningStatus.InProgress;
             
             // If we are already pruning, we don't need to do anything
-            if (CanRunPruning())
+            if (CanStartNewPruning())
             {
                 // we mark that we are waiting for block (for thread safety)
                 if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
@@ -93,18 +166,23 @@ namespace Nethermind.Blockchain.FullPruning
 
         private void OnNewHead(object? sender, BlockEventArgs e)
         {
-            if (CanRunPruning())
+            if (CanStartNewPruning())
             {
+                // mark that we are not waiting for block anymore
                 if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 0, 1) == 1)
                 {
                     if (e.Block is not null)
                     {
+                        // try to actually start pruning
+                        // this starts mirroring new writes to the mirror DB
                         if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
                         {
                             SetCurrentPruning(pruningContext);
+                            
+                            // mark that we are waiting for state to be ready 
                             if (Interlocked.CompareExchange(ref _waitingForStateReady, 1, 0) == 0)
                             {
-                                _blockToWaitFor = e.Block.Number;
+                                _blockToWaitFor = e.Block.Number; 
                                 _stateToCopy = long.MaxValue;
                                 if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: waiting for state {e.Block.Number} to be ready.");
                             }
@@ -112,8 +190,11 @@ namespace Nethermind.Blockchain.FullPruning
                     }
                 }
             }
+            // else we already started pruning
+            // if we are waiting for state to be ready
             else if (_waitingForStateReady == 1)
             {
+                // if we already persisted state of the block we are waiting for
                 if (_blockTree.BestPersistedState >= _blockToWaitFor && _currentPruning is not null)
                 {
                     if (_stateToCopy == long.MaxValue)
@@ -157,7 +238,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
         
-        private bool CanRunPruning() => _fullPruningDb.CanStartPruning;
+        private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
 
         protected virtual void RunPruning(IPruningContext pruning, Keccak statRoot)
         {
