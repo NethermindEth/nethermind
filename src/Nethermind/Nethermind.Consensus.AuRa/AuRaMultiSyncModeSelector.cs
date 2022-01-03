@@ -17,6 +17,7 @@
 
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -25,7 +26,7 @@ namespace Nethermind.Consensus.AuRa
     public class AuRaMultiSyncModeSelector : MultiSyncModeSelector
     {
         public AuRaMultiSyncModeSelector(ISyncProgressResolver syncProgressResolver, ISyncPeerPool syncPeerPool, ISyncConfig syncConfig, ILogManager logManager) 
-            : base(syncProgressResolver, syncPeerPool, syncConfig, logManager)
+            : base(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, logManager)
         {
         }
         

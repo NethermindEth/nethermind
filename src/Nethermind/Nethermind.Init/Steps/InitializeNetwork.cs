@@ -122,7 +122,8 @@ namespace Nethermind.Init.Steps
                 _api.ReadOnlyTrieStore!,
                 _syncConfig,
                 _api.LogManager);
-
+            
+            _api.SyncProgressResolver = syncProgressResolver;
             MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
             _api.SyncModeSelector = syncModeSelector;
             _api.DisposeStack.Push(syncModeSelector);
@@ -242,7 +243,7 @@ namespace Nethermind.Init.Steps
         }
 
         protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
-            => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, _api.LogManager);
+            => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.LogManager);
 
         private Task StartDiscovery()
         {

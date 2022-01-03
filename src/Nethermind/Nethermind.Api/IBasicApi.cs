@@ -56,6 +56,7 @@ namespace Nethermind.Api
         string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
         ISyncModeSelector? SyncModeSelector { get; set; }
+        ISyncProgressResolver? SyncProgressResolver { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
 

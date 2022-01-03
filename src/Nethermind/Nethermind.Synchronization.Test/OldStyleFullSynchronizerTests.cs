@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.Test
                 new TrieStore(_stateDb, LimboLogs.Instance),  
                 syncConfig,
                 LimboLogs.Instance);
-            MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, LimboLogs.Instance);
+            MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, No.BeaconSync, LimboLogs.Instance);
             BlockDownloaderFactory blockDownloaderFactory = new(MainnetSpecProvider.Instance, _blockTree,
                 _receiptStorage, Always.Valid, Always.Valid, _pool, stats, syncModeSelector, syncConfig,
                 LimboLogs.Instance);

@@ -50,7 +50,6 @@ namespace Nethermind.Synchronization.Test
 {
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
-    [TestFixture(SynchronizerType.Eth2Merge)]
     [Parallelizable(ParallelScope.All)]
     public class SynchronizerTests
     {
@@ -61,7 +60,8 @@ namespace Nethermind.Synchronization.Test
             _synchronizerType = synchronizerType;
         }
 
-        private static Block _genesisBlock = Build.A.Block.Genesis.WithDifficulty(100000).WithTotalDifficulty((UInt256)100000).TestObject;
+        private static Block _genesisBlock = Build.A.Block.Genesis.WithDifficulty(100000)
+            .WithTotalDifficulty((UInt256)100000).TestObject;
 
         private class SyncPeerMock : ISyncPeer
         {
@@ -74,7 +74,8 @@ namespace Nethermind.Synchronization.Test
 
             public BlockHeader HeadHeader => HeadBlock.Header;
 
-            public SyncPeerMock(string peerName, bool causeTimeoutOnInit = false, bool causeTimeoutOnBlocks = false, bool causeTimeoutOnHeaders = false)
+            public SyncPeerMock(string peerName, bool causeTimeoutOnInit = false, bool causeTimeoutOnBlocks = false,
+                bool causeTimeoutOnHeaders = false)
             {
                 _causeTimeoutOnInit = causeTimeoutOnInit;
                 _causeTimeoutOnBlocks = causeTimeoutOnBlocks;
@@ -188,11 +189,11 @@ namespace Nethermind.Synchronization.Test
             }
 
             public ConcurrentStack<Block> ReceivedBlocks { get; } = new ConcurrentStack<Block>();
-            
+
             public event EventHandler Disconnected;
 
             public PublicKey Id => Node.Id;
-            
+
             public void SendNewTransactions(IEnumerable<Transaction> txs) { }
 
             public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
@@ -210,10 +211,12 @@ namespace Nethermind.Synchronization.Test
                 Block block = Blocks.Last();
                 for (long j = block.Number; j < i; j++)
                 {
-                    block = Build.A.Block.WithDifficulty(1000000).WithParent(block).WithTotalDifficulty(block.TotalDifficulty + 1000000).WithExtraData(j < branchStart ? Array.Empty<byte>() : new [] {branchIndex}).TestObject;
+                    block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
+                        .WithTotalDifficulty(block.TotalDifficulty + 1000000)
+                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] {branchIndex}).TestObject;
                     Blocks.Add(block);
                 }
-                
+
                 UpdateHead();
             }
 
@@ -222,10 +225,12 @@ namespace Nethermind.Synchronization.Test
                 Block block = Blocks.Last();
                 for (long j = block.Number; j < i; j++)
                 {
-                    block = Build.A.Block.WithParent(block).WithDifficulty(2000000).WithTotalDifficulty(block.TotalDifficulty + 2000000).WithExtraData(j < branchStart ? Array.Empty<byte>() : new [] {branchIndex}).TestObject;
+                    block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
+                        .WithTotalDifficulty(block.TotalDifficulty + 2000000)
+                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] {branchIndex}).TestObject;
                     Blocks.Add(block);
                 }
-                
+
                 UpdateHead();
             }
 
@@ -278,7 +283,6 @@ namespace Nethermind.Synchronization.Test
                     synchronizerType switch
                     {
                         SynchronizerType.Fast => SyncConfig.WithFastSync,
-                        SynchronizerType.Eth2Merge => SyncConfig.WithEth2Merge,
                         SynchronizerType.Full => SyncConfig.WithFullSyncOnly,
                         _ => throw new ArgumentOutOfRangeException(nameof(synchronizerType), synchronizerType, null)
                     };
@@ -289,7 +293,9 @@ namespace Nethermind.Synchronization.Test
                 IDb stateDb = new MemDb();
                 IDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new MemDb();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
+                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb,
+                    new ChainLevelInfoRepository(blockInfoDb),
+                    new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new NodeStatsManager(timerFactory, _logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
@@ -301,7 +307,8 @@ namespace Nethermind.Synchronization.Test
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     _logManager);
-                MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
+                MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool,
+                    syncConfig, No.BeaconSync, _logManager);
                 BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(MainnetSpecProvider.Instance,
                     BlockTree,
                     NullReceiptStorage.Instance,
@@ -334,10 +341,10 @@ namespace Nethermind.Synchronization.Test
                     SyncPeerPool,
                     syncModeSelector,
                     syncConfig,
-                    new WitnessCollector(new MemDb(), LimboLogs.Instance), 
+                    new WitnessCollector(new MemDb(), LimboLogs.Instance),
                     Policy.FullGossip,
                     _logManager);
-                
+
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();
@@ -356,7 +363,7 @@ namespace Nethermind.Synchronization.Test
                 Assert.AreEqual(number, BlockTree.BestKnownNumber, "best known number");
                 return this;
             }
-            
+
             public SyncingContext BlockIsKnown()
             {
                 Assert.True(BlockTree.IsKnownBlock(_blockHeader.Number, _blockHeader.Hash), "block is known");
@@ -458,7 +465,7 @@ namespace Nethermind.Synchronization.Test
 
             public SyncingContext AfterPeerIsAdded(ISyncPeer syncPeer)
             {
-                ((SyncPeerMock) syncPeer).Disconnected += (s, e) => SyncPeerPool.RemovePeer(syncPeer);
+                ((SyncPeerMock)syncPeer).Disconnected += (s, e) => SyncPeerPool.RemovePeer(syncPeer);
 
                 _logger.Info($"PEER ADDED {syncPeer.ClientId}");
                 _peers.TryAdd(syncPeer.ClientId, syncPeer);
@@ -558,7 +565,7 @@ namespace Nethermind.Synchronization.Test
                 .AfterPeerIsAdded(peerA)
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
-        
+
         [Test, Retry(3)]
         public void Can_extend_chain_by_one_on_new_block_message()
         {
@@ -711,15 +718,7 @@ namespace Nethermind.Synchronization.Test
                 return receivedBlock && peerBNewBlock.Hash == peerA.HeadBlock.Hash;
             }, WaitTime);
 
-            if (_synchronizerType == SynchronizerType.Eth2Merge)
-            {
-                Assert.IsNull(peerBNewBlock);
-                Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
-            }
-            else
-            {
-                Assert.AreEqual(peerBNewBlock?.Header.Hash!, peerA.HeadBlock.Hash);
-            }
+            Assert.AreEqual(peerBNewBlock?.Header.Hash!, peerA.HeadBlock.Hash);
         }
 
         [Test, Retry(3)]

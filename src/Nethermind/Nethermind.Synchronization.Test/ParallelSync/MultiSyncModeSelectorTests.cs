@@ -709,7 +709,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             overwrite.Invoke();
                         }
 
-                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, LimboLogs.Instance);
+                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, No.BeaconSync, LimboLogs.Instance);
                         selector.DisableTimer();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);
@@ -1212,7 +1212,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             ISyncConfig syncConfig = new SyncConfig() {FastSyncCatchUpHeightDelta = 2};
             syncConfig.FastSync = true;
             
-            MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
+            MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, LimboLogs.Instance);
             selector.DisableTimer();
             syncProgressResolver.FindBestProcessedBlock().Returns(Scenario.ChainHead.Number);
             selector.Update();

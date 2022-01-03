@@ -54,7 +54,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
         private readonly IMergeConfig _mergeConfig;
-        private readonly ISynchronizer _synchronizer;
+        private readonly IMergeSyncController _mergeSyncController;
         private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
         private SemaphoreSlim _blockValidationSemaphore;
@@ -69,7 +69,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
             IMergeConfig mergeConfig,
-            ISynchronizer synchronizer,
+            IMergeSyncController mergeSyncController,
             IBeaconPivot beaconPivot,
             ILogManager logManager)
         {
@@ -79,7 +79,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
             _mergeConfig = mergeConfig;
-            _synchronizer = synchronizer;
+            _mergeSyncController = mergeSyncController;
             _beaconPivot = beaconPivot;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
@@ -127,8 +127,8 @@ namespace Nethermind.Merge.Plugin.Handlers
                 bool pivotParentProcessed = _beaconPivot.IsPivotParentParentProcessed();
                 if (pivotParentProcessed)
                 {
-                    _logger.Info("Synced - turning off synchronizer");
-                    await _synchronizer.StopAsync();
+                    _mergeSyncController.SwitchToBeaconModeControl();
+                    if (_logger.IsInfo) _logger.Info("ExecutePayloadHandler switched to BeaconModeControl");
                     synced = true;
                 }
             }

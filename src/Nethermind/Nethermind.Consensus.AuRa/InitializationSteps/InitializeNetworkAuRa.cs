@@ -20,6 +20,7 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
+    // ToDo remove?
     public class InitializeNetworkAuRa : InitializeNetwork
     {
         public InitializeNetworkAuRa(AuRaNethermindApi api) : base(api)

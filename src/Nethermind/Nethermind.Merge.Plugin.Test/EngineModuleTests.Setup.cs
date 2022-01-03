@@ -42,6 +42,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -54,17 +55,18 @@ namespace Nethermind.Merge.Plugin.Test
         {
             PayloadStorage? payloadStorage = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.LogManager);
             IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
-            ISynchronizer synchronizer = Substitute.For<ISynchronizer>();
+            ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             IBeaconPivot beaconPivot = new BeaconPivot(chain.BlockTree, chain.LogManager);
+            BeaconSync beaconSync = new(beaconPivot, chain.BlockTree, syncProgressResolver);
 
             return new EngineRpcModule(
                 new PreparePayloadHandler(chain.BlockTree, payloadStorage, chain.Timestamper, chain.SealEngine, chain.LogManager),
                 new GetPayloadHandler(payloadStorage, chain.LogManager),
                 new GetPayloadV1Handler(payloadService, chain.LogManager),
                 new ExecutePayloadHandler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.LogManager),
-                new ExecutePayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.MergeConfig, synchronizer, beaconPivot, chain.LogManager),
+                new ExecutePayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.MergeConfig, beaconSync, beaconPivot, chain.LogManager),
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.MergeConfig, chain.BlockchainProcessor, synchronizer, chain.StateDb, chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.MergeConfig, beaconSync,  chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 chain.LogManager,
                 chain.BlockTree);

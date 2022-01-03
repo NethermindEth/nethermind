@@ -32,6 +32,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Synchronization;
 
@@ -51,9 +52,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly IPayloadService _payloadService;
         private readonly IMergeConfig _mergeConfig;
-        private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly ISynchronizer _synchronizer;
-        private readonly IDb _stateDb;
+        private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private bool synced = false;
 
@@ -66,9 +65,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockConfirmationManager blockConfirmationManager,
             IPayloadService payloadService,
             IMergeConfig mergeConfig,
-            IBlockchainProcessor blockchainProcessor,
-            ISynchronizer synchronizer,
-            IDb stateDb,
+            IMergeSyncController mergeSyncController,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -81,9 +78,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                                         throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadService = payloadService;
             _mergeConfig = mergeConfig;
-            _blockchainProcessor = blockchainProcessor;
-            _synchronizer = synchronizer;
-            _stateDb = stateDb;
+            _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
         }
 
@@ -132,9 +127,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     return ReturnSyncing();
                 }
-
-                _logger.Info("Synced - turning off synchronizer");
-                await _synchronizer.StopAsync();
+                
+                _mergeSyncController.SwitchToBeaconModeControl();
+                if (_logger.IsInfo) _logger.Info("ExecutePayloadHandler switched to BeaconModeControl");
                 synced = true;
             }
 
