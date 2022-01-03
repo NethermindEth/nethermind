@@ -19,7 +19,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -61,6 +63,143 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
+        public void CommitCode()
+        {
+        }
+
+        public Account GetAccount(Address address)
+        {
+            return GetThroughCache(address) ?? Account.TotallyEmpty;
+        }
+
+        public bool IsDeadAccount(Address address)
+        {
+            Account? account = GetThroughCache(address);
+            return account?.IsEmpty ?? true;
+        }
+
+        public UInt256 GetNonce(Address address)
+        {
+            Account? account = GetThroughCache(address);
+            return account?.Nonce ?? UInt256.Zero;
+        }
+        
+        public UInt256 GetBalance(Address address)
+        {
+            Account? account = GetThroughCache(address);
+            return account?.Balance ?? UInt256.Zero;
+        }
+        
+        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
+        {
+            _needsStateRootUpdate = true;
+
+            Account GetThroughCacheCheckExists()
+            {
+                Account result = GetThroughCache(address);
+                if (result is null)
+                {
+                    if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
+                    throw new InvalidOperationException("Updating balance of a non-existing account");
+                }
+
+                return result;
+            }
+
+            bool isZero = balanceChange.IsZero;
+            if (isZero)
+            {
+                if (releaseSpec.IsEip158Enabled)
+                {
+                    Account touched = GetThroughCacheCheckExists();
+                    if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
+                    if (touched.IsEmpty)
+                    {
+                        PushTouch(address, touched, releaseSpec, true);
+                    }
+                }
+
+                return;
+            }
+
+            Account account = GetThroughCacheCheckExists();
+
+            if (isSubtracting && account.Balance < balanceChange)
+            {
+                throw new InsufficientBalanceException(address);
+            }
+
+            UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
+
+            Account changedAccount = account.WithChangedBalance(newBalance);
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} B {account.Balance} -> {newBalance} ({(isSubtracting ? "-" : "+")}{balanceChange})");
+            PushUpdate(address, changedAccount);
+        }
+        
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+        {
+            _needsStateRootUpdate = true;
+            SetNewBalance(address, balanceChange, releaseSpec, true);
+        }
+
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
+        {
+            _needsStateRootUpdate = true;
+            SetNewBalance(address, balanceChange, releaseSpec, false);
+        }
+        
+        public void IncrementNonce(Address address)
+        {
+            _needsStateRootUpdate = true;
+            Account? account = GetThroughCache(address);
+            if (account is null)
+            {
+                throw new InvalidOperationException($"Account {address} is null when incrementing nonce");
+            }
+            
+            Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            PushUpdate(address, changedAccount);
+        }
+
+        public void DecrementNonce(Address address)
+        {
+            _needsStateRootUpdate = true;
+            Account account = GetThroughCache(address);
+            if (account is null)
+            {
+                throw new InvalidOperationException($"Account {address} is null when decrementing nonce.");
+            }
+            
+            Account changedAccount = account.WithChangedNonce(account.Nonce - 1);
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            PushUpdate(address, changedAccount);
+        }
+
+        public void DeleteAccount(Address address)
+        {
+            _needsStateRootUpdate = true;
+            PushDelete(address);
+        }
+
+        public void CreateAccount(Address address, in UInt256 balance)
+        {
+            _needsStateRootUpdate = true;
+            if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance}");
+            Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);
+            PushNew(address, account);
+        }
+        
+        
+        public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce)
+        {
+            _needsStateRootUpdate = true;
+            if (_logger.IsTrace) _logger.Trace($"Creating account: {address} with balance {balance} and nonce {nonce}");
+            Account account = (balance.IsZero && nonce.IsZero) ? Account.TotallyEmpty : new Account(nonce, balance, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+            PushNew(address, account);
+        }
+        
+        
         private Account? GetState(Address address)
         {
             Metrics.StateTreeReads++;
@@ -75,14 +214,6 @@ namespace Nethermind.State
             _tree.Set(address, account);
         }
 
-        private void PushNew(Address address, Account account)
-        {
-            SetupCache(address);
-            IncrementChangePosition();
-            _intraBlockCache[address].Push(_currentPosition);
-            _changes[_currentPosition] = new Change(ChangeType.New, address, account);
-        }
-        
         private void IncrementChangePosition()
         {
             Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
@@ -96,8 +227,310 @@ namespace Nethermind.State
             }
         }
         
+        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
+        {
+            Commit(releaseSpec, NullStateTracer.Instance, isGenesis);
+        }
         
+        private readonly struct ChangeTrace
+        {
+            public ChangeTrace(Account? before, Account? after)
+            {
+                After = after;
+                Before = before;
+            }
+
+            public ChangeTrace(Account? after)
+            {
+                After = after;
+                Before = null;
+            }
+
+            public Account? Before { get; }
+            public Account? After { get; }
+        }
         
+        public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer, bool isGenesis = false)
+        {
+            if (_currentPosition == -1)
+            {
+                if (_logger.IsTrace) _logger.Trace("  no state changes to commit");
+                return;
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {_currentPosition})");
+            if (_changes[_currentPosition] is null)
+            {
+                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StateProvider)}");
+            }
+
+            if (_changes[_currentPosition + 1] != null)
+            {
+                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StateProvider)}");
+            }
+
+            bool isTracing = stateTracer.IsTracingState;
+            Dictionary<Address, ChangeTrace> trace = null;
+            if (isTracing)
+            {
+                trace = new Dictionary<Address, ChangeTrace>();
+            }
+
+            for (int i = 0; i <= _currentPosition; i++)
+            {
+                Change change = _changes[_currentPosition - i];
+                if (!isTracing && change!.ChangeType == ChangeType.JustCache)
+                {
+                    continue;
+                }
+
+                if (_committedThisRound.Contains(change!.Address))
+                {
+                    if (isTracing && change.ChangeType == ChangeType.JustCache)
+                    {
+                        trace[change.Address] = new ChangeTrace(change.Account, trace[change.Address].After);
+                    }
+
+                    continue;
+                }
+
+                // because it was not committed yet it means that the just cache is the only state (so it was read only)
+                if (isTracing && change.ChangeType == ChangeType.JustCache)
+                {
+                    _readsForTracing.Add(change.Address);
+                    continue;
+                }
+
+                int forAssertion = _intraBlockCache[change.Address].Pop();
+                if (forAssertion != _currentPosition - i)
+                {
+                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                }
+
+                _committedThisRound.Add(change.Address);
+
+                switch (change.ChangeType)
+                {
+                    case ChangeType.JustCache:
+                    {
+                        break;
+                    }
+                    case ChangeType.Touch:
+                    case ChangeType.Update:
+                    {
+                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty && !isGenesis)
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"  Commit remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            SetState(change.Address, null);
+                            if (isTracing)
+                            {
+                                trace[change.Address] = new ChangeTrace(null);
+                            }
+                        }
+                        else
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
+                            SetState(change.Address, change.Account);
+                            if (isTracing)
+                            {
+                                trace[change.Address] = new ChangeTrace(change.Account);
+                            }
+                        }
+
+                        break;
+                    }
+                    case ChangeType.New:
+                    {
+                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            SetState(change.Address, change.Account);
+                            if (isTracing)
+                            {
+                                trace[change.Address] = new ChangeTrace(change.Account);
+                            }
+                        }
+
+                        break;
+                    }
+                    case ChangeType.Delete:
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"  Commit remove {change.Address}");
+                        bool wasItCreatedNow = false;
+                        while (_intraBlockCache[change.Address].Count > 0)
+                        {
+                            int previousOne = _intraBlockCache[change.Address].Pop();
+                            wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
+                            if (wasItCreatedNow)
+                            {
+                                break;
+                            }
+                        }
+
+                        if (!wasItCreatedNow)
+                        {
+                            SetState(change.Address, null);
+                            if (isTracing)
+                            {
+                                trace[change.Address] = new ChangeTrace(null);
+                            }
+                        }
+
+                        break;
+                    }
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+
+            if (isTracing)
+            {
+                foreach (Address nullRead in _readsForTracing)
+                {
+                    // // this may be enough, let us write tests
+                    stateTracer.ReportAccountRead(nullRead);
+                }
+            }
+
+            Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
+            _committedThisRound.Reset();
+            _readsForTracing.Clear();
+            _intraBlockCache.Reset();
+
+            if (isTracing)
+            {
+                ReportChanges(stateTracer, trace);
+            }
+        }
+        
+        private void ReportChanges(IStateTracer stateTracer, Dictionary<Address, ChangeTrace> trace)
+        {
+            foreach ((Address address, ChangeTrace change) in trace)
+            {
+                bool someChangeReported = false;
+
+                Account? before = change.Before;
+                Account? after = change.After;
+
+                UInt256? beforeBalance = before?.Balance;
+                UInt256? afterBalance = after?.Balance;
+
+                UInt256? beforeNonce = before?.Nonce;
+                UInt256? afterNonce = after?.Nonce;
+
+                Keccak? beforeCodeHash = before?.CodeHash;
+                Keccak? afterCodeHash = after?.CodeHash;
+                
+                // TODO: handle this after GetCode is done
+                // if (beforeCodeHash != afterCodeHash)
+                // {
+                //     byte[]? beforeCode = beforeCodeHash is null
+                //         ? null
+                //         : beforeCodeHash == Keccak.OfAnEmptyString
+                //             ? Array.Empty<byte>()
+                //             : _codeDb[beforeCodeHash.Bytes];
+                //     byte[]? afterCode = afterCodeHash is null
+                //         ? null
+                //         : afterCodeHash == Keccak.OfAnEmptyString
+                //             ? Array.Empty<byte>()
+                //             : _codeDb[afterCodeHash.Bytes];
+                //
+                //     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
+                //     {
+                //         stateTracer.ReportCodeChange(address, beforeCode, afterCode);
+                //     }
+                //
+                //     someChangeReported = true;
+                // }
+
+                if (afterBalance != beforeBalance)
+                {
+                    stateTracer.ReportBalanceChange(address, beforeBalance, afterBalance);
+                    someChangeReported = true;
+                }
+
+                if (afterNonce != beforeNonce)
+                {
+                    stateTracer.ReportNonceChange(address, beforeNonce, afterNonce);
+                    someChangeReported = true;
+                }
+
+                if (!someChangeReported)
+                {
+                    stateTracer.ReportAccountRead(address);
+                }
+            }
+        }
+
+        private Account? GetAndAddToCache(Address address)
+        {
+            Account? account = GetState(address);
+            if (account != null)
+            {
+                PushJustCache(address, account);
+            }
+            else
+            {
+                // just for tracing - potential perf hit, maybe a better solution?
+                _readsForTracing.Add(address);
+            }
+
+            return account;
+        }
+        
+        private Account? GetThroughCache(Address address)
+        {
+            if (_intraBlockCache.ContainsKey(address))
+            {
+                return _changes[_intraBlockCache[address].Peek()]!.Account;
+            }
+
+            Account account = GetAndAddToCache(address);
+            return account;
+        }
+        
+        private void PushJustCache(Address address, Account account)
+        {
+            Push(ChangeType.JustCache, address, account);
+        }
+        
+        private void Push(ChangeType changeType, Address address, Account? touchedAccount)
+        {
+            SetupCache(address);
+            if (changeType == ChangeType.Touch
+                && _changes[_intraBlockCache[address].Peek()]!.ChangeType == ChangeType.Touch)
+            {
+                return;
+            }
+
+            IncrementChangePosition();
+            _intraBlockCache[address].Push(_currentPosition);
+            _changes[_currentPosition] = new Change(changeType, address, touchedAccount);
+        }
+        
+        private void PushUpdate(Address address, Account account)
+        {
+            Push(ChangeType.Update, address, account);
+        }
+
+        private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
+        {
+            if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
+            Push(ChangeType.Touch, address, account);
+        }
+
+        private void PushDelete(Address address)
+        {
+            Push(ChangeType.Delete, address, null);
+        }
+        
+        private void PushNew(Address address, Account account)
+        {
+            SetupCache(address);
+            IncrementChangePosition();
+            _intraBlockCache[address].Push(_currentPosition);
+            _changes[_currentPosition] = new Change(ChangeType.New, address, account);
+        }
         
         private enum ChangeType
         {
@@ -142,6 +575,34 @@ namespace Nethermind.State
         //     _tree.Commit(blockNumber);
         // }
         
+        public bool AccountExists(Address address)
+        {
+            if (_intraBlockCache.ContainsKey(address))
+            {
+                return _changes[_intraBlockCache[address].Peek()]!.ChangeType != ChangeType.Delete;
+            }
+
+            return GetAndAddToCache(address) != null;
+        }
+
+        public bool IsEmptyAccount(Address address)
+        {
+            Account account = GetThroughCache(address);
+            if (account is null)
+            {
+                throw new InvalidOperationException($"Account {address} is null when checking if empty");
+            }
+            
+            return account.IsEmpty;
+        }
+        
+        public void CommitTree(long blockNumber)
+        {
+            
+        }
+        
     }
+    
+    
     
 }
