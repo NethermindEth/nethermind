@@ -114,12 +114,12 @@ namespace Nethermind.Blockchain.Test.Producers
                     return this;
                 }
                 
-                public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null, bool serviceTransaction = false)
+                public ScenarioBuilder SendLegacyTransaction(long gasLimit = 1000000, UInt256? gasPremium = null, bool serviceTransaction = false, UInt256? nonce = null)
                 {
-                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero, serviceTransaction);
+                    _antecedent = SendTransactionAsync(gasLimit, gasPremium ?? 20.GWei(), UInt256.Zero, serviceTransaction, nonce);
                     return this;
                 }
-                private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap, bool serviceTransaction)
+                private async Task<ScenarioBuilder> SendTransactionAsync(long gasLimit, UInt256 gasPrice, UInt256 feeCap, bool serviceTransaction, UInt256? nonce = null)
                 {
                     await ExecuteAntecedentIfNeeded();
                     byte[] txData = _abiEncoder.Encode(
@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Test.Producers
                         GasLimit = gasLimit,
                         GasPrice = gasPrice,
                         DecodedMaxFeePerGas = feeCap,
-                        Nonce = _currentNonce++,
+                        Nonce = nonce ?? _currentNonce++,
                         IsServiceTransaction = serviceTransaction
                     };
                     
@@ -334,6 +334,23 @@ namespace Nethermind.Blockchain.Test.Producers
                 .AssertNewBlock(875000000)
                 .AssertNewBlockWithIncreasedBaseFee()
                 .AssertNewBlockWithDecreasedBaseFee();
+            await scenario.Finish();
+        }
+        
+        [Test]
+        public async Task When_base_fee_decreases_previously_fee_too_low_transaction_is_included()
+        {
+            long gasTarget = 3000000;
+            BaseFeeTestScenario.ScenarioBuilder scenario = BaseFeeTestScenario.GoesLikeThis()
+                .WithEip1559TransitionBlock(6)
+                .CreateTestBlockchain(gasTarget)
+                .BlocksBeforeTransitionShouldHaveZeroBaseFee()
+                .AssertNewBlock(Eip1559Constants.ForkBaseFee)
+                .SendLegacyTransaction(gasTarget / 2, 7.GWei() / 10, nonce: UInt256.Zero)
+                .AssertNewBlock(875000000)
+                .AssertNewBlock(765625000)
+                .AssertNewBlock(669921875) // added tx in 9th block
+                .AssertNewBlock(628051758);
             await scenario.Finish();
         }
     }

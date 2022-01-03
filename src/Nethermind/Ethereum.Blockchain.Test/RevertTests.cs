@@ -26,31 +26,9 @@ namespace Ethereum.Blockchain.Test
     [TestFixture][Parallelizable(ParallelScope.All)]
     public class RevertTests : GeneralStateTestBase
     {
-        /// <summary>
-        /// This tests can only happen on the pre Byzantium networks and all of these networks sync fine
-        /// They are special cases from the time of post-Shanghai-attack account clearing
-        /// </summary>
-        private string[] ignored = new string[]
-        {
-            "RevertPrecompiledTouch_d0g0v0",
-            "RevertPrecompiledTouch_d3g0v0",
-            "RevertPrecompiledTouchExactOOG_d7g1v0",
-            "RevertPrecompiledTouchExactOOG_d7g2v0",
-            "RevertPrecompiledTouchExactOOG_d31g1v0",
-            "RevertPrecompiledTouchExactOOG_d31g2v0",
-            "RevertPrecompiledTouch_storage_d0g0v0",
-            "RevertPrecompiledTouch_storage_d3g0v0",
-            "TouchToEmptyAccountRevert3_d0g0v0"
-        };
-        
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
         {
-            if (ignored.Any(i => test.Name.Contains(i)))
-            {
-                return;
-            }
-            
             Assert.True(RunTest(test).Pass);
         }
         
