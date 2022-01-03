@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Linq;
+using Microsoft.VisualBasic;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Rlp;
@@ -26,20 +29,31 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionRpcModule : IAccountAbstractionRpcModule
     {
         private readonly IUserOperationPool _userOperationPool;
+        private readonly Address[] _supportedEntryPoints;
 
         static AccountAbstractionRpcModule()
         {
             Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly);
         }
         
-        public AccountAbstractionRpcModule(IUserOperationPool userOperationPool)
+        public AccountAbstractionRpcModule(IUserOperationPool userOperationPool, Address[] supportedEntryPoints)
         {
             _userOperationPool = userOperationPool;
+            _supportedEntryPoints = supportedEntryPoints;
         }
 
-        public ResultWrapper<Keccak> eth_sendUserOperation(UserOperationRpc userOperationRpc)
+        public ResultWrapper<Keccak> eth_sendUserOperation(UserOperationRpc userOperationRpc, Address entryPointAddress)
         {
+            if (!_supportedEntryPoints.Contains(entryPointAddress))
+            {
+                return ResultWrapper<Keccak>.Fail($"entryPoint {entryPointAddress} not supported, supported entryPoints: {string.Join(", ", _supportedEntryPoints.ToList())}");
+            }
             return _userOperationPool.AddUserOperation(new UserOperation(userOperationRpc));
+        }
+
+        public ResultWrapper<Address[]> eth_supportedEntryPoints()
+        {
+            return ResultWrapper<Address[]>.Success(_supportedEntryPoints);
         }
     }
 }

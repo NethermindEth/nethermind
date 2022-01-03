@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Core;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.AccountAbstraction
@@ -23,15 +24,17 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionModuleFactory : ModuleFactoryBase<IAccountAbstractionRpcModule>
     {
         private readonly UserOperationPool _userOperationPool;
+        private readonly Address[] _supportedEntryPoints;
 
-        public AccountAbstractionModuleFactory(UserOperationPool userOperationPool)
+        public AccountAbstractionModuleFactory(UserOperationPool userOperationPool, Address[] supportedEntryPoints)
         {
             _userOperationPool = userOperationPool;
+            _supportedEntryPoints = supportedEntryPoints;
         }
 
         public override IAccountAbstractionRpcModule Create()
         {
-            return new AccountAbstractionRpcModule(_userOperationPool);
+            return new AccountAbstractionRpcModule(_userOperationPool, _supportedEntryPoints);
         }
     }
 }
