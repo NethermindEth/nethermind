@@ -131,9 +131,11 @@ namespace Nethermind.State
             {
                 account = Account.TotallyEmpty;
             }
+            _set(TreeKeys[0], account.Version.ToBigEndian());
             _set(TreeKeys[1], account.Balance.ToBigEndian());
             _set(TreeKeys[2], account.Nonce.ToBigEndian());
             _set(TreeKeys[3], account.CodeHash.Bytes);
+            _set(TreeKeys[4], account.CodeSize.ToBigEndian());
         }
 
         [DebuggerStepThrough]
