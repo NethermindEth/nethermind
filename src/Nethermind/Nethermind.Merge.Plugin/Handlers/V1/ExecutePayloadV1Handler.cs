@@ -96,13 +96,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             ExecutePayloadV1Result executePayloadResult = new();
 
-            // ToDo wait for final PostMerge sync
-            // if (_db.KeyExists(request.ParentHash) == false)
-            // {
-            //     executePayloadResult.EnumStatus = VerificationStatus.Syncing;
-            //     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
-            // }
-
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
@@ -140,7 +133,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             processedBlock.Header.IsPostMerge = true;
-            _blockTree.SuggestBlock(processedBlock);
+            _blockTree.SuggestBlock(processedBlock, false);
             executePayloadResult.EnumStatus = VerificationStatus.Valid;
             executePayloadResult.LatestValidHash = request.BlockHash;
             _blockValidationSemaphore.Wait();

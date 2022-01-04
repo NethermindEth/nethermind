@@ -468,9 +468,6 @@ namespace Nethermind.Consensus.Processing
             bool notFoundTheBranchingPointYet;
             bool notReachedTheReorgBoundary;
             
-            // ToDo temp hack - don't merge it to master
-            // bool ethereumMerge = (options & ProcessingOptions.EthereumMerge) != 0;
-            bool ethereumMerge = false;
             Block toBeProcessed = suggestedBlock;
             do
             {
@@ -497,9 +494,6 @@ namespace Nethermind.Consensus.Processing
                 {
                     break;
                 }
-
-                if (toBeProcessed.IsPostMerge)
-                    break;
 
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                 bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
@@ -529,7 +523,7 @@ namespace Nethermind.Consensus.Processing
                 // otherwise some nodes would be missing
                 notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash);
                 notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-            } while (!ethereumMerge && (notFoundTheBranchingPointYet || notReachedTheReorgBoundary));
+            } while (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {

@@ -200,7 +200,7 @@ namespace Nethermind.Consensus.Validators
             return gasLimitNotTooHigh && gasLimitNotTooLow;
         }
 
-        protected virtual bool ValidateTimestamp(BlockHeader parent,BlockHeader header)
+        private bool ValidateTimestamp(BlockHeader parent,BlockHeader header)
         {
             bool timestampMoreThanAtParent = header.Timestamp > parent.Timestamp;
             if (!timestampMoreThanAtParent)
