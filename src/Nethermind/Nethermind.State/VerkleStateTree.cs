@@ -187,19 +187,19 @@ namespace Nethermind.State
              
              byte[] treeKeyBalance = new byte[32];
              Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyBalance, 0, 31);
-             treeKeyVersion[31] = BalanceLeafKey;
+             treeKeyBalance[31] = BalanceLeafKey;
              
              byte[] treeKeyNounce = new byte[32];
              Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyNounce, 0, 31);
-             treeKeyVersion[31] = NonceLeafKey;
+             treeKeyNounce[31] = NonceLeafKey;
              
              byte[] treeKeyCodeKeccak = new byte[32];
              Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeKeccak, 0, 31);
-             treeKeyVersion[31] = CodeKeccakLeafKey;
+             treeKeyCodeKeccak[31] = CodeKeccakLeafKey;
              
              byte[] treeKeyCodeSize = new byte[32];
              Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeSize, 0, 31);
-             treeKeyVersion[31] = CodeSizeLeafKey;
+             treeKeyCodeSize[31] = CodeSizeLeafKey;
             
              return new [] {treeKeyVersion, treeKeyBalance, treeKeyNounce, treeKeyCodeKeccak, treeKeyCodeSize};
          }
