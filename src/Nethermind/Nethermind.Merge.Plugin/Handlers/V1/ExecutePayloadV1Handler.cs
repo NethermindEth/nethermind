@@ -133,7 +133,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             processedBlock.Header.IsPostMerge = true;
-            _blockTree.SuggestBlock(processedBlock, false);
+            _blockTree.SuggestBlock(processedBlock);
             executePayloadResult.EnumStatus = VerificationStatus.Valid;
             executePayloadResult.LatestValidHash = request.BlockHash;
             _blockValidationSemaphore.Wait();
