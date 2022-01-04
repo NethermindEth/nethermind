@@ -45,7 +45,7 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins), typeof(ReviewBlockTree))]
+    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(SetupKeyStore), typeof(InitializeBlockchain), typeof(InitializePlugins))]
     public class RegisterRpcModules : IStep
     {
         private readonly INethermindApi _api;
