@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain
         private int _canAcceptNewBlocksCounter;
         public bool CanAcceptNewBlocks => _canAcceptNewBlocksCounter == 0;
 
-        public TaskCompletionSource<bool>? _taskCompletionSource;
+        private TaskCompletionSource<bool>? _taskCompletionSource;
 
         public BlockTree(
             IDbProvider? dbProvider,
@@ -1555,7 +1555,7 @@ namespace Nethermind.Blockchain
 
         internal void BlockAcceptingNewBlocks()
         {
-            if (_canAcceptNewBlocksCounter == 0)
+            if (CanAcceptNewBlocks)
             {
                 _taskCompletionSource = new TaskCompletionSource<bool>();
             }
@@ -1565,7 +1565,7 @@ namespace Nethermind.Blockchain
         internal void ReleaseAcceptingNewBlocks()
         {
             Interlocked.Decrement(ref _canAcceptNewBlocksCounter);
-            if (_canAcceptNewBlocksCounter == 0)
+            if (CanAcceptNewBlocks)
             {
                 _taskCompletionSource.SetResult(true);
                 _taskCompletionSource = null;
