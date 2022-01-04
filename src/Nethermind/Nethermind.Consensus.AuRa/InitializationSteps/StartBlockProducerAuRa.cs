@@ -38,7 +38,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps
@@ -133,6 +132,19 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 constantContractTxProcessingEnv,
                 _api.SpecProvider, 
                 new LocalTxFilter(_api.EngineSigner));
+            
+            AuRaBlockProcessor processor = new (
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
+                _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
+                changeableTxProcessingEnv.StateProvider,
+                changeableTxProcessingEnv.StorageProvider,
+                _api.ReceiptStorage,
+                _api.LogManager,
+                changeableTxProcessingEnv.BlockTree,
+                auRaTxFilter,
+                CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride);
 
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
                     changeableTxProcessingEnv.StateProvider,
@@ -157,21 +169,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.DisposeStack.Push(disposableValidator);
             }
 
-            return new AuRaBlockProcessor(
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
-                _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
-                changeableTxProcessingEnv.StateProvider,
-                changeableTxProcessingEnv.StorageProvider, 
-                _api.ReceiptStorage,
-                _api.LogManager,
-                changeableTxProcessingEnv.BlockTree,
-                auRaTxFilter,
-                CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride)
-            {
-                AuRaValidator = _validator
-            };
+            processor.AuRaValidator = _validator;
+            return processor;
         }
 
         private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
