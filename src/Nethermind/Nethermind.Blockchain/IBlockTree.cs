@@ -87,6 +87,14 @@ namespace Nethermind.Blockchain
         /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null);
+        
+        /// <summary>
+        /// Suggests block for inclusion in the block tree. Wait for DB unlock if needed.
+        /// </summary>
+        /// <param name="block">Block to be included</param>
+        /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
+        /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
+        Task<AddBlockResult> SuggestBlockAsync(Block block, bool shouldProcess = true, bool? setAsMain = null);
 
         /// <summary>
         /// Suggests a block header (without body)
