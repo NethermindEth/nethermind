@@ -23,6 +23,50 @@ namespace Nethermind.Trie.Test
     [TestFixture]
     public class RustVerkleLibTest
     {
+        private readonly byte[] treeKeyVersion =
+        {
+            121, 85, 7, 198, 131, 230, 143, 90, 165, 129, 173, 81, 186, 89, 19, 191, 13, 107, 197, 120, 243, 229,
+            224, 183, 72, 25, 6, 8, 210, 159, 31, 0
+        };
+
+        private readonly byte[] treeKeyBalance =
+        {
+            121, 85, 7, 198, 131, 230, 143, 90, 165, 129, 173, 81, 186, 89, 19, 191, 13, 107, 197, 120, 243, 229,
+            224, 183, 72, 25, 6, 8, 210, 159, 31, 1
+        };
+        
+        private readonly byte[] treeKeyNonce =
+        {
+            121, 85, 7, 198, 131, 230, 143, 90, 165, 129, 173, 81, 186, 89, 19, 191, 13, 107, 197, 120, 243, 229,
+            224, 183, 72, 25, 6, 8, 210, 159, 31, 2
+        };
+        
+        private readonly byte[] treeKeyCodeKeccak =
+        {
+            121, 85, 7, 198, 131, 230, 143, 90, 165, 129, 173, 81, 186, 89, 19, 191, 13, 107, 197, 120, 243, 229,
+            224, 183, 72, 25, 6, 8, 210, 159, 31, 3
+        };
+
+        private readonly byte[] treeKeyCodeSize =
+        {
+            121, 85, 7, 198, 131, 230, 143, 90, 165, 129, 173, 81, 186, 89, 19, 191, 13, 107, 197, 120, 243, 229,
+            224, 183, 72, 25, 6, 8, 210, 159, 31, 4
+        };
+
+        private readonly byte[] emptyCodeHashValue =
+        {
+            197, 210, 70, 1, 134, 247, 35, 60, 146, 126, 125, 178, 220, 199, 3, 192, 229, 0, 182, 83, 202, 130, 39,
+            59, 123, 250, 216, 4, 93, 133, 164, 112
+        };
+        
+        private readonly byte[] value0 =  {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+        };
+
+        private readonly byte[] value2 =  {
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2
+        };
+
         [Test]
         public void TestInsertGet()
         {
@@ -35,16 +79,53 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
             
             byte[] array32 = RustVerkleLib.VerkleTrieGet(trie, one32);
-            for (int i = 0; i < 32; i++)
-            {
-                Assert.AreEqual(one[i],array32[i]);
-            }
-            
+            Assert.True(checkIfEqual(one, array32));
+
             byte[] array = RustVerkleLib.VerkleTrieGet(trie, one);
-            for (int i = 0; i < 32; i++)
-            {
-                Assert.AreEqual(one32[i],array[i]);
-            }
+            Assert.True(checkIfEqual(one32, array));
         }
+
+
+        [Test]
+        public void TestInsertAccount()
+        {
+            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyVersion, value0);
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyBalance, value2);
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyNonce, value0);
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyCodeKeccak, emptyCodeHashValue);
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyCodeSize, value0);
+            
+            byte[] version = RustVerkleLib.VerkleTrieGet(trie, treeKeyVersion);
+            Assert.True(checkIfEqual(version, value0));
+            byte[] balance = RustVerkleLib.VerkleTrieGet(trie, treeKeyBalance);
+            Assert.True(checkIfEqual(balance, value2));
+            byte[] nonce = RustVerkleLib.VerkleTrieGet(trie, treeKeyNonce);
+            Assert.True(checkIfEqual(nonce, value0));
+            byte[] codeKeccak = RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeKeccak);
+            Assert.True(checkIfEqual(codeKeccak, emptyCodeHashValue));
+            byte[] codeSize = RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeSize);
+            Assert.True(checkIfEqual(codeSize, value0));
+            
+        }
+        
+        public bool checkIfEqual(byte[] a, byte[] b)
+        {
+            if (a.Length != b.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < a.Length; i++)
+            {
+                if (a[i] != b[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        
     }
 }
