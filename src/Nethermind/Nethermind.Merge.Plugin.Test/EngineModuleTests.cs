@@ -739,7 +739,7 @@ namespace Nethermind.Merge.Plugin.Test
             if (head == null) throw new NotSupportedException();
             return new BlockRequestResult()
             {
-                BlockNumber = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptsRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit
+                BlockNumber = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptsRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit, Timestamp = (ulong)head.Timestamp
             };
         }
 
@@ -754,7 +754,8 @@ namespace Nethermind.Merge.Plugin.Test
                 GasLimit = parent.GasLimit,
                 GasUsed = 0,
                 ReceiptsRoot = Keccak.EmptyTreeHash,
-                LogsBloom = Bloom.Empty
+                LogsBloom = Bloom.Empty,
+                Timestamp = parent.Timestamp + 1,
             };
 
             blockRequest.SetTransactions(Array.Empty<Transaction>());

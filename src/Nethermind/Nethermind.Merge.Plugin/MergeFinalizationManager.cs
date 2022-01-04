@@ -22,95 +22,97 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Merge.Plugin;
-
-public class MergeFinalizationManager : IManualBlockFinalizationManager, IAuRaBlockFinalizationManager
+namespace Nethermind.Merge.Plugin
 {
-    private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
-    private readonly IAuRaBlockFinalizationManager? _auRaBlockFinalizationManager;
-    private bool HasAuRaFinalizationManager => _auRaBlockFinalizationManager != null;
-    private bool IsPostMerge { get; set; }
-
-    public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
-
-    public MergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager,
-        IBlockFinalizationManager? blockFinalizationManager, IPoSSwitcher poSSwitcher)
+    public class MergeFinalizationManager : IManualBlockFinalizationManager, IAuRaBlockFinalizationManager
     {
-        _manualBlockFinalizationManager = manualBlockFinalizationManager;
-        _auRaBlockFinalizationManager = blockFinalizationManager as IAuRaBlockFinalizationManager;
+        private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
+        private readonly IAuRaBlockFinalizationManager? _auRaBlockFinalizationManager;
+        private bool HasAuRaFinalizationManager => _auRaBlockFinalizationManager != null;
+        private bool IsPostMerge { get; set; }
 
-        poSSwitcher.TerminalPoWBlockReached += OnSwitchHappened;
-        if (poSSwitcher.HasEverReachedTerminalPoWBlock())
+        public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
+
+        public MergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager,
+            IBlockFinalizationManager? blockFinalizationManager, IPoSSwitcher poSSwitcher)
+        {
+            _manualBlockFinalizationManager = manualBlockFinalizationManager;
+            _auRaBlockFinalizationManager = blockFinalizationManager as IAuRaBlockFinalizationManager;
+
+            poSSwitcher.TerminalPoWBlockReached += OnSwitchHappened;
+            if (poSSwitcher.HasEverReachedTerminalPoWBlock())
+            {
+                IsPostMerge = true;
+            }
+
+            _manualBlockFinalizationManager.BlocksFinalized += OnBlockFinalized;
+            if (HasAuRaFinalizationManager)
+                _auRaBlockFinalizationManager!.BlocksFinalized += OnBlockFinalized;
+        }
+
+        private void OnSwitchHappened(object? sender, EventArgs e)
         {
             IsPostMerge = true;
         }
-        _manualBlockFinalizationManager.BlocksFinalized += OnBlockFinalized;
-        if (HasAuRaFinalizationManager)
-            _auRaBlockFinalizationManager!.BlocksFinalized += OnBlockFinalized;
-    }
-    
-    private void OnSwitchHappened(object? sender, EventArgs e)
-    {
-        IsPostMerge = true;
-    }
-    
-    private void OnBlockFinalized(object? sender, FinalizeEventArgs e)
-    {
-        BlocksFinalized?.Invoke(this, e);
-    }
 
-    public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock)
-    {
-        _manualBlockFinalizationManager.MarkFinalized(finalizingBlock, finalizedBlock);
-    }
-
-    public long GetLastLevelFinalizedBy(Keccak blockHash)
-    {
-        if (_auRaBlockFinalizationManager is not null)
+        private void OnBlockFinalized(object? sender, FinalizeEventArgs e)
         {
-            return _auRaBlockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
+            BlocksFinalized?.Invoke(this, e);
         }
 
-        throw new InvalidOperationException(
-            $"{nameof(GetLastLevelFinalizedBy)} called when empty {nameof(_auRaBlockFinalizationManager)} is null.");
-    }
-
-    public long? GetFinalizationLevel(long level)
-    {
-        if (_auRaBlockFinalizationManager is not null)
+        public void MarkFinalized(BlockHeader finalizingBlock, BlockHeader finalizedBlock)
         {
-            return _auRaBlockFinalizationManager.GetFinalizationLevel(level);
+            _manualBlockFinalizationManager.MarkFinalized(finalizingBlock, finalizedBlock);
         }
 
-        throw new InvalidOperationException(
-            $"{nameof(GetFinalizationLevel)} called when empty {nameof(_auRaBlockFinalizationManager)} is null.");
-    }
-
-    public void Dispose()
-    {
-        if (IsPostMerge && HasAuRaFinalizationManager)
+        public long GetLastLevelFinalizedBy(Keccak blockHash)
         {
-            _auRaBlockFinalizationManager!.Dispose();
-        }
-    }
-
-    public Keccak LastFinalizedHash { get => _manualBlockFinalizationManager.LastFinalizedHash; }
-
-    public long LastFinalizedBlockLevel
-    {
-        get
-        {
-            if (IsPostMerge)
+            if (_auRaBlockFinalizationManager is not null)
             {
-                return _manualBlockFinalizationManager.LastFinalizedBlockLevel;
+                return _auRaBlockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
             }
 
-            if (HasAuRaFinalizationManager)
+            throw new InvalidOperationException(
+                $"{nameof(GetLastLevelFinalizedBy)} called when empty {nameof(_auRaBlockFinalizationManager)} is null.");
+        }
+
+        public long? GetFinalizationLevel(long level)
+        {
+            if (_auRaBlockFinalizationManager is not null)
             {
-                return _auRaBlockFinalizationManager!.LastFinalizedBlockLevel;
+                return _auRaBlockFinalizationManager.GetFinalizationLevel(level);
             }
 
-            return 0;
+            throw new InvalidOperationException(
+                $"{nameof(GetFinalizationLevel)} called when empty {nameof(_auRaBlockFinalizationManager)} is null.");
+        }
+
+        public void Dispose()
+        {
+            if (IsPostMerge && HasAuRaFinalizationManager)
+            {
+                _auRaBlockFinalizationManager!.Dispose();
+            }
+        }
+
+        public Keccak LastFinalizedHash { get => _manualBlockFinalizationManager.LastFinalizedHash; }
+
+        public long LastFinalizedBlockLevel
+        {
+            get
+            {
+                if (IsPostMerge)
+                {
+                    return _manualBlockFinalizationManager.LastFinalizedBlockLevel;
+                }
+
+                if (HasAuRaFinalizationManager)
+                {
+                    return _auRaBlockFinalizationManager!.LastFinalizedBlockLevel;
+                }
+
+                return 0;
+            }
         }
     }
 }
