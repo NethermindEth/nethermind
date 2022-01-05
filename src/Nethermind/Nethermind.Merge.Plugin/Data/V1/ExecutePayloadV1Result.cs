@@ -15,21 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Core.Crypto;
-using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data.V1
 {
     public class ExecutePayloadV1Result
     {
-        public string? Status => Enum.GetName(typeof(VerificationStatus), EnumStatus)?.ToUpper();
+        public string Status { get; set; }
         
         public Keccak? LatestValidHash { get; set; }
         
         public string? ValidationError { get; set; }
-
-        [JsonIgnore]
-        public VerificationStatus EnumStatus { get; set; }
     }
 }

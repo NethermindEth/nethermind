@@ -34,19 +34,20 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+       // [Ignore("You can execute this test for target node")]
         public async Task CanonicalTreeIsConsistent()
         {
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-            int destinationBlockNumber = 7050;
+            int destinationBlockNumber = 12000;
             long? currentBlockNumber = null;
             Keccak? currentHash = null;
-            var client = new JsonRpcClient($"http://localhost:8550");
+            JsonRpcClient? client = new($"http://localhost:8550");
             do
             {
-                var requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
-                var requestResponse =
+                string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
+                JsonRpcResponse<JObject>? requestResponse =
                     await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] {requestedBlockNumber!, false});
-                var block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
+                BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
                 if (currentHash != null)
                 {
                     Assert.AreEqual(currentHash, block.Hash, $"incorrect block hash found {block}");

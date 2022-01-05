@@ -484,7 +484,7 @@ namespace Nethermind.Consensus.Processing
                     // genesis block
                     break;
                 }
-
+                
                 // !!!
                 // for beam sync we do not expect previous blocks to necessarily be there and we
                 // do not need them since we can requests state from outside

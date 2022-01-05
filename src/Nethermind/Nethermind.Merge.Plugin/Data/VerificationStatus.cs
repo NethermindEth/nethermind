@@ -17,6 +17,16 @@
 
 namespace Nethermind.Merge.Plugin.Data
 {
+    public static class Status
+    {
+        public const string Valid = "VALID";
+
+        public const string Invalid = "INVALID";
+
+        public const string Syncing = "SYNCING";
+    }
+    
+    // old pithos verification - remove
     public enum VerificationStatus
     {
         Valid,

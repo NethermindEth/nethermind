@@ -100,12 +100,12 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (parentHeader == null)
             {
                 // ToDo wait for final PostMerge sync
-                executePayloadResult.EnumStatus = VerificationStatus.Syncing;
+                executePayloadResult.Status = Status.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             if (_ethSyncingInfo.IsSyncing() && synced == false)
             {
-                executePayloadResult.EnumStatus = VerificationStatus.Syncing;
+                executePayloadResult.Status = Status.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             else if (synced == false)
@@ -134,7 +134,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             processedBlock.Header.IsPostMerge = true;
             _blockTree.SuggestBlock(processedBlock);
-            executePayloadResult.EnumStatus = VerificationStatus.Valid;
+            executePayloadResult.Status = Status.Valid;
             executePayloadResult.LatestValidHash = request.BlockHash;
             _blockValidationSemaphore.Wait();
             return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
@@ -237,13 +237,13 @@ namespace Nethermind.Merge.Plugin.Handlers
             ExecutePayloadV1Result executePayloadResult = new();
             if (isValid)
             {
-                executePayloadResult.EnumStatus = VerificationStatus.Valid;
+                executePayloadResult.Status = Status.Valid;
                 executePayloadResult.LatestValidHash = request.BlockHash;
             }
             else
             {
                 executePayloadResult.ValidationError = validationMessage;
-                executePayloadResult.EnumStatus = VerificationStatus.Invalid;
+                executePayloadResult.Status = Status.Invalid;
                 if (_lastValidHashes.ContainsKey(request.ParentHash))
                 {
                     if (_lastValidHashes.TryRemove(request.ParentHash, out Keccak? lastValidHash))
