@@ -1575,6 +1575,18 @@ namespace Nethermind.Blockchain.Test
             await acceptTask;
         }
 
+        [Test]
+        public async Task SuggestBlockAsync_should_wait_for_blockTree_unlock()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.BlockAcceptingNewBlocks();
+            Task suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
+            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            blockTree.ReleaseAcceptingNewBlocks();
+            await suggest;
+            suggest.Status.Should().Be(TaskStatus.RanToCompletion);
+        }
+
         private class TestBlockTreeVisitor : IBlockTreeVisitor
         {
             private readonly ManualResetEvent _manualResetEvent;
