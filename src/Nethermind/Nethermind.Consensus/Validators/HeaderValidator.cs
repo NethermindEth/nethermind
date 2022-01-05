@@ -75,16 +75,7 @@ namespace Nethermind.Consensus.Validators
             bool hashAsExpected = ValidateHash(header);
 
             IReleaseSpec spec = _specProvider.GetSpec(header.Number);
-            bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
-                                  && (isUncle
-                                      || _daoBlockNumber == null
-                                      || header.Number < _daoBlockNumber
-                                      || header.Number >= _daoBlockNumber + 10
-                                      || Bytes.AreEqual(header.ExtraData, DaoExtraData));
-            if (!extraDataValid)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
-            }
+            bool extraDataValid = ValidateExtraData(header, spec, isUncle);
 
             if (parent == null)
             {
@@ -198,6 +189,21 @@ namespace Nethermind.Consensus.Validators
             }
 
             return gasLimitNotTooHigh && gasLimitNotTooLow;
+        }
+
+        protected virtual bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle = false)
+        {
+            bool extraDataValid =  header.ExtraData.Length <= spec.MaximumExtraDataSize
+                   && (isUncle
+                       || _daoBlockNumber == null
+                       || header.Number < _daoBlockNumber
+                       || header.Number >= _daoBlockNumber + 10
+                       || Bytes.AreEqual(header.ExtraData, DaoExtraData));
+            if (!extraDataValid)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
+            }
+            return extraDataValid;
         }
 
         protected virtual bool ValidateTimestamp(BlockHeader parent,BlockHeader header)

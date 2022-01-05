@@ -62,25 +62,27 @@ namespace Nethermind.Merge.Plugin
             bool validDifficulty =
                 ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
             bool validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
-            bool validExtraData = ValidateExtraData(header);
             bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
                 nameof(header.UnclesHash));
             bool validMixedHash = ValidateHeaderField(header, header.MixHash, Keccak.Zero, nameof(header.MixHash));
 
             return validDifficulty
                    && validNonce
-                   && validExtraData
                    && validUncles
                    && validMixedHash;
         }
 
-        private bool ValidateExtraData(BlockHeader header)
+        protected override bool ValidateExtraData(BlockHeader header, IReleaseSpec spec, bool isUncle = false)
         {
-            if (header.ExtraData.Length <= MaxExtraDataBytes) return true;
-            if (_logger.IsWarn)
+            if (_poSSwitcher.IsPos(header))
+            {
+                if (header.ExtraData.Length <= MaxExtraDataBytes) return true;
+                if (_logger.IsWarn)
                     _logger.Warn(
                         $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {nameof(header.MixHash)} exceeded max length of {MaxExtraDataBytes}.");
-            return false;
+                return false;
+            }
+            return base.ValidateExtraData(header, spec, isUncle);
         }
         
         protected override bool ValidateTimestamp(BlockHeader parent, BlockHeader header)
