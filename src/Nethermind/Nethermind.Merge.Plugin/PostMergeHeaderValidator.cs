@@ -28,6 +28,8 @@ namespace Nethermind.Merge.Plugin
 {
     public sealed class PostMergeHeaderValidator : HeaderValidator
     {
+        private const int MaxExtraDataBytes = 32;
+        
         private readonly IPoSSwitcher _poSSwitcher;
 
         public PostMergeHeaderValidator(
@@ -60,15 +62,25 @@ namespace Nethermind.Merge.Plugin
             bool validDifficulty =
                 ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
             bool validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
-            // validExtraData needed in previous version of EIP-3675 specification
-            //bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
+            bool validExtraData = ValidateExtraData(header);
             bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
                 nameof(header.UnclesHash));
+            bool validMixedHash = ValidateHeaderField(header, header.MixHash, Keccak.Zero, nameof(header.MixHash));
 
             return validDifficulty
                    && validNonce
-                   //&& validExtraData
-                   && validUncles;
+                   && validExtraData
+                   && validUncles
+                   && validMixedHash;
+        }
+
+        private bool ValidateExtraData(BlockHeader header)
+        {
+            if (header.ExtraData.Length <= MaxExtraDataBytes) return true;
+            if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {nameof(header.MixHash)} exceeded max length of {MaxExtraDataBytes}.");
+            return false;
         }
         
         protected override bool ValidateTimestamp(BlockHeader parent, BlockHeader header)
