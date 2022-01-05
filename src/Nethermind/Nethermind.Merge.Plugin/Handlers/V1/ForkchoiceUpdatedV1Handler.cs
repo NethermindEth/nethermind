@@ -166,7 +166,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             BlockHeader? blockHeader = _blockTree.FindHeader(confirmedBlockHash, BlockTreeLookupOptions.None);
             if (blockHeader is null)
             {
-                errorMsg = $"Block {confirmedBlockHash} not found for confirmation.";
+                errorMsg = $"Syncing... Block {confirmedBlockHash} not found for confirmation.";
                 if (_logger.IsWarn) _logger.Warn(errorMsg);
             }
 
@@ -179,7 +179,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             Block? headBlock = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.None);
             if (headBlock == null)
             {
-                errorMsg = $"Block {headBlockHash} cannot be found and it will not be set as head.";
+                errorMsg = $"Syncing... Block {headBlockHash} cannot be found and it will not be set as head.";
                 if (_logger.IsWarn) _logger.Warn(errorMsg);
                 return (headBlock, null, errorMsg);
             }
@@ -191,7 +191,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (!TryGetBranch(headBlock, out Block[] branchOfBlocks))
             {
-                errorMsg = $"Block's {headBlockHash} main chain predecessor cannot be found and it will not be set as head.";
+                errorMsg = $"Syncing... Block's {headBlockHash} main chain predecessor cannot be found and it will not be set as head.";
                 if (_logger.IsWarn) _logger.Warn(errorMsg);
             }
 
@@ -208,7 +208,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
                 if (blockHeader is null)
                 {
-                    errorMsg = $"Block {finalizedBlockHash} not found for finalization.";
+                    errorMsg = $"Syncing... Block {finalizedBlockHash} not found for finalization.";
                     if (_logger.IsWarn) _logger.Warn(errorMsg);
                 }
             }
