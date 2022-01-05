@@ -146,8 +146,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IStateProvider _stateProvider;
 
         private bool _paymasterValidationMode;
-        private int _selfBalanceCounter;
-
+        
         public UserOperationTxTracer(
             Transaction? transaction,
             IStateProvider stateProvider,
@@ -244,10 +243,9 @@ namespace Nethermind.AccountAbstraction.Executor
             }
             // in the simulateWallet function of the entryPoint, selfbalance is called twice
             // signalling that validation is switching from the wallet to the paymaster
-            else if (depth == 1 && opcode == Instruction.SELFBALANCE)
-            {
-                _selfBalanceCounter++;
-                if (_selfBalanceCounter == 2) _paymasterValidationMode = true;
+            else if (depth == 1 && opcode == Instruction.NUMBER)
+            { 
+                _paymasterValidationMode = true;
             }
         }
 
