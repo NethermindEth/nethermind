@@ -19,10 +19,8 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
@@ -197,36 +195,20 @@ namespace Nethermind.Evm.Tracing
             return _currentGasAndNesting.Peek().AdditionalGasRequired + RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund, releaseSpec);
         }
 
-        private static bool Executable(Transaction transaction, BlockHeader block, GethLikeTxTracer txTracer, UInt256 gas, ITransactionProcessor transactionProcessor)
-        {
-            transaction.GasLimit = (long)gas;
-            
-            try
-            {
-                transactionProcessor.CallAndRestore(transaction, block, txTracer);
-                string gethTracer = new EthereumJsonSerializer().Serialize(txTracer.BuildResult(), true);
-
-                return !(gethTracer.Contains("\"failed\": true") || gethTracer.Contains("OutOfGas"));
-            }
-            catch (Exception)
-            {
-                return false;
-            }
-        }
-
         private long BinarySearchEstimate(UInt256 leftBound, UInt256 rightBound, UInt256 cap, Transaction tx, BlockHeader header, ITransactionProcessor transactionProcessor)
         {
+            EstimateGasService estimateGasService = new();
             while (leftBound + 1 < rightBound)
             {
                 UInt256 mid = (leftBound + rightBound) / 2;
-                if (!Executable(tx, header, new GethLikeTxTracer(GethTraceOptions.Default), mid, transactionProcessor))
+                if (!estimateGasService.TryExecutableTransaction(tx, header, mid, transactionProcessor))
                     leftBound = mid;
                 else
                     rightBound = mid;
             }
 
             if (rightBound == cap)
-                if (!Executable(tx, header, new GethLikeTxTracer(GethTraceOptions.Default), rightBound, transactionProcessor)) return 0;
+                if (!estimateGasService.TryExecutableTransaction(tx, header,  rightBound, transactionProcessor)) return 0;
             
             return (long)(rightBound);   
         }
@@ -238,31 +220,25 @@ namespace Nethermind.Evm.Tracing
             if (tx.GasLimit > header.GasLimit) 
                 return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx, releaseSpec));
 
-            UInt256 leftBound = Transaction.BaseTxGasCost - 1;
-            tx.SenderAddress ??= Address.Zero;
-            UInt256 rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost)? (UInt256)tx.GasLimit : (UInt256)header.GasLimit;
-            UInt256 feeCap;
+            tx.SenderAddress ??= Address.Zero; //If sender is not specified, use zero address.
             
-            if (tx.GasPrice != 0 && (tx.MaxFeePerGas.Equals( null) && tx.MaxPriorityFeePerGas.Equals(null)))
-                feeCap = tx.GasPrice;
-            else if (!tx.MaxFeePerGas.Equals( null))
-                feeCap = tx.MaxFeePerGas;
-            else
-                feeCap = 0;
+            // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
+            UInt256 leftBound = Transaction.BaseTxGasCost - 1;
+            UInt256 rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost)? (UInt256)tx.GasLimit : (UInt256)header.GasLimit;
 
-            if (feeCap != 0)
-            {
-                UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress);
-                
-                if (tx.Value != 0 && tx.Value >= senderBalance)
-                    return CalculateAdditionalGasRequired(tx, releaseSpec);
-            }
+            UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress);
+            
+            // Calculate and return additional gas required in case of insufficient funds.    
+            if (tx.Value != UInt256.Zero && tx.Value >= senderBalance)
+                return CalculateAdditionalGasRequired(tx, releaseSpec);
 
+            // Set more precise right boundary.
             if (gasCap != 0 && rightBound > gasCap)
                 rightBound = gasCap;
             
             UInt256 cap = rightBound;
 
+            // Execute binary search to find the optimal gas estimation.
             return BinarySearchEstimate(leftBound, rightBound, cap, tx, header, transactionProcessor);
         }
 
