@@ -87,16 +87,13 @@ namespace Nethermind.Blockchain.Producers
                 }
 
                 bool success = _txFilterPipeline.Execute(tx, parent);
-                if (!success)
+                if (success)
                 {
-                    _transactionPool.RemoveTransaction(tx.Hash!);
-                    continue;
+                    if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
+
+                    selectedTransactions++;
+                    yield return tx;
                 }
-                
-                if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be potentially included in block.");
-                
-                selectedTransactions++;
-                yield return tx;
             }
 
             if (_logger.IsDebug) _logger.Debug($"Potentially selected {selectedTransactions} out of {i} pending transactions checked.");
