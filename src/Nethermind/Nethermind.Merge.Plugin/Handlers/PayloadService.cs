@@ -51,7 +51,6 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IdealBlockContext> _payloadStorage = new();
-        private readonly ConcurrentDictionary<Keccak, Transaction[]> _payloadBodyStorage = new();
         private TaskQueue _taskQueue = new();
 
         public PayloadService(
@@ -112,11 +111,9 @@ namespace Nethermind.Merge.Plugin.Handlers
                     // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
                     .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv),
                         cts.Token)
-                    .ContinueWith(LogProductionResult, cts.Token)
-                    .ContinueWith((x) => SetPayloadBody(x.Result, emptyBlock.Hash));
+                    .ContinueWith(LogProductionResult, cts.Token);
 
             _payloadStorage[payloadId.ToHexString()] = new IdealBlockContext(emptyBlock, idealBlockTask, cts);
-            _payloadBodyStorage.TryAdd(emptyBlock.Hash, Array.Empty<Transaction>());
             if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlockTask.Result}");
             return idealBlockTask;
         }
@@ -162,28 +159,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             return null;
         }
 
-        public Transaction[]? GetPayloadBody(Keccak blockHash)
-        {
-            if (_payloadBodyStorage.ContainsKey(blockHash))
-            {
-                _payloadBodyStorage.TryRemove(blockHash, out Transaction[]? transactions);
-                return transactions;
-            }
-
-            return null;
-        }
-
-        private Block? SetPayloadBody(Block? block, Keccak oldBlockHash)
-        {
-            if (block is not null)
-            {
-                _payloadBodyStorage.TryRemove(oldBlockHash, out _);
-                _payloadBodyStorage.TryAdd(block.Hash, block.Transactions);
-            }
-
-            return block;
-        }
-
         private byte[] ComputeNextPayloadId(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             byte[] input = new byte[32 + 32 + 32 + 20];
@@ -208,12 +183,6 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 _payloadStorage.Remove(payloadId.ToHexString(), out _);
                 if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadId.ToHexString()} as it was not requested");
-            }
-
-            if (_payloadBodyStorage.ContainsKey(blockHash))
-            {
-                _payloadBodyStorage.Remove(blockHash, out _);
-                if (_logger.IsInfo) _logger.Info($"Cleaned up payload body with hash={blockHash} as it was not requested");
             }
         }
 

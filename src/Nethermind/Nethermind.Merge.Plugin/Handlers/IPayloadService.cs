@@ -27,7 +27,5 @@ namespace Nethermind.Merge.Plugin.Handlers
         Task<byte[]> StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
 
         Block? GetPayload(byte[] payloadId);
-
-        Transaction[]? GetPayloadBody(Keccak blockHash);
     }
 }

@@ -15,10 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -29,26 +28,26 @@ namespace Nethermind.Merge.Plugin.Handlers.V1;
 
 public class GetPayloadBodiesV1Handler : IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]>
 {
-    private readonly IPayloadService _payloadService;
+    private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
     
-    public GetPayloadBodiesV1Handler(IPayloadService payloadService, ILogManager logManager)
+    public GetPayloadBodiesV1Handler(IBlockTree blockTree, ILogManager logManager)
     {
-        _payloadService = payloadService;
+        _blockTree = blockTree;
         _logger = logManager.GetClassLogger();
     }
 
-    public async Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> HandleAsync(Keccak[] blockHashes)
+    public Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> HandleAsync(Keccak[] blockHashes)
     {
         List<ExecutionPayloadBodyV1Result> payloadBodies = new ();
         foreach (Keccak hash in blockHashes)
         {
-            Transaction[]? transactions = _payloadService.GetPayloadBody(hash);
-            if (transactions is not null)
+            Block? block = _blockTree.FindBlock(hash);
+            if (block is not null)
             {
-                payloadBodies.Add(new ExecutionPayloadBodyV1Result(transactions));
+                payloadBodies.Add(new ExecutionPayloadBodyV1Result(block.Transactions));
             }
         }
-        return ResultWrapper<ExecutionPayloadBodyV1Result[]>.Success(payloadBodies.ToArray());
+        return Task.FromResult(ResultWrapper<ExecutionPayloadBodyV1Result[]>.Success(payloadBodies.ToArray()));
     }
 }

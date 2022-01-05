@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
                 new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.MergeConfig, chain.BlockchainProcessor, synchronizer, chain.StateDb, chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
-                new GetPayloadBodiesV1Handler(payloadService, chain.LogManager),
+                new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
                 chain.LogManager);
         }
 

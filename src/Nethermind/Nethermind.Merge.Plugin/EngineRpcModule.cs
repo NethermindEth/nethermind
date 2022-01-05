@@ -74,7 +74,7 @@ namespace Nethermind.Merge.Plugin
         public ResultWrapper<PreparePayloadResult> engine_preparePayload(
             PreparePayloadRequest preparePayloadRequest)
         {
-                return _preparePayloadHandler.Handle(preparePayloadRequest);
+            return _preparePayloadHandler.Handle(preparePayloadRequest);
         }
 
         public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
@@ -132,6 +132,7 @@ namespace Nethermind.Merge.Plugin
                 return ResultWrapper<string>.Fail($"{nameof(engine_forkchoiceUpdated)} timeout.", ErrorCodes.Timeout);
             }
         }
+
         public Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash)
         {
             // probably this method won't be needed
@@ -160,13 +161,13 @@ namespace Nethermind.Merge.Plugin
         {
             return _executionStatusHandler.Handle();
         }
-        
+
         public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId)
         {
             return await (_getPayloadHandlerV1.HandleAsync(payloadId));
         }
-        
-                
+
+
         public async Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(
             BlockRequestResult executionPayload)
         {
@@ -184,13 +185,15 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayloadV1)} timeout.");
-                return ResultWrapper<ExecutePayloadV1Result>.Fail($"{nameof(engine_executePayloadV1)} timeout.", ErrorCodes.Timeout);
+                return ResultWrapper<ExecutePayloadV1Result>.Fail($"{nameof(engine_executePayloadV1)} timeout.",
+                    ErrorCodes.Timeout);
             }
         }
-        
-        
 
-        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
+
+
+        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(
+            ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         {
             if (await _locker.WaitAsync(Timeout))
             {
@@ -206,25 +209,14 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdated)} timeout.");
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdated)} timeout.", ErrorCodes.Timeout);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdated)} timeout.",
+                    ErrorCodes.Timeout);
             }
         }
 
         public async Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesV1(Keccak[] blockHashes)
         {
-            if (await _locker.WaitAsync(Timeout))
-            {
-                try
-                {
-                    return await _executionPayloadBodiesHandler.HandleAsync(blockHashes);
-                }
-                finally
-                {
-                    _locker.Release();
-                }
-            }
-            if (_logger.IsWarn) _logger.Warn($"{nameof(engine_getPayloadBodiesV1)} timeout.");
-                return ResultWrapper<ExecutionPayloadBodyV1Result[]>.Fail($"{nameof(engine_getPayloadBodiesV1)} timeout.", ErrorCodes.Timeout);
+            return await _executionPayloadBodiesHandler.HandleAsync(blockHashes);
         }
     }
 }
