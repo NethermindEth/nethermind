@@ -87,10 +87,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
-            // if (_stateDb.KeyExists(forkchoiceState.HeadBlockHash) == false)
-            //     return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
-
-
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
                 return ReturnSyncing();
