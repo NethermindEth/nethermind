@@ -96,13 +96,15 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             ExecutePayloadV1Result executePayloadResult = new();
 
-            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
-            if (parentHeader == null)
+            Block? parent = _blockTree.FindBlock(request.ParentHash, BlockTreeLookupOptions.None);
+            if (parent == null)
             {
                 // ToDo wait for final PostMerge sync
                 executePayloadResult.Status = Status.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
+            
+            BlockHeader? parentHeader = parent.Header;
             if (_ethSyncingInfo.IsSyncing() && synced == false)
             {
                 executePayloadResult.Status = Status.Syncing;
