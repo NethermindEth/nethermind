@@ -101,7 +101,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
  
             if (_ethSyncingInfo.IsSyncing() && synced == false)
             {
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { Status = EngineStatus.Syncing});
+                return ReturnSyncing();
             }
             else if (synced == false)
             {
