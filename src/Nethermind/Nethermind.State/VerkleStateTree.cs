@@ -177,7 +177,7 @@ namespace Nethermind.State
              return treeKey;
          }
 
-         private byte[][] GetTreeKeysForAccount(Address address)
+         public byte[][] GetTreeKeysForAccount(Address address)
          {
              byte[] treeKeyPrefix = GetTreeKeyPrefix(address, 0);
              
