@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Tracing
                 return 0;
             }
 
-            return (long)(rightBound);   
+            return rightBound;   
         }        
 
         private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit)
