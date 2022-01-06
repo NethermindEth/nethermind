@@ -16,6 +16,8 @@
 // 
 
 using System;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test
@@ -83,6 +85,35 @@ namespace Nethermind.Trie.Test
 
             byte[] array = RustVerkleLib.VerkleTrieGet(trie, one);
             Assert.True(checkIfEqual(one32, array));
+        }
+
+        [Test]
+        public void TestInsertRawAccountValues()
+        {
+            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            UInt256 version = UInt256.Zero;
+            UInt256 balance = new (2);
+            UInt256 nonce = UInt256.Zero;
+            Keccak codeHash = Keccak.OfAnEmptyString;
+            UInt256 codeSize = UInt256.Zero;
+            
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyVersion, version.ToBigEndian());
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyBalance, balance.ToBigEndian());
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyNonce, nonce.ToBigEndian());
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyCodeKeccak, codeHash.Bytes);
+            RustVerkleLib.VerkleTrieInsert(trie, treeKeyCodeSize, codeSize.ToBigEndian());
+            
+            byte[] versionVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyVersion);
+            Assert.True(checkIfEqual(version.ToBigEndian(), versionVal));
+            byte[] balanceVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyBalance);
+            Assert.True(checkIfEqual(balance.ToBigEndian(), balanceVal));
+            byte[] nonceVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyNonce);
+            Assert.True(checkIfEqual(nonce.ToBigEndian(), nonceVal));
+            byte[] codeKeccakVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeKeccak);
+            Assert.True(checkIfEqual(codeHash.Bytes, codeKeccakVal));
+            byte[] codeSizeVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeSize);
+            Assert.True(checkIfEqual(codeSize.ToBigEndian(), codeSizeVal));
+            
         }
 
 
