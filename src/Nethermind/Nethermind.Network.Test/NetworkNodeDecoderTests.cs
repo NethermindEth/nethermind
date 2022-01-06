@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -31,8 +30,8 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_do_roundtrip()
         {
-            NetworkNodeDecoder networkNodeDecoder = new NetworkNodeDecoder();
-            NetworkNode node = new NetworkNode(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
+            NetworkNodeDecoder networkNodeDecoder = new();
+            NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, 100L);
             Rlp encoded = networkNodeDecoder.Encode(node);
             NetworkNode decoded = networkNodeDecoder.Decode(encoded.Bytes.AsRlpStream());
             Assert.AreEqual(node.Host, decoded.Host);
@@ -44,8 +43,8 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_do_roundtrip_negative_reputation()
         {
-            NetworkNodeDecoder networkNodeDecoder = new NetworkNodeDecoder();
-            NetworkNode node = new NetworkNode(TestItem.PublicKeyA, "127.0.0.1", 30303, -100L);
+            NetworkNodeDecoder networkNodeDecoder = new();
+            NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, -100L);
             Rlp encoded = networkNodeDecoder.Encode(node);
             NetworkNode decoded = networkNodeDecoder.Decode(encoded.Bytes.AsRlpStream());
             Assert.AreEqual(node.Host, decoded.Host);
@@ -57,8 +56,8 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_read_regression()
         {
-            NetworkNodeDecoder networkNodeDecoder = new NetworkNodeDecoder();
-            Rlp encoded = new Rlp(Bytes.FromHexString("f8a7b84013a1107b6f78a4977222d2d5a4cd05a8a042b75222c8ec99129b83793eda3d214208d4e835617512fc8d148d3d1b4d89530861644f531675b1fb64b785c6c152953a3a666666663a38352e3131322e3131332e3138368294c680ce0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
+            NetworkNodeDecoder networkNodeDecoder = new();
+            Rlp encoded = new(Bytes.FromHexString("f8a7b84013a1107b6f78a4977222d2d5a4cd05a8a042b75222c8ec99129b83793eda3d214208d4e835617512fc8d148d3d1b4d89530861644f531675b1fb64b785c6c152953a3a666666663a38352e3131322e3131332e3138368294c680ce0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
             NetworkNode decoded = networkNodeDecoder.Decode(encoded.Bytes.AsRlpStream());
             Assert.AreEqual("::ffff:85.112.113.186", decoded.Host);
             Assert.AreEqual(new PublicKey(Bytes.FromHexString("0x13a1107b6f78a4977222d2d5a4cd05a8a042b75222c8ec99129b83793eda3d214208d4e835617512fc8d148d3d1b4d89530861644f531675b1fb64b785c6c152")), decoded.NodeId);
@@ -69,8 +68,8 @@ namespace Nethermind.Network.Test
         [Test]
         public void Negative_port_just_in_case_for_resilience()
         {
-            NetworkNodeDecoder networkNodeDecoder = new NetworkNodeDecoder();
-            NetworkNode node = new NetworkNode(TestItem.PublicKeyA, "127.0.0.1", -1, -100L);
+            NetworkNodeDecoder networkNodeDecoder = new();
+            NetworkNode node = new(TestItem.PublicKeyA, "127.0.0.1", -1, -100L);
             Rlp encoded = networkNodeDecoder.Encode(node);
             NetworkNode decoded = networkNodeDecoder.Decode(encoded.Bytes.AsRlpStream());
             Assert.AreEqual(node.Host, decoded.Host);

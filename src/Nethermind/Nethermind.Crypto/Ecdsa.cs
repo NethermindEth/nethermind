@@ -73,5 +73,17 @@ namespace Nethermind.Crypto
             
             return new PublicKey(publicKey);
         }
+        
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, Keccak message)
+        {
+            Span<byte> publicKey = stackalloc byte[33];
+            bool success = Proxy.RecoverKeyFromCompact(publicKey, message.Bytes, signature.Bytes, signature.RecoveryId, true);
+            if (!success)
+            {
+                return null;
+            }
+            
+            return new CompressedPublicKey(publicKey);
+        }
     }
 }

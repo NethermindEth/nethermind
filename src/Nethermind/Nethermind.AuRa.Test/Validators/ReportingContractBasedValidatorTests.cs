@@ -30,6 +30,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -231,6 +232,7 @@ namespace Nethermind.AuRa.Test.Validators
                     stateProvider,
                     cache ?? new ReportingContractBasedValidator.Cache(),
                     specProvider,
+                    Substitute.For<IGasPriceOracle>(),
                     LimboLogs.Instance);
             }
         }

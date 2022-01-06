@@ -94,9 +94,9 @@ namespace Nethermind.Wallet.Test
         public void TearDown()
         {
             string resourcePath = TestContext.CurrentContext.TestDirectory;
-            foreach (var file in _files)
+            foreach ((string Name, string Content) file in _files)
             {
-                var filePath = Path.Combine(resourcePath, file.Name);
+                string filePath = Path.Combine(resourcePath, file.Name);
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
@@ -114,13 +114,13 @@ namespace Nethermind.Wallet.Test
             
             IWallet wallet = Substitute.For<IWallet>();
             
-            var unlocker = new AccountUnlocker(keyStoreConfig, wallet, LimboLogs.Instance, new KeyStorePasswordProvider(keyStoreConfig));
+            AccountUnlocker unlocker = new AccountUnlocker(keyStoreConfig, wallet, LimboLogs.Instance, new KeyStorePasswordProvider(keyStoreConfig));
             unlocker.UnlockAccounts();
 
-            for (var index = 0; index < test.UnlockAccounts.Length; index++)
+            for (int index = 0; index < test.UnlockAccounts.Length; index++)
             {
-                var account = test.UnlockAccounts[index];
-                var expectedPassword = test.ExpectedPasswords[index];
+                Address account = test.UnlockAccounts[index];
+                string expectedPassword = test.ExpectedPasswords[index];
                 wallet.Received(1).UnlockAccount(account, Arg.Is<SecureString>(s => s.Unsecure() == expectedPassword), TimeSpan.FromDays(1000));
             }
         }

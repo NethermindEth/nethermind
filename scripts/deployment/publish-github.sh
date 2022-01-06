@@ -20,6 +20,7 @@ cd $LIN_RELEASE && PUB_LIN_FILE="$(basename nethermind-linux-amd64-*)" && cd ..
 cd $OSX_RELEASE && PUB_OSX_FILE="$(basename nethermind-darwin-amd64-*)" && cd ..
 cd $WIN_RELEASE && PUB_WIN_FILE="$(basename nethermind-windows-amd64-*)" && cd ..
 cd $LIN_ARM64_RELEASE && PUB_LIN_ARM64_FILE="$(basename nethermind-linux-arm64-*)" && cd ..
+cd $OSX_ARM64_RELEASE && PUB_OSX_ARM64_FILE="$(basename nethermind-darwin-arm64-*)" && cd ..
 
 if [[ ! -z $GIT_SHORT_TAG ]] && [[ $GIT_SHORT_TAG =~ ^$GIT_SHORT_TAG_FIRST3\d* ]] && [[ $STATUS != 200 ]]; then
 
@@ -54,19 +55,10 @@ echo Uploading Darwin release
 echo ======================================================
 
 ./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$OSX_RELEASE/$PUB_OSX_FILE
+./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/$OSX_ARM64_RELEASE/$PUB_OSX_ARM64_FILE
 
 echo =======================================================
 echo Finished uploading Darwin release
-echo =======================================================
-
-echo =======================================================
-echo Uploading plugins package
-echo =======================================================
-
-./nethermind/scripts/deployment/upload-github-release-asset.sh github_api_token=$GITHUB_TOKEN owner=$GH_OWNER repo=$GH_REPO tag=$GIT_SHORT_TAG filename=$RELEASE_DIRECTORY/plugins/$PUB_PLUGINS_FILE
-
-echo =======================================================
-echo Finished uploading plugins package
 echo =======================================================
 
 echo =======================================================

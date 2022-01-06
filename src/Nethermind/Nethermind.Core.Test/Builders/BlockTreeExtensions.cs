@@ -48,16 +48,16 @@ namespace Nethermind.Core.Test.Builders
 
         public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
-            BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)).OfChainLength(branchLength, splitVariant).TestObject;
+            BlockTree alternative = Build.A.BlockTree(blockTree.FindBlock(0, BlockTreeLookupOptions.RequireCanonical)!).OfChainLength(branchLength, splitVariant).TestObject;
             List<Block> blocks = new();
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
-                Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical);
+                Block block = alternative.FindBlock(i, BlockTreeLookupOptions.RequireCanonical)!;
                 blockTree.SuggestBlock(block);
                 blocks.Add(block);
             }
 
-            if (branchLength > blockTree.Head.Number)
+            if (branchLength > blockTree.Head!.Number)
             {
                 blockTree.UpdateMainChain(blocks.ToArray(), true);
             }

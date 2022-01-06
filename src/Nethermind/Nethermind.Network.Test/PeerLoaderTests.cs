@@ -16,9 +16,9 @@
 
 using System.Collections.Generic;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
 using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;
@@ -42,7 +42,7 @@ namespace Nethermind.Network.Test
             _discoveryConfig = new DiscoveryConfig();
             _statsManager = Substitute.For<INodeStatsManager>();
             _peerStorage = Substitute.For<INetworkStorage>();
-            _loader = new PeerLoader(_networkConfig, _discoveryConfig, _statsManager, _peerStorage, LimboLogs.Instance);
+            _loader = new PeerLoader(_networkConfig, _statsManager, _peerStorage, LimboLogs.Instance);
         }
 
         [Test]
@@ -72,6 +72,7 @@ namespace Nethermind.Network.Test
         public void Can_load_bootnodes()
         {
             _discoveryConfig.Bootnodes = enodesString;
+            _networkConfig.Bootnodes = _discoveryConfig.Bootnodes;
             List<Peer> peers = _loader.LoadPeers();
             Assert.AreEqual(2, peers.Count);
             foreach (Peer peer in peers)

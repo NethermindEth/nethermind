@@ -21,6 +21,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
@@ -197,11 +200,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 Transaction tx = transactions[i];
                 tx.DeliveredBy = Node.Id;
                 tx.Timestamp = _timestamper.UnixTime.Seconds;
-                AddTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
-                _floodController.Report(result == AddTxResult.Added);
+                AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
+                _floodController.Report(accepted);
 
                 if (Logger.IsTrace) Logger.Trace(
-                    $"{Node:c} sent {tx.Hash} tx and it was {result} (chain ID = {tx.Signature?.ChainId})");
+                    $"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
             }
         }
 

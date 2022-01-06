@@ -113,17 +113,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     PeerInfo? allocatedPeer = allocation.Current;
                     if (allocatedPeer != null)
                     {
-                        Task task = Dispatch(allocatedPeer, request, cancellationToken);
-                        if (!Feed.IsMultiFeed)
-                        {
-                            if(Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
-                            await task;
-                            if(Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
-                        }
-
-#pragma warning disable 4014
-                        task.ContinueWith(t =>
-#pragma warning restore 4014
+                        Task task = Dispatch(allocatedPeer, request, cancellationToken).ContinueWith(t =>
                         {
                             if (t.IsFaulted)
                             {
@@ -150,6 +140,13 @@ namespace Nethermind.Synchronization.ParallelSync
                                 Free(allocation);
                             }
                         }, cancellationToken);
+                        
+                        if (!Feed.IsMultiFeed)
+                        {
+                            if(Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
+                            await task;
+                            if(Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
+                        }
                     }
                     else
                     {

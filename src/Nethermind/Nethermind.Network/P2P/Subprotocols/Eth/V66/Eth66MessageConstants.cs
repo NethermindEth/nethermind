@@ -21,6 +21,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 {
     internal class Eth66MessageConstants
     {
-        public static readonly Random Random = new Random();
+        public static readonly Random Random = new();
     }
 }

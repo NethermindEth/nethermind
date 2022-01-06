@@ -30,26 +30,26 @@ namespace Nethermind.Network.Rlpx.Handshake
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int TotalLength = IsTokenUsedOffset + IsTokenUsedLength;
         
-        public byte[] Serialize(AckMessage message)
+        public byte[] Serialize(AckMessage msg)
         {
             byte[] data = new byte[TotalLength];
-            Buffer.BlockCopy(message.EphemeralPublicKey.Bytes, 0, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
-            Buffer.BlockCopy(message.Nonce, 0, data, NonceOffset, NonceLength);
-            data[IsTokenUsedOffset] = message.IsTokenUsed ? (byte)0x01 : (byte)0x00;
+            Buffer.BlockCopy(msg.EphemeralPublicKey.Bytes, 0, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
+            Buffer.BlockCopy(msg.Nonce, 0, data, NonceOffset, NonceLength);
+            data[IsTokenUsedOffset] = msg.IsTokenUsed ? (byte)0x01 : (byte)0x00;
             return data;
         }
 
-        public AckMessage Deserialize(byte[] bytes)
+        public AckMessage Deserialize(byte[] msgBytes)
         {
-            if (bytes.Length != TotalLength)
+            if (msgBytes.Length != TotalLength)
             {
-                throw new NetworkingException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {bytes.Length}", NetworkExceptionType.Validation);
+                throw new NetworkingException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {msgBytes.Length}", NetworkExceptionType.Validation);
             }
 
-            AckMessage authMessage = new AckMessage();
-            authMessage.EphemeralPublicKey = new PublicKey(bytes.AsSpan().Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength));
-            authMessage.Nonce = bytes.Slice(NonceOffset, NonceLength);
-            authMessage.IsTokenUsed = bytes[IsTokenUsedOffset] == 0x01;
+            AckMessage authMessage = new();
+            authMessage.EphemeralPublicKey = new PublicKey(msgBytes.AsSpan().Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength));
+            authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength);
+            authMessage.IsTokenUsed = msgBytes[IsTokenUsedOffset] == 0x01;
             return authMessage;
         }
     }

@@ -33,7 +33,7 @@ namespace Nethermind.Network.Rlpx
 
         public FrameCipher(byte[] aesKey)
         {
-            AesEngine aes = new AesEngine();
+            AesEngine aes = new();
             
             Debug.Assert(aesKey.Length == KeySize, $"AES key expected to be {KeySize} bytes long");
 

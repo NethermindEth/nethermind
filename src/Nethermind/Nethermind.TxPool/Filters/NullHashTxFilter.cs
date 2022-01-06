@@ -26,14 +26,14 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal class NullHashTxFilter : IIncomingTxFilter
     {
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
             if (tx.Hash is null)
             {
-                return (false, AddTxResult.Invalid);
+                return AcceptTxResult.Invalid.WithMessage("transaction Hash is null");
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

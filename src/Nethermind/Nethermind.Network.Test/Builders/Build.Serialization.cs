@@ -22,7 +22,7 @@ namespace Nethermind.Network.Test.Builders
     {
         public static SerializationBuilder SerializationService(this Build build)
         {
-            return new SerializationBuilder();
+            return new();
         }
     }
 }

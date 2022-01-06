@@ -30,6 +30,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
 using ILogger = Nethermind.Logging.ILogger;
@@ -154,7 +156,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
-            Bootstrap clientBootstrap = new Bootstrap();
+            Bootstrap clientBootstrap = new();
             clientBootstrap.Group(_workerGroup);
             clientBootstrap.Channel<TcpSocketChannel>();
             clientBootstrap.Option(ChannelOption.TcpNodelay, true);

@@ -17,7 +17,6 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Processing;

@@ -49,13 +49,14 @@ namespace Nethermind.JsonRpc.WebSockets
             IJsonRpcProcessor jsonRpcProcessor,
             IJsonRpcService jsonRpcService,
             IJsonRpcLocalStats jsonRpcLocalStats,
-            IJsonSerializer jsonSerializer)
+            IJsonSerializer jsonSerializer,
+            JsonRpcUrl? url = null)
             : base(clientName, handler, jsonSerializer)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
             _jsonRpcLocalStats = jsonRpcLocalStats;
-            _jsonRpcContext = new JsonRpcContext(endpointType, this);
+            _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
         }
 
         public override void Dispose()
@@ -98,7 +99,7 @@ namespace Nethermind.JsonRpc.WebSockets
 
         private void IncrementBytesReceivedMetric(int size)
         {
-            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.WebSocket)
+            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
             {
                 Interlocked.Add(ref Metrics.JsonRpcBytesReceivedWebSockets, size);
             }
@@ -111,7 +112,7 @@ namespace Nethermind.JsonRpc.WebSockets
         
         private void IncrementBytesSentMetric(int size)
         {
-            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.WebSocket)
+            if (_jsonRpcContext.RpcEndpoint == RpcEndpoint.Ws)
             {
                 Interlocked.Add(ref Metrics.JsonRpcBytesSentWebSockets, size);
             }

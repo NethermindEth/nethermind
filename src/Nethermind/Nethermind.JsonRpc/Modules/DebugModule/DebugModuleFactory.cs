@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using Newtonsoft.Json;
@@ -85,6 +86,8 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 _specProvider,
                 _logManager);
 
+            ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(txEnv.TransactionProcessor);
+            BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.StateProvider);
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txEnv,
                 _blockValidator,
@@ -93,12 +96,14 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 _receiptStorage,
                 _dbProvider,
                 _specProvider,
-                _logManager);
+                _logManager,
+                transactionsExecutor);
 
             GethStyleTracer tracer = new(
                 chainProcessingEnv.ChainProcessor,
                 _receiptStorage,
-                _blockTree);
+                _blockTree, 
+                transactionProcessorAdapter);
 
             DebugBridge debugBridge = new(
                 _configProvider,

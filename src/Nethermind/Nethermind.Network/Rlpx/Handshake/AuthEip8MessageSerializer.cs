@@ -30,21 +30,21 @@ namespace Nethermind.Network.Rlpx.Handshake
             _messagePad = messagePad;
         }
         
-        public byte[] Serialize(AuthEip8Message message)
+        public byte[] Serialize(AuthEip8Message msg)
         {
             byte[] data = Rlp.Encode(
-                Rlp.Encode(Bytes.Concat(message.Signature.Bytes, message.Signature.RecoveryId)),
-                Rlp.Encode(message.PublicKey.Bytes),
-                Rlp.Encode(message.Nonce),
-                Rlp.Encode(message.Version)
+                Rlp.Encode(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId)),
+                Rlp.Encode(msg.PublicKey.Bytes),
+                Rlp.Encode(msg.Nonce),
+                Rlp.Encode(msg.Version)
             ).Bytes;
 
             return _messagePad?.Pad(data) ?? data;
         }
 
-        public AuthEip8Message Deserialize(byte[] data)
+        public AuthEip8Message Deserialize(byte[] msgBytes)
         {
-            RlpStream rlpStream = data.AsRlpStream();
+            RlpStream rlpStream = msgBytes.AsRlpStream();
             AuthEip8Message authMessage = new();
             rlpStream.ReadSequenceLength();
             ReadOnlySpan<byte> sigAllBytes = rlpStream.DecodeByteArraySpan();

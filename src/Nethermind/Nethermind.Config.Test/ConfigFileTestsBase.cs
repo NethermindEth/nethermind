@@ -34,7 +34,7 @@ namespace Nethermind.Config.Test
     public abstract class ConfigFileTestsBase
     {
         private readonly IDictionary<string, ConfigProvider> _cachedProviders = new ConcurrentDictionary<string, ConfigProvider>();
-        private readonly Dictionary<string, IEnumerable<string>> _configGroups = new Dictionary<string, IEnumerable<string>>();
+        private readonly Dictionary<string, IEnumerable<string>> _configGroups = new();
         
         [OneTimeSetUp]
         public void Setup()
@@ -148,11 +148,11 @@ namespace Nethermind.Config.Test
             Dictionary<string, IEnumerable<string>> groups = BuildConfigGroups();
             string[] configWildcards = configWildcard.Split(" ");
 
-            List<IEnumerable<string>> toIntersect = new List<IEnumerable<string>>();
+            List<IEnumerable<string>> toIntersect = new();
             foreach (string singleWildcard in configWildcards)
             {
                 string singleWildcardBase = singleWildcard.Replace("^", "");
-                var result = groups.ContainsKey(singleWildcardBase)
+                IEnumerable<string> result = groups.ContainsKey(singleWildcardBase)
                     ? groups[singleWildcardBase]
                     : Enumerable.Repeat(singleWildcardBase, 1);
 
@@ -164,7 +164,7 @@ namespace Nethermind.Config.Test
                 toIntersect.Add(result);
             }
 
-            var intersection = toIntersect.First();
+            IEnumerable<string> intersection = toIntersect.First();
             foreach (IEnumerable<string> next in toIntersect.Skip(1))
             {
                 intersection = intersection.Intersect(next);
@@ -183,7 +183,7 @@ namespace Nethermind.Config.Test
             foreach (string configFile in Resolve(configWildcard))
             {
                 Console.WriteLine("Testing " + configFile);
-                if (!_cachedProviders.TryGetValue(configFile, out ConfigProvider configProvider))
+                if (!_cachedProviders.TryGetValue(configFile, out ConfigProvider? configProvider))
                 {
                     configProvider = GetConfigProviderFromFile(configFile);
                 }
@@ -195,34 +195,37 @@ namespace Nethermind.Config.Test
         
         private static ConfigProvider GetConfigProviderFromFile(string configFile)
         {
-            ConfigProvider configProvider = new ConfigProvider();
-            var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
+            ConfigProvider configProvider = new();
+            string configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
             configProvider.AddSource(new JsonConfigSource(configPath));
             return configProvider;
         }
         
         private Dictionary<string, IEnumerable<string>> BuildConfigGroups()
         {
-            if (_configGroups.Count == 0)
+            lock (_configGroups)
             {
-                lock (_configGroups)
+                if (_configGroups.Count == 0)
                 {
-                    if (_configGroups.Count == 0)
+                    lock (_configGroups)
                     {
-                        PropertyInfo[] propertyInfos = GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
-                        foreach (PropertyInfo propertyInfo in propertyInfos)
+                        if (_configGroups.Count == 0)
                         {
-                            ConfigFileGroup groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
-                            if (groupAttribute != null)
+                            PropertyInfo[] propertyInfos = GetType().GetProperties(BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.FlattenHierarchy);
+                            foreach (PropertyInfo propertyInfo in propertyInfos)
                             {
-                                _configGroups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this));
+                                ConfigFileGroup? groupAttribute = propertyInfo.GetCustomAttribute<ConfigFileGroup>();
+                                if (groupAttribute is not null)
+                                {
+                                    _configGroups.Add(groupAttribute.Name, (IEnumerable<string>)propertyInfo.GetValue(this)!);
+                                }
                             }
                         }
                     }
                 }
+                
+                return _configGroups;
             }
-            
-            return _configGroups;
         }
         
         protected class ConfigFileGroup : Attribute
@@ -232,7 +235,7 @@ namespace Nethermind.Config.Test
                 Name = name;
             }
 
-            public string Name { get; private set; }
+            public string Name { get; }
         }
     }
 }

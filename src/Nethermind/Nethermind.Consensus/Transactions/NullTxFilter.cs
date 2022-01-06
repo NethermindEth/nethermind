@@ -16,12 +16,13 @@
 // 
 
 using Nethermind.Core;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
 {
     public class NullTxFilter : ITxFilter
     {
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => (true, string.Empty);
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader) => AcceptTxResult.Accepted;
         
         public static readonly NullTxFilter Instance = new(); 
     }

@@ -14,11 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 using NUnit.Framework;
 
@@ -30,11 +27,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         [Test]
         public void RoundTrip()
         {
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.BlockHeadersMessage();
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.BlockHeadersMessage();
             ethMessage.BlockHeaders = new[] { Build.A.BlockHeader.TestObject };
-            BlockHeadersMessage message = new BlockHeadersMessage(ethMessage, 2, 3000);
+            BlockHeadersMessage message = new(ethMessage, 2, 3000);
 
-            BlockHeadersMessageSerializer serializer = new BlockHeadersMessageSerializer();
+            BlockHeadersMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);
         }

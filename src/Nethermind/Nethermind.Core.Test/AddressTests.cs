@@ -102,7 +102,7 @@ namespace Nethermind.Core.Test
             Assert.False(addressA == addressB);
             Assert.False(addressA == null);
             Assert.False(null == addressA);
-            Assert.True((Address)null == null);
+            Assert.True((Address?)null == null);
         }
 
         [Test]
@@ -119,7 +119,7 @@ namespace Nethermind.Core.Test
             Assert.True(addressA != addressB);
             Assert.True(addressA != null);
             Assert.True(null != addressA);
-            Assert.False((Address)null != null);
+            Assert.False((Address?)null != null);
         }
 
         [Test]

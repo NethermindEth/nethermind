@@ -54,7 +54,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Empty_commit_restore()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Commit();
             provider.Restore(-1);
@@ -62,7 +62,7 @@ namespace Nethermind.Store.Test
 
         private StorageProvider BuildStorageProvider(Context ctx)
         {
-            StorageProvider provider = new StorageProvider(new TrieStore(new MemDb(), LogManager), ctx.StateProvider, LogManager);
+            StorageProvider provider = new(new TrieStore(new MemDb(), LogManager), ctx.StateProvider, LogManager);
             return provider;
         }
 
@@ -72,7 +72,7 @@ namespace Nethermind.Store.Test
         [TestCase(2)]
         public void Same_address_same_index_different_values_restore(int snapshot)
         {
-            Context ctx = new Context();
+            Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
             provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
@@ -85,7 +85,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Keep_in_cache()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
             provider.Commit();
@@ -105,7 +105,7 @@ namespace Nethermind.Store.Test
         [TestCase(2)]
         public void Same_address_different_index(int snapshot)
         {
-            Context ctx = new Context();
+            Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
             provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
@@ -118,7 +118,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Commit_restore()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
             provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
@@ -149,7 +149,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Commit_no_changes()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
             provider.Set(new StorageCell(ctx.Address1, 2), _values[2]);
@@ -163,7 +163,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Commit_no_changes_2()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Get(new StorageCell(ctx.Address1, 1));
             provider.Get(new StorageCell(ctx.Address1, 1));
@@ -192,7 +192,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Commit_trees_clear_caches_get_previous_root()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             // block 1
             StorageProvider storageProvider = BuildStorageProvider(ctx);
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
@@ -221,7 +221,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_commit_when_exactly_at_capacity_regression()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             // block 1
             StorageProvider storageProvider = BuildStorageProvider(ctx);
             for (int i = 0; i < Resettable.StartCapacity; i++)
@@ -240,8 +240,8 @@ namespace Nethermind.Store.Test
         {
             public IStateProvider StateProvider { get; }
 
-            public readonly Address Address1 = new Address(Keccak.Compute("1"));
-            public readonly Address Address2 = new Address(Keccak.Compute("2"));
+            public readonly Address Address1 = new(Keccak.Compute("1"));
+            public readonly Address Address2 = new(Keccak.Compute("2"));
             
             public Context()
             {

@@ -67,7 +67,7 @@ namespace Nethermind.Init.Steps
 
         private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase, Type apiType)
         {
-            var stepsWithMatchingApiType = stepsWithTheSameBase
+            StepInfo[] stepsWithMatchingApiType = stepsWithTheSameBase
                 .Where(t => HasConstructorWithParameter(t.StepType, apiType)).ToArray();
 
             if (stepsWithMatchingApiType.Length != 1)

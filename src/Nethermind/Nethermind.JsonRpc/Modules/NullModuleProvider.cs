@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules
         
         public IReadOnlyCollection<string> All => Array.Empty<string>();
         
-        public ModuleResolution Check(string methodName, RpcEndpoint rpcEndpoint)
+        public ModuleResolution Check(string methodName, JsonRpcContext context)
         {
             return ModuleResolution.Unknown;
         }

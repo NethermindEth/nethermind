@@ -50,6 +50,7 @@ using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -132,7 +133,7 @@ namespace Nethermind.Api
         public IFilterManager? FilterManager { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
-        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
+        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; } =
             new BuildBlocksWhenRequested();
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }

@@ -20,7 +20,6 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -37,9 +36,9 @@ namespace Nethermind.Config.Test
             ForEachProperty(CheckDescribedOrHidden);
         }
 
-        private static void ForEachProperty(Action<PropertyInfo, object> verifier)
+        private static void ForEachProperty(Action<PropertyInfo, object?> verifier)
         {
-            var dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll").OrderBy(n => n).ToArray();
+            string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll").OrderBy(n => n).ToArray();
             foreach (string dll in dlls)
             {
                 TestContext.WriteLine($"Verifying {nameof(StandardConfigTests)} on {Path.GetFileName(dll)}");
@@ -53,9 +52,15 @@ namespace Nethermind.Config.Test
                     TestContext.WriteLine($"  Verifying type {configType.Name}");
                     PropertyInfo[] properties = configType.GetProperties();
 
-                    Type implementationType = configType.Assembly.GetExportedTypes()
+                    Type? implementationType = configType.Assembly.GetExportedTypes()
                         .SingleOrDefault(t => t.IsClass && configType.IsAssignableFrom(t));
-                    object instance = Activator.CreateInstance(implementationType);
+
+                    if (implementationType is null)
+                    {
+                        throw new Exception($"Missing config implementation for {configType}");
+                    }
+                    
+                    object? instance = Activator.CreateInstance(implementationType);
 
                     foreach (PropertyInfo property in properties)
                     {
@@ -73,12 +78,12 @@ namespace Nethermind.Config.Test
             }
         }
 
-        private static void CheckDescribedOrHidden(PropertyInfo property, object instance)
+        private static void CheckDescribedOrHidden(PropertyInfo property, object? instance)
         {
-            ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
+            ConfigItemAttribute? attribute = property.GetCustomAttribute<ConfigItemAttribute>();
             if (string.IsNullOrWhiteSpace(attribute?.Description) && !(attribute?.HiddenFromDocs ?? false))
             {
-                ConfigCategoryAttribute categoryLevel =
+                ConfigCategoryAttribute? categoryLevel =
                     property.DeclaringType?.GetCustomAttribute<ConfigCategoryAttribute>();
                 if (!(categoryLevel?.HiddenFromDocs ?? false))
                 {
@@ -88,9 +93,9 @@ namespace Nethermind.Config.Test
             }
         }
 
-        private static void CheckDefault(PropertyInfo property, object instance)
+        private static void CheckDefault(PropertyInfo property, object? instance)
         {
-            ConfigItemAttribute attribute = property.GetCustomAttribute<ConfigItemAttribute>();
+            ConfigItemAttribute? attribute = property.GetCustomAttribute<ConfigItemAttribute>();
             if (attribute == null || attribute.DisabledForCli)
             {
                 //there are properties without attribute - we don't pay attention to them 
@@ -100,14 +105,14 @@ namespace Nethermind.Config.Test
             string expectedValue = attribute.DefaultValue?.Trim('"') ?? "null";
             string actualValue;
 
-            object value = property.GetValue(instance);
-            if (value == null)
+            object? value = property.GetValue(instance);
+            if (value is null)
             {
                 actualValue = "null";
             }
             else if (value is bool)
             {
-                actualValue = value.ToString()?.ToLowerInvariant();
+                actualValue = value.ToString()!.ToLowerInvariant();
             }
             else if (value is IList actualValueArray)
             {
@@ -134,7 +139,7 @@ namespace Nethermind.Config.Test
             }
             else
             {
-                actualValue = value.ToString();
+                actualValue = value.ToString()!;
             }
 
             Assert.AreEqual(actualValue, expectedValue,

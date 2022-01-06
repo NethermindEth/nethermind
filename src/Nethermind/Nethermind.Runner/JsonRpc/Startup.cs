@@ -37,6 +37,7 @@ using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
@@ -105,12 +106,15 @@ namespace Nethermind.Runner.JsonRpc
             ILogger logger = logManager.GetClassLogger();
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+            IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
             if (initConfig.WebSocketsEnabled)
             {
                 app.UseWebSockets(new WebSocketOptions());
-                app.UseWhen(ctx => ctx.WebSockets.IsWebSocketRequest 
-                                   && ctx.Connection.LocalPort == jsonRpcConfig.WebSocketsPort,
+                app.UseWhen(ctx =>
+                    ctx.WebSockets.IsWebSocketRequest &&
+                    jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+                    jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
                 builder => builder.UseWebSocketsModules());
             }
             
@@ -137,20 +141,22 @@ namespace Nethermind.Runner.JsonRpc
                 }
             });
             
-            app.Use(async (ctx, next) =>
+            app.Run(async (ctx) =>
             {
                 if (ctx.Request.Method == "GET")
                 {
                     await ctx.Response.WriteAsync("Nethermind JSON RPC");
                 }
 
-                if (ctx.Connection.LocalPort == jsonRpcConfig.Port && ctx.Request.Method == "POST")
+                if (ctx.Request.Method == "POST" &&
+                    jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+                    jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));
                     try
                     {
-                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http))
+                        await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, JsonRpcContext.Http(jsonRpcUrl)))
                         {
                             using (result)
                             {

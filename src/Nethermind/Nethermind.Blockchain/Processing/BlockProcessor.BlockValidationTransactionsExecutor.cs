@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Processing
             {
             }
 
-            protected BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IStateProvider stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IStateProvider stateProvider)
             {
                 _transactionProcessor = transactionProcessor;
                 _stateProvider = stateProvider;
