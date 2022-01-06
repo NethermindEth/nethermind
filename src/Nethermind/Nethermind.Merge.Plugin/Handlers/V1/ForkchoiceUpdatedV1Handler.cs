@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -54,6 +55,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly ISynchronizer _synchronizer;
         private readonly IDb _stateDb;
+        private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
         private bool synced = false;
 
@@ -69,6 +71,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockchainProcessor blockchainProcessor,
             ISynchronizer synchronizer,
             IDb stateDb,
+            ISyncConfig syncConfig,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -82,11 +85,17 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _blockchainProcessor = blockchainProcessor;
             _synchronizer = synchronizer;
             _stateDb = stateDb;
+            _syncConfig = syncConfig;
             _logger = logManager.GetClassLogger();
         }
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
+            if (_syncConfig.FastSync && _blockTree.LowestInsertedBodyNumber != 0)
+            {
+                return ReturnSyncing();
+            }
+            
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) = EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
                 return ReturnSyncing();

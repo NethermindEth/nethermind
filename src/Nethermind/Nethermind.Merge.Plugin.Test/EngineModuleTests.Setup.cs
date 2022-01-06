@@ -18,6 +18,7 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -60,9 +61,9 @@ namespace Nethermind.Merge.Plugin.Test
                 new GetPayloadHandler(payloadStorage, chain.LogManager),
                 new GetPayloadV1Handler(payloadService, chain.LogManager),
                 new ExecutePayloadHandler(chain.HeaderValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.LogManager),
-                new ExecutePayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.MergeConfig, synchronizer, chain.StateDb, chain.LogManager),
+                new ExecutePayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.MergeConfig, synchronizer, new SyncConfig(), chain.LogManager),
                 new ForkChoiceUpdatedHandler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.MergeConfig, chain.BlockchainProcessor, synchronizer, chain.StateDb, chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.MergeConfig, chain.BlockchainProcessor, synchronizer, chain.StateDb, new SyncConfig(), chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 chain.LogManager,
                 chain.BlockTree);

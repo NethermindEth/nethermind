@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -54,7 +55,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IInitConfig _initConfig;
         private readonly IMergeConfig _mergeConfig;
         private readonly ISynchronizer _synchronizer;
-        private readonly IDb _db;
+        private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
         private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
@@ -69,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IInitConfig initConfig,
             IMergeConfig mergeConfig,
             ISynchronizer synchronizer,
-            IDb db,
+            ISyncConfig syncConfig,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -79,7 +80,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _initConfig = initConfig;
             _mergeConfig = mergeConfig;
             _synchronizer = synchronizer;
-            _db = db;
+            _syncConfig = syncConfig;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
             _processor.BlockProcessed += (s, e) =>
@@ -96,6 +97,12 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             ExecutePayloadV1Result executePayloadResult = new();
 
+            // ToDo wait for final PostMerge sync
+            if (_syncConfig.FastSync && _blockTree.LowestInsertedBodyNumber != 0)
+            {
+                executePayloadResult.Status = Status.Syncing;
+                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+            }
             Block? parent = _blockTree.FindBlock(request.ParentHash, BlockTreeLookupOptions.None);
             if (parent == null)
             {
@@ -135,7 +142,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             processedBlock.Header.IsPostMerge = true;
-            _blockTree.SuggestBlock(processedBlock);
+            _blockTree.SuggestBlock(processedBlock, true);
             executePayloadResult.Status = Status.Valid;
             executePayloadResult.LatestValidHash = request.BlockHash;
             _blockValidationSemaphore.Wait();

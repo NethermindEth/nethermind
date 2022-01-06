@@ -34,7 +34,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-       // [Ignore("You can execute this test for target node")]
+        [Ignore("You can execute this test for target node")]
         public async Task CanonicalTreeIsConsistent()
         {
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();

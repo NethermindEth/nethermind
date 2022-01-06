@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -109,6 +110,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
+                ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
 
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
                 PayloadService payloadService = new (_idealBlockProductionContext,
@@ -134,12 +136,12 @@ namespace Nethermind.Merge.Plugin
                         _api.Config<IInitConfig>(),
                         _mergeConfig,
                         _api.Synchronizer!,
-                        _api.DbProvider!.StateDb,
+                        syncConfig,
                         _api.LogManager),
                     new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
                         _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
-                        _poSSwitcher, _api.EthSyncingInfo, _api.BlockConfirmationManager, payloadService, _mergeConfig, _api.BlockchainProcessor, _api.Synchronizer, _api.DbProvider!.StateDb, _api.LogManager),
+                        _poSSwitcher, _api.EthSyncingInfo, _api.BlockConfirmationManager, payloadService, _mergeConfig, _api.BlockchainProcessor, _api.Synchronizer, _api.DbProvider!.StateDb, syncConfig, _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
                     _api.LogManager,
