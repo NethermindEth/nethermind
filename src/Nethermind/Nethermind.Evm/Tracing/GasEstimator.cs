@@ -1,14 +1,10 @@
 using System;
 using System.Linq;
 using System.Text;
-using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing
@@ -28,8 +24,6 @@ namespace Nethermind.Evm.Tracing
 
         public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer)
         {
-            //TODO: check if we can use gasTracer estimate in more cases
-            
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1);
             
             long intrinsicGas = tx.GasLimit - gasTracer.IntrinsicGasAt;
@@ -41,7 +35,9 @@ namespace Nethermind.Evm.Tracing
             tx.SenderAddress ??= Address.Zero; //If sender is not specified, use zero address.
             
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
-            UInt256 leftBound = Transaction.BaseTxGasCost - 1;
+            UInt256 leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= Transaction.BaseTxGasCost) 
+                ? (UInt256) gasTracer.GasSpent - 1 
+                : Transaction.BaseTxGasCost - 1;
             UInt256 rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost) 
                 ? (UInt256)tx.GasLimit 
                 : (UInt256)header.GasLimit;
@@ -83,33 +79,11 @@ namespace Nethermind.Evm.Tracing
 
         private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, UInt256 gasLimit)
         {
-            // CallOutputTracer tracer = new CallOutputTracer();
-            GethLikeTxTracer txTracer = new(GethTraceOptions.Default);
+            EstimateWithBinarySearchTracer tracer = new();
             transaction.GasLimit = (long)gasLimit;
-            _transactionProcessor.CallAndRestore(transaction, block, txTracer);
-
-            if (txTracer.BuildResult().Failed)
-            {
-                return false;
-            }
-
-            bool outOfGas = false;
-            foreach (GethTxTraceEntry entry in txTracer.BuildResult().Entries)
-            {
-                string? error = entry.Error;
-                if (error is "OutOfGas")
-                {
-                    outOfGas = true;
-                    break;
-                }
-            }
+            _transactionProcessor.CallAndRestore(transaction, block, tracer);
             
-            //TODO: Check if CallOutputTracer wouldn't be enough.
-            // tracer.Error == "OutOfGas" || tracer.ReturnValue.SequenceEqual(Encoding.UTF8.GetBytes("OutOfGas"))
-
-            return !outOfGas;
+            return !(tracer.Error == "OutOfGas" || tracer.Error == "gas limit below intrinsic gas" || tracer.ReturnValue.SequenceEqual(Encoding.UTF8.GetBytes("OutOfGas")));
         }
     }
-
 }
-

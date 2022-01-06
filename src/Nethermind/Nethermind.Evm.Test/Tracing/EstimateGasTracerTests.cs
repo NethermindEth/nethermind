@@ -81,8 +81,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, true);
             tracer.ReportActionEnd(400, Array.Empty<byte>()); // this would not happen but we want to ensure that precompiles are ignored
             tracer.ReportActionEnd(600, Array.Empty<byte>());
-            
-            tracer.CalculateEstimate(tx, block.Header, _stateProvider, (UInt256)(1000), _transactionProcessor, _specProvider.GetSpec(block.Header.Number)).Should().Be(0);
+
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            estimator.Estimate(tx, block.Header, tracer).Should().Be(0);
         }
 
         [Test]
@@ -109,7 +110,9 @@ namespace Nethermind.Evm.Test.Tracing
             
             tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
             tracer.ReportActionEnd(600, Array.Empty<byte>());
-            tracer.CalculateEstimate(tx, block.Header, _stateProvider, (UInt256)(1000), _transactionProcessor, _specProvider.GetSpec(block.Header.Number)).Should().Be(0);
+            
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            estimator.Estimate(tx, block.Header, tracer).Should().Be(0);
         }
 
         [Test]
@@ -133,8 +136,9 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(200, Array.Empty<byte>());
                 tracer.ReportActionEnd(300, Array.Empty<byte>()); // should not happen
             }
-        
-            tracer.CalculateEstimate(tx, block.Header, _stateProvider, (UInt256)(1000), _transactionProcessor, _specProvider.GetSpec(block.Header.Number)).Should().Be(14L);
+
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            estimator.Estimate(tx, block.Header, tracer).Should().Be(14L);
         }
 
         [Test]
@@ -160,109 +164,115 @@ namespace Nethermind.Evm.Test.Tracing
                 tracer.ReportActionEnd(400, Array.Empty<byte>());
                 tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
-        
-            tracer.CalculateEstimate(tx, block.Header, _stateProvider, (UInt256)(1000), _transactionProcessor, _specProvider.GetSpec(block.Header.Number)).Should().Be(24L);
+
+            GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            estimator.Estimate(tx, block.Header, tracer).Should().Be(24L);
         }
 
         [Test]
-        public void Handles_well_revert()
-        {
-            long gasLimit = 100000000;
-            Transaction tx = Build.A.Transaction.WithGasLimit(100000000).TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-            
-            EstimateGasTracer tracer = new();
-            long gasLeft = gasLimit - 22000;
-            tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-            gasLeft = 63 * gasLeft / 64;
-            tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-            gasLeft = 63 * gasLeft / 64;
-            tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-        
-            if (_executionType.IsAnyCreate())
-            {
-                tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
-                tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
-                tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
-            }
-            else
-            {
-                tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
-                tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
-                tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
-            }
-        
-            tracer.CalculateEstimate(tx, block.Header, _stateProvider, (UInt256)(1000), _transactionProcessor, _specProvider.GetSpec(block.Header.Number)).Should().Be(35146L);
-        }
-        
-        [Test]
-        public void Easy_one_level_case()
-        {
-            EstimateGasTracer tracer = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-            
-            tracer.ReportAction(128, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-            tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-        
-            tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
-            tracer.ReportActionEnd(65, Array.Empty<byte>());
-        
-            tracer.CalculateEstimate(tx, block.Header, _stateProvider, (UInt256)(128), _transactionProcessor,_specProvider.GetSpec(block.Header.Number)).Should().Be(1);
-        }
+       public void Handles_well_revert()
+       {
+           long gasLimit = 100000000;
+           Transaction tx = Build.A.Transaction.WithGasLimit(100000000).TestObject;
+           Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+           
+           EstimateGasTracer tracer = new();
+           long gasLeft = gasLimit - 22000;
+           tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+           gasLeft = 63 * gasLeft / 64;
+           tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           gasLeft = 63 * gasLeft / 64;
+           tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+       
+           if (_executionType.IsAnyCreate())
+           {
+               tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
+               tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
+               tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
+           }
+           else
+           {
+               tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
+               tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
+               tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
+           }
 
-        [Test]
-        public void Handles_well_nested_calls_where_most_nested_defines_excess()
-        {
-            EstimateGasTracer tracer = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-            
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-            tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-        
-            if (_executionType.IsAnyCreate())
-            {
-                tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>()); // second level
-                tracer.ReportActionEnd(400, Address.Zero, Array.Empty<byte>());
-                tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
-            }
-            else
-            {
-                tracer.ReportActionEnd(200, Array.Empty<byte>()); // second level
-                tracer.ReportActionEnd(400, Array.Empty<byte>());
-                tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
-            }
-        
-            tracer.CalculateEstimate(tx, block.Header, _stateProvider, (UInt256)(1000), _transactionProcessor, _specProvider.GetSpec(block.Header.Number)).Should().Be(18);
-        }
+           GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+           estimator.Estimate(tx, block.Header, tracer).Should().Be(35146L);
+       }
+       
+       [Test]
+       public void Easy_one_level_case()
+       {
+           EstimateGasTracer tracer = new();
+           Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
+           Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+           
+           tracer.ReportAction(128, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+           tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+       
+           tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
+           tracer.ReportActionEnd(65, Array.Empty<byte>());
 
-        [Test]
-        public void Handles_well_nested_calls_where_least_nested_defines_excess()
-        {
-            EstimateGasTracer tracer = new();
-            Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
-            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-            
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-            tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-        
-            if (_executionType.IsAnyCreate())
-            {
-                tracer.ReportActionEnd(300, Address.Zero, Array.Empty<byte>()); // second level
-                tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>());
-                tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
-            }
-            else
-            {
-                tracer.ReportActionEnd(300, Array.Empty<byte>()); // second level
-                tracer.ReportActionEnd(200, Array.Empty<byte>());
-                tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
-            }
-        
-            tracer.CalculateEstimate(tx, block.Header, _stateProvider, (UInt256)(1000), _transactionProcessor, _specProvider.GetSpec(block.Header.Number)).Should().Be(17);
-        }
+           GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+           estimator.Estimate(tx, block.Header, tracer).Should().Be(1);
+       }
+       
+       [Test]
+       public void Handles_well_nested_calls_where_most_nested_defines_excess()
+       {
+           EstimateGasTracer tracer = new();
+           Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
+           Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+           
+           tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+           tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+       
+           if (_executionType.IsAnyCreate())
+           {
+               tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>()); // second level
+               tracer.ReportActionEnd(400, Address.Zero, Array.Empty<byte>());
+               tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+           }
+           else
+           {
+               tracer.ReportActionEnd(200, Array.Empty<byte>()); // second level
+               tracer.ReportActionEnd(400, Array.Empty<byte>());
+               tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+           }
+
+           GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+           estimator.Estimate(tx, block.Header, tracer).Should().Be(18);
+       }
+
+       [Test]
+       public void Handles_well_nested_calls_where_least_nested_defines_excess()
+       {
+           EstimateGasTracer tracer = new();
+           Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
+           Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+           
+           tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+           tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+       
+           if (_executionType.IsAnyCreate())
+           {
+               tracer.ReportActionEnd(300, Address.Zero, Array.Empty<byte>()); // second level
+               tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>());
+               tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+           }
+           else
+           {
+               tracer.ReportActionEnd(300, Array.Empty<byte>()); // second level
+               tracer.ReportActionEnd(200, Array.Empty<byte>());
+               tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+           }
+
+           GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider);
+           estimator.Estimate(tx, block.Header, tracer).Should().Be(17);
+       }
     }
+    
 }
