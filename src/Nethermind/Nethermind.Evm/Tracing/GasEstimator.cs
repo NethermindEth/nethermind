@@ -83,7 +83,7 @@ namespace Nethermind.Evm.Tracing
             transaction.GasLimit = (long)gasLimit;
             _transactionProcessor.CallAndRestore(transaction, block, tracer);
             
-            return !(tracer.Error == "OutOfGas" || tracer.Error == "gas limit below intrinsic gas" || tracer.ReturnValue.SequenceEqual(Encoding.UTF8.GetBytes("OutOfGas")));
+            return !(tracer.Error == "OutOfGas" || tracer.Error == "gas limit below intrinsic gas");
         }
     }
 }
