@@ -600,6 +600,117 @@ namespace Nethermind.State
         {
             
         }
+
+        public Keccak UpdateAccountCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec releaseSpec,
+            bool isGenesis = false)
+        {
+            _needsStateRootUpdate = true;
+            Account? account = GetThroughCache(address);
+            if (account is null)
+            {
+                throw new InvalidOperationException($"Account {address} is null when updating code hash");
+            }
+            if (code.Length == 0)
+            {
+                return Keccak.OfAnEmptyString;
+            }
+            
+            Keccak codeHash = Keccak.Compute(code.Span);
+            if (account.CodeHash != codeHash)
+            {
+                if (_logger.IsTrace) _logger.Trace($"  Update {address} C {account.CodeHash} -> {codeHash}");
+                Account changedAccount = account.WithChangedCodeHash(codeHash);
+                _tree.SetCode(address, code.ToArray());
+                PushUpdate(address, changedAccount);
+            }
+            else if (releaseSpec.IsEip158Enabled && !isGenesis)
+            {
+                if (_logger.IsTrace) _logger.Trace($"  Touch {address} (code hash)");
+                if (account.IsEmpty)
+                {
+                    PushTouch(address, account, releaseSpec, account.Balance.IsZero);
+                }
+            }
+            return codeHash;
+        }
+        
+        public void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec releaseSpec, bool isGenesis = false)
+        {
+            _needsStateRootUpdate = true;
+            Account? account = GetThroughCache(address);
+            if (account is null)
+            {
+                throw new InvalidOperationException($"Account {address} is null when updating code hash");
+            }
+            
+            if (account.CodeHash != codeHash)
+            {
+                if (_logger.IsTrace) _logger.Trace($"  Update {address} C {account.CodeHash} -> {codeHash}");
+                Account changedAccount = account.WithChangedCodeHash(codeHash);
+                PushUpdate(address, changedAccount);
+            }
+            else if (releaseSpec.IsEip158Enabled && !isGenesis)
+            {
+                if (_logger.IsTrace) _logger.Trace($"  Touch {address} (code hash)");
+                if (account.IsEmpty)
+                {
+                    PushTouch(address, account, releaseSpec, account.Balance.IsZero);
+                }
+            }
+        }
+        
+        // TODO: what to do here?
+        // public void TouchCode(Keccak codeHash)
+        // {
+        //     if (_codeDb is WitnessingStore witnessingStore)
+        //     {
+        //         witnessingStore.Touch(codeHash.Bytes);
+        //     }
+        // }
+
+        public Keccak UpdateCode(Address address, ReadOnlyMemory<byte> code)
+        {
+            _needsStateRootUpdate = true;
+            if (code.Length == 0)
+            {
+                return Keccak.OfAnEmptyString;
+            }
+
+            Keccak codeHash = Keccak.Compute(code.Span);
+            
+            _tree.SetCode(address, code.ToArray());
+
+            return codeHash;
+        }
+
+        public Keccak GetCodeHash(Address address)
+        {
+            Account account = GetThroughCache(address);
+            return account?.CodeHash ?? Keccak.OfAnEmptyString;
+        }
+    
+        // TODO: get code function implementation - refer to geth code
+        // public byte[] GetCode(Keccak codeHash)
+        // {
+        //     byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+        //     if (code is null)
+        //     {
+        //         throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+        //     }
+        //
+        //     return code;
+        // }
+        //
+        // public byte[] GetCode(Address address)
+        // {
+        //     Account? account = GetThroughCache(address);
+        //     if (account is null)
+        //     {
+        //         return Array.Empty<byte>();
+        //     }
+        //
+        //     return GetCode(account.CodeHash);
+        // }
         
     }
     
