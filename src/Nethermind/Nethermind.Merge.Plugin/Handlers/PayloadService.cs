@@ -42,7 +42,6 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class PayloadService : IPayloadService
     {
         private readonly Eth2BlockProductionContext _idealBlockContext;
-        private readonly Eth2BlockProductionContext _emptyBlockContext;
         private readonly IInitConfig _initConfig;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
@@ -56,13 +55,11 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public PayloadService(
             Eth2BlockProductionContext idealBlockContext,
-            Eth2BlockProductionContext emptyBlockContext,
             IInitConfig initConfig,
             ISealer sealer,
             ILogManager logManager)
         {
             _idealBlockContext = idealBlockContext;
-            _emptyBlockContext = emptyBlockContext;
             _initConfig = initConfig;
             _sealer = sealer;
             _logger = logManager.GetClassLogger();
@@ -80,9 +77,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         private Task PreparePayload(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
-            if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
-            Block emptyBlock = _idealBlockContext.BlockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
-            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
+            Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
             return GeneratePayload(payloadId, parentHeader, payloadAttributes, emptyBlock);
         }
         
@@ -99,6 +94,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             //     });
             // await CleanupOldPayloadWithDelay(payloadId, TimeSpan.FromSeconds(_cleanupDelay));
         }
+
+        private Block ProduceEmptyBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
+            Block emptyBlock = _idealBlockContext.BlockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
+            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
+            return emptyBlock;
+        }
         
         private Task ProduceIdealBlock(byte[] payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock, CancellationTokenSource cts)
         {
@@ -106,9 +109,10 @@ namespace Nethermind.Merge.Plugin.Handlers
             Task<Block?> idealBlockTask =
                 _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
                     // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
-                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv), cts.Token) 
+                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv),
+                        cts.Token)
                     .ContinueWith(LogProductionResult, cts.Token);
-            
+
             _payloadStorage[payloadId.ToHexString()] = new IdealBlockContext(emptyBlock, idealBlockTask, cts);
             if (_logger.IsTrace) _logger.Trace($"Prepared ideal block from payload {payloadId} block result: {idealBlockTask.Result}");
             return idealBlockTask;
@@ -167,13 +171,13 @@ namespace Nethermind.Merge.Plugin.Handlers
             return inputHash.Bytes.Slice(0, 8);
         }
 
-        private async Task CleanupOldPayloadWithDelay(byte[] payloadId, TimeSpan delay)
+        private async Task CleanupOldPayloadWithDelay(byte[] payloadId, Keccak blockHash, TimeSpan delay)
         {
             await Task.Delay(delay, CancellationToken.None);
-            CleanupOldPayload(payloadId);
+            CleanupOldPayload(payloadId, blockHash);
         }
 
-        private void CleanupOldPayload(byte[] payloadId)
+        private void CleanupOldPayload(byte[] payloadId, Keccak blockHash)
         {
             if (_payloadStorage.ContainsKey(payloadId.ToHexString()))
             {

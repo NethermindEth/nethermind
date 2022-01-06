@@ -113,8 +113,7 @@ namespace Nethermind.Merge.Plugin
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
 
                 PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
-                PayloadService payloadService = new (_idealBlockProductionContext,
-                    _emptyBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
+                PayloadService payloadService = new (_idealBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,
@@ -144,8 +143,8 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher, _api.EthSyncingInfo, _api.BlockConfirmationManager, payloadService, _mergeConfig, _api.BlockchainProcessor, _api.Synchronizer, _api.DbProvider!.StateDb, syncConfig, _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
-                    _api.LogManager,
-                    _api.BlockTree);
+                    new GetPayloadBodiesV1Handler(_api.BlockTree, _api.LogManager),
+                    _api.LogManager);
 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
