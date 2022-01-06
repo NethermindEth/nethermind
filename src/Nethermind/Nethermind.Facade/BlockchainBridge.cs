@@ -188,9 +188,10 @@ namespace Nethermind.Facade
                 tx,
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
-            
-            long estimate = estimateGasTracer.CalculateEstimate(tx, header, _stateProvider, UInt256.Zero, _transactionProcessor, _specProvider.GetSpec(header.Number));
-            
+
+            GasEstimator gasEstimator = new(_transactionProcessor, _stateProvider, _specProvider);
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
+
             return new CallOutput 
             {
                 Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, 

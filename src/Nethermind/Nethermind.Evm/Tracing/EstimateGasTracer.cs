@@ -195,53 +195,6 @@ namespace Nethermind.Evm.Tracing
             return _currentGasAndNesting.Peek().AdditionalGasRequired + RefundHelper.CalculateClaimableRefund(intrinsicGas + NonIntrinsicGasSpentBeforeRefund, TotalRefund, releaseSpec);
         }
 
-        private long BinarySearchEstimate(UInt256 leftBound, UInt256 rightBound, UInt256 cap, Transaction tx, BlockHeader header, ITransactionProcessor transactionProcessor)
-        {
-            EstimateGasService estimateGasService = new();
-            while (leftBound + 1 < rightBound)
-            {
-                UInt256 mid = (leftBound + rightBound) / 2;
-                if (!estimateGasService.TryExecutableTransaction(tx, header, mid, transactionProcessor))
-                    leftBound = mid;
-                else
-                    rightBound = mid;
-            }
-
-            if (rightBound == cap)
-                if (!estimateGasService.TryExecutableTransaction(tx, header,  rightBound, transactionProcessor)) return 0;
-            
-            return (long)(rightBound);   
-        }
-
-        public long CalculateEstimate(Transaction tx, BlockHeader header, IStateProvider stateProvider, UInt256 gasCap, ITransactionProcessor transactionProcessor, IReleaseSpec releaseSpec)
-        {
-            
-            long intrinsicGas = tx.GasLimit - IntrinsicGasAt;
-            if (tx.GasLimit > header.GasLimit) 
-                return Math.Max(intrinsicGas, GasSpent + CalculateAdditionalGasRequired(tx, releaseSpec));
-
-            tx.SenderAddress ??= Address.Zero; //If sender is not specified, use zero address.
-            
-            // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
-            UInt256 leftBound = Transaction.BaseTxGasCost - 1;
-            UInt256 rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost)? (UInt256)tx.GasLimit : (UInt256)header.GasLimit;
-
-            UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress);
-            
-            // Calculate and return additional gas required in case of insufficient funds.    
-            if (tx.Value != UInt256.Zero && tx.Value >= senderBalance)
-                return CalculateAdditionalGasRequired(tx, releaseSpec);
-
-            // Set more precise right boundary.
-            if (gasCap != 0 && rightBound > gasCap)
-                rightBound = gasCap;
-            
-            UInt256 cap = rightBound;
-
-            // Execute binary search to find the optimal gas estimation.
-            return BinarySearchEstimate(leftBound, rightBound, cap, tx, header, transactionProcessor);
-        }
-
         private int _currentNestingLevel = -1;
 
         private bool _isInPrecompile;
