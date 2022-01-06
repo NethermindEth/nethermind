@@ -37,12 +37,12 @@ namespace Nethermind.Evm.Tracing
             tx.SenderAddress ??= Address.Zero; //If sender is not specified, use zero address.
             
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
-            UInt256 leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= Transaction.BaseTxGasCost) 
-                ? (UInt256) gasTracer.GasSpent - 1 
+            long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= Transaction.BaseTxGasCost) 
+                ? gasTracer.GasSpent - 1 
                 : Transaction.BaseTxGasCost - 1;
-            UInt256 rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost) 
-                ? (UInt256)tx.GasLimit 
-                : (UInt256)header.GasLimit;
+            long rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost) 
+                ? tx.GasLimit 
+                : header.GasLimit;
 
             UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
             
@@ -56,11 +56,11 @@ namespace Nethermind.Evm.Tracing
             return BinarySearchEstimate(leftBound, rightBound, rightBound, tx, header);
         }
         
-        private long BinarySearchEstimate(UInt256 leftBound, UInt256 rightBound, UInt256 cap, Transaction tx, BlockHeader header)
+        private long BinarySearchEstimate(long leftBound, long rightBound, long cap, Transaction tx, BlockHeader header)
         {
             while (leftBound + 1 < rightBound)
             {
-                UInt256 mid = (leftBound + rightBound) / 2;
+                long mid = (leftBound + rightBound) / 2;
                 if (!TryExecutableTransaction(tx, header, mid))
                 {
                     leftBound = mid;
@@ -79,14 +79,13 @@ namespace Nethermind.Evm.Tracing
             return (long)(rightBound);   
         }        
 
-        private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, UInt256 gasLimit)
+        private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit)
         {
             OutOfGasTracer tracer = new();
             transaction.GasLimit = (long)gasLimit;
             _transactionProcessor.CallAndRestore(transaction, block, tracer);
 
             return !tracer.OutOfGas;
-            // return !(tracer.Error == "OutOfGas" || tracer.Error == "gas limit below intrinsic gas");
         }
         
         private class OutOfGasTracer : ITxTracer
@@ -132,7 +131,7 @@ namespace Nethermind.Evm.Tracing
 
             public void ReportOperationError(EvmExceptionType error)
             {
-                OutOfGas = error == EvmExceptionType.OutOfGas;
+                OutOfGas |= error == EvmExceptionType.OutOfGas;
             }
 
             public void ReportOperationRemainingGas(long gas)

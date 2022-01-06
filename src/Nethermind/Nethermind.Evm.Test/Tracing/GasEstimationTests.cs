@@ -51,18 +51,15 @@ namespace Nethermind.Evm.Test.Tracing
         public void Does_not_take_into_account_precompiles()
         {
             TestEnvironment testEnvironment = new();
-            testEnvironment.CreateEnvironment();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             
-            EstimateGasTracer tracer = new();
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, true);
-            tracer.ReportActionEnd(400, Array.Empty<byte>()); // this would not happen but we want to ensure that precompiles are ignored
-            tracer.ReportActionEnd(600, Array.Empty<byte>());
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Call, true);
+            testEnvironment.tracer.ReportActionEnd(400, Array.Empty<byte>()); // this would not happen but we want to ensure that precompiles are ignored
+            testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
 
-            GasEstimator estimator = new(testEnvironment._transactionProcessor, testEnvironment._stateProvider, testEnvironment._specProvider);
-            estimator.Estimate(tx, block.Header, tracer).Should().Be(0);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(0);
         }
 
         [Test]
@@ -84,187 +81,166 @@ namespace Nethermind.Evm.Test.Tracing
         public void Handles_well_top_level()
         {
             TestEnvironment testEnvironment = new();
-            testEnvironment.CreateEnvironment();
-            EstimateGasTracer tracer = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-            tracer.ReportActionEnd(600, Array.Empty<byte>());
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+            testEnvironment.tracer.ReportActionEnd(600, Array.Empty<byte>());
             
-            GasEstimator estimator = new(testEnvironment._transactionProcessor, testEnvironment._stateProvider, testEnvironment._specProvider);
-            estimator.Estimate(tx, block.Header, tracer).Should().Be(0);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(0);
         }
 
         [Test]
         public void Handles_well_serial_calls()
         {
             TestEnvironment testEnvironment = new();
-            testEnvironment.CreateEnvironment();
-            EstimateGasTracer tracer = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-            tracer.ReportActionEnd(400, Array.Empty<byte>());
-            tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+            testEnvironment.tracer.ReportActionEnd(400, Array.Empty<byte>());
+            testEnvironment.tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
             if (_executionType.IsAnyCreate())
             {
-                tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>());
-                tracer.ReportActionEnd(300, Array.Empty<byte>());
+                testEnvironment.tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>());
+                testEnvironment.tracer.ReportActionEnd(300, Array.Empty<byte>());
             }
             else
             {
-                tracer.ReportActionEnd(200, Array.Empty<byte>());
-                tracer.ReportActionEnd(300, Array.Empty<byte>()); // should not happen
+                testEnvironment.tracer.ReportActionEnd(200, Array.Empty<byte>());
+                testEnvironment.tracer.ReportActionEnd(300, Array.Empty<byte>()); // should not happen
             }
 
-            GasEstimator estimator = new(testEnvironment._transactionProcessor, testEnvironment._stateProvider, testEnvironment._specProvider);
-            estimator.Estimate(tx, block.Header, tracer).Should().Be(14L);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(14L);
         }
 
         [Test]
         public void Handles_well_errors()
         {
             TestEnvironment testEnvironment = new();
-            testEnvironment.CreateEnvironment();
-            EstimateGasTracer tracer = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
             
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-            tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-            tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+            testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+            testEnvironment.tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
         
             if (_executionType.IsAnyCreate())
             {
-                tracer.ReportActionError(EvmExceptionType.Other);
-                tracer.ReportActionEnd(400, Address.Zero, Array.Empty<byte>());
-                tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+                testEnvironment.tracer.ReportActionError(EvmExceptionType.Other);
+                testEnvironment.tracer.ReportActionEnd(400, Address.Zero, Array.Empty<byte>());
+                testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
             else
             {
-                tracer.ReportActionError(EvmExceptionType.Other);
-                tracer.ReportActionEnd(400, Array.Empty<byte>());
-                tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+                testEnvironment.tracer.ReportActionError(EvmExceptionType.Other);
+                testEnvironment.tracer.ReportActionEnd(400, Array.Empty<byte>());
+                testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
             }
 
-            GasEstimator estimator = new(testEnvironment._transactionProcessor, testEnvironment._stateProvider, testEnvironment._specProvider);
-            estimator.Estimate(tx, block.Header, tracer).Should().Be(24L);
+            testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(24L);
         }
 
         [Test]
        public void Handles_well_revert()
        {
            TestEnvironment testEnvironment = new();
-           testEnvironment.CreateEnvironment();
            long gasLimit = 100000000;
            Transaction tx = Build.A.Transaction.WithGasLimit(100000000).TestObject;
            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
            
-           EstimateGasTracer tracer = new();
            long gasLeft = gasLimit - 22000;
-           tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+           testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
            gasLeft = 63 * gasLeft / 64;
-           tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
            gasLeft = 63 * gasLeft / 64;
-           tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
        
            if (_executionType.IsAnyCreate())
            {
-               tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
-               tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
-               tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
+               testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
+               testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
+               testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
            }
            else
            {
-               tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
-               tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
-               tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
+               testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
+               testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
+               testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
            }
 
-           GasEstimator estimator = new(testEnvironment._transactionProcessor, testEnvironment._stateProvider, testEnvironment._specProvider);
-           estimator.Estimate(tx, block.Header, tracer).Should().Be(35146L);
+           testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(35146L);
        }
        
        [Test]
        public void Easy_one_level_case()
        {
            TestEnvironment testEnvironment = new();
-           testEnvironment.CreateEnvironment();
-           EstimateGasTracer tracer = new();
            Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
            
-           tracer.ReportAction(128, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-           tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           testEnvironment.tracer.ReportAction(128, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+           testEnvironment.tracer.ReportAction(100, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
        
-           tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
-           tracer.ReportActionEnd(65, Array.Empty<byte>());
+           testEnvironment.tracer.ReportActionEnd(63, Array.Empty<byte>()); // second level
+           testEnvironment.tracer.ReportActionEnd(65, Array.Empty<byte>());
 
-           GasEstimator estimator = new(testEnvironment._transactionProcessor, testEnvironment._stateProvider, testEnvironment._specProvider);
-           estimator.Estimate(tx, block.Header, tracer).Should().Be(1);
+           testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(1);
        }
        
        [Test]
        public void Handles_well_nested_calls_where_most_nested_defines_excess()
        {
            TestEnvironment testEnvironment = new();
-           testEnvironment.CreateEnvironment();
-           EstimateGasTracer tracer = new();
            Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
            
-           tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-           tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-           tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+           testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           testEnvironment.tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
        
            if (_executionType.IsAnyCreate())
            {
-               tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>()); // second level
-               tracer.ReportActionEnd(400, Address.Zero, Array.Empty<byte>());
-               tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+               testEnvironment.tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>()); // second level
+               testEnvironment.tracer.ReportActionEnd(400, Address.Zero, Array.Empty<byte>());
+               testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
            }
            else
            {
-               tracer.ReportActionEnd(200, Array.Empty<byte>()); // second level
-               tracer.ReportActionEnd(400, Array.Empty<byte>());
-               tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+               testEnvironment.tracer.ReportActionEnd(200, Array.Empty<byte>()); // second level
+               testEnvironment.tracer.ReportActionEnd(400, Array.Empty<byte>());
+               testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
            }
 
-           GasEstimator estimator = new(testEnvironment._transactionProcessor, testEnvironment._stateProvider, testEnvironment._specProvider);
-           estimator.Estimate(tx, block.Header, tracer).Should().Be(18);
+           testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(18);
        }
 
        [Test]
        public void Handles_well_nested_calls_where_least_nested_defines_excess()
        {
            TestEnvironment testEnvironment = new();
-           testEnvironment.CreateEnvironment();
-           EstimateGasTracer tracer = new();
            Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
            
-           tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
-           tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
-           tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), ExecutionType.Transaction, false);
+           testEnvironment.tracer.ReportAction(1000, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
+           testEnvironment.tracer.ReportAction(400, 0, Address.Zero, Address.Zero, Array.Empty<byte>(), _executionType, false);
        
            if (_executionType.IsAnyCreate())
            {
-               tracer.ReportActionEnd(300, Address.Zero, Array.Empty<byte>()); // second level
-               tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>());
-               tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+               testEnvironment.tracer.ReportActionEnd(300, Address.Zero, Array.Empty<byte>()); // second level
+               testEnvironment.tracer.ReportActionEnd(200, Address.Zero, Array.Empty<byte>());
+               testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
            }
            else
            {
-               tracer.ReportActionEnd(300, Array.Empty<byte>()); // second level
-               tracer.ReportActionEnd(200, Array.Empty<byte>());
-               tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
+               testEnvironment.tracer.ReportActionEnd(300, Array.Empty<byte>()); // second level
+               testEnvironment.tracer.ReportActionEnd(200, Array.Empty<byte>());
+               testEnvironment.tracer.ReportActionEnd(500, Array.Empty<byte>()); // should not happen
            }
 
-           GasEstimator estimator = new(testEnvironment._transactionProcessor, testEnvironment._stateProvider, testEnvironment._specProvider);
-           estimator.Estimate(tx, block.Header, tracer).Should().Be(17);
+           testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(17);
        }
        
        private class TestEnvironment
@@ -273,8 +249,10 @@ namespace Nethermind.Evm.Test.Tracing
            public IEthereumEcdsa _ethereumEcdsa;
            public TransactionProcessor _transactionProcessor;
            public IStateProvider _stateProvider;
+           public EstimateGasTracer tracer;
+           public GasEstimator estimator;
 
-           public void CreateEnvironment()
+           public TestEnvironment()
            {
                _specProvider = MainnetSpecProvider.Instance;
                MemDb stateDb = new();
@@ -288,6 +266,9 @@ namespace Nethermind.Evm.Test.Tracing
                VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
                _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, storageProvider, virtualMachine, LimboLogs.Instance);
                _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
+               
+               tracer = new();
+               estimator = new(_transactionProcessor, _stateProvider, _specProvider);
            }
        }
     }
