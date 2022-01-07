@@ -156,6 +156,11 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             if (request.TryGetBlock(out Block? block) && block != null)
             {
+                if (_blockValidator.ValidateHash(block.Header) == false)
+                {
+                    validationMessage = $"Invalid block hash {block.Header}";
+                    return (ValidationResult.Invalid, validationMessage);
+                }
                 bool isRecentBlock = _latestBlocks.TryGet(request.BlockHash, out bool isValid);
                 if (isRecentBlock)
                 {
