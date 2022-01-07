@@ -65,7 +65,7 @@ namespace Nethermind.Trie
 
         public Keccak? Keccak { get; internal set; }
 
-        public byte[]? FullRlp { get; private set; }
+        public byte[]? FullRlp { get; internal set; }
 
         public NodeType NodeType { get; private set; }
 
@@ -290,6 +290,7 @@ namespace Nethermind.Trie
 
                     // a hack to set internally and still verify attempts from the outside
                     // after the code is ready we should just add proper access control for methods from the outside and inside
+                    bool isDirtyActual = IsDirty;
                     IsDirty = true;
 
                     if (isExtension)
@@ -304,7 +305,7 @@ namespace Nethermind.Trie
                         Value = _rlpStream.DecodeByteArray();
                     }
 
-                    IsDirty = false;
+                    IsDirty = isDirtyActual;
                 }
                 else
                 {

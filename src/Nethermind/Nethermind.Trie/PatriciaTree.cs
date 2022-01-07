@@ -64,7 +64,7 @@ namespace Nethermind.Trie
 
         private Keccak _rootHash = Keccak.EmptyTreeHash;
 
-        internal TrieNode? RootRef;
+        public TrieNode? RootRef;
 
         /// <summary>
         /// Only used in EthereumTests
