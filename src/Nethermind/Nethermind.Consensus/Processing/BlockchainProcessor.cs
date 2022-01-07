@@ -300,7 +300,7 @@ namespace Nethermind.Consensus.Processing
                 return null;
             }
 
-            if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0 && suggestedBlock.IsPostMerge == false && suggestedBlock.Number <= 7051) // ToDo fix hardcoded number 
+            if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
             {
                 _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
                 Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
@@ -465,9 +465,8 @@ namespace Nethermind.Consensus.Processing
             BlockHeader branchingPoint = null;
             List<Block> blocksToBeAddedToMain = new();
 
-            bool preMergeFinishBranchingCondition;
-            bool postMergeFinishBranchingCondition;
-            bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge || suggestedBlock.Number > 7051; // ToDo remove hardcoed block
+            bool notFoundTheBranchingPointYet;
+            bool notReachedTheReorgBoundary;
             
             Block toBeProcessed = suggestedBlock;
             do
@@ -516,18 +515,15 @@ namespace Nethermind.Consensus.Processing
                     break;
                 }
 
-                
+
                 // TODO: there is no test for the second condition
                 // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
                 // then on restart we would find 14 as the branch head (since 14 is on the main chain)
                 // we need to dig deeper to go all the way to the false (reorg boundary) head
                 // otherwise some nodes would be missing
-                bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
-                bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-                preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && !suggestedBlockIsPostMerge;
-                postMergeFinishBranchingCondition = suggestedBlockIsPostMerge &&
-                                                         _blockTree.WasProcessed(branchingPoint.Number, branchingPoint.Hash) == false;
-            } while (preMergeFinishBranchingCondition || postMergeFinishBranchingCondition);
+                notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash);
+                notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
+            } while (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
