@@ -46,6 +46,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private long PivotNumber;
         private bool FastSyncEnabled => _syncConfig.FastSync;
+        private bool SnapSyncEnabled => FastSyncEnabled && _syncConfig.SnapSyncProtocolEnabled;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
         private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;
@@ -149,7 +150,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         try
                         {
                             best.IsInFastSync = ShouldBeInFastSyncMode(best);
-                            best.IsInStateSync = ShouldBeInStateNodesMode(best);
+                            best.IsInStateSync = ShouldBeInStateSyncMode(best);
                             best.IsInFullSync = ShouldBeInFullSyncMode(best);
                             best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
                             best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
@@ -162,7 +163,8 @@ namespace Nethermind.Synchronization.ParallelSync
                             CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
                             CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
                             CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
-                            CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
+                            CheckAddFlag(best.IsInStateSync && !SnapSyncEnabled, SyncMode.StateNodes, ref newModes);
+                            CheckAddFlag(best.IsInStateSync && SnapSyncEnabled, SyncMode.SnapSync, ref newModes);
                             CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                             CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
                             if (IsTheModeSwitchWorthMentioning(newModes))
@@ -436,7 +438,7 @@ namespace Nethermind.Synchronization.ParallelSync
                    best.PeerDifficulty == UInt256.Zero;
         }
 
-        private bool ShouldBeInStateNodesMode(Snapshot best)
+        private bool ShouldBeInStateSyncMode(Snapshot best)
         {
             bool fastSyncEnabled = FastSyncEnabled;
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
