@@ -71,6 +71,8 @@ namespace Nethermind.Blockchain
         }
 
         public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
+        
+        public Task<AddBlockResult> SuggestBlockAsync(Block block, bool shouldProcess = true, bool? setAsMain = null) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlockAsync)} calls");
 
         public AddBlockResult Insert(BlockHeader header) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 

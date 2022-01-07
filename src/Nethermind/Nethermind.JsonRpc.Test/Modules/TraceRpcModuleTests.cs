@@ -559,11 +559,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             TestSpecProvider specProvider = new(releaseSpec) {ChainId = ChainId.Mainnet};
             await context.Build(specProvider, isAura: true);
             TestRpcBlockchain blockchain = context.Blockchain;
-            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+            UInt256 currentNonceAddressC = blockchain.State.GetAccount(TestItem.AddressC).Nonce;
 
-            Transaction serviceTransaction = Build.A.Transaction.WithNonce(currentNonceAddressA++)
-                .WithTo(TestItem.AddressC)
-                .SignedAndResolved(TestItem.PrivateKeyA)
+            Transaction serviceTransaction = Build.A.Transaction.WithNonce(currentNonceAddressC++)
+                .WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyC)
                 .WithIsServiceTransaction(true).TestObject;
             await blockchain.AddBlock(serviceTransaction);
             BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
