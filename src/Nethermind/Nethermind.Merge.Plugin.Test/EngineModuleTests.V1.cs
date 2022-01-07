@@ -595,6 +595,23 @@ namespace Nethermind.Merge.Plugin.Test
             new BlockRequestResult(chain.BlockTree.BestSuggestedBody).Should()
                 .BeEquivalentTo(blockRequestResult);
         }
+        
+        [Test]
+        public async Task executePayloadV1_calculate_hash_for_cached_blocks()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            BlockRequestResult blockRequestResult = CreateBlockRequest(
+                CreateParentBlockRequestOnHead(chain.BlockTree),
+                TestItem.AddressD);
+            ResultWrapper<ExecutePayloadV1Result> resultWrapper = await rpc.engine_executePayloadV1(blockRequestResult);
+            resultWrapper.Data.Status.Should().Be(Status.Valid);
+            ResultWrapper<ExecutePayloadV1Result> resultWrapper2 = await rpc.engine_executePayloadV1(blockRequestResult);
+            resultWrapper2.Data.Status.Should().Be(Status.Valid);
+            blockRequestResult.ParentHash = blockRequestResult.BlockHash;
+            ResultWrapper<ExecutePayloadV1Result> invalidBlockRequest = await rpc.engine_executePayloadV1(blockRequestResult);
+            invalidBlockRequest.Data.Status.Should().Be(Status.Invalid);
+        }
 
         [TestCase(30)]
         public async Task can_progress_chain_one_by_one_v1(int count)
