@@ -63,8 +63,12 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Stage of fast sync that downloads headers in parallel.
         /// </summary>
         FastReceipts = FastBlocks | 1024,
+        /// <summary>
+        /// Stage of snap sync that state is being downloaded (accounts, storages, code, proofs)
+        /// </summary>
+        SnapSync = 2048,
         
-        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | FastHeaders | FastBodies | FastReceipts
+        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | FastHeaders | FastBodies | FastReceipts | SnapSync
     }
     
     public static class SyncModeExtensions

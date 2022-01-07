@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
 using Nethermind.Core;
@@ -191,6 +192,23 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
+        public void Encode(Keccak[] keccaks)
+        {
+            if (keccaks == null)
+            {
+                EncodeNullObject();
+            }
+            else
+            {
+                var length = Rlp.LengthOf(keccaks);
+                StartSequence(length);
+                for (int i = 0; i < keccaks.Length; i++)
+                {
+                    Encode(keccaks[i]);
+                }
+            }
+        }
+        
         public void Encode(Address? address)
         {
             if (address == null)
@@ -282,7 +300,7 @@ namespace Nethermind.Serialization.Rlp
         {
             if (value == 0L)
             {
-                EncodeEmptyArray();
+                EncodeEmptyByteArray();
                 return;
             }
 
@@ -1067,7 +1085,7 @@ namespace Nethermind.Serialization.Rlp
             WriteByte(EmptySequenceByte);
         }
 
-        public void EncodeEmptyArray()
+        public void EncodeEmptyByteArray()
         {
             WriteByte(EmptyArrayByte);
         }

@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private object _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
 
-        private IPeerAllocationStrategyFactory<T> PeerAllocationStrategy { get; }
+        private IPeerAllocationStrategyFactory<T> PeerAllocationStrategyFactory { get; }
 
         protected ILogger Logger { get; }
         protected ISyncFeed<T> Feed { get; }
@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.ParallelSync
             Logger = logManager?.GetClassLogger<SyncDispatcher<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            PeerAllocationStrategy = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
+            PeerAllocationStrategyFactory = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategy.Create(request), Feed.Contexts, 1000);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, 1000);
             return allocation;
         }
 

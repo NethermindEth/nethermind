@@ -33,6 +33,8 @@ using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.SnapSync.State;
 using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Synchronization
@@ -60,6 +62,7 @@ namespace Nethermind.Synchronization
         private readonly ISyncModeSelector _syncMode;
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
+        private SnapSyncFeed? _snapSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
         private HeadersSyncFeed? _headersFeed;
         private BodiesSyncFeed? _bodiesFeed;
@@ -111,7 +114,15 @@ namespace Nethermind.Synchronization
                 }
 
                 StartFastSyncComponents();
-                StartStateSyncComponents();
+                
+                if (_syncConfig.SnapSyncProtocolEnabled)
+                {
+                    StartSnapSyncComponents();
+                }
+                else
+                {
+                    StartStateSyncComponents();
+                }
             }
         }
 
@@ -156,6 +167,25 @@ namespace Nethermind.Synchronization
             });
         }
 
+        private void StartSnapSyncComponents()
+        {
+            // TODO: pass an instance of ISnapStateProvider
+            _snapSyncFeed = new SnapSyncFeed(_syncMode, null, _blockTree, _logManager);
+            SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory<AccountsSyncBatch>(), _logManager);
+            
+            Task _ = dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("State sync failed", t.Exception);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("State sync task completed.");
+                }
+            });
+        }
+        
         private void StartFastBlocksComponents()
         {
             FastBlocksPeerAllocationStrategyFactory fastFactory = new();
