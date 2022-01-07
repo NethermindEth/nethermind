@@ -66,6 +66,37 @@ namespace Nethermind.State.Proofs
             return bytes;
         }
 
+        /// <summary>
+        /// Only for testing
+        /// </summary>
+        public AccountProofCollector(byte[] hashedAddress, Keccak[] keccakStorageKeys)
+        {
+            keccakStorageKeys ??= Array.Empty<Keccak>();
+
+            _fullAccountPath = Nibbles.FromBytes(hashedAddress);
+
+            _accountProof = new AccountProof();
+            _accountProof.StorageProofs = new StorageProof[keccakStorageKeys.Length];
+            _accountProof.Address = _address;
+
+            _fullStoragePaths = new Nibble[keccakStorageKeys.Length][];
+            _storageProofItems = new List<byte[]>[keccakStorageKeys.Length];
+            for (int i = 0; i < _storageProofItems.Length; i++)
+            {
+                _storageProofItems[i] = new List<byte[]>();
+            }
+
+            for (int i = 0; i < keccakStorageKeys.Length; i++)
+            {
+                _fullStoragePaths[i] = Nibbles.FromBytes(keccakStorageKeys[i].Bytes);
+
+                _accountProof.StorageProofs[i] = new StorageProof();
+                // we don't know the key (index)
+                //_accountProof.StorageProofs[i].Key = storageKeys[i];  
+                _accountProof.StorageProofs[i].Value = new byte[] { 0 };
+            }
+        }
+
         public AccountProofCollector(byte[] hashedAddress, params byte[][] storageKeys)
         {
             storageKeys ??= Array.Empty<byte[]>();
@@ -90,7 +121,7 @@ namespace Nethermind.State.Proofs
 
                 _accountProof.StorageProofs[i] = new StorageProof();
                 _accountProof.StorageProofs[i].Key = storageKeys[i];
-                _accountProof.StorageProofs[i].Value = new byte[] {0};
+                _accountProof.StorageProofs[i].Value = new byte[] { 0 };
             }
         }
 
