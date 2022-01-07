@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,12 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using NUnit.Framework;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
+namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 {
-    internal static class RandomExtensions
+    [TestFixture, Parallelizable(ParallelScope.All)]
+    public class TrieNodesMessageSerializerTests
     {
-        public static long NextLong(this Random random) => ((long)random.Next() << 32) | (long)random.Next();
+        [Test]
+        public void Roundtrip()
+        {
+            byte[][] data = {new byte[]{0xde, 0xad, 0xc0, 0xde}, new byte[]{0xfe, 0xed}};
+
+            TrieNodesMessage message = new (data);
+            
+            TrieNodesMessageSerializer serializer = new ();
+            
+            SerializerTester.TestZero(serializer, message);
+        }
     }
 }

@@ -91,6 +91,11 @@ namespace Nethermind.Core.Crypto
         /// </returns>
         public static Keccak Zero { get; } = new(new byte[Size]);
 
+        /// <summary>
+        ///     <string>0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff</string>
+        /// </summary>
+        public static Keccak MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+
         public byte[] Bytes { get; }
 
         public Keccak(string hexString)
