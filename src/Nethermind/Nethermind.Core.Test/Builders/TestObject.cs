@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Builders
             return new Keccak(keccakBytes);
         }
 
-        public static byte[] RandomDataA = {1, 2, 3};
+        public static byte[]RandomDataA = {1, 2, 3};
         public static byte[] RandomDataB = {4, 5, 6, 7};
         public static byte[] RandomDataC = {1, 2, 8, 9, 10};
 

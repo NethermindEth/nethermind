@@ -23,7 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Snappy;
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
     {
