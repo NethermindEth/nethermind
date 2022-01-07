@@ -19,18 +19,20 @@ using System;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.Merge.Plugin.Data.V1;
-
-public class ExecutionPayloadBodyV1Result
+namespace Nethermind.Merge.Plugin.Data.V1
 {
-    public ExecutionPayloadBodyV1Result(Transaction[] transactions)
+
+    public class ExecutionPayloadBodyV1Result
     {
-        Transactions = new byte[transactions.Length][];
-        for (int i = 0; i < Transactions.Length; i++)
+        public ExecutionPayloadBodyV1Result(Transaction[] transactions)
         {
-            Transactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            Transactions = new byte[transactions.Length][];
+            for (int i = 0; i < Transactions.Length; i++)
+            {
+                Transactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
+            }
         }
+
+        public byte[][] Transactions { get; set; }
     }
-    
-    public byte[][] Transactions { get; set; }
 }

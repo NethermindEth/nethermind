@@ -24,30 +24,32 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data.V1;
 
-namespace Nethermind.Merge.Plugin.Handlers.V1;
-
-public class GetPayloadBodiesV1Handler : IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]>
+namespace Nethermind.Merge.Plugin.Handlers.V1
 {
-    private readonly IBlockTree _blockTree;
-    private readonly ILogger _logger;
-    
-    public GetPayloadBodiesV1Handler(IBlockTree blockTree, ILogManager logManager)
+    public class GetPayloadBodiesV1Handler : IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]>
     {
-        _blockTree = blockTree;
-        _logger = logManager.GetClassLogger();
-    }
+        private readonly IBlockTree _blockTree;
+        private readonly ILogger _logger;
 
-    public Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> HandleAsync(Keccak[] blockHashes)
-    {
-        List<ExecutionPayloadBodyV1Result> payloadBodies = new ();
-        foreach (Keccak hash in blockHashes)
+        public GetPayloadBodiesV1Handler(IBlockTree blockTree, ILogManager logManager)
         {
-            Block? block = _blockTree.FindBlock(hash);
-            if (block is not null)
-            {
-                payloadBodies.Add(new ExecutionPayloadBodyV1Result(block.Transactions));
-            }
+            _blockTree = blockTree;
+            _logger = logManager.GetClassLogger();
         }
-        return Task.FromResult(ResultWrapper<ExecutionPayloadBodyV1Result[]>.Success(payloadBodies.ToArray()));
+
+        public Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> HandleAsync(Keccak[] blockHashes)
+        {
+            List<ExecutionPayloadBodyV1Result> payloadBodies = new();
+            foreach (Keccak hash in blockHashes)
+            {
+                Block? block = _blockTree.FindBlock(hash);
+                if (block is not null)
+                {
+                    payloadBodies.Add(new ExecutionPayloadBodyV1Result(block.Transactions));
+                }
+            }
+
+            return Task.FromResult(ResultWrapper<ExecutionPayloadBodyV1Result[]>.Success(payloadBodies.ToArray()));
+        }
     }
 }
