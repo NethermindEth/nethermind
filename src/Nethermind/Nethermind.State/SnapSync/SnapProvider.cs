@@ -16,47 +16,93 @@ namespace Nethermind.State.SnapSync
 {
     public class SnapProvider
     {
-        //private readonly StateTree _tree;
         private readonly TrieStore _store;
         private SortedSet<Keccak> _sortedAddressHashes = new();
 
-        public SnapProvider(StateTree tree, TrieStore store)
-        {
-            //_tree = tree;
+        public SnapProvider(TrieStore store)
+        {;
             _store = store;
         }
 
-        public Keccak? AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, AccountWithAddressHash[] accounts, byte[][] proofs)
+        public Keccak? AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, AccountWithAddressHash[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
-            (bool proved, _) = ProofVerifier.VerifyMultipleProofs(proofs, expectedRootHash);
-
-            if (!proved)
-            {
-                //TODO: log incorrect proofs
-                return null;
-            }
-
-            // leftProof, rightProof
-            // toNibble both proofs
-            // create path when traversing the tree and compare bytes by indices
-
             StateTree tree = new StateTree(_store, LimboLogs.Instance);
-            FillBoundaryTree(tree, expectedRootHash, proofs, startingHash, accounts.Last().AddressHash);
+            Keccak lastHash = accounts.Last().AddressHash;
 
+            bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
 
-            foreach (var account in accounts)
+            if (proved)
             {
-                tree.Set(account.AddressHash, account.Account);
-            }
+                foreach (var account in accounts)
+                {
+                    tree.Set(account.AddressHash, account.Account);
+                }
 
-            tree.Commit(blockNumber);
+                tree.UpdateRootHash();
+
+                if(tree.RootHash != expectedRootHash)
+                {
+                    // TODO: log incorrect range
+                    return Keccak.EmptyTreeHash;
+                }
+
+                tree.Commit(blockNumber);
+            }
 
             return tree.RootHash;
         }
 
-        private void FillBoundaryTree(StateTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
+        public Keccak? AddStorageRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
+        {
+            // TODO: Check the slots boundaries and sorting
+
+            StorageTree tree = new(_store, LimboLogs.Instance);
+            Keccak lastHash = slots.Last().KeyHash;
+
+            bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
+
+            if (proved)
+            {
+                foreach (var slot in slots)
+                {
+                    tree.Set(slot.KeyHash, slot.SlotValue);
+                }
+
+                tree.UpdateRootHash();
+
+                if (tree.RootHash != expectedRootHash)
+                {
+                    // TODO: log incorrect range
+                    return Keccak.EmptyTreeHash;
+                }
+
+                tree.Commit(blockNumber);
+            }
+
+            return tree.RootHash;
+        }
+
+        private bool ProcessProofs(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak lastHash, byte[][] proofs = null)
+        {
+            if (proofs != null && proofs.Length > 0)
+            {
+                (bool proved, _) = ProofVerifier.VerifyMultipleProofs(proofs, expectedRootHash);
+
+                if (!proved)
+                {
+                    //TODO: log incorrect proofs
+                    return false;
+                }
+
+                FillBoundaryTree(tree, expectedRootHash, proofs, startingHash, lastHash);
+            }
+
+            return true;
+        }
+
+        private void FillBoundaryTree(PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
         {
             if(tree == null)
             {
