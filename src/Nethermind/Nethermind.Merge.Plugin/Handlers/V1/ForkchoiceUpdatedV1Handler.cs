@@ -159,14 +159,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
 
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId?.ToHexString(true), Status = EngineStatus.Success});
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId?.ToHexString(true), Status = ForkchoiceStatus.Success});
         }
 
         private ResultWrapper<ForkchoiceUpdatedV1Result> ReturnSyncing()
         {
             // ToDo wait for final PostMerge sync
             return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
-                    new ForkchoiceUpdatedV1Result() {Status = EngineStatus.Syncing});
+                    new ForkchoiceUpdatedV1Result() {Status = ForkchoiceStatus.Syncing});
         }
 
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)

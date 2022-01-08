@@ -17,10 +17,19 @@
 
 namespace Nethermind.Merge.Plugin.Data
 {
-    public static class EngineStatus
+    public static class ExecutePayloadStatus
     {
-        public static string Success = new("SUCCESS");
+        public const string Valid = "VALID";
+
+        public const string Invalid = "INVALID";
+
+        public const string Syncing = "SYNCING";
+    }
+    
+    public static class ForkchoiceStatus
+    {
+        public const string Syncing = "SYNCING";
         
-        public static string Syncing = new("SYNCING");
+        public const string Success = "SUCCESS";
     }
 }

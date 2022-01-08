@@ -111,22 +111,10 @@ namespace Nethermind.Merge.Plugin
                 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
-
-                PayloadStorage payloadStorage = new(_idealBlockProductionContext, _emptyBlockProductionContext, initConfig, _api.LogManager);
                 PayloadService payloadService = new (_idealBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new PreparePayloadHandler(_api.BlockTree, payloadStorage, _manualTimestamper, _api.Sealer,
-                        _api.LogManager),
-                    new GetPayloadHandler(payloadStorage, _api.LogManager),
                     new GetPayloadV1Handler(payloadService, _api.LogManager),
-                    new ExecutePayloadHandler(
-                        _api.HeaderValidator,
-                        _api.BlockTree,
-                        _api.BlockchainProcessor,
-                        _api.EthSyncingInfo,
-                        _api.Config<IInitConfig>(),
-                        _api.LogManager),
                     new ExecutePayloadV1Handler(
                         _api.BlockValidator,
                         _api.BlockTree,
@@ -137,10 +125,19 @@ namespace Nethermind.Merge.Plugin
                         _api.Synchronizer!,
                         syncConfig,
                         _api.LogManager),
-                    new ForkChoiceUpdatedHandler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
-                        _poSSwitcher, _api.BlockConfirmationManager, _api.LogManager),
-                    new ForkchoiceUpdatedV1Handler(_api.BlockTree, _api.StateProvider, _blockFinalizationManager,
-                        _poSSwitcher, _api.EthSyncingInfo, _api.BlockConfirmationManager, payloadService, _mergeConfig, _api.BlockchainProcessor, _api.Synchronizer, _api.DbProvider!.StateDb, syncConfig, _api.LogManager),
+                    new ForkchoiceUpdatedV1Handler(
+                        _api.BlockTree,
+                        _api.StateProvider,
+                        _blockFinalizationManager,
+                        _poSSwitcher, _api.EthSyncingInfo,
+                        _api.BlockConfirmationManager,
+                        payloadService,
+                        _mergeConfig, 
+                        _api.BlockchainProcessor,
+                        _api.Synchronizer,
+                        _api.DbProvider!.StateDb,
+                        syncConfig, 
+                        _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
                     new GetPayloadBodiesV1Handler(_api.BlockTree, _api.LogManager),

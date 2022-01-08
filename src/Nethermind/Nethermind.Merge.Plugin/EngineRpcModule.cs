@@ -34,12 +34,8 @@ namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IHandler<PreparePayloadRequest, PreparePayloadResult> _preparePayloadHandler;
-        private readonly IAsyncHandler<ulong, BlockRequestResult?> _getPayloadHandler;
         private readonly IAsyncHandler<byte[], BlockRequestResult?> _getPayloadHandlerV1;
-        private readonly IHandler<BlockRequestResult, ExecutePayloadResult> _executePayloadHandler;
         private readonly IAsyncHandler<BlockRequestResult, ExecutePayloadV1Result> _executePayloadV1Handler;
-        private readonly IHandler<ForkChoiceUpdatedRequest, string> _forkChoiceUpdateHandler;
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
@@ -48,113 +44,19 @@ namespace Nethermind.Merge.Plugin
         private readonly ILogger _logger;
 
         public EngineRpcModule(
-            IHandler<PreparePayloadRequest, PreparePayloadResult> preparePayloadHandler,
-            IAsyncHandler<ulong, BlockRequestResult?> getPayloadHandler,
             IAsyncHandler<byte[], BlockRequestResult?> getPayloadHandlerV1,
-            IHandler<BlockRequestResult, ExecutePayloadResult> executePayloadHandler,
             IAsyncHandler<BlockRequestResult, ExecutePayloadV1Result> executePayloadV1Handler,
-            IHandler<ForkChoiceUpdatedRequest, string> forkChoiceUpdateHandler,
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
             IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> executionPayloadBodiesHandler,
             ILogManager logManager)
         {
-            _preparePayloadHandler = preparePayloadHandler;
-            _getPayloadHandler = getPayloadHandler;
             _getPayloadHandlerV1 = getPayloadHandlerV1;
-            _executePayloadHandler = executePayloadHandler;
             _executePayloadV1Handler = executePayloadV1Handler;
-            _forkChoiceUpdateHandler = forkChoiceUpdateHandler;
             _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
             _executionStatusHandler = executionStatusHandler;
             _executionPayloadBodiesHandler = executionPayloadBodiesHandler;
             _logger = logManager.GetClassLogger();
-        }
-
-        public ResultWrapper<PreparePayloadResult> engine_preparePayload(
-            PreparePayloadRequest preparePayloadRequest)
-        {
-            return _preparePayloadHandler.Handle(preparePayloadRequest);
-        }
-
-        public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(ulong payloadId)
-        {
-            return await (_getPayloadHandler.HandleAsync(payloadId));
-        }
-
-        public async Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(
-            BlockRequestResult executionPayload)
-        {
-            if (await _locker.WaitAsync(Timeout))
-            {
-                try
-                {
-                    return _executePayloadHandler.Handle(executionPayload);
-                }
-                finally
-                {
-                    _locker.Release();
-                }
-            }
-            else
-            {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayload)} timeout.");
-                return ResultWrapper<ExecutePayloadResult>.Success(new ExecutePayloadResult()
-                {
-                    BlockHash = executionPayload.BlockHash, EnumStatus = VerificationStatus.Invalid
-                });
-            }
-        }
-
-        public async Task<ResultWrapper<string>> engine_consensusValidated(
-            ConsensusValidatedRequest consensusValidatedRequest)
-        {
-            return ResultWrapper<string>.Success(null);
-        }
-
-        public async Task<ResultWrapper<string>> engine_forkchoiceUpdated(
-            ForkChoiceUpdatedRequest forkChoiceUpdatedRequest)
-        {
-            if (await _locker.WaitAsync(Timeout))
-            {
-                try
-                {
-                    return _forkChoiceUpdateHandler.Handle(forkChoiceUpdatedRequest);
-                }
-                finally
-                {
-                    _locker.Release();
-                }
-            }
-            else
-            {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdated)} timeout.");
-                return ResultWrapper<string>.Fail($"{nameof(engine_forkchoiceUpdated)} timeout.", ErrorCodes.Timeout);
-            }
-        }
-
-        public Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash)
-        {
-            // probably this method won't be needed
-            throw new NotImplementedException();
-        }
-
-        public ResultWrapper<string> engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader)
-        {
-            return ResultWrapper<string>.Success(null);
-        }
-
-        public ResultWrapper<string> engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber)
-        {
-            return ResultWrapper<string>.Success(null);
-        }
-
-        public ResultWrapper<string> engine_consensusStatus(UInt256 transitionTotalDifficulty,
-            Keccak terminalPowBlockHash,
-            Keccak finalizedBlockHash,
-            Keccak confirmedBlockHash, Keccak headBlockHash)
-        {
-            return ResultWrapper<string>.Success(null);
         }
 
         public ResultWrapper<ExecutionStatusResult> engine_executionStatus()
@@ -208,8 +110,8 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdated)} timeout.");
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdated)} timeout.",
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdatedV1)} timeout.");
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdatedV1)} timeout.",
                     ErrorCodes.Timeout);
             }
         }

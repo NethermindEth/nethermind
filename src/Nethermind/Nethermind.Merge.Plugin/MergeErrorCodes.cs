@@ -17,16 +17,10 @@
 
 namespace Nethermind.Merge.Plugin
 {
-    // TODO: would be great to link where the spec comes from?
+    // Error codes spec: https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.5/src/engine/specification.md#errors
     public static class MergeErrorCodes
     {
         public const int None = 0;
-
-        public const int ActionNotAllowed = 2;
-        
-        public const int UnknownHeader = 4;
-        
-        public const int UnavailablePayload = 5;
 
         public const int UnavailablePayloadV1 = -32001;
 

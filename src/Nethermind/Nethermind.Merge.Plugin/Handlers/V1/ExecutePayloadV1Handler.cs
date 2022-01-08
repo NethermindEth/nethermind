@@ -100,21 +100,21 @@ namespace Nethermind.Merge.Plugin.Handlers
             // ToDo wait for final PostMerge sync
             if (_syncConfig.FastSync && _blockTree.LowestInsertedBodyNumber != 0)
             {
-                executePayloadResult.Status = Status.Syncing;
+                executePayloadResult.Status = ExecutePayloadStatus.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             Block? parent = _blockTree.FindBlock(request.ParentHash, BlockTreeLookupOptions.None);
             if (parent == null)
             {
                 // ToDo wait for final PostMerge sync
-                executePayloadResult.Status = Status.Syncing;
+                executePayloadResult.Status = ExecutePayloadStatus.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             
             BlockHeader? parentHeader = parent.Header;
             if (_ethSyncingInfo.IsSyncing() && synced == false)
             {
-                executePayloadResult.Status = Status.Syncing;
+                executePayloadResult.Status = ExecutePayloadStatus.Syncing;
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             else if (synced == false)
@@ -143,7 +143,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
             processedBlock.Header.IsPostMerge = true;
             _blockTree.SuggestBlock(processedBlock, true);
-            executePayloadResult.Status = Status.Valid;
+            executePayloadResult.Status = ExecutePayloadStatus.Valid;
             executePayloadResult.LatestValidHash = request.BlockHash;
             _blockValidationSemaphore.Wait();
             return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
@@ -248,13 +248,13 @@ namespace Nethermind.Merge.Plugin.Handlers
             ExecutePayloadV1Result executePayloadResult = new();
             if (isValid)
             {
-                executePayloadResult.Status = Status.Valid;
+                executePayloadResult.Status = ExecutePayloadStatus.Valid;
                 executePayloadResult.LatestValidHash = request.BlockHash;
             }
             else
             {
                 executePayloadResult.ValidationError = validationMessage;
-                executePayloadResult.Status = Status.Invalid;
+                executePayloadResult.Status = ExecutePayloadStatus.Invalid;
                 if (_lastValidHashes.ContainsKey(request.ParentHash))
                 {
                     if (_lastValidHashes.TryRemove(request.ParentHash, out Keccak? lastValidHash))
