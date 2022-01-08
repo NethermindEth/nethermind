@@ -207,8 +207,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             processedBlock = null;
-            try
-            {
                 if (_blockValidator.ValidateSuggestedBlock(block) == false)
                 {
                     if (_logger.IsWarn)
@@ -218,13 +216,6 @@ namespace Nethermind.Merge.Plugin.Handlers
                     }
                     return false;
                 }
-
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                throw;
-            }
             
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             if (processedBlock == null)
