@@ -38,22 +38,21 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
         
-
-        private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash
-            /*, Keccak confirmedBlockHash*/)
+        private void AssertExecutionStatusChanged(IEngineRpcModule rpc, Keccak headBlockHash, Keccak finalizedBlockHash,
+             Keccak safeBlockHash)
         {
             ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
             Assert.AreEqual(headBlockHash, result.HeadBlockHash);
             Assert.AreEqual(finalizedBlockHash, result.FinalizedBlockHash);
-            // Assert.AreEqual(confirmedBlockHash, result.ConfirmedBlockHash);
+             Assert.AreEqual(safeBlockHash, result.SafeBlockHash);
         }
         
-        private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, BlockRequestResult newBlockRequest,
+        private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, BlockRequestResult executePayloadRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
         {
-            Transaction[] transactions = BuildTransactions(chain, newBlockRequest.ParentHash, from, to, count, value,
+            Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value,
                 out Account accountFrom, out parentHeader);
-            newBlockRequest.SetTransactions(transactions);
+            executePayloadRequest.SetTransactions(transactions);
             UInt256 totalValue = ((int)(count * value)).GWei();
             return (accountFrom.Balance - totalValue,
                 chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
@@ -112,7 +111,6 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
         
-
         private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop,
             bool requireCanonical)
         {

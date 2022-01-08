@@ -469,7 +469,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
             actualHead.Should().Be(newHeadHash);
-            AssertExecutionStatusChanged(rpc, newHeadHash!, Keccak.Zero);
+            AssertExecutionStatusChanged(rpc, newHeadHash!, Keccak.Zero, startingHead);
         }
 
         [Test]
@@ -592,7 +592,7 @@ namespace Nethermind.Merge.Plugin.Test
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.Status.Should().Be(ForkchoiceStatus.Success);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
-            AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash /*, newHeadHash*/);
+            AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash, newHeadHash);
             Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
 
@@ -1034,7 +1034,7 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
             Assert.AreEqual(headBlockHash, result.HeadBlockHash);
             Assert.AreEqual(finalizedBlockHash, result.FinalizedBlockHash);
-            Assert.AreEqual(confirmedBlockHash, result.ConfirmedBlockHash);
+            Assert.AreEqual(confirmedBlockHash, result.SafeBlockHash);
         }
 
         private void AssertExecutionStatusNotChangedV1(IEngineRpcModule rpc, Keccak headBlockHash,
@@ -1043,7 +1043,7 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionStatusResult? result = rpc.engine_executionStatus().Data;
             Assert.AreNotEqual(headBlockHash, result.HeadBlockHash);
             Assert.AreNotEqual(finalizedBlockHash, result.FinalizedBlockHash);
-            Assert.AreNotEqual(confirmedBlockHash, result.ConfirmedBlockHash);
+            Assert.AreNotEqual(confirmedBlockHash, result.SafeBlockHash);
         }
     }
 }

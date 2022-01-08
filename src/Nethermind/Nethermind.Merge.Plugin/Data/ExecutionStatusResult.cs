@@ -24,14 +24,14 @@ namespace Nethermind.Merge.Plugin.Data
     [SuppressMessage("ReSharper", "AutoPropertyCanBeMadeGetOnly.Global")]
     public class ExecutionStatusResult
     {
-        public ExecutionStatusResult(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
+        public ExecutionStatusResult(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak safeBlockHash)
         {
             HeadBlockHash = headBlockHash;
             FinalizedBlockHash = finalizedBlockHash;
-            ConfirmedBlockHash = confirmedBlockHash;
+            SafeBlockHash = safeBlockHash;
         }
         public Keccak HeadBlockHash { get; set; }
         public Keccak FinalizedBlockHash { get; set;}
-        public Keccak ConfirmedBlockHash { get; set; }
+        public Keccak SafeBlockHash { get; set; }
     }
 }
