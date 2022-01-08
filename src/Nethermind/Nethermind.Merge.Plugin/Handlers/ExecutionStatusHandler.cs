@@ -23,10 +23,7 @@ using Nethermind.Merge.Plugin.Data;
 namespace Nethermind.Merge.Plugin.Handlers
 {
     /// <summary>
-    /// https://hackmd.io/@n0ble/consensus_api_design_space
-    /// 
-    /// Responds with information on the state of the execution client to either engine_consensusStatus
-    /// or any other call if consistency failure has occurred.
+    /// The final spec doesn't include this endpoint to the final spec. However, it will be a useful diagnostic endpoint.
     /// </summary>
     public class ExecutionStatusHandler : IHandler<ExecutionStatusResult>
     {
