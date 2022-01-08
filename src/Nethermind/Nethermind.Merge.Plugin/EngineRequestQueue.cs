@@ -23,22 +23,22 @@ namespace Nethermind.Merge.Plugin
 {
     public class TaskQueue
     {
-        private SemaphoreSlim semaphore;
+        private readonly SemaphoreSlim _semaphore;
         public TaskQueue()
         {
-            semaphore = new SemaphoreSlim(1);
+            _semaphore = new SemaphoreSlim(1);
         }
         
         public async Task Enqueue(Func<Task> taskGenerator)
         {
-            await semaphore.WaitAsync();
+            await _semaphore.WaitAsync();
             try
             {
                 await taskGenerator();
             }
             finally
             {
-                semaphore.Release();
+                _semaphore.Release();
             }
         }
     }
