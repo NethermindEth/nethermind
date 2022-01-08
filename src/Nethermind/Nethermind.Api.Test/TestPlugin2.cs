@@ -44,10 +44,5 @@ namespace Nethermind.Api.Test
         {
             throw new System.NotImplementedException();
         }
-
-        public void AfterHeaderValidator()
-        {
-            throw new System.NotImplementedException();
-        }
     }
 }
