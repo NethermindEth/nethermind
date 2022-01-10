@@ -183,6 +183,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             
             foreach (Block currentBlock in blocks)
             {
+                int txFromCurrentBlock = 0;
+
                 Transaction[] currentBlockTransactions = currentBlock.Transactions;
                 bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
 
@@ -197,6 +199,28 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 foreach (UInt256 gasPrice in effectiveGasPrices)
                 {
                     yield return gasPrice;
+                    txFromCurrentBlock++;
+                    txCount++;
+                    
+                    if (txFromCurrentBlock >= EthGasPriceConstants.TxLimitFromABlock)
+                    {
+                        break;
+                    }
+                }
+
+                if (txFromCurrentBlock == 0)
+                {
+                    yield return FallbackGasPrice(currentBlock.BaseFeePerGas);
+                }
+
+                if (txFromCurrentBlock > 1 || txCount + blocksToGoBack >= SoftTxThreshold)
+                {
+                    blocksToGoBack--;
+                }
+
+                if (blocksToGoBack < 1)
+                {
+                    break;
                 }
             }
         }
