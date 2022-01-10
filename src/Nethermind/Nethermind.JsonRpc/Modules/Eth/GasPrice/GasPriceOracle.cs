@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         private UInt256 GetMinimumGasPrice(in UInt256 baseFeePerGas) => (_minGasPrice + baseFeePerGas) * _defaultMinGasPriceMultiplier / 100ul;
 
         private IEnumerable<Tuple<UInt256, UInt256>>GetSortedGasPricesFromRecentBlocks(long blockNumber) 
-            => GetGasPricesFromRecentBlocks(blockNumber).OrderBy(gasPrice => gasPrice);
+            => GetGasPricesFromRecentBlocks2(blockNumber).OrderBy(gasPrice => gasPrice);
             
         private IEnumerable<Tuple<UInt256, UInt256>>GetSortedGasPricesWithFeeFromRecentBlocks(long blockNumber) 
             => GetGasPricesFromRecentBlocks2(blockNumber).OrderBy(gasPrice=> gasPrice.Item1 >= gasPrice.Item2 ? gasPrice.Item1-gasPrice.Item2 : 0);
@@ -136,9 +136,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 Transaction[] currentBlockTransactions = currentBlock.Transactions;
                 int txFromCurrentBlock = 0;
                 bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
+                if (!eip1559Enabled)
+                {
+                    continue;
+                }
+                
                 UInt256 baseFee = currentBlock.BaseFeePerGas;
                 IEnumerable<UInt256> effectiveGasPrices = 
                     currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
+                        .Where(tx => tx.GasPrice > 0)
                         .Select(tx => tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee))
                         .Where(g => g >= IgnoreUnder)
                         .OrderBy(g => g);
