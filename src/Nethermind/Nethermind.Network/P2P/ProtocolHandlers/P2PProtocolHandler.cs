@@ -108,8 +108,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     Metrics.HellosReceived++;
                     HandleHello(Deserialize<HelloMessage>(msg.Data));
                     
+                    // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
+                    // which should be constant for the whole session. Some protocols (like Eth) are sending messages
+                    // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
+                    // which are alphabetically before already initialized ones.
                     foreach (Capability capability in
-                        _agreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()))
+                        _agreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()).OrderBy(c => c.ProtocolCode))
                     {
                         if (Logger.IsTrace) Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
                         SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
@@ -294,11 +298,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
         {
-            new Capability(Protocol.Eth, 62),
-            new Capability(Protocol.Eth, 63),
-            new Capability(Protocol.Eth, 64),
-            new Capability(Protocol.Eth, 65),
-            new Capability(Protocol.Eth, 66),
+            new(Protocol.Eth, 62),
+            new(Protocol.Eth, 63),
+            new(Protocol.Eth, 64),
+            new(Protocol.Eth, 65),
+            new(Protocol.Eth, 66),
+            // new Capability(Protocol.Les, 3)
         };
 
         private readonly List<Capability> SupportedCapabilities = DefaultCapabilities.ToList();

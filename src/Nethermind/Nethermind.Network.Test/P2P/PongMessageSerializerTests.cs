@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using NUnit.Framework;
 
@@ -28,7 +27,7 @@ namespace Nethermind.Network.Test.P2P
         public void Can_do_roundtrip()
         {
             PongMessage msg = PongMessage.Instance;
-            PongMessageSerializer serializer = new PongMessageSerializer();
+            PongMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(msg);
             Assert.AreEqual(0xc0, serialized[0]);
             PongMessage deserialized = serializer.Deserialize(serialized);

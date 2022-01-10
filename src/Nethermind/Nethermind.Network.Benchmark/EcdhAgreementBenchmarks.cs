@@ -26,6 +26,7 @@ using Org.BouncyCastle.Crypto.Agreement;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Utilities;
+using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Network.Benchmarks
 {

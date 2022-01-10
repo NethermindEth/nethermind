@@ -58,11 +58,16 @@ namespace Nethermind.Evm.TransactionProcessing
             /// Restore state after execution
             /// </summary>
             Restore = 2,
+            
+            /// <summary>
+            /// Skip potential fail checks
+            /// </summary>
+            NoValidation = Commit | 4,
 
             /// <summary>
-            /// Commit and later restore state, use for CallAndRestore
+            /// Commit and later restore state also skip validation, use for CallAndRestore
             /// </summary>
-            CommitAndRestore = Commit | Restore
+            CommitAndRestore = Commit | Restore | NoValidation
         }
 
         public TransactionProcessor(
@@ -105,6 +110,11 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             Execute(transaction, block, txTracer, ExecutionOptions.Commit);
         }
+        
+        public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        {
+            Execute(transaction, block, txTracer, ExecutionOptions.NoValidation);
+        }
 
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled,
             string? reason)
@@ -134,9 +144,10 @@ namespace Nethermind.Evm.TransactionProcessing
             bool eip658NotEnabled = !_specProvider.GetSpec(block.Number).IsEip658Enabled;
 
             // restore is CallAndRestore - previous call, we will restore state after the execution
-            bool restore = (executionOptions & ExecutionOptions.Restore) != ExecutionOptions.None;
+            bool restore = (executionOptions & ExecutionOptions.Restore) == ExecutionOptions.Restore;
+            bool noValidation = (executionOptions & ExecutionOptions.NoValidation) == ExecutionOptions.NoValidation;
             // commit - is for standard execute, we will commit thee state after execution 
-            bool commit = (executionOptions & ExecutionOptions.Commit) != ExecutionOptions.None || eip658NotEnabled;
+            bool commit = (executionOptions & ExecutionOptions.Commit) == ExecutionOptions.Commit || eip658NotEnabled;
             //!commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             //we commit only after all block is constructed 
             bool notSystemTransaction = !transaction.IsSystem();
@@ -150,7 +161,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 value = transaction.Value;
 
-            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !restore)
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !noValidation)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "miner premium is negative");
@@ -174,7 +185,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
 
-            if (!restore && _stateProvider.IsInvalidContractSender(spec, caller))
+            if (!noValidation && _stateProvider.IsInvalidContractSender(spec, caller))
             {
                 TraceLogInvalidTx(transaction, "SENDER_IS_CONTRACT");
                 QuickFail(transaction, block, txTracer, eip658NotEnabled, "sender has deployed code");
@@ -193,7 +204,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     return;
                 }
 
-                if (!restore && gasLimit > block.GasLimit - block.GasUsed)
+                if (!noValidation && gasLimit > block.GasLimit - block.GasUsed)
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
@@ -220,7 +231,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 else
                 {
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
-                    if (!commit || restore || effectiveGasPrice == UInt256.Zero)
+                    if (!commit || noValidation || effectiveGasPrice == UInt256.Zero)
                     {
                         deleteCallerAccount = !commit || restore;
                         _stateProvider.CreateAccount(caller, UInt256.Zero);
@@ -234,13 +245,13 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            UInt256 senderReservedGasPayment = restore ? UInt256.Zero : (ulong)gasLimit * effectiveGasPrice;
+            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : (ulong)gasLimit * effectiveGasPrice;
 
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!restore && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
-                                 senderReservedGasPayment + value > senderBalance))
+                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
+                                      senderReservedGasPayment + value > senderBalance))
                 {
                     TraceLogInvalidTx(transaction,
                         $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
@@ -248,7 +259,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     return;
                 }
 
-                if (!restore && spec.IsEip1559Enabled && !transaction.IsServiceTransaction &&
+                if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
                     senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                 {
                     TraceLogInvalidTx(transaction,
@@ -452,7 +463,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullStateTracer.Instance);
             }
 
-            if (!restore && notSystemTransaction)
+            if (!noValidation && notSystemTransaction)
             {
                 block.GasUsed += spentGas;
             }

@@ -22,6 +22,6 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface IChainHeadSpecProvider : ISpecProvider
     {
-        IReleaseSpec GetSpec();
+        IReleaseSpec GetCurrentHeadSpec();
     }
 }

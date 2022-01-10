@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions
 {
@@ -41,17 +42,17 @@ namespace Nethermind.Consensus.Transactions
 
         public bool Execute(Transaction tx, BlockHeader parentHeader)
         {
-            if (!_filters.Any())
+            if (_filters.Count == 0)
             {
                 return true;
             }
             
             foreach (ITxFilter filter in _filters)
             {
-                var result = filter.IsAllowed(tx, parentHeader);
-                if ( !result.Allowed)
+                AcceptTxResult isAllowed = filter.IsAllowed(tx, parentHeader);
+                if (!isAllowed)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Rejected tx ({result.Reason}) {tx.ToShortString()}");
+                    if (_logger.IsDebug) _logger.Debug($"Rejected tx ({isAllowed}) {tx.ToShortString()}");
                     return false;
                 }
             }

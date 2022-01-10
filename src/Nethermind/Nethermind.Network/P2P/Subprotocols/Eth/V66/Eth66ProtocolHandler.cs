@@ -299,13 +299,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 Logger.Trace($"Keys count: {message.Hashes.Count}");
             }
 
-            GetNodeDataMessage msg66 = new GetNodeDataMessage() {EthMessage = message};
+            GetNodeDataMessage msg66 = new() {EthMessage = message};
             Request<GetNodeDataMessage, byte[][]> request = new(msg66);
             _nodeDataRequests66.Send(request);
             
             Task<byte[][]> task = request.CompletionSource.Task;
 
-            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation
                 = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
@@ -338,12 +338,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 
-            GetReceiptsMessage msg66 = new GetReceiptsMessage() {EthMessage = message};
+            GetReceiptsMessage msg66 = new() {EthMessage = message};
             Request<GetReceiptsMessage, TxReceipt[][]> request = new(msg66);
             _receiptsRequests66.Send(request);
 
             Task<TxReceipt[][]> task = request.CompletionSource.Task;
-            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation 
                 = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));

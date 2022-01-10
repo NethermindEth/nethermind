@@ -7,7 +7,7 @@
         <PackageId>Nethermind CLI</PackageId>
         <Authors>Nethermind</Authors>
         <PackageVersion>1.0.0</PackageVersion>
-        <LangVersion>9</LangVersion>
+        <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
     </PropertyGroup>
     
@@ -27,9 +27,5 @@
 
     <ItemGroup>
       <None Remove="plugins\readme.txt" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <Folder Include="plugins" />
     </ItemGroup>
 </Project>

@@ -18,7 +18,6 @@
 using System.Threading;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -46,14 +45,14 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_pass_null_details()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
         }
         
         [Test]
         public void Will_add_of_same_type()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             
@@ -64,7 +63,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Will_add_of_different_types()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Remote, null);
             Thread.Sleep(15);
@@ -77,7 +76,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Will_clear_after_report()
         {
-            Context ctx = new Context();
+            Context ctx = new();
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);
             Thread.Sleep(15);
             ctx.DisconnectsAnalyzer.ReportDisconnect(DisconnectReason.TooManyPeers, DisconnectType.Local, null);

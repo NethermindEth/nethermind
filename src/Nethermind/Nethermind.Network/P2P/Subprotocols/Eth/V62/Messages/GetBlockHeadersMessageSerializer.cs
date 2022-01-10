@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
        public static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
         {
-            GetBlockHeadersMessage message = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage message = new();
             rlpStream.ReadSequenceLength();
             byte[] startingBytes = rlpStream.DecodeByteArray();
             if (startingBytes.Length == 32)
@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
 

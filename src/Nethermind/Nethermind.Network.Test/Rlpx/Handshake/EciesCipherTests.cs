@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -116,7 +115,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
-            EciesCipher cipher = new EciesCipher(cryptoRandom);
+            EciesCipher cipher = new(cryptoRandom);
             (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray());
 
             AuthEip8Message authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(deciphered);
@@ -174,7 +173,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
-            EciesCipher cipher = new EciesCipher(cryptoRandom);
+            EciesCipher cipher = new(cryptoRandom);
             (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray());
 
             AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);
@@ -210,7 +209,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
-            EciesCipher cipher = new EciesCipher(cryptoRandom);
+            EciesCipher cipher = new(cryptoRandom);
             (_, byte[] deciphered) = cipher.Decrypt(NetTestVectors.StaticKeyA, allBytes.Slice(2, size), sizeBytes.ToArray());
 
             AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(deciphered);

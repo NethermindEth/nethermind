@@ -1328,15 +1328,20 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = pivotNumber.ToString();
 
-            IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
-            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
+            var bloomStorage = Substitute.For<IBloomStorage>();
+            IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
+            BlockTree tree = new(blocksDb, headersDb, blockInfosDb, chainLevelInfoRepository, MainnetSpecProvider.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
 
             for (long i = 5; i > 0; i--)
             {
                 Block block = Build.A.Block.WithNumber(i).WithTotalDifficulty(1L).TestObject;
                 tree.Insert(block.Header);
-                bloomStorage.Received().Store(block.Header.Number, block.Bloom);
+                Received.InOrder(() =>
+                {
+                    bloomStorage.Store(block.Header.Number, block.Bloom!);
+                    chainLevelInfoRepository.PersistLevel(block.Header.Number, Arg.Any<ChainLevelInfo>(), Arg.Any<BatchWrite>());
+                });
             }
         }
 
@@ -1568,6 +1573,51 @@ namespace Nethermind.Blockchain.Test
             blockTree.CanAcceptNewBlocks.Should().BeFalse();
             manualResetEvent.Set();
             await acceptTask;
+        }
+
+        [Test]
+        public async Task SuggestBlockAsync_should_wait_for_blockTree_unlock()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.BlockAcceptingNewBlocks();
+            Task suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
+            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            blockTree.ReleaseAcceptingNewBlocks();
+            await suggest;
+            suggest.Status.Should().Be(TaskStatus.RanToCompletion);
+        }
+        
+        [Test]
+        public async Task SuggestBlockAsync_works_well_with_multiple_locks_and_unlocks()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.BlockAcceptingNewBlocks();        // 1st blockade
+            blockTree.ReleaseAcceptingNewBlocks();      // release - access unlocked
+            blockTree.BlockAcceptingNewBlocks();        // 1st blockade
+            blockTree.BlockAcceptingNewBlocks();        // 2nd blockade
+            blockTree.BlockAcceptingNewBlocks();        // 3rd blockade
+            Task suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
+            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            blockTree.ReleaseAcceptingNewBlocks();      // 1st release - 2 blockades left
+            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            blockTree.ReleaseAcceptingNewBlocks();      // 2nd release - 1 blockade left
+            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            blockTree.BlockAcceptingNewBlocks();        // 1 more blockade - 2 blockades left
+            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            blockTree.ReleaseAcceptingNewBlocks();      // release - 1 blockade left
+            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            blockTree.ReleaseAcceptingNewBlocks();      // 3rd release - access unlocked
+            await suggest;
+            suggest.Status.Should().Be(TaskStatus.RanToCompletion);
+        }
+        
+        [Test]
+        public async Task SuggestBlockAsync_works_well_when_there_are_no_blockades()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            Task suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
+            await suggest;
+            suggest.Status.Should().Be(TaskStatus.RanToCompletion);
         }
 
         private class TestBlockTreeVisitor : IBlockTreeVisitor

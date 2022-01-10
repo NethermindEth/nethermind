@@ -17,7 +17,6 @@
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Stats.Model;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Stats
@@ -29,7 +28,7 @@ namespace Nethermind.Network.Test.Stats
         [Test]
         public void Can_parse_ipv6_prefixed_ip()
         {
-            Node node = new Node(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
+            Node node = new(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
             Assert.AreEqual(65535, node.Port);
             Assert.AreEqual("73.224.122.50", node.Address.Address.MapToIPv4().ToString());
         }
@@ -37,7 +36,7 @@ namespace Nethermind.Network.Test.Stats
         [Test]
         public void Not_equal_to_another_type()
         {
-            Node node = new Node(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
+            Node node = new(TestItem.PublicKeyA, "::ffff:73.224.122.50", 65535);
             // ReSharper disable once SuspiciousTypeConversion.Global
             node.Equals(1).Should().BeFalse();
         }
@@ -51,7 +50,7 @@ namespace Nethermind.Network.Test.Stats
         public void To_string_formats(string format, string expectedFormat)
         {
             Node GetNode(string host) => 
-                new Node(TestItem.PublicKeyA, host, 30303) {ClientId = "ClientId", EthDetails = "Details"};
+                new(TestItem.PublicKeyA, host, 30303) {ClientId = "ClientId", EthDetails = "Details"};
 
             Node node = GetNode("127.0.0.1");
             node.ToString(format).Should().Be(expectedFormat);

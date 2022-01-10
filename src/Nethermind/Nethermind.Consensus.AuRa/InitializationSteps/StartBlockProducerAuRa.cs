@@ -72,7 +72,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public IBlockProductionTrigger CreateTrigger()
         {
-            BuildBlocksOnAuRaSteps onAuRaSteps = new(_api.LogManager, StepCalculator);
+            BuildBlocksOnAuRaSteps onAuRaSteps = new(StepCalculator, _api.LogManager);
             BuildBlocksOnlyWhenNotProcessing onlyWhenNotProcessing = new(
                 onAuRaSteps, 
                 _api.BlockProcessingQueue, 

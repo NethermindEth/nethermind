@@ -227,7 +227,7 @@ namespace Nethermind.TxPool.Test.Collections
 
             for (int i = 0; i < Capacity * capacityMultiplier; i++)
             {
-                WithFinalizer newOne = new WithFinalizer(i % (Capacity * 2));
+                WithFinalizer newOne = new(i % (Capacity * 2));
                 pool.TryInsert(newOne.Index, newOne);
             }
 
@@ -278,9 +278,9 @@ namespace Nethermind.TxPool.Test.Collections
                 }
             }
 
-            Task a = new Task(() => KeepGoing(Capacity * capacityMultiplier));
-            Task b = new Task(() => KeepGoing(Capacity * capacityMultiplier));
-            Task c = new Task(() => KeepGoing(Capacity * capacityMultiplier));
+            Task a = new(() => KeepGoing(Capacity * capacityMultiplier));
+            Task b = new(() => KeepGoing(Capacity * capacityMultiplier));
+            Task c = new(() => KeepGoing(Capacity * capacityMultiplier));
 
             a.Start();
             b.Start();

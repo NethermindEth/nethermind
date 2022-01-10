@@ -165,7 +165,7 @@ jobs:
       OSX_RELEASE: nethermind-osx-x64
       WIN_RELEASE: nethermind-win-x64
       LIN_ARM64_RELEASE: nethermind-lin-arm64
-      OSX_ARM64_RELEASE: nethermind-darwin-arm64
+      OSX_ARM64_RELEASE: nethermind-osx-arm64
     steps:
     - name: Checking out Nethermind repository
       uses: actions/checkout@master

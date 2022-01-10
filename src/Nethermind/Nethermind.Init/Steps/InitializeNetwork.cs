@@ -19,6 +19,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -31,6 +32,7 @@ using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
@@ -105,7 +107,7 @@ namespace Nethermind.Init.Steps
 
             Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
 
-            var cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
+            CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, _api.LogManager);
@@ -272,15 +274,13 @@ namespace Nethermind.Init.Steps
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
 
             SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
-            DiscoveryMessageFactory discoveryMessageFactory = new(_api.Timestamper);
             NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
-            IPResolver ipResolver = new(_networkConfig, _api.LogManager);
 
+            NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _api.MessageSerializationService,
                 _api.EthereumEcdsa,
                 privateKeyProvider,
-                discoveryMessageFactory,
                 nodeIdResolver);
 
             msgSerializersProvider.RegisterDiscoverySerializers();
@@ -292,10 +292,11 @@ namespace Nethermind.Init.Steps
 
             NodeLifecycleManagerFactory nodeLifeCycleFactory = new(
                 nodeTable,
-                discoveryMessageFactory,
                 evictionManager,
                 _api.NodeStatsManager,
+                selfNodeRecord,
                 discoveryConfig,
+                _api.Timestamper,
                 _api.LogManager);
 
             // ToDo: DiscoveryDB is registered outside dbProvider - bad
@@ -313,8 +314,7 @@ namespace Nethermind.Init.Steps
                 nodeTable,
                 discoveryStorage,
                 discoveryConfig,
-                _api.LogManager,
-                ipResolver
+                _api.LogManager
             );
 
             NodesLocator nodesLocator = new(
@@ -336,6 +336,25 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
 
             _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
+        }
+
+        private NodeRecord PrepareNodeRecord(SameKeyGenerator privateKeyProvider)
+        {
+            NodeRecord selfNodeRecord = new();
+            selfNodeRecord.SetEntry(IdEntry.Instance);
+            selfNodeRecord.SetEntry(new IpEntry(_api.IpResolver!.ExternalIp));
+            selfNodeRecord.SetEntry(new TcpEntry(_networkConfig.P2PPort));
+            selfNodeRecord.SetEntry(new UdpEntry(_networkConfig.DiscoveryPort));
+            selfNodeRecord.SetEntry(new Secp256K1Entry(_api.NodeKey!.CompressedPublicKey));
+            selfNodeRecord.EnrSequence = 1;
+            NodeRecordSigner enrSigner = new(_api.EthereumEcdsa, privateKeyProvider.Generate());
+            enrSigner.Sign(selfNodeRecord);
+            if (!enrSigner.Verify(selfNodeRecord))
+            {
+                throw new NetworkingException("Self ENR initialization failed", NetworkExceptionType.Discovery);
+            }
+
+            return selfNodeRecord;
         }
 
         private Task StartSync()
@@ -404,6 +423,9 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
 
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
+            // TODO: hack, but changing it in all the documentation would be a nightmare
+            _networkConfig.Bootnodes = discoveryConfig.Bootnodes;
+            
             IInitConfig initConfig = _api.Config<IInitConfig>();
             
             _api.DisconnectsAnalyzer = new MetricsDisconnectsAnalyzer();
@@ -423,27 +445,27 @@ namespace Nethermind.Init.Steps
             await _api.StaticNodesManager.InitAsync();
 
             // ToDo: PeersDB is register outside dbProvider - bad
-            var dbName = "PeersDB";
+            string dbName = "PeersDB";
             IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
-                ? (IFullDb) new MemDb(dbName)
+                ? new MemDb(dbName)
                 : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath), _api.LogManager);
 
             NetworkStorage peerStorage = new(peersDb, _api.LogManager);
 
-            ProtocolValidator protocolValidator = new(_api.NodeStatsManager, _api.BlockTree, _api.LogManager);
-            PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool);
+            ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree!, _api.LogManager);
+            PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!);
             _api.ProtocolsManager = new ProtocolsManager(
-                _api.SyncPeerPool,
-                _api.SyncServer,
+                _api.SyncPeerPool!,
+                _api.SyncServer!,
                 _api.TxPool,
                 pooledTxsRequestor,
-                _api.DiscoveryApp,
+                _api.DiscoveryApp!,
                 _api.MessageSerializationService,
                 _api.RlpxPeer,
                 _api.NodeStatsManager,
                 protocolValidator,
                 peerStorage,
-                _api.SpecProvider,
+                _api.SpecProvider!,
                 _api.GossipPolicy,
                 _api.LogManager);
             
@@ -454,12 +476,12 @@ namespace Nethermind.Init.Steps
             
             _api.ProtocolValidator = protocolValidator;
 
-            foreach (var plugin in _api.Plugins)
+            foreach (INethermindPlugin plugin in _api.Plugins)
             {
                 await plugin.InitNetworkProtocol();
             }
 
-            PeerLoader peerLoader = new(_networkConfig, discoveryConfig, _api.NodeStatsManager, peerStorage, _api.LogManager);
+            PeerLoader peerLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.LogManager);
             _api.PeerManager = new PeerManager(
                 _api.RlpxPeer,
                 _api.DiscoveryApp,

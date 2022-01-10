@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
 
             #region Find Lengths
             int totalContentLength = 0;
@@ -242,7 +242,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
         private static StatusMessage Deserialize(RlpStream rlpStream)
         {
-            StatusMessage statusMessage = new StatusMessage();
+            StatusMessage statusMessage = new();
             (int prefixLength, int contentLength) = rlpStream.PeekPrefixAndContentLength();
             var totalLength = contentLength;
             rlpStream.Position += prefixLength;

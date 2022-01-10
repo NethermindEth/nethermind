@@ -128,7 +128,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<byte[]>();
             }
 
-            GetNodeDataMessage msg = new GetNodeDataMessage(keys);
+            GetNodeDataMessage msg = new(keys);
             
             // if node data is a disposable pooled array wrapper here then we could save around 1.6% allocations
             // on a sample 3M blocks Goerli fast sync
@@ -142,7 +142,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<TxReceipt[]>();
             }
 
-            GetReceiptsMessage msg = new GetReceiptsMessage(blockHashes);
+            GetReceiptsMessage msg = new(blockHashes);
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
             return txReceipts;
         }
@@ -155,12 +155,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Keys count: {message.Hashes.Count}");
             }
 
-            Request<GetNodeDataMessage, byte[][]> request = new Request<GetNodeDataMessage, byte[][]>(message);
+            Request<GetNodeDataMessage, byte[][]> request = new(message);
             _nodeDataRequests.Send(request);
             
             Task<byte[][]> task = request.CompletionSource.Task;
 
-            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation
                 = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
@@ -193,12 +193,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 
-            Request<GetReceiptsMessage, TxReceipt[][]> request
-                = new Request<GetReceiptsMessage, TxReceipt[][]>(message);
+            Request<GetReceiptsMessage, TxReceipt[][]> request = new(message);
             _receiptsRequests.Send(request);
 
             Task<TxReceipt[][]> task = request.CompletionSource.Task;
-            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation 
                 = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));

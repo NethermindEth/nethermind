@@ -49,8 +49,8 @@ namespace Nethermind.Network
         private readonly INodeStatsManager _stats;
         private readonly INetworkStorage _peerStorage;
         private readonly IPeerLoader _peerLoader;
-        private readonly ManualResetEventSlim _peerUpdateRequested = new ManualResetEventSlim(false);
-        private readonly PeerComparer _peerComparer = new PeerComparer();
+        private readonly ManualResetEventSlim _peerUpdateRequested = new(false);
+        private readonly PeerComparer _peerComparer = new();
         private readonly LocalPeerPool _peerPool;
         
         private int _pending;
@@ -67,10 +67,10 @@ namespace Nethermind.Network
         private Task _storageCommitTask;
         private Task _peerUpdateLoopTask;
         
-        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private readonly CancellationTokenSource _cancellationTokenSource = new();
         private static int _parallelism = Environment.ProcessorCount;
         
-        private readonly ConcurrentDictionary<PublicKey, Peer> _activePeers = new ConcurrentDictionary<PublicKey, Peer>();
+        private readonly ConcurrentDictionary<PublicKey, Peer> _activePeers = new();
 
         public PeerManager(
             IRlpxPeer rlpxPeer,
@@ -206,13 +206,13 @@ namespace Nethermind.Network
 
         private class CandidateSelection
         {
-            public List<Peer> PreCandidates { get; } = new List<Peer>();
-            public List<Peer> Candidates { get; } = new List<Peer>();
-            public List<Peer> Incompatible { get; } = new List<Peer>();
-            public Dictionary<ActivePeerSelectionCounter, int> Counters { get; } = new Dictionary<ActivePeerSelectionCounter, int>();
+            public List<Peer> PreCandidates { get; } = new();
+            public List<Peer> Candidates { get; } = new();
+            public List<Peer> Incompatible { get; } = new();
+            public Dictionary<ActivePeerSelectionCounter, int> Counters { get; } = new();
         }
 
-        private CandidateSelection _currentSelection = new CandidateSelection();
+        private CandidateSelection _currentSelection = new();
 
         private async Task RunPeerUpdateLoop()
         {
@@ -281,7 +281,7 @@ namespace Nethermind.Network
                             break;
                         }
                         
-                        ActionBlock<Peer> workerBlock = new ActionBlock<Peer>(
+                        ActionBlock<Peer> workerBlock = new(
                             SetupPeerConnection,
                             new ExecutionDataflowBlockOptions
                             {
@@ -986,7 +986,7 @@ namespace Nethermind.Network
 
         private void CleanupPersistedPeers(ICollection<Peer> activePeers, NetworkNode[] storedNodes)
         {
-            HashSet<PublicKey> activeNodeIds = new HashSet<PublicKey>(activePeers.Select(x => x.Node.Id));
+            HashSet<PublicKey> activeNodeIds = new(activePeers.Select(x => x.Node.Id));
             NetworkNode[] nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
                 .OrderBy(x => x.Reputation).ToArray();
             int countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;

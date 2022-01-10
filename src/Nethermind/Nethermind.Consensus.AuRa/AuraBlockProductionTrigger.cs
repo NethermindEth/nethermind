@@ -27,9 +27,13 @@ namespace Nethermind.Consensus.AuRa
     {
         private readonly IAuRaStepCalculator _auRaStepCalculator;
 
-        public BuildBlocksOnAuRaSteps(ILogManager logManager, IAuRaStepCalculator auRaStepCalculator) : base(logManager)
+        public BuildBlocksOnAuRaSteps(IAuRaStepCalculator auRaStepCalculator, ILogManager logManager, bool autoStart = true) : base(logManager, false)
         {
             _auRaStepCalculator = auRaStepCalculator;
+            if (autoStart)
+            {
+                StartLoop();
+            }
         }
 
         protected override async Task ProducerLoopStep(CancellationToken token)

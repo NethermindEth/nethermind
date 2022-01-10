@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 _specProvider = specProvider;
             }
 
-            public ResultWrapper<FeeHistoryResults> GetFeeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
+            public ResultWrapper<FeeHistoryResults> GetFeeHistory(long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
             {
                 ResultWrapper<FeeHistoryResults> initialCheckResult = Validate(ref blockCount, newestBlock, rewardPercentiles);
                 if (initialCheckResult.Result.ResultType == ResultType.Failure)
@@ -56,11 +56,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 }
 
                 long oldestBlockNumber = block!.Number;
-                Stack<UInt256> baseFeePerGas = new(blockCount + 1);
+                Stack<UInt256> baseFeePerGas = new((int)(blockCount + 1));
                 baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpec(block!.Number + 1)));
-                Stack<double> gasUsedRatio = new Stack<double>(blockCount);
+                Stack<double> gasUsedRatio = new Stack<double>((int)blockCount);
                 
-                Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Any() is false ? null : new Stack<UInt256[]>(blockCount);
+                Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Any() is false ? null : new Stack<UInt256[]>((int)blockCount);
 
                 while (block is not null && blockCount > 0)
                 {
@@ -133,7 +133,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return percentileValues;
             }
 
-            private ResultWrapper<FeeHistoryResults> Validate(ref int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
+            private ResultWrapper<FeeHistoryResults> Validate(ref long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles)
             {
                 if (newestBlock.Type == BlockParameterType.BlockHash)
                 {

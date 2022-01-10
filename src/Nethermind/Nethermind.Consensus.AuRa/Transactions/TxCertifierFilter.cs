@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -47,14 +48,14 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<TxCertifierFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => 
-            IsCertified(tx, parentHeader) ? (true, string.Empty) : _notCertifiedFilter.IsAllowed(tx, parentHeader);
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader) => 
+            IsCertified(tx, parentHeader) ? AcceptTxResult.Accepted : _notCertifiedFilter.IsAllowed(tx, parentHeader);
 
         private bool IsCertified(Transaction tx, BlockHeader parentHeader)
         {
-            if (tx.IsZeroGasPrice(parentHeader, _specProvider))
+            Address sender = tx.SenderAddress;
+            if (tx.IsZeroGasPrice(parentHeader, _specProvider) && sender is not null)
             {
-                Address sender = tx.SenderAddress;
                 if (_logger.IsTrace) _logger.Trace($"Checking service transaction checker contract from {sender}.");
                 IDictionary<Address, bool> cache = GetCache(parentHeader.Hash);
 

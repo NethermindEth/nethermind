@@ -19,17 +19,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.Serializers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs;
-using GetNodeDataMessageSerializer = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessageSerializer;
-using GetReceiptsMessageSerializer = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessageSerializer;
-using NodeDataMessageSerializer = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessageSerializer;
 
 namespace Nethermind.Network.Test.Builders
 {
@@ -100,26 +94,30 @@ namespace Nethermind.Network.Test.Builders
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessageSerializer())
-                .With(new GetNodeDataMessageSerializer())
-                .With(new NodeDataMessageSerializer())
-                .With(new GetReceiptsMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessageSerializer())
+                .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)));
         }
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {
-            Ecdsa ecdsa = new Ecdsa();
-            SameKeyGenerator privateKeyProvider = new SameKeyGenerator(privateKey);
+            Ecdsa ecdsa = new();
+            SameKeyGenerator privateKeyProvider = new(privateKey);
 
-            PingMessageSerializer pingSerializer = new PingMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
-            PongMessageSerializer pongSerializer = new PongMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
-            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
-            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(ecdsa, privateKeyProvider, new DiscoveryMessageFactory(_timestamper), new NodeIdResolver(ecdsa));
+            PingMsgSerializer pingSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
+            PongMsgSerializer pongSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
+            FindNodeMsgSerializer findNodeSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
+            NeighborsMsgSerializer neighborsSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
+            EnrRequestMsgSerializer enrRequestSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
+            EnrResponseMsgSerializer enrResponseSerializer = new(ecdsa, privateKeyProvider, new NodeIdResolver(ecdsa));
 
             return With(pingSerializer)
                 .With(pongSerializer)
                 .With(findNodeSerializer)
-                .With(neighborsSerializer);
+                .With(neighborsSerializer)
+                .With(enrRequestSerializer)
+                .With(enrResponseSerializer);
         }
     }
 }

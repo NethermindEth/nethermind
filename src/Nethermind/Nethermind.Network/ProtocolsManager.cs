@@ -45,13 +45,12 @@ namespace Nethermind.Network
 {
     public class ProtocolsManager : IProtocolsManager
     {
-        private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers =
-            new ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase>();
+        private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
 
         private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols =
-            new ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>>();
+            new();
         
-        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new ConcurrentDictionary<Guid, ISession>();
+        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ISyncServer _syncServer;
         private readonly ITxPool _txPool;
@@ -188,7 +187,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    P2PProtocolHandler handler = new P2PProtocolHandler(session, _localPeer.LocalNodeId, _stats, _serializer, _logManager);
+                    P2PProtocolHandler handler = new(session, _localPeer.LocalNodeId, _stats, _serializer, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 
@@ -222,7 +221,7 @@ namespace Nethermind.Network
                 },
                 [Protocol.Les] = (session, version) =>
                 {
-                    LesProtocolHandler handler = new LesProtocolHandler(session, _serializer, _stats, _syncServer, _logManager);
+                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _logManager);
                     InitSyncPeerProtocol(session, handler);
 
                     return handler;
@@ -417,7 +416,7 @@ namespace Nethermind.Network
 
         public void SendNewCapability(Capability capability)
         {
-            AddCapabilityMessage message = new AddCapabilityMessage(capability);
+            AddCapabilityMessage message = new(capability);
             foreach ((Guid _, ISession session) in _sessions)
             {
                 if (session.HasAgreedCapability(capability))

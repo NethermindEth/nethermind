@@ -44,10 +44,24 @@ namespace Nethermind.Sockets
                         {
                             if (socketException.SocketErrorCode == SocketError.ConnectionReset)
                             {
-                                if (_logger.IsDebug) _logger.Debug($"Client disconnected: {innerException.Message}.");
-                                else _logger.Info($"Not able to read from WebSockets ({socketException.SocketErrorCode}: {socketException.ErrorCode}). {innerException.Message}");
+                                if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
+                            }
+                            else
+                            {
+                                if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({socketException.SocketErrorCode}: {socketException.ErrorCode}). {innerException.Message}");
                             }
                         }
+                        else if(innerException is WebSocketException webSocketException)
+                        {
+                            if (webSocketException.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
+                            {
+                                if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
+                            }
+                            else
+                            {
+                                if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets ({webSocketException.WebSocketErrorCode}: {webSocketException.ErrorCode}). {innerException.Message}");
+                            }
+                        } 
                         else
                         {
                             if (_logger.IsInfo) _logger.Info($"Not able to read from WebSockets. {innerException?.Message}");
