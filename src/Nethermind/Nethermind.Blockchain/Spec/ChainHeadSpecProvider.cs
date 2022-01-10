@@ -34,6 +34,13 @@ namespace Nethermind.Blockchain.Spec
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
+        
+        public void UpdateMergeTransitionInfo(long blockNumber)
+        {
+            _specProvider.UpdateMergeTransitionInfo(blockNumber);
+        }
+
+        public long? MergeBlockNumber => _specProvider.MergeBlockNumber;
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 

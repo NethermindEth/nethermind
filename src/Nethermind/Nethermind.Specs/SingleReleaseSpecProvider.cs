@@ -21,6 +21,14 @@ namespace Nethermind.Specs
 {
     public class SingleReleaseSpecProvider : ISpecProvider
     {
+        private long? _theMergeBlock = null;
+
+        public void UpdateMergeTransitionInfo(long blockNumber)
+        {
+            _theMergeBlock = blockNumber;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
         public ulong ChainId { get; }
         public long[] TransitionBlocks { get; } = {0};
 

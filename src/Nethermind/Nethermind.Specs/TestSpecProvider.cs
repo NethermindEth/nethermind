@@ -20,6 +20,14 @@ namespace Nethermind.Specs
 {
     public class TestSpecProvider : ISpecProvider
     {
+        private long? _theMergeBlock = null;
+
+        public void UpdateMergeTransitionInfo(long blockNumber)
+        {
+            _theMergeBlock = blockNumber;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
         public TestSpecProvider(IReleaseSpec initialSpecToReturn)
         {
             SpecToReturn = initialSpecToReturn;

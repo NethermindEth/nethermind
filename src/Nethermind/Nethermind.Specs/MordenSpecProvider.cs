@@ -21,6 +21,14 @@ namespace Nethermind.Specs
 {
     public class MordenSpecProvider : ISpecProvider
     {
+        private long? _theMergeBlock = null;
+
+        public void UpdateMergeTransitionInfo(long blockNumber)
+        {
+            _theMergeBlock = blockNumber;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)

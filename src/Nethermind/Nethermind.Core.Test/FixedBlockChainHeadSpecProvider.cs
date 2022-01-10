@@ -21,6 +21,12 @@ namespace Nethermind.Core.Test
 {
     public class FixedBlockChainHeadSpecProvider : IChainHeadSpecProvider
     {
+        public void UpdateMergeTransitionInfo(long blockNumber)
+        {
+            _specProvider.UpdateMergeTransitionInfo(blockNumber);
+        }
+
+        public long? MergeBlockNumber => _specProvider.MergeBlockNumber;
         private readonly ISpecProvider _specProvider;
         private readonly long _fixedBlock;
 

@@ -23,9 +23,16 @@ namespace Nethermind.Specs
     public class GoerliSpecProvider : ISpecProvider
     {
         public static readonly GoerliSpecProvider Instance = new();
-
         private GoerliSpecProvider() { }
+        
+        private long? _theMergeBlock = null;
 
+        public void UpdateMergeTransitionInfo(long blockNumber)
+        {
+            _theMergeBlock = blockNumber;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
         public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
         
         private IReleaseSpec IstanbulNoBomb { get; } = Istanbul.Instance;

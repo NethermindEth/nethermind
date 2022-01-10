@@ -21,6 +21,14 @@ namespace Nethermind.Specs
 {
     public class OlympicSpecProvider : ISpecProvider
     {
+        private long? _theMergeBlock = null;
+
+        public void UpdateMergeTransitionInfo(long blockNumber)
+        {
+            _theMergeBlock = blockNumber;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
         public IReleaseSpec GenesisSpec => Olympic.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)

@@ -26,8 +26,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainSpecBasedSpecProvider : ISpecProvider
     {
-        private long _theMergeBlock = long.MaxValue;
-        private (long BlockNumber, IReleaseSpec Release)[] _transitions;
+        private long? _theMergeBlock = null;
+        private (long BlockNumber, ReleaseSpec Release)[] _transitions;
 
         private ChainSpec _chainSpec;
 
@@ -87,7 +87,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             TransitionBlocks = transitionBlocks.Skip(1).ToArray();
-            _transitions = new (long BlockNumber, IReleaseSpec Release)[transitionBlocks.Count];
+            _transitions = new (long BlockNumber, ReleaseSpec Release)[transitionBlocks.Count];
 
             int index = 0;
             foreach (long releaseStartBlock in transitionBlocks)
@@ -140,7 +140,6 @@ namespace Nethermind.Specs.ChainSpecStyle
                 releaseSpec.IsEip3541Enabled = (_chainSpec.Parameters.Eip3541Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip3529Enabled = (_chainSpec.Parameters.Eip3529Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.IsEip3607Enabled = (_chainSpec.Parameters.Eip3607Transition ?? long.MaxValue) <= releaseStartBlock;
-                releaseSpec.IsEip3675Enabled = (_chainSpec.Parameters.Eip3675Transition ?? long.MaxValue) <= releaseStartBlock;
                 releaseSpec.ValidateChainId = (_chainSpec.Parameters.ValidateChainIdTransition ?? 0) <= releaseStartBlock; 
                 releaseSpec.ValidateReceipts = ((_chainSpec.Parameters.ValidateReceiptsTransition > 0) ? Math.Max(_chainSpec.Parameters.ValidateReceiptsTransition ?? 0, _chainSpec.Parameters.Eip658Transition ?? 0) : 0) <= releaseStartBlock;
                 releaseSpec.Eip1559FeeCollector = releaseSpec.IsEip1559Enabled && (_chainSpec.Parameters.Eip1559FeeCollectorTransition ?? long.MaxValue) <= releaseStartBlock ? _chainSpec.Parameters.Eip1559FeeCollector : null;
@@ -175,17 +174,24 @@ namespace Nethermind.Specs.ChainSpecStyle
             _theMergeBlock = blockNumber;
         }
 
-        public long MergeBlockNumber => _theMergeBlock;
+        public long? MergeBlockNumber => _theMergeBlock;
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
 
-        public IReleaseSpec GetSpec(long blockNumber) =>
-            _transitions.TryGetSearchedItem(blockNumber,
+        public IReleaseSpec GetSpec(long blockNumber)
+        {
+            ReleaseSpec releaseSpec = _transitions.TryGetSearchedItem(blockNumber,
                 CompareTransitionOnBlock,
-                out (long BlockNumber, IReleaseSpec Release) transition)
+                out (long BlockNumber, ReleaseSpec Release) transition)
                 ? transition.Release
                 : null;
+            
+            if (_theMergeBlock != null && releaseSpec != null && blockNumber >= _theMergeBlock)
+                releaseSpec.TheMergeEnabled = true;
+            
+            return releaseSpec;
+        }
 
-        private static int CompareTransitionOnBlock(long blockNumber, (long BlockNumber, IReleaseSpec Release) transition) => 
+        private static int CompareTransitionOnBlock(long blockNumber, (long BlockNumber, ReleaseSpec Release) transition) => 
             blockNumber.CompareTo(transition.BlockNumber);
 
         public long? DaoBlockNumber => _chainSpec.DaoForkBlockNumber;

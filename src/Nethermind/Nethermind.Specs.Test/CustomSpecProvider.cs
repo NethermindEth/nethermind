@@ -19,10 +19,11 @@ using System.Linq;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
-namespace Nethermind.Specs
+namespace Nethermind.Specs.Test
 {
     public class CustomSpecProvider : ISpecProvider
     {
+        private long? _theMergeBlock = null;
         private readonly (long BlockNumber, IReleaseSpec Release)[] _transitions;
 
         public ulong ChainId { get; }
@@ -49,7 +50,13 @@ namespace Nethermind.Specs
                 throw new ArgumentException($"First release specified when instantiating {nameof(CustomSpecProvider)} should be at genesis block (0)", $"{nameof(transitions)}");
             }
         }
-        
+
+        public void UpdateMergeTransitionInfo(long blockNumber)
+        {
+            _theMergeBlock = blockNumber;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
         
         public IReleaseSpec GetSpec(long blockNumber)
@@ -65,6 +72,13 @@ namespace Nethermind.Specs
                 {
                     break;    
                 }
+            }
+
+            if (_theMergeBlock != null && blockNumber >= _theMergeBlock)
+            {
+                OverridableReleaseSpec overridableReleaseSpec = new(spec);
+                overridableReleaseSpec.TheMergeEnabled = true;
+                spec = overridableReleaseSpec;
             }
 
             return spec;

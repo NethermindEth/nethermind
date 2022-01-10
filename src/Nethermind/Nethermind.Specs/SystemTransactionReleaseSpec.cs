@@ -119,8 +119,7 @@ namespace Nethermind.Specs
         public bool IsEip3198Enabled => _spec.IsEip3198Enabled;
         public bool IsEip3529Enabled => _spec.IsEip3529Enabled;
         
-        public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
-        public bool IsEip3675Enabled => _spec.IsEip3675Enabled;		
+        public bool IsEip3541Enabled => _spec.IsEip3541Enabled;	
         public bool IsEip3607Enabled => _spec.IsEip3607Enabled;
 
         public bool IsEip158IgnoredAccount(Address address)
@@ -129,6 +128,7 @@ namespace Nethermind.Specs
         }
 
         public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
+        public bool TheMergeEnabled => _spec.TheMergeEnabled;
 
         public Address Eip1559FeeCollector => _spec.Eip1559FeeCollector;
     }

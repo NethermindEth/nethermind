@@ -21,9 +21,9 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface ISpecProvider
     {
-        public void UpdateMergeTransitionInfo(long blockNumber) { }
+        void UpdateMergeTransitionInfo(long blockNumber);
 
-        public long MergeBlockNumber => long.MaxValue;
+        long? MergeBlockNumber { get; }
 
         /// <summary>
         /// Retrieves the list of enabled EIPs at genesis block.
