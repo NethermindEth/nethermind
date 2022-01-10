@@ -95,10 +95,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         private UInt256 GetMinimumGasPrice(in UInt256 baseFeePerGas) => (_minGasPrice + baseFeePerGas) * _defaultMinGasPriceMultiplier / 100ul;
 
         private IEnumerable<Tuple<UInt256, UInt256>>GetSortedGasPricesFromRecentBlocks(long blockNumber) 
-            => GetGasPricesFromRecentBlocks2(blockNumber).OrderBy(gasPrice => gasPrice);
+            => GetGasPricesFromRecentBlocks(blockNumber).OrderBy(gasPrice => gasPrice);
             
         private IEnumerable<Tuple<UInt256, UInt256>>GetSortedGasPricesWithFeeFromRecentBlocks(long blockNumber) 
-            => GetGasPricesFromRecentBlocks(blockNumber).OrderBy(gasPrice=> gasPrice.Item1 >= gasPrice.Item2 ? gasPrice.Item1-gasPrice.Item2 : 0);
+            => GetGasPricesFromRecentBlocks2(blockNumber).OrderBy(gasPrice=> gasPrice.Item1 >= gasPrice.Item2 ? gasPrice.Item1-gasPrice.Item2 : 0);
 
         internal IEnumerable<Tuple<UInt256, UInt256>> GetGasPricesFromRecentBlocks(long blockNumber)
         {
