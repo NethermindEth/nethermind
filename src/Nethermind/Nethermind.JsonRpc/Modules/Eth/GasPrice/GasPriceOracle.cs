@@ -118,9 +118,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         {
             IEnumerable<Block> GetBlocks(long currentBlockNumber)
             {
+                Block current = _blockFinder.FindBlock(currentBlockNumber);
+                
                 for(int i = 0; i < 100; ++i)
                 {
-                    yield return _blockFinder.FindBlock(currentBlockNumber - i)!;
+                    yield return current!;
+
+                    current = _blockFinder.FindBlock(current.ParentHash);
                 }
             }
             
@@ -140,7 +144,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 UInt256 baseFee = currentBlock.BaseFeePerGas;
                 IEnumerable<UInt256> effectiveGasPrices = 
                     currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
-                        .Where(tx => tx.GasPrice > 0)
                         .Select(tx => tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee))
                         .Where(g => g >= IgnoreUnder)
                         .OrderBy(g => g);
@@ -181,14 +184,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             foreach (Block currentBlock in blocks)
             {
                 Transaction[] currentBlockTransactions = currentBlock.Transactions;
-                int txFromCurrentBlock = 0;
                 bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
 
                 
                 UInt256 baseFee = currentBlock.BaseFeePerGas;
                 IEnumerable<UInt256> effectiveGasPrices = 
                     currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
-                        .Where(tx => tx.GasPrice > 0)
                         .Select(tx => tx.CalculateEffectiveGasPrice2(eip1559Enabled, baseFee))
                         .Where(g => g >= IgnoreUnder)
                         .OrderBy(g => g);
