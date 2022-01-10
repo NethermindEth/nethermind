@@ -404,7 +404,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                     Eip3198Transition = 31980L,
                     Eip3529Transition = 35290L,
                     Eip3541Transition = 35410L,
-                    Eip3675Transition = 36750L,
                     Eip1283ReenableTransition = 23000L,
                     ValidateChainIdTransition = 24000L,
                     ValidateReceiptsTransition = 24000L,

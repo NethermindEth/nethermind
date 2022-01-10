@@ -65,7 +65,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         
         public long? Eip3541Transition { get; set; }
         public long? Eip3607Transition { get; set; }
-        public long? Eip3675Transition { get; set; }
         
         public UInt256 Eip1559BaseFeeInitialValue { get; set; }
 
@@ -116,5 +115,9 @@ namespace Nethermind.Specs.ChainSpecStyle
         public UInt256? Eip1559BaseFeeMinValue { get; set; }
         
         public long? MergeForkIdTransition { get; set; }
+        
+        public long? TerminalPowBlockNumber { get; set; }
+        
+        public UInt256? TerminalTotalDifficulty { get; set; }
     }
 }

@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin
       
       We have different sources of these parameters. The above list starts from the highest priority:
       1) MergeConfig - we should be able to override every parameter with CLI arguments
-      2) SpecProvider - we can specify our parameters during the release. Moreover, it allows us to migrate to geth chainspec in future
+      2) ChainSpec - we can specify our parameters during the release. Moreover, it allows us to migrate to geth chainspec in future
       3) Memory/Database - needed for the dynamic process of transition. We won't know a terminal block number before the merge
      */
     

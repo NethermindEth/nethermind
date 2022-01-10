@@ -74,7 +74,7 @@ namespace Nethermind.Specs.Test
                 }
             }
 
-            if (_theMergeBlock != null && blockNumber >= _theMergeBlock)
+            if (blockNumber >= _theMergeBlock)
             {
                 OverridableReleaseSpec overridableReleaseSpec = new(spec);
                 overridableReleaseSpec.TheMergeEnabled = true;

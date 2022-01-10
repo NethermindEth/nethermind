@@ -52,7 +52,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 
             var forks = _chainSpec.GetType()
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.Name.Contains("BlockNumber"));
+                .Where(p => p.Name.Contains("BlockNumber") && p.Name != "TerminalPoWBlockNumber");
             
             var baseTransitions = _chainSpec.Parameters.GetType()
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -167,6 +167,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 _transitions[index] = (releaseStartBlock, releaseSpec);
                 index++;
             }
+            
+            _theMergeBlock = _chainSpec.Parameters.TerminalPowBlockNumber + 1;
         }
 
         public void UpdateMergeTransitionInfo(long blockNumber)
@@ -185,7 +187,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ? transition.Release
                 : null;
             
-            if (_theMergeBlock != null && releaseSpec != null && blockNumber >= _theMergeBlock)
+            if (releaseSpec != null && blockNumber >= _theMergeBlock)
                 releaseSpec.TheMergeEnabled = true;
             
             return releaseSpec;

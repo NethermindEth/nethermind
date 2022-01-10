@@ -342,7 +342,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         state.WarmUp(recipient); // eip-2929
                     }
 
-                    block.IsPostMerge = block.IsPostMerge || block.Number >= _specProvider.MergeBlockNumber;
+                    block.IsPostMerge = block.IsPostMerge || spec.TheMergeEnabled;
                     substate = _virtualMachine.Run(state, _worldState, spec, txTracer);
                     unspentGas = state.GasAvailable;
 

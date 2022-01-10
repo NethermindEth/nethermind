@@ -81,5 +81,9 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? ArrowGlacierBlockNumber { get; set; }
         
         public long? MergeForkIdBlockNumber { get; set; }
+        
+        public long? TerminalPoWBlockNumber { get; set; }
+        
+        public UInt256? TerminalTotalDifficulty { get; set; }
     }
 }
