@@ -18,6 +18,7 @@
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Overseer.Test.JsonRpc;
 using Nethermind.Serialization.Json;
@@ -54,6 +55,31 @@ namespace Nethermind.Merge.Plugin.Test
                 }
 
                 currentHash = block.ParentHash;
+                currentBlockNumber = block.Number!.Value - 1;
+            } while (currentBlockNumber != destinationBlockNumber);
+        }
+        
+        [Test]
+        [Ignore("You can execute this test for target node")]
+        public async Task ParentTimestampIsAlwaysLowerThanChildTimestamp()
+        {
+            IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
+            int destinationBlockNumber = 12000;
+            long? currentBlockNumber = null;
+            UInt256? childTimestamp = null;
+            JsonRpcClient? client = new($"http://localhost:8550");
+            do
+            {
+                string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
+                JsonRpcResponse<JObject>? requestResponse =
+                    await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] {requestedBlockNumber!, false});
+                BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
+                if (childTimestamp != null)
+                {
+                    Assert.True(childTimestamp > block.Timestamp, $"incorrect timestamp for block {block}");
+                }
+
+                childTimestamp = block.Timestamp;
                 currentBlockNumber = block.Number!.Value - 1;
             } while (currentBlockNumber != destinationBlockNumber);
         }
