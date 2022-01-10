@@ -26,7 +26,7 @@ namespace Nethermind.Merge.Plugin
 
         public string BlockAuthorAccount { get; set; } = string.Empty;
 
-        public UInt256 TerminalTotalDifficulty { get; set; } = 0;
+        public string? TerminalTotalDifficulty { get; set; }
         
         public Keccak TerminalBlockHash { get; set; } = Keccak.Zero;
         

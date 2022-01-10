@@ -22,6 +22,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -165,8 +166,8 @@ namespace Nethermind.Merge.Plugin.Test
         {
             IDb db= new MemDb();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            MergeConfig? mergeConfig = new() {Enabled = true, TerminalTotalDifficulty = 2};
-            return new PoSSwitcher(mergeConfig, db, blockTree, MainnetSpecProvider.Instance, LimboLogs.Instance);
+            MergeConfig? mergeConfig = new() {Enabled = true, TerminalTotalDifficulty = "2"};
+            return new PoSSwitcher(mergeConfig, db, blockTree, MainnetSpecProvider.Instance, new ChainSpec(), LimboLogs.Instance);
         }
         
     }

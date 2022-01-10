@@ -40,5 +40,6 @@ namespace Nethermind.Merge.Plugin
         public bool HasEverReachedTerminalPoWBlock() => false;
 
         public event EventHandler? TerminalPoWBlockReached;
+        public UInt256? TerminalTotalDifficulty => null;
     }
 }

@@ -54,10 +54,11 @@ namespace Nethermind.Merge.Plugin
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
+                if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
                 
 
                 _poSSwitcher = new PoSSwitcher(_mergeConfig,
-                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
+                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.ChainSpec, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 Address address;
@@ -121,21 +122,18 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockchainProcessor,
                         _api.EthSyncingInfo,
                         _api.Config<IInitConfig>(),
-                        _mergeConfig,
+                        _poSSwitcher,
                         _api.Synchronizer!,
                         syncConfig,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
-                        _api.StateProvider,
                         _blockFinalizationManager,
-                        _poSSwitcher, _api.EthSyncingInfo,
+                        _poSSwitcher,
+                        _api.EthSyncingInfo,
                         _api.BlockConfirmationManager,
                         payloadService,
-                        _mergeConfig, 
-                        _api.BlockchainProcessor,
                         _api.Synchronizer,
-                        _api.DbProvider!.StateDb,
                         syncConfig, 
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,

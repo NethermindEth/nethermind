@@ -18,6 +18,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus
 {
@@ -30,5 +31,7 @@ namespace Nethermind.Consensus
         bool HasEverReachedTerminalPoWBlock();
 
         event EventHandler TerminalPoWBlockReached;
+
+        UInt256? TerminalTotalDifficulty { get; }
     }
 }

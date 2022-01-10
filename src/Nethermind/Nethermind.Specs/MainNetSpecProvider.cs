@@ -72,7 +72,7 @@ namespace Nethermind.Specs
             {
                 return Istanbul.Instance;
             }
-            
+
             if (blockNumber < BerlinBlockNumber)
             {
                 return MuirGlacier.Instance;
@@ -82,13 +82,18 @@ namespace Nethermind.Specs
             {
                 return Berlin.Instance;
             }
-            
+
             if (blockNumber < ArrowGlacierBlockNumber)
             {
                 return London.Instance;
             }
 
-            return ArrowGlacier.Instance;
+            if (blockNumber < MergeBlockNumber)
+            {
+                return ArrowGlacier.Instance;
+            }
+            
+            return TheMerge.Instance;
         }
 
         public const long HomesteadBlockNumber = 1_150_000;

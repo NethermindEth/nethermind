@@ -25,6 +25,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -53,6 +54,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
+        private readonly ChainSpec _chainSpec;
         private readonly ILogger _logger;
         private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
@@ -68,12 +70,14 @@ namespace Nethermind.Merge.Plugin
             IDb metadataDb,
             IBlockTree blockTree, 
             ISpecProvider specProvider,
+            ChainSpec chainSpec,
             ILogManager logManager)
         {
             _mergeConfig = mergeConfig;
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _specProvider = specProvider;
+            _chainSpec = chainSpec;
             _logger = logManager.GetClassLogger();
             
             Initialize();
@@ -126,7 +130,8 @@ namespace Nethermind.Merge.Plugin
 
         private void LoadTerminalTotalDifficulty()
         {
-            _terminalTotalDifficulty = _mergeConfig.TerminalTotalDifficulty;
+            _terminalTotalDifficulty = _mergeConfig.TerminalTotalDifficultyParsed ??
+                                       _chainSpec.TerminalTotalDifficulty;
         }
 
         private void LoadFinalizedBlockHash()
@@ -172,9 +177,12 @@ namespace Nethermind.Merge.Plugin
 
         public event EventHandler? TerminalPoWBlockReached;
 
+        public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
+
         private void LoadTerminalPoWBlock()
         {
             _terminalPoWBlockNumber = _mergeConfig.TerminalBlockNumber ??
+                                      _specProvider.MergeBlockNumber - 1 ??
                                       LoadPoWBlockNumberFromDb();
             
             _terminalBlockHash = _mergeConfig.TerminalBlockHash != Keccak.Zero 

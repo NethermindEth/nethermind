@@ -27,6 +27,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -123,7 +124,8 @@ namespace Nethermind.Merge.Plugin.Test
             
             var blockTree = Substitute.For<IBlockTree>();
             PoSSwitcher poSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, blockTree, metadataDb);
-            Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(1).TestObject;
+            Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(300).TestObject;
+            block.Header.Hash = block.CalculateHash();
             blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block));
             
             Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalPoWBlock());
@@ -135,8 +137,8 @@ namespace Nethermind.Merge.Plugin.Test
         private static PoSSwitcher CreatePosSwitcher(UInt256 terminalTotalDifficulty, IBlockTree blockTree, IDb? db = null)
         {
             db ??= new MemDb();
-            MergeConfig? mergeConfig = new() {Enabled = true, TerminalTotalDifficulty = terminalTotalDifficulty};
-            return new PoSSwitcher(mergeConfig, db, blockTree, MainnetSpecProvider.Instance, LimboLogs.Instance);
+            MergeConfig? mergeConfig = new() {Enabled = true};
+            return new PoSSwitcher(mergeConfig, db, blockTree, MainnetSpecProvider.Instance, new ChainSpec() { TerminalTotalDifficulty = terminalTotalDifficulty}, LimboLogs.Instance);
         }
     }
 }

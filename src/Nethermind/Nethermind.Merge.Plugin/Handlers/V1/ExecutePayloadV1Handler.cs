@@ -53,7 +53,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IBlockchainProcessor _processor;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
-        private readonly IMergeConfig _mergeConfig;
+        private readonly IPoSSwitcher _poSSwitcher;
         private readonly ISynchronizer _synchronizer;
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
@@ -68,7 +68,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             IBlockchainProcessor processor,
             IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
-            IMergeConfig mergeConfig,
+            IPoSSwitcher poSSwitcher,
             ISynchronizer synchronizer,
             ISyncConfig syncConfig,
             ILogManager logManager)
@@ -78,7 +78,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _processor = processor;
             _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
-            _mergeConfig = mergeConfig;
+            _poSSwitcher = poSSwitcher;
             _synchronizer = synchronizer;
             _syncConfig = syncConfig;
             _logger = logManager.GetClassLogger();
@@ -124,7 +124,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
 
-            if (parentHeader.TotalDifficulty < _mergeConfig.TerminalTotalDifficulty)
+            if (_poSSwitcher.TerminalTotalDifficulty == null || parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
                 ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {parentHeader.TotalDifficulty} for block header: {parentHeader}", MergeErrorCodes.InvalidTerminalBlock);
             }

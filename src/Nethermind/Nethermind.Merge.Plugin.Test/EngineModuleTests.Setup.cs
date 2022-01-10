@@ -39,6 +39,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Synchronization;
@@ -57,8 +58,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             return new EngineRpcModule(
                 new GetPayloadV1Handler(payloadService, chain.LogManager),
-                new ExecutePayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.MergeConfig, synchronizer, new SyncConfig(), chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.State, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, chain.MergeConfig, chain.BlockchainProcessor, synchronizer, chain.StateDb, new SyncConfig(), chain.LogManager),
+                new ExecutePayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.PoSSwitcher, synchronizer, new SyncConfig(), chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, synchronizer, new SyncConfig(), chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
                 chain.LogManager);
@@ -148,7 +149,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             private IBlockValidator CreateBlockValidator()
             {
-                PoSSwitcher = new PoSSwitcher(MergeConfig, new MemDb(), BlockTree, SpecProvider, LogManager);
+                PoSSwitcher = new PoSSwitcher(MergeConfig, new MemDb(), BlockTree, SpecProvider, new ChainSpec(), LogManager);
                 SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer, LogManager);
                 HeaderValidator = new PostMergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealEngine, LogManager);
                 

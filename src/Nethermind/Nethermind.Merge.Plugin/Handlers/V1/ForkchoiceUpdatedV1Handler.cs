@@ -45,46 +45,34 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     public class ForkchoiceUpdatedV1Handler : IForkchoiceUpdatedV1Handler
     {
         private readonly IBlockTree _blockTree;
-        private readonly IStateProvider _stateProvider;
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly IPayloadService _payloadService;
-        private readonly IMergeConfig _mergeConfig;
-        private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly ISynchronizer _synchronizer;
-        private readonly IDb _stateDb;
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
         private bool synced = false;
 
         public ForkchoiceUpdatedV1Handler(
             IBlockTree blockTree,
-            IStateProvider stateProvider,
             IManualBlockFinalizationManager manualBlockFinalizationManager, 
             IPoSSwitcher poSSwitcher,
             IEthSyncingInfo ethSyncingInfo,
             IBlockConfirmationManager blockConfirmationManager,
             IPayloadService payloadService,
-            IMergeConfig mergeConfig,
-            IBlockchainProcessor blockchainProcessor,
             ISynchronizer synchronizer,
-            IDb stateDb,
             ISyncConfig syncConfig,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _blockConfirmationManager = blockConfirmationManager ?? throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadService = payloadService;
-            _mergeConfig = mergeConfig;
-            _blockchainProcessor = blockchainProcessor;
             _synchronizer = synchronizer;
-            _stateDb = stateDb;
             _syncConfig = syncConfig;
             _logger = logManager.GetClassLogger();
         }
@@ -117,9 +105,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 await  _synchronizer.StopAsync();
                 synced = true;
             }
-            if (newHeadBlock!.Header.TotalDifficulty < _mergeConfig.TerminalTotalDifficulty)
+            
+            if (_poSSwitcher.TerminalTotalDifficulty == null || newHeadBlock!.Header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
-                ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {newHeadBlock.Header.TotalDifficulty} for block header: {newHeadBlock!.Header}", MergeErrorCodes.InvalidTerminalBlock);
+                ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {newHeadBlock!.Header.TotalDifficulty} for block header: {newHeadBlock!.Header}", MergeErrorCodes.InvalidTerminalBlock);
             }
 
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))

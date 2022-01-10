@@ -31,16 +31,16 @@ namespace Nethermind.Merge.Plugin
         [ConfigItem(Description = "Account to be used by the block author / coinbase.", DefaultValue = "")]
         public string BlockAuthorAccount { get; set; }
         
-        [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "0")]
-        public UInt256 TerminalTotalDifficulty { get; set; }
+        [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "null")]
+        public string? TerminalTotalDifficulty { get; set; }
+        
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
+        UInt256? TerminalTotalDifficultyParsed => string.IsNullOrWhiteSpace(TerminalTotalDifficulty) ? null : UInt256.Parse(TerminalTotalDifficulty);
         
         [ConfigItem(Description = "Terminal PoW block hash used for transition process.", DefaultValue = "0x0000000000000000000000000000000000000000000000000000000000000000")]
         public Keccak TerminalBlockHash { get; set; }
         
         [ConfigItem(Description = "Terminal PoW block number used for transition process.")]
         public long? TerminalBlockNumber { get; set; }
-        
-        [ConfigItem(Description = "A block number for next fork id value.")]
-        public long? ForkNextValue { get; set; }
     }
 }
