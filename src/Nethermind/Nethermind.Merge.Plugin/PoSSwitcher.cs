@@ -50,7 +50,7 @@ namespace Nethermind.Merge.Plugin
     public class PoSSwitcher : IPoSSwitcher
     {
         private readonly IMergeConfig _mergeConfig;
-        private readonly IDb _db;
+        private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
@@ -65,13 +65,13 @@ namespace Nethermind.Merge.Plugin
 
         public PoSSwitcher(
             IMergeConfig mergeConfig,
-            IDb db,
+            IDb metadataDb,
             IBlockTree blockTree, 
             ISpecProvider specProvider,
             ILogManager logManager)
         {
             _mergeConfig = mergeConfig;
-            _db = db;
+            _metadataDb = metadataDb;
             _blockTree = blockTree;
             _specProvider = specProvider;
             _logger = logManager.GetClassLogger();
@@ -105,8 +105,8 @@ namespace Nethermind.Merge.Plugin
                 {
                     _terminalPoWBlockNumber = e.Block.Number;
                     _terminalBlockHash = e.Block.Hash;
-                    _db.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalPoWBlockNumber.Value).Bytes);
-                    _db.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
+                    _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalPoWBlockNumber.Value).Bytes);
+                    _metadataDb.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
                     _firstPoSBlockNumber = e.Block.Number + 1;
                     _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
                 }
@@ -151,14 +151,14 @@ namespace Nethermind.Merge.Plugin
 
                 _finalizedBlockHash = finalizedHash;
                 // ToDo need to discuss with Sarah, this method should be moved to BlockTree or FinalizationManager
-                _db.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(_finalizedBlockHash).Bytes);
+                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(_finalizedBlockHash).Bytes);
             }
 
             if (_firstPoSBlockHeader == null)
             {
                 if (_logger.IsInfo) _logger.Info($"Received the first forkchoiceUpdated at block {newHeadHash}");
                 _firstPoSBlockHeader = newHeadHash;
-                _db.Set(MetadataDbKeys.FirstPoSHash, Rlp.Encode(_firstPoSBlockHeader.Hash).Bytes);
+                _metadataDb.Set(MetadataDbKeys.FirstPoSHash, Rlp.Encode(_firstPoSBlockHeader.Hash).Bytes);
             }
         }
 
@@ -187,9 +187,9 @@ namespace Nethermind.Merge.Plugin
         
         private long? LoadPoWBlockNumberFromDb()
         {
-            if (_db.KeyExists(MetadataDbKeys.TerminalPoWNumber))
+            if (_metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber))
             {
-                byte[]? hashFromDb = _db.Get(MetadataDbKeys.TerminalPoWNumber);
+                byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.TerminalPoWNumber);
                 RlpStream stream = new (hashFromDb!);
                 return stream.DecodeLong();   
             }
@@ -199,9 +199,9 @@ namespace Nethermind.Merge.Plugin
 
         private Keccak? LoadHashFromDb(int key)
         {
-            if (_db.KeyExists(key))
+            if (_metadataDb.KeyExists(key))
             {
-                byte[]? hashFromDb = _db.Get(key);
+                byte[]? hashFromDb = _metadataDb.Get(key);
                 RlpStream stream = new (hashFromDb!);
                 return stream.DecodeKeccak();   
             }

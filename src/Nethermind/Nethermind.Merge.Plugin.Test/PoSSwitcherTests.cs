@@ -116,23 +116,20 @@ namespace Nethermind.Merge.Plugin.Test
         [Ignore("Need to ensure that transition process is correct")]
         public void Can_load_parameters_after_the_restart()
         {
-            using TempPath tempPath = TempPath.GetTempFile(SimpleFilePublicKeyDb.DbFileName);
-
-            SimpleFilePublicKeyDb filePublicKeyDb = new("PoSSwitcherTests", Path.GetTempPath(), LimboLogs.Instance);
+            using MemDb metadataDb = new MemDb();
             
             UInt256 configTerminalTotalDifficulty = 10L;
             UInt256 expectedTotalTerminalDifficulty = 200L;
-            Keccak expectedTerminalPowHash = Keccak.Compute("test1");
-            
-            Block block = Build.A.Block.WithNumber(2).TestObject;
-            Block finalizedBlock = Build.A.Block.WithNumber(3).TestObject;
             
             var blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, blockTree, filePublicKeyDb);
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, blockTree, metadataDb);
+            Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(1).TestObject;
+            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block));
+            
+            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalPoWBlock());
             poSSwitcher.ForkchoiceUpdated(block.Header, block.CalculateHash());
 
-            PoSSwitcher newPoSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty,blockTree, filePublicKeyDb);
-            tempPath.Dispose();
+            PoSSwitcher newPoSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty,blockTree, metadataDb);
         }
 
         private static PoSSwitcher CreatePosSwitcher(UInt256 terminalTotalDifficulty, IBlockTree blockTree, IDb? db = null)
