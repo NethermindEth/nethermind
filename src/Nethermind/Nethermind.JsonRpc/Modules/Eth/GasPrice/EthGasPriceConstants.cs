@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
     public static class EthGasPriceConstants
     {
-        public const int PercentileOfSortedTxs = 60; //Percentile of sortedTxList indexes to choose as gas price
+        public const int PercentileOfSortedTxs = 40; //Percentile of sortedTxList indexes to choose as gas price
         public const int DefaultBlocksLimit = 20; //Limit for how many blocks we check txs in to add to sortedTxList
         public const int TxLimitFromABlock = 3; //Maximum number of tx we can add to sortedTxList from one block
         public const int DefaultIgnoreUnder = 2; //Effective Gas Prices under this are ignored
