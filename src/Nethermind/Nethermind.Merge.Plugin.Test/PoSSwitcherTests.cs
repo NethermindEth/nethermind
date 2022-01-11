@@ -39,71 +39,6 @@ namespace Nethermind.Merge.Plugin.Test
     public class PoSSwitcherTests
     {
         [Test]
-        [Ignore("Need to ensure that transition process is correct")]
-        public void Correctly_validate_headers_with_TTD()
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree);
-
-            BlockHeader blockHeader = Build.A.BlockHeader.WithTotalDifficulty(100L).WithNumber(1).TestObject;
-            BlockHeader blockHeader2 = Build.A.BlockHeader.WithTotalDifficulty(200L).WithNumber(2).TestObject;
-            BlockHeader blockHeader3 = Build.A.BlockHeader.WithTotalDifficulty(300L).WithNumber(3).TestObject;
-
-            Assert.AreEqual(false, poSSwitcher.IsPos(blockHeader));
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader2));
-            Assert.AreEqual(true, poSSwitcher.IsPos(blockHeader3));
-        }
-
-        [Test]
-        [Ignore("Need to ensure that transition process is correct")]
-        public void Switch_with_terminal_hash()
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(1000000000000000, blockTree);
-
-            Block firstBlock = Build.A.Block.WithParentHash(Keccak.Compute("test2")).WithTotalDifficulty(100L).WithNumber(1).TestObject;
-            Block secondBlock = Build.A.Block.WithParentHash(Keccak.Compute("test1")).WithTotalDifficulty(200L).WithNumber(2).TestObject;
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(firstBlock));
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(secondBlock));
-
-            Assert.AreEqual(false, poSSwitcher.IsPos(firstBlock.Header));
-            Assert.AreEqual(true, poSSwitcher.IsPos(secondBlock.Header));
-        }
-
-        [Test]
-        [Ignore("Need to ensure that transition process is correct")]
-        public void Is_pos_without_switch_return_expected_results()
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree);
-            Block firstBlock = Build.A.Block.WithTotalDifficulty(100L).WithNumber(1).TestObject;
-            Block secondBlock = Build.A.Block.WithTotalDifficulty(200L).WithNumber(2).TestObject;
-            Block thirdBlock = Build.A.Block.WithTotalDifficulty(400L).WithNumber(3).TestObject;
-
-            Assert.AreEqual(false, poSSwitcher.IsPos(firstBlock.Header));
-            Assert.AreEqual(true, poSSwitcher.IsPos(secondBlock.Header));
-            Assert.AreEqual(true, poSSwitcher.IsPos(thirdBlock.Header));
-        }
-
-        [Test]
-        [Ignore("Need to ensure that transition process is correct")]
-        public void Is_pos__with_switch_return_expected_results()
-        {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree);
-            Block firstBlock = Build.A.Block.WithTotalDifficulty(100L).WithNumber(1).TestObject;
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(firstBlock));
-            Block secondBlock = Build.A.Block.WithTotalDifficulty(200L).WithNumber(2).TestObject;
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(secondBlock));
-            Block thirdBlock = Build.A.Block.WithTotalDifficulty(400L).WithNumber(3).TestObject;
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(thirdBlock));
-
-            Assert.AreEqual(false, poSSwitcher.IsPos(firstBlock.Header));
-            Assert.AreEqual(true, poSSwitcher.IsPos(secondBlock.Header));
-            Assert.AreEqual(true, poSSwitcher.IsPos(thirdBlock.Header));
-        }
-        
-        [Test]
         public void Initial_TTD_should_be_null()
         {
             UInt256? expectedTtd = null;
@@ -139,6 +74,25 @@ namespace Nethermind.Merge.Plugin.Test
 
             Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
             Assert.AreEqual(101, specProvider.MergeBlockNumber);
+        }
+        
+        [TestCase(200)]
+        [TestCase(201)]
+        public void IsPos_returning_expected_results(long terminalBlockDifficulty)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree);
+            
+            Block block1 = Build.A.Block.WithTotalDifficulty(100L).WithNumber(1).TestObject;
+            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block1));
+            Block block2 = Build.A.Block.WithTotalDifficulty(terminalBlockDifficulty).WithNumber(2).TestObject;
+            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block2));
+            Block block3 = Build.A.Block.WithTotalDifficulty(300L).WithNumber(3).TestObject;
+            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block3));
+
+            Assert.AreEqual(false, poSSwitcher.IsPos(block1.Header)); // PowBlock
+            Assert.AreEqual(false, poSSwitcher.IsPos(block2.Header)); // terminal block
+            Assert.AreEqual(true, poSSwitcher.IsPos(block3.Header)); // first merge block
         }
 
         [Test]
