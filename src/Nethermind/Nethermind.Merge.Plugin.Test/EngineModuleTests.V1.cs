@@ -578,22 +578,28 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
         }
 
-        [Test]
-        [Ignore("Need to ensure that transition process is correct")]
-        public async Task forkchoiceUpdatedV1_switch_to_pos_by_terminal_block_hash()
+        [TestCase("")]
+        [TestCase("1000001")]
+        public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd(string terminalTotalDifficulty)
         {
-            using MergeTestBlockchain chain = await CreateBlockChain();
+            using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = terminalTotalDifficulty });
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
-
-            Keccak newHeadHash = blockRequestResult.BlockHash;
-            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, newHeadHash, newHeadHash);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-            forkchoiceUpdatedResult.Data.Status.Should().Be(ForkchoiceStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
-            AssertExecutionStatusChanged(rpc, newHeadHash, newHeadHash, newHeadHash);
-            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
+            BlockRequestResult blockRequestResult = CreateBlockRequest(
+                CreateParentBlockRequestOnHead(chain.BlockTree),
+                TestItem.AddressD);
+            ResultWrapper<ExecutePayloadV1Result> resultWrapper = await rpc.engine_executePayloadV1(blockRequestResult);
+            resultWrapper.ErrorCode.Should().Be(MergeErrorCodes.InvalidTerminalBlock);
+        }
+        
+        [TestCase("")]
+        [TestCase("1000001")]
+        public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd(string terminalTotalDifficulty)
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = terminalTotalDifficulty });
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak blockHash = chain.BlockTree.HeadHash;
+            ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blockHash, blockHash, blockHash), null);
+            resultWrapper.ErrorCode.Should().Be(MergeErrorCodes.InvalidTerminalBlock);
         }
 
         [Test]

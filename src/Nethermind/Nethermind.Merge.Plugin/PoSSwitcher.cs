@@ -105,26 +105,7 @@ namespace Nethermind.Merge.Plugin
         {
             if (_terminalBlockHash == e.Block.Hash || (e.Block.TotalDifficulty >= _terminalTotalDifficulty))
             {
-                if (e.Block.Difficulty != 0) // PostMerge blocks have Difficulty == 0. We are interested here in Terminal PoW block
-                {
-                    _terminalPoWBlockNumber = e.Block.Number;
-                    _terminalBlockHash = e.Block.Hash;
-                    _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalPoWBlockNumber.Value).Bytes);
-                    _metadataDb.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
-                    _firstPoSBlockNumber = e.Block.Number + 1;
-                    _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
-                }
-
-                if (_hasEverReachedTerminalDifficulty == false)
-                {
-                    TerminalPoWBlockReached?.Invoke(this, EventArgs.Empty);
-                    _hasEverReachedTerminalDifficulty = true;
-                }
-                
-                // ToDo
-                _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
-
-                if (_logger.IsInfo) _logger.Info($"Reached terminal PoW block {e.Block}");
+                UpdateTerminalBlock(e.Block.Header);
             }
         }
 
@@ -137,6 +118,32 @@ namespace Nethermind.Merge.Plugin
         private void LoadFinalizedBlockHash()
         {
             _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
+        }
+
+        // In reverse header sync, this method will be needed when we find the TerminalPoWBlock
+        // Note: In the first post-merge release, the terminal block will be known
+        public void UpdateTerminalBlock(BlockHeader blockHeader)
+        {
+            if (blockHeader.Difficulty != 0) // PostMerge blocks have Difficulty == 0. We are interested here in Terminal PoW block
+            {
+                _terminalPoWBlockNumber = blockHeader.Number;
+                _terminalBlockHash = blockHeader.Hash;
+                _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalPoWBlockNumber.Value).Bytes);
+                _metadataDb.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
+                _firstPoSBlockNumber = blockHeader.Number + 1;
+                _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
+            }
+
+            if (_hasEverReachedTerminalDifficulty == false)
+            {
+                TerminalPoWBlockReached?.Invoke(this, EventArgs.Empty);
+                _hasEverReachedTerminalDifficulty = true;
+            }
+                
+            // ToDo
+            _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
+            if (_logger.IsInfo) _logger.Info($"Reached terminal PoW block {blockHeader}");
+            
         }
 
         public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash)

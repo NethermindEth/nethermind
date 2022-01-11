@@ -99,7 +99,8 @@ namespace Nethermind.Merge.Plugin.Test
         public void Switch_when_TTD_is_reached()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree);
+            ISpecProvider specProvider = new TestSpecProvider(Berlin.Instance);
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree, new MemDb(), specProvider);
 
             Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalPoWBlock());
             Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(1).TestObject;
@@ -126,7 +127,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalPoWBlock());
 
             TestSpecProvider newSpecProvider = new(London.Instance);
-            // we're using the same mem db for new Switcher
+            // we're using the same MemDb for a new switcher
             PoSSwitcher newPoSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, blockTree, metadataDb, newSpecProvider);
             
             Assert.AreEqual(terminalBlock + 1, newSpecProvider.MergeBlockNumber);
