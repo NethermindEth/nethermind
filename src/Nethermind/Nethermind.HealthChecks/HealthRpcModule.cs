@@ -41,7 +41,7 @@ namespace Nethermind.HealthChecks
         {
             CheckHealthResult checkHealthResult = _nodeHealthService.CheckHealth();
             string[] messages = checkHealthResult.Messages.Select(x => x.Message).ToArray();
-            NodeStatusResult result = new NodeStatusResult() {Healthy = checkHealthResult.Healthy, Messages = messages};
+            NodeStatusResult result = new() {Healthy = checkHealthResult.Healthy, Messages = messages};
             return ResultWrapper<NodeStatusResult>.Success(result);
         }
     }

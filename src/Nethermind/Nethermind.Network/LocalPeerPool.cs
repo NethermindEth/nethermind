@@ -28,8 +28,8 @@ namespace Nethermind.Network
     internal class LocalPeerPool
     {
         private readonly ILogger _logger;
-        private ConcurrentDictionary<PublicKey, Peer> _staticPeers = new ConcurrentDictionary<PublicKey, Peer>();
-        public ConcurrentDictionary<PublicKey, Peer> AllPeers { get; } = new ConcurrentDictionary<PublicKey, Peer>();
+        private ConcurrentDictionary<PublicKey, Peer> _staticPeers = new();
+        public ConcurrentDictionary<PublicKey, Peer> AllPeers { get; } = new();
         public IEnumerable<Peer> CandidatePeers => AllPeers.Values;
         public List<Peer> NonStaticCandidatePeers => AllPeers.Values.Where(p => !p.Node.IsStatic).ToList();
         public List<Peer> StaticPeers => _staticPeers.Values.ToList();
@@ -45,7 +45,7 @@ namespace Nethermind.Network
         {
             static Peer CreateNew(PublicKey key, (NetworkNode Node, bool IsStatic, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
             {
-                Peer peer = new Peer(new Node(arg.Node.NodeId, arg.Node.Host, arg.Node.Port, arg.IsStatic));
+                Peer peer = new(new Node(arg.Node.NodeId, arg.Node.Host, arg.Node.Port, arg.IsStatic));
                 if (arg.IsStatic)
                 {
                     arg.Statics.TryAdd(arg.Node.NodeId, peer);
@@ -66,7 +66,7 @@ namespace Nethermind.Network
 
             static Peer CreateNew(PublicKey key, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
             {
-                Peer peer = new Peer(arg.Node);
+                Peer peer = new(arg.Node);
                 if (arg.Node.IsStatic)
                 {
                     arg.Statics.TryAdd(arg.Node.Id, peer);

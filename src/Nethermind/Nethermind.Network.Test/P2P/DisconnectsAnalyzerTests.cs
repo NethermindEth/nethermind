@@ -18,7 +18,6 @@
 using System.Threading;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Stats.Model;
 using NSubstitute;

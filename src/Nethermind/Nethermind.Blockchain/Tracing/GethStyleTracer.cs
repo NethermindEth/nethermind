@@ -22,8 +22,10 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Tracing
@@ -31,14 +33,20 @@ namespace Nethermind.Blockchain.Tracing
     public class GethStyleTracer : IGethStyleTracer
     {
         private readonly IBlockTree _blockTree;
+        private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
         private readonly IBlockchainProcessor _processor;
         private readonly IReceiptStorage _receiptStorage;
 
-        public GethStyleTracer(IBlockchainProcessor processor, IReceiptStorage receiptStorage, IBlockTree blockTree)
+        public GethStyleTracer(
+            IBlockchainProcessor processor, 
+            IReceiptStorage receiptStorage, 
+            IBlockTree blockTree, 
+            ChangeableTransactionProcessorAdapter transactionProcessorAdapter)
         {
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _transactionProcessorAdapter = transactionProcessorAdapter;
         }
 
         public GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken)
@@ -54,6 +62,25 @@ namespace Nethermind.Blockchain.Tracing
         public GethLikeTxTrace? Trace(Rlp block, Keccak txHash, GethTraceOptions options, CancellationToken cancellationToken)
         {
             return TraceBlock(GetBlockToTrace(block), options, cancellationToken, txHash).FirstOrDefault();
+        }
+
+        public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
+        {
+            Block block = _blockTree.FindBlock(blockParameter);
+            if (block is null) throw new InvalidOperationException($"Cannot find block {blockParameter}");
+            tx.Hash ??= tx.CalculateHash();
+            block = block.WithReplacedBody(BlockBody.WithOneTransactionOnly(tx));
+            ITransactionProcessorAdapter currentAdapter = _transactionProcessorAdapter.CurrentAdapter;
+            _transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(_transactionProcessorAdapter.TransactionProcessor);
+            
+            try
+            {
+                return Trace(block, tx.Hash, cancellationToken, options);
+            }
+            finally
+            {
+                _transactionProcessorAdapter.CurrentAdapter = currentAdapter;
+            }
         }
 
         public GethLikeTxTrace? Trace(Keccak txHash, GethTraceOptions traceOptions, CancellationToken cancellationToken)

@@ -156,7 +156,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
-            Bootstrap clientBootstrap = new Bootstrap();
+            Bootstrap clientBootstrap = new();
             clientBootstrap.Group(_workerGroup);
             clientBootstrap.Channel<TcpSocketChannel>();
             clientBootstrap.Option(ChannelOption.TcpNodelay, true);

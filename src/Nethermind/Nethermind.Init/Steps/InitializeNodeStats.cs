@@ -34,7 +34,7 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken _)
         {
-            var config = _api.Config<INetworkConfig>();
+            INetworkConfig config = _api.Config<INetworkConfig>();
             
             // create shared objects between discovery and peer manager
             NodeStatsManager nodeStatsManager = new(_api.TimerFactory, _api.LogManager, config.MaxCandidatePeerCount);

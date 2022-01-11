@@ -23,8 +23,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {
-            Eth.V62.Messages.GetBlockBodiesMessageSerializer ethSerializer = new Eth.V62.Messages.GetBlockBodiesMessageSerializer();
-            Rlp ethMessage = new Rlp(ethSerializer.Serialize(message.EthMessage));
+            Eth.V62.Messages.GetBlockBodiesMessageSerializer ethSerializer = new();
+            Rlp ethMessage = new(ethSerializer.Serialize(message.EthMessage));
             int contentLength = Rlp.LengthOf(message.RequestId) + ethMessage.Length;
 
             int totalLength = Rlp.LengthOfSequence(contentLength);
@@ -39,13 +39,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
 
         public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            NettyRlpStream rlpStream = new(byteBuffer);
             return Deserialize(rlpStream);
         }
 
         private static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
-            GetBlockBodiesMessage getBlockBodiesMessage = new GetBlockBodiesMessage();
+            GetBlockBodiesMessage getBlockBodiesMessage = new();
             rlpStream.ReadSequenceLength();
             getBlockBodiesMessage.RequestId = rlpStream.DecodeLong();
             getBlockBodiesMessage.EthMessage = Eth.V62.Messages.GetBlockBodiesMessageSerializer.Deserialize(rlpStream);

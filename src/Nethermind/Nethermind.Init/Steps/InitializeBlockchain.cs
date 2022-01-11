@@ -74,7 +74,7 @@ namespace Nethermind.Init.Steps
         {
             InitBlockTraceDumper();
 
-            var (getApi, setApi) = _api.ForBlockchain;
+            (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
             
             if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
             if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
@@ -164,7 +164,7 @@ namespace Nethermind.Init.Steps
                 stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
             
-            var txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
+            TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
             
             ITxPool txPool = _api.TxPool = CreateTxPool();
 

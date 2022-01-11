@@ -3,6 +3,7 @@
     <TargetFramework>net6.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <WarningsAsErrors />
@@ -26,6 +27,7 @@
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
+    <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
   </ItemGroup>
   <ItemGroup>

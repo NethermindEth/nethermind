@@ -143,7 +143,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             if (preEip8Format)
             {
                 if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckMessage)}");
-                AckMessage ackMessage = new AckMessage();
+                AckMessage ackMessage = new();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
                 byte[] ackData = _messageSerializationService.Serialize(ackMessage);
@@ -153,7 +153,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckEip8Message)}");
-                AckEip8Message ackMessage = new AckEip8Message();
+                AckEip8Message ackMessage = new();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
                 byte[] ackData = _messageSerializationService.Serialize(ackMessage);

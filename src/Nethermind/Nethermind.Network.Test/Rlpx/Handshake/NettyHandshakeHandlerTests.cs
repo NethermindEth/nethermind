@@ -21,7 +21,6 @@ using DotNetty.Codecs;
 using DotNetty.Common.Concurrency;
 using DotNetty.Transport.Channels;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;

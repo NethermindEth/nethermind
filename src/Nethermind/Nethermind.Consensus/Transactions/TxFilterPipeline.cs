@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Transactions
 
         public bool Execute(Transaction tx, BlockHeader parentHeader)
         {
-            if (!_filters.Any())
+            if (_filters.Count == 0)
             {
                 return true;
             }

@@ -16,11 +16,8 @@
 // 
 
 using System;
-using System.Globalization;
 using System.Linq;
 using System.Net;
-using System.Reflection;
-using System.Timers;
 using FluentAssertions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
