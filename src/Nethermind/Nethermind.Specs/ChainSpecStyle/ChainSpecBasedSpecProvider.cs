@@ -187,8 +187,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                 ? transition.Release
                 : null;
             
-            if (releaseSpec != null && blockNumber >= _theMergeBlock)
-                releaseSpec.TheMergeEnabled = true;
+            if (releaseSpec != null)
+                releaseSpec.TheMergeEnabled = blockNumber >= _theMergeBlock;
             
             return releaseSpec;
         }

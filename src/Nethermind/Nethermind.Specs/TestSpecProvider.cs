@@ -22,17 +22,18 @@ namespace Nethermind.Specs
     {
         private long? _theMergeBlock = null;
 
+        public TestSpecProvider(IReleaseSpec initialSpecToReturn)
+        {
+            SpecToReturn = initialSpecToReturn;
+            GenesisSpec = initialSpecToReturn;
+        }
+        
         public void UpdateMergeTransitionInfo(long blockNumber)
         {
             _theMergeBlock = blockNumber;
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
-        public TestSpecProvider(IReleaseSpec initialSpecToReturn)
-        {
-            SpecToReturn = initialSpecToReturn;
-            GenesisSpec = initialSpecToReturn;
-        }
 
         public IReleaseSpec GenesisSpec { get; set; }
 

@@ -73,14 +73,11 @@ namespace Nethermind.Specs.Test
                     break;    
                 }
             }
-
-            if (blockNumber >= _theMergeBlock)
-            {
-                OverridableReleaseSpec overridableReleaseSpec = new(spec);
-                overridableReleaseSpec.TheMergeEnabled = true;
-                spec = overridableReleaseSpec;
-            }
-
+            
+            OverridableReleaseSpec overridableReleaseSpec = new(spec);
+            overridableReleaseSpec.TheMergeEnabled = blockNumber >= _theMergeBlock;
+            spec = overridableReleaseSpec;
+            
             return spec;
         }
 
