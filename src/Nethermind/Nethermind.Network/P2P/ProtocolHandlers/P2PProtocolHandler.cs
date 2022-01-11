@@ -86,11 +86,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _availableCapabilities = new List<Capability>();
         }
 
-        public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
-        public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-        public int ListenPort { get; }
-        public PublicKey LocalNodeId { get; }
-        public string RemoteClientId { get; private set; }
         public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
         public bool HasAgreedCapability(Capability capability) => _agreedCapabilities.Contains(capability);
         public void AddSupportedCapability(Capability capability)
