@@ -14,7 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Linq;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -23,7 +26,11 @@ namespace Nethermind.Synchronization.StateSync
 {
     public class StateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
     {
-        private static readonly IPeerAllocationStrategy DefaultStrategy = new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
+        private static readonly IPeerAllocationStrategy DefaultStrategy = new TotalDiffStrategy(
+            new ClientTypeStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), false,
+                //Enum.GetValues<NodeClientType>()),
+                Enum.GetValues<NodeClientType>().Except(new[] { NodeClientType.OpenEthereum })),
+            TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
         
         public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {
