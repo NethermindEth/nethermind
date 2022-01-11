@@ -138,7 +138,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
         }
 
-
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)

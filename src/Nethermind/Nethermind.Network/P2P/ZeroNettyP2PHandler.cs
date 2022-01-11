@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -29,6 +29,8 @@ namespace Nethermind.Network.P2P
     {
         private readonly ISession _session;
         private readonly ILogger _logger;
+
+        public bool SnappyEnabled { get; private set; }
 
         public ZeroNettyP2PHandler(ISession session, ILogManager logManager)
         {
@@ -134,8 +136,6 @@ namespace Nethermind.Network.P2P
                 base.ExceptionCaught(context, exception);
             }
         }
-
-        public bool SnappyEnabled { get; private set; }
 
         public void EnableSnappy()
         {
