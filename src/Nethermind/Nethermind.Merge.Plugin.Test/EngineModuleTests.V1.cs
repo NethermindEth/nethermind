@@ -442,12 +442,12 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).TestObject;
-            block.Header.Hash = new Keccak("0xdc3419cbd81455372f3e576f930560b35ec828cd6cdfbd4958499e43c68effdf");
-            chain.BlockTree.SuggestBlock(block);
-
+            Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0).TestObject;
+            block.Header.Hash = block.CalculateHash();
+            await chain.BlockTree.SuggestBlockAsync(block!);
+            BlockRequestResult blockRequest = new(block);
             ResultWrapper<ExecutePayloadV1Result> executePayloadResult =
-                await rpc.engine_executePayloadV1(new BlockRequestResult(block));
+                await rpc.engine_executePayloadV1(blockRequest);
             executePayloadResult.Data.Status.Should().Be(ExecutePayloadStatus.Valid);
         }
 
@@ -808,14 +808,14 @@ namespace Nethermind.Merge.Plugin.Test
                 PrivateKey from = TestItem.PrivateKeyB;
                 Address to = TestItem.AddressD;
                 (_, UInt256 toBalanceAfter) =
-                    AddTransactions(chain, executionPayload, from, to, count, 1, out var parentHeader);
+                    AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
 
                 executionPayload.GasUsed = GasCostOf.Transaction * count;
                 executionPayload.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
                 executionPayload.ReceiptsRoot =
                     new Keccak("0xc538d36ed1acf6c28187110a2de3e5df707d6d38982f436eb0db7a623f9dc2cd");
-                TryCalculateHash(executionPayload, out var hash);
+                TryCalculateHash(executionPayload, out Keccak hash);
                 executionPayload.BlockHash = hash;
                 ResultWrapper<ExecutePayloadV1Result> result = await rpc.engine_executePayloadV1(executionPayload);
                 // ToDo we need better way than Task.Delay
@@ -925,7 +925,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             List<BlockRequestResult> blocks = new();
             ManualTimestamper timestamper = new(Timestamp);
-            var parentBlock = startingParentBlock;
+            BlockRequestResult parentBlock = startingParentBlock;
             for (int i = 0; i < count; i++)
             {
                 BlockRequestResult? getPayloadResult = await BuildAndGetPayloadResult(rpc, parentBlock.BlockHash,

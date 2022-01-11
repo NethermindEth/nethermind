@@ -108,7 +108,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (_poSSwitcher.TerminalTotalDifficulty == null || newHeadBlock!.Header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
-                ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {newHeadBlock!.Header.TotalDifficulty} for block header: {newHeadBlock!.Header}", MergeErrorCodes.InvalidTerminalBlock);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"Invalid total difficulty: {newHeadBlock!.Header.TotalDifficulty} for block header: {newHeadBlock!.Header}", MergeErrorCodes.InvalidTerminalBlock);
             }
 
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))

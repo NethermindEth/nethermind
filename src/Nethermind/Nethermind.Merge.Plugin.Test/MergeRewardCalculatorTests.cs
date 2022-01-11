@@ -96,7 +96,6 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Byzantium_reward_two_uncles()
         {
-
             long blockNumber = RopstenSpecProvider.ByzantiumBlockNumber;
             Block uncle = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
             Block uncle2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;

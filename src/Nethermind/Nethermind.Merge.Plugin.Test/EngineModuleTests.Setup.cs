@@ -69,7 +69,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             public IBlockProducer EmptyBlockProducer { get; private set; }
 
-            public IMergeConfig MergeConfig { get; set; } = new MergeConfig() {Enabled = true};
+            public IMergeConfig MergeConfig { get; set; } = new MergeConfig() {Enabled = true, TerminalTotalDifficulty = "0"};
 
             public Eth2BlockProductionContext IdealBlockProductionContext { get; set; } = new();
 
