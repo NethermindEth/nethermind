@@ -38,6 +38,14 @@ using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
+    public static class AccountTreeIndexes
+    {
+        public const int Version = 0;
+        public const int Balance = 1;
+        public const int Nonce = 2;
+        public const int CodeHash = 3;
+        public const int CodeSize = 4;
+    }
     public class VerkleStateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;

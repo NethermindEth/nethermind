@@ -96,19 +96,19 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
-            // byte[]? bytes = _get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            // byte[]? bytes = GetValue(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
             byte[][] TreeKeys = GetTreeKeysForAccount(address);
             
-            // byte[]? bytes = _get(ValueKeccak.Compute(address.Bytes).BytesAsSpan);
+            // byte[]? bytes = GetValue(ValueKeccak.Compute(address.Bytes).BytesAsSpan);
             // if (bytes is null)
             // {
             //     return null;
             // }
-            byte[] version = _get(TreeKeys[0]);
-            byte[] balance = _get(TreeKeys[1]);
-            byte[] nonce = _get(TreeKeys[2]);
-            byte[] codeKeccak = _get(TreeKeys[3]);
-            byte[] codeSize = _get(TreeKeys[4]);
+            byte[] version = GetValue(TreeKeys[AccountTreeIndexes.Version]);
+            byte[] balance = GetValue(TreeKeys[AccountTreeIndexes.Balance]);
+            byte[] nonce = GetValue(TreeKeys[AccountTreeIndexes.Nonce]);
+            byte[] codeKeccak = GetValue(TreeKeys[AccountTreeIndexes.CodeHash]);
+            byte[] codeSize = GetValue(TreeKeys[AccountTreeIndexes.CodeSize]);
             Account account = new (
                 
                 new UInt256(balance.AsSpan(), true),
@@ -131,17 +131,17 @@ namespace Nethermind.State
             {
                 account = Account.TotallyEmpty;
             }
-            _set(TreeKeys[0], account.Version.ToBigEndian());
-            _set(TreeKeys[1], account.Balance.ToBigEndian());
-            _set(TreeKeys[2], account.Nonce.ToBigEndian());
-            _set(TreeKeys[3], account.CodeHash.Bytes);
-            _set(TreeKeys[4], account.CodeSize.ToBigEndian());
+            SetValue(TreeKeys[AccountTreeIndexes.Version], account.Version.ToBigEndian());
+            SetValue(TreeKeys[AccountTreeIndexes.Balance], account.Balance.ToBigEndian());
+            SetValue(TreeKeys[AccountTreeIndexes.Nonce], account.Nonce.ToBigEndian());
+            SetValue(TreeKeys[AccountTreeIndexes.CodeHash], account.CodeHash.Bytes);
+            SetValue(TreeKeys[AccountTreeIndexes.CodeSize], account.CodeSize.ToBigEndian());
         }
 
         [DebuggerStepThrough]
         // TODO: add functionality to start with a given root hash (traverse from a starting node)
         // public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
-        public byte[]? _get(Span<byte> rawKey)
+        public byte[]? GetValue(Span<byte> rawKey)
         {
             byte[] result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, rawKey.ToArray());
             return result;
@@ -149,7 +149,7 @@ namespace Nethermind.State
         
         
         [DebuggerStepThrough]
-        public void _set(Span<byte> rawKey, byte[] value)
+        public void SetValue(Span<byte> rawKey, byte[] value)
         {
             if (_logger.IsTrace)
                 _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
@@ -272,7 +272,7 @@ namespace Nethermind.State
             for (int i = 0; i < chunkifiedCode.Length; i++)
             {
                 chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
-                _set(chunkKey, chunkifiedCode[i]);
+                SetValue(chunkKey, chunkifiedCode[i]);
             }
         }
         
