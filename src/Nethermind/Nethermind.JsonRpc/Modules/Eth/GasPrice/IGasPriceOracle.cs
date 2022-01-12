@@ -22,6 +22,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
     public interface IGasPriceOracle
     {
         UInt256 GetGasPriceEstimate();
-        UInt256 GetGasPriceEstimateWithBaseFee();
+        UInt256 GetMaxPriorityGasFeeEstimate();
     }
 }
