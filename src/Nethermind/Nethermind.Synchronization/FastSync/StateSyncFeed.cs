@@ -425,7 +425,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (!hasOnlyRootNode)
                 {
-                    AddNodeToPending(new StateSyncItem(_rootNode, NodeDataType.State), null, "initial");
+                    AddNodeToPending(new StateSyncItem(_rootNode, null, null, NodeDataType.State), null, "initial");
                 }
             }
         }
@@ -674,6 +674,10 @@ namespace Nethermind.Synchronization.FastSync
 
                     // children may have the same hashes (e.g. a set of accounts with the same code at different addresses)
                     HashSet<Keccak?> alreadyProcessedChildHashes = new();
+
+                    Span<byte> branchChildPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + 1];
+                    currentStateSyncItem.PathNibbles.CopyTo(branchChildPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
+
                     for (int childIndex = 15; childIndex >= 0; childIndex--)
                     {
                         Keccak? childHash = trieNode.GetChildHash(childIndex);
@@ -687,7 +691,9 @@ namespace Nethermind.Synchronization.FastSync
 
                         if (childHash != null)
                         {
-                            AddNodeResult addChildResult = AddNodeToPending(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
+                            branchChildPath[currentStateSyncItem.PathNibbles.Length] = (byte)childIndex;
+
+                            AddNodeResult addChildResult = AddNodeToPending(new StateSyncItem(childHash, currentStateSyncItem.AccountPathNibbles, branchChildPath.ToArray(), nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
                             if (addChildResult != AddNodeResult.AlreadySaved)
                             {
                                 dependentBranch.Counter++;
@@ -714,15 +720,23 @@ namespace Nethermind.Synchronization.FastSync
                     if (next != null)
                     {
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 1);
+
+                        Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
+                        currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
+                        trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
                                 next,
+                                currentStateSyncItem.AccountPathNibbles,
+                                childPath.ToArray(),
                                 nodeDataType,
                                 currentStateSyncItem.Level + trieNode.Path!.Length,
                                 CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0))
                             {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex},
                             dependentItem,
                             "extension child");
+
                         if (addResult == AddNodeResult.AlreadySaved)
                         {
                             SaveNode(currentStateSyncItem, currentResponseItem);
@@ -755,14 +769,14 @@ namespace Nethermind.Synchronization.FastSync
                             }
                             else
                             {
-                                AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
+                                AddNodeResult addCodeResult = AddNodeToPending(new StateSyncItem(codeHash, null, null, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
                                 if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                             }
                         }
 
                         if (storageRoot != Keccak.EmptyTreeHash)
                         {
-                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
+                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, currentStateSyncItem.PathNibbles, null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                         }
 

@@ -22,15 +22,21 @@ namespace Nethermind.Synchronization.FastSync
     [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
     public class StateSyncItem
     {
-        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level = 0, uint rightness = 0)
+        public StateSyncItem(Keccak hash, byte[] accountPathNibbles, byte[] pathNibbles, NodeDataType nodeType, int level = 0, uint rightness = 0)
         {
             Hash = hash;
+            AccountPathNibbles = accountPathNibbles;
+            PathNibbles = pathNibbles ?? new byte[0];
             NodeDataType = nodeType;
             Level = (byte)level;
             Rightness = rightness;
         }
 
         public Keccak Hash { get; }
+
+        public byte[] AccountPathNibbles { get; }
+
+        public byte[] PathNibbles { get; }
 
         public NodeDataType NodeDataType { get; }
 
