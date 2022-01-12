@@ -19,24 +19,21 @@ using System.Diagnostics;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public partial class StateSyncFeed
+    [DebuggerDisplay("{SyncItem.Hash} {Counter}")]
+    internal class DependentItem
     {
-        [DebuggerDisplay("{SyncItem.Hash} {Counter}")]
-        private class DependentItem
+        public StateSyncItem SyncItem { get; }
+        public byte[] Value { get; }
+        public int Counter { get; set; }
+
+        public bool IsAccount { get; }
+
+        public DependentItem(StateSyncItem syncItem, byte[] value, int counter, bool isAccount = false)
         {
-            public StateSyncItem SyncItem { get; }
-            public byte[] Value { get; }
-            public int Counter { get; set; }
-
-            public bool IsAccount { get; }
-
-            public DependentItem(StateSyncItem syncItem, byte[] value, int counter, bool isAccount = false)
-            {
-                SyncItem = syncItem;
-                Value = value;
-                Counter = counter;
-                IsAccount = isAccount;
-            }
+            SyncItem = syncItem;
+            Value = value;
+            Counter = counter;
+            IsAccount = isAccount;
         }
     }
 }

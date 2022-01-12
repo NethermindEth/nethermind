@@ -20,38 +20,35 @@ using System.Threading;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public partial class StateSyncFeed
+    internal class DependentItemComparer : IEqualityComparer<DependentItem>
     {
-        private class DependentItemComparer : IEqualityComparer<DependentItem>
+        private DependentItemComparer()
         {
-            private DependentItemComparer()
-            {
-            }
+        }
 
-            private static DependentItemComparer? _instance;
+        private static DependentItemComparer? _instance;
 
-            public static DependentItemComparer Instance
+        public static DependentItemComparer Instance
+        {
+            get
             {
-                get
+                if (_instance == null)
                 {
-                    if (_instance == null)
-                    {
-                        LazyInitializer.EnsureInitialized(ref _instance, () => new DependentItemComparer());
-                    }
-
-                    return _instance;
+                    LazyInitializer.EnsureInitialized(ref _instance, () => new DependentItemComparer());
                 }
-            }
 
-            public bool Equals(DependentItem? x, DependentItem? y)
-            {
-                return x?.SyncItem.Hash == y?.SyncItem.Hash;
+                return _instance;
             }
+        }
 
-            public int GetHashCode(DependentItem obj)
-            {
-                return obj?.SyncItem.Hash.GetHashCode() ?? 0;
-            }
+        public bool Equals(DependentItem? x, DependentItem? y)
+        {
+            return x?.SyncItem.Hash == y?.SyncItem.Hash;
+        }
+
+        public int GetHashCode(DependentItem obj)
+        {
+            return obj?.SyncItem.Hash.GetHashCode() ?? 0;
         }
     }
 }
