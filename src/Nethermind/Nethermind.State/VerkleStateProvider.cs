@@ -411,6 +411,62 @@ namespace Nethermind.State
             }
         }
         
+        public void Restore(int snapshot)
+        {
+            if (snapshot > _currentPosition)
+            {
+                throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"Restoring state snapshot {snapshot}");
+            if (snapshot == _currentPosition)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _currentPosition - snapshot; i++)
+            {
+                Change change = _changes[_currentPosition - i];
+                if (_intraBlockCache[change!.Address].Count == 1)
+                {
+                    if (change.ChangeType == ChangeType.JustCache)
+                    {
+                        int actualPosition = _intraBlockCache[change.Address].Pop();
+                        if (actualPosition != _currentPosition - i)
+                        {
+                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
+                        }
+
+                        _keptInCache.Add(change);
+                        _changes[actualPosition] = null;
+                        continue;
+                    }
+                }
+
+                _changes[_currentPosition - i] = null; // TODO: temp, ???
+                int forChecking = _intraBlockCache[change.Address].Pop();
+                if (forChecking != _currentPosition - i)
+                {
+                    throw new InvalidOperationException($"Expected checked value {forChecking} to be equal to {_currentPosition} - {i}");
+                }
+
+                if (_intraBlockCache[change.Address].Count == 0)
+                {
+                    _intraBlockCache.Remove(change.Address);
+                }
+            }
+
+            _currentPosition = snapshot;
+            foreach (Change kept in _keptInCache)
+            {
+                _currentPosition++;
+                _changes[_currentPosition] = kept;
+                _intraBlockCache[kept.Address].Push(_currentPosition);
+            }
+
+            _keptInCache.Clear();
+        }
+        
         private void ReportChanges(IStateTracer stateTracer, Dictionary<Address, ChangeTrace> trace)
         {
             foreach ((Address address, ChangeTrace change) in trace)
