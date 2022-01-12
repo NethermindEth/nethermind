@@ -62,6 +62,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         {
             public ISyncModeSelector SyncModeSelector;
             public ISyncPeerPool Pool;
+            public TreeSync TreeFeed;
             public StateSyncFeed Feed;
             public StateSyncDispatcher StateSyncDispatcher;   
         }
@@ -299,7 +300,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncConfig syncConfig = new();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.Feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, ctx.SyncModeSelector, blockTree, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.Feed = new StateSyncFeed(ctx.SyncModeSelector, ctx.TreeFeed, _logManager);
             ctx.StateSyncDispatcher =
                 new StateSyncDispatcher(ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
             ctx.StateSyncDispatcher.Start(CancellationToken.None);
@@ -436,7 +438,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 }
             };
 
-            safeContext.Feed.ResetStateRoot(blockNumber, dbContext.RemoteStateTree.RootHash);
+            safeContext.TreeFeed.ResetStateRoot(blockNumber, dbContext.RemoteStateTree.RootHash, safeContext.Feed.CurrentState);
             safeContext.Feed.Activate();
             var watch = Stopwatch.StartNew();
             await Task.WhenAny(
