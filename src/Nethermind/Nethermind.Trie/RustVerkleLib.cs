@@ -46,9 +46,13 @@ namespace Nethermind.Trie
             verkle_trie_insert(verkleTrie, keys, value);
         }
 
-        public static byte[] VerkleTrieGet(IntPtr verkleTrie, byte[] keys)
+        public static byte[]? VerkleTrieGet(IntPtr verkleTrie, byte[] keys)
         {
             IntPtr value = verkle_trie_get(verkleTrie, keys);
+            if (value == IntPtr.Zero)
+            {
+                return null;
+            }
             // Span<byte> bytes = new Span<byte>(x.ToPointer(), 32);
             // Console.WriteLine(bytes.ToArray());
             // return bytes.ToArray();
