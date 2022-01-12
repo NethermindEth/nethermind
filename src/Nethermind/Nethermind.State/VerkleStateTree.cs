@@ -104,11 +104,15 @@ namespace Nethermind.State
             // {
             //     return null;
             // }
-            byte[] version = GetValue(TreeKeys[AccountTreeIndexes.Version]);
-            byte[] balance = GetValue(TreeKeys[AccountTreeIndexes.Balance]);
-            byte[] nonce = GetValue(TreeKeys[AccountTreeIndexes.Nonce]);
-            byte[] codeKeccak = GetValue(TreeKeys[AccountTreeIndexes.CodeHash]);
-            byte[] codeSize = GetValue(TreeKeys[AccountTreeIndexes.CodeSize]);
+            byte[]? version = GetValue(TreeKeys[AccountTreeIndexes.Version]);
+            byte[]? balance = GetValue(TreeKeys[AccountTreeIndexes.Balance]);
+            byte[]? nonce = GetValue(TreeKeys[AccountTreeIndexes.Nonce]);
+            byte[]? codeKeccak = GetValue(TreeKeys[AccountTreeIndexes.CodeHash]);
+            byte[]? codeSize = GetValue(TreeKeys[AccountTreeIndexes.CodeSize]);
+            if (version is null || balance is null || nonce is null || codeKeccak is null || codeSize is null)
+            {
+                return null;
+            }
             Account account = new (
                 
                 new UInt256(balance.AsSpan(), true),
@@ -143,7 +147,7 @@ namespace Nethermind.State
         // public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         public byte[]? GetValue(Span<byte> rawKey)
         {
-            byte[] result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, rawKey.ToArray());
+            byte[]? result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, rawKey.ToArray());
             return result;
         }
         
