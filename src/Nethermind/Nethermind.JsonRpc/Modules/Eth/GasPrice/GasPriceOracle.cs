@@ -116,28 +116,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             
             return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, func);
         }
-        
-        // internal IEnumerable<UInt256> GetGasPricesFromRecentBlocksWithLimit(long blockNumber, int numberOfBlocks)
-        // {
-        //     IEnumerable<Block> GetBlocks(long currentBlockNumber)
-        //     {
-        //         Block current = _blockFinder.FindBlock(currentBlockNumber);
-        //         
-        //         for(int i = 0; i < numberOfBlocks; ++i)
-        //         {
-        //             if (current == null)
-        //             {
-        //                 break;
-        //             }
-        //             
-        //             yield return current!;
-        //
-        //             if (current.ParentHash != null) current = _blockFinder.FindBlock(current.ParentHash);
-        //         }
-        //     }
-        //     
-        //     return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), BlockLimit, (t, e, b) => t.CalculateMaxPriorityFeePerGas(e, b));
-        // }
 
         private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, Func<Transaction, bool, UInt256, UInt256> func)
         {
