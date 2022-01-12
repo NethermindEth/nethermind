@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null) => await new MergeTestBlockchain(new ManualTimestamper(), mergeConfig).Build(new SingleReleaseSpecProvider(London.Instance, 1));
+        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null) => await new MergeTestBlockchain(mergeConfig).Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, IPayloadService? mockedPayloadService = null)
         {
@@ -74,9 +74,8 @@ namespace Nethermind.Merge.Plugin.Test
             public Eth2BlockProductionContext IdealBlockProductionContext { get; set; } = new();
 
             public Eth2BlockProductionContext EmptyBlockProductionContext { get; set; } = new();
-            public MergeTestBlockchain(ManualTimestamper timestamper, IMergeConfig? mergeConfig = null)
+            public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
             {
-                Timestamper = timestamper;
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 Signer = new Eth2Signer(MinerAddress);
@@ -94,6 +93,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
+                IBlockProducer preMergeBlockProducer =
+                    base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
                 MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
                 EthSyncingInfo = new EthSyncingInfo(BlockTree);
@@ -127,10 +128,10 @@ namespace Nethermind.Merge.Plugin.Test
                 
                 EmptyBlockProducer.Start();
                 IdealBlockProductionContext.Init(blockProducerEnvFactory);
-                Eth2BlockProducer? blockProducer = blockProducerFactory.Create(
+                Eth2BlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
                     IdealBlockProductionContext);
-                IdealBlockProductionContext.BlockProducer = blockProducer;
-                return blockProducer;
+                IdealBlockProductionContext.BlockProducer = postMergeBlockProducer;
+                return new MergeBlockProducer(preMergeBlockProducer,postMergeBlockProducer, PoSSwitcher);
             }
             
             protected override BlockProcessor CreateBlockProcessor()

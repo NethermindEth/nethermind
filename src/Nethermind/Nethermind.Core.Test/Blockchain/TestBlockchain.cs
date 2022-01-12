@@ -200,8 +200,7 @@ namespace Nethermind.Core.Test.Blockchain
 
             Block? genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
-
-            PostBuildAction();
+            
             await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();
             return this;
@@ -229,9 +228,6 @@ namespace Nethermind.Core.Test.Blockchain
                 throw new InvalidOperationException(error);
             }
         }
-        
-        protected virtual void PostBuildAction() { }
-
 
         protected virtual IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {

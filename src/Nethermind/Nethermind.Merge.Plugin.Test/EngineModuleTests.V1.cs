@@ -560,22 +560,13 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("Need to ensure that transition process is correct")]
-        public async Task forkchoiceUpdatedV1_switch_to_pos_when_total_terminal_difficulty_was_met()
+        [Ignore("ToDo - our test setup seems to wrong now. We can't add PoW block")]
+        public async Task Can_transition_from_PoW_chain()
         {
-            using MergeTestBlockchain chain = await CreateBlockChain();
+            using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "1000001" });
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
-            Assert.False(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
-
-            Keccak newHeadHash = blockRequestResult.BlockHash;
-            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, newHeadHash, newHeadHash);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-            forkchoiceUpdatedResult.Data.Status.Should().Be(ForkchoiceStatus.Success);
-            forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
-            AssertExecutionStatusChangedV1(rpc, newHeadHash, newHeadHash, newHeadHash);
-            Assert.True(chain.PoSSwitcher.HasEverReachedTerminalPoWBlock());
+            await chain.AddBlock();
+            var head = chain.BlockTree.Head;
         }
 
         [TestCase("")]
@@ -844,7 +835,6 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task getPayloadV1_picks_transactions_from_pool_v1()
         {
             SemaphoreSlim semaphoreSlim = new(0);
-            ManualTimestamper timestamper = new(Timestamp);
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
@@ -866,7 +856,7 @@ namespace Nethermind.Merge.Plugin.Test
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes()
                 {
-                    Timestamp = ((ITimestamper)timestamper).UnixTime.Seconds,
+                    Timestamp = 100,
                     Random = TestItem.KeccakA,
                     SuggestedFeeRecipient = Address.Zero
                 }).Result.Data.PayloadId;
@@ -923,21 +913,19 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(0, currentHeader.Nonce);
             Assert.AreEqual(random, currentHeader.MixHash);
         }
-
+        
 
         private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranchV1(IEngineRpcModule rpc,
             IBlockTree blockTree,
             int count, BlockRequestResult startingParentBlock, bool setHead)
         {
             List<BlockRequestResult> blocks = new();
-            ManualTimestamper timestamper = new(Timestamp);
             BlockRequestResult parentBlock = startingParentBlock;
             for (int i = 0; i < count; i++)
             {
                 BlockRequestResult? getPayloadResult = await BuildAndGetPayloadResult(rpc, parentBlock.BlockHash,
-                    parentBlock.BlockHash, parentBlock.BlockHash, parentBlock.Timestamp +1,
+                    parentBlock.BlockHash, parentBlock.BlockHash, parentBlock.Timestamp +12,
                     TestItem.KeccakA, Address.Zero);
-                Keccak? blockHash = getPayloadResult.BlockHash;
                 ExecutePayloadV1Result executePayloadResponse =
                     (await rpc.engine_executePayloadV1(getPayloadResult)).Data;
                 executePayloadResponse.Status.Should().Be(ExecutePayloadStatus.Valid);
@@ -954,7 +942,6 @@ namespace Nethermind.Merge.Plugin.Test
 
                 blocks.Add((getPayloadResult));
                 parentBlock = getPayloadResult;
-                timestamper.Add(TimeSpan.FromSeconds(12));
             }
 
             return blocks;

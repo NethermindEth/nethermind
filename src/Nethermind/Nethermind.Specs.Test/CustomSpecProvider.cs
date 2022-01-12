@@ -57,8 +57,13 @@ namespace Nethermind.Specs.Test
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
-        public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
         
+#pragma warning disable CS8602
+#pragma warning disable CS8603
+        public IReleaseSpec GenesisSpec => _transitions?.Length == 0 ? null : _transitions[0].Release;
+#pragma warning restore CS8603
+#pragma warning restore CS8602
+
         public IReleaseSpec GetSpec(long blockNumber)
         {
             IReleaseSpec spec = _transitions[0].Release;

@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block block3 = Build.A.Block.WithTotalDifficulty(300L).WithNumber(3).TestObject;
             blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block3));
 
-            Assert.AreEqual(false, poSSwitcher.IsPos(block1.Header)); // PowBlock
+            Assert.AreEqual(false, poSSwitcher.IsPos(block1.Header)); // PoWBlock
             Assert.AreEqual(false, poSSwitcher.IsPos(block2.Header)); // terminal block
             Assert.AreEqual(true, poSSwitcher.IsPos(block3.Header)); // first merge block
         }
