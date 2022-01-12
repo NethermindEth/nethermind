@@ -131,6 +131,8 @@ namespace Nethermind.Store.Test
             tree.Commit(0);
 
             Assert.AreEqual(_inputTree.RootHash, tree.RootHash);
+            Assert.AreEqual(6, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
 
         [Test]
@@ -153,6 +155,8 @@ namespace Nethermind.Store.Test
             Keccak? result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, _accountsWithHashes, firstProof!.Concat(lastProof!).ToArray());
             
             Assert.AreEqual(rootHash, result);
+            Assert.AreEqual(7, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
 
         [Test]
@@ -175,6 +179,8 @@ namespace Nethermind.Store.Test
             Keccak? result = snapProvider.AddAccountRange(1, rootHash, _accountsWithHashes[0].AddressHash, _accountsWithHashes, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(rootHash, result);
+            Assert.AreEqual(7, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
 
         [Test]
@@ -190,6 +196,8 @@ namespace Nethermind.Store.Test
             Keccak? result = snapProvider.AddAccountRange(1, rootHash, _accountsWithHashes[0].AddressHash, _accountsWithHashes);
 
             Assert.AreEqual(rootHash, result);
+            Assert.AreEqual(11, db.Keys.Count);  // we don't have the proofs so we persist all nodes
+            Assert.IsTrue(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
         }
 
         [Test]
@@ -232,6 +240,8 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(rootHash, result1);
             Assert.AreEqual(rootHash, result2);
             Assert.AreEqual(rootHash, result3);
+            Assert.AreEqual(6, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
 
         [Test]
@@ -275,6 +285,8 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(rootHash, result1);
             Assert.AreNotEqual(rootHash, result2);
             Assert.AreEqual(rootHash, result3);
+            Assert.AreEqual(4, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
+            Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
     }
 }
