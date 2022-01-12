@@ -111,7 +111,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 }
             }
             
-            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), BlockLimit);
+            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), BlockLimit, (t, e, b) => t.CalculateEffectiveGasPrice(e, b));
         }
         
         internal IEnumerable<UInt256> GetGasPricesFromRecentBlocksWithLimit(long blockNumber, int numberOfBlocks)
@@ -133,11 +133,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 }
             }
             
-            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), BlockLimit, true);
+            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), BlockLimit, (t, e, b) => t.CalculateMaxPriorityFeePerGas(e, b));
         }
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack,
-            bool calculateMaxPriorityFee = false)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, Func<Transaction, bool, UInt256, UInt256> func)
         {
             int txCount = 0;
             
@@ -147,24 +146,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 int txFromCurrentBlock = 0;
                 bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
                 UInt256 baseFee = currentBlock.BaseFeePerGas;
-                IEnumerable<UInt256> effectiveGasPrices ;
-                if (!calculateMaxPriorityFee)
-                {
-                    effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
-                        .Select(tx => tx.CalculateEffectiveGasPrice(eip1559Enabled, baseFee))
+                IEnumerable<UInt256> effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
+                        .Select(tx => func(tx, eip1559Enabled, baseFee))
                         .Where(g => g >= IgnoreUnder)
                         .OrderBy(g => g);
-                }
-                else
-                {
-                    effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
-                        .Select(tx => tx.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee))
-                        .Where(g => g >= IgnoreUnder)
-                        .OrderBy(g => g);
-                }
-                    
+                
 
-                foreach (UInt256 gasPrice in effectiveGasPrices)
+
+            foreach (UInt256 gasPrice in effectiveGasPrices)
                 {
                     yield return gasPrice;
                     txFromCurrentBlock++;
