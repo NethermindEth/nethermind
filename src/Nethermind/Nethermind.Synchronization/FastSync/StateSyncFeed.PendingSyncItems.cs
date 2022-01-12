@@ -171,12 +171,12 @@ namespace Nethermind.Synchronization.FastSync
                 // prevent lot of Stream2 entries to stay in memory for a long time 
                 int length = MaxStateLevel == 64 ? maxSize : Math.Max(1, (int) (maxSize * ((decimal) MaxStateLevel / 64) * ((decimal) MaxStateLevel / 64)));
 
-                List<StateSyncItem> requestHashes = new();
+                List<StateSyncItem> requestItems = new();
                 for (int i = 0; i < length; i++)
                 {
                     if (TryTake(out StateSyncItem? requestItem))
                     {
-                        requestHashes.Add(requestItem!);
+                        requestItems.Add(requestItem!);
                     }
                     else
                     {
@@ -184,7 +184,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
                 }
 
-                return requestHashes;
+                return requestItems;
             }
 
             public string RecalculatePriorities()
