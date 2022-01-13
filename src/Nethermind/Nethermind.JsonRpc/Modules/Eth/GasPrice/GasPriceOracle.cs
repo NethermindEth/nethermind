@@ -31,11 +31,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
     {
         private readonly IBlockFinder _blockFinder;
         private readonly UInt256 _minGasPrice;
-        private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => LastGasPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
+        internal BlockToValueCache _gasPriceEstimation;
+        private BlockToValueCache _maxPriorityFeePerGasEstimation;
+        private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastGasPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
         private ISpecProvider SpecProvider { get; }
-        internal UInt256? LastGasPrice { get; set; }
-        internal UInt256? MaxPriorityFeePerGas { get; set; }
-        internal Block? LastHeadBlock { get; set; }
         internal UInt256 IgnoreUnder { get; set; } = EthGasPriceConstants.DefaultIgnoreUnder;
         internal int BlockLimit { get; set; } = EthGasPriceConstants.DefaultBlocksLimit;
         private int SoftTxThreshold => BlockLimit * 2;
@@ -59,16 +58,16 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return FallbackGasPrice();
             }
             
-            if (LastGasPrice is not null && LastHeadBlock!.Hash == headBlock!.Hash)
+            if (_gasPriceEstimation.LastGasPrice is not null && _gasPriceEstimation.LastHeadBlock!.Hash == headBlock!.Hash)
             {
-                return LastGasPrice.Value;
+                return _gasPriceEstimation.LastGasPrice.Value;
             }
 
-            LastHeadBlock = headBlock;
+            _gasPriceEstimation.LastHeadBlock = headBlock;
             IEnumerable<UInt256> txGasPrices = GetSortedGasPricesFromRecentBlocks(headBlock.Number);
             UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
-            LastGasPrice = gasPriceEstimate;
+            _gasPriceEstimation.LastGasPrice = gasPriceEstimate;
             return gasPriceEstimate!;
         }
         
@@ -80,16 +79,16 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return FallbackGasPrice();
             }
             
-            if (MaxPriorityFeePerGas is not null && LastHeadBlock!.Hash == headBlock!.Hash)
+            if (_maxPriorityFeePerGasEstimation.LastGasPrice is not null && _maxPriorityFeePerGasEstimation.LastHeadBlock!.Hash == headBlock!.Hash)
             {
-                return MaxPriorityFeePerGas.Value;
+                return _maxPriorityFeePerGasEstimation.LastGasPrice.Value;
             }
 
-            LastHeadBlock = headBlock;
+            _maxPriorityFeePerGasEstimation.LastHeadBlock = headBlock;
             IEnumerable<UInt256> gasPricesWithFee = GetSortedMaxPriorityFeePerGasFromRecentBlocks(headBlock.Number);
-            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? MaxPriorityFeePerGas ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
+            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastGasPrice ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
-            MaxPriorityFeePerGas = gasPriceEstimate;
+            _maxPriorityFeePerGasEstimation.LastGasPrice = gasPriceEstimate;
             return gasPriceEstimate!;
         }
 
@@ -101,7 +100,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             
         private IEnumerable<UInt256>GetSortedMaxPriorityFeePerGasFromRecentBlocks(long blockNumber) 
             => GetGasPricesFromRecentBlocks(blockNumber, EthGasPriceConstants.DefaultBlocksLimitMaxPriorityFeePerGas, (t, e, b) => t.CalculateMaxPriorityFeePerGas(e, b))
-                .OrderBy(gasPrice=> gasPrice);
+                .OrderBy(gasPrice => gasPrice);
 
         internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber, int numberOfBlocks, Func<Transaction, bool, UInt256, UInt256> func)
         {
@@ -117,7 +116,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, func);
         }
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, Func<Transaction, bool, UInt256, UInt256> func)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, Func<Transaction, bool, UInt256, UInt256> calculatingFunction)
         {
             int txCount = 0;
             
@@ -128,13 +127,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
                 UInt256 baseFee = currentBlock.BaseFeePerGas;
                 IEnumerable<UInt256> effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
-                        .Select(tx => func(tx, eip1559Enabled, baseFee))
+                        .Select(tx => calculatingFunction(tx, eip1559Enabled, baseFee))
                         .Where(g => g >= IgnoreUnder)
                         .OrderBy(g => g);
-                
-
-
-            foreach (UInt256 gasPrice in effectiveGasPrices)
+    
+                foreach (UInt256 gasPrice in effectiveGasPrices)
                 {
                     yield return gasPrice;
                     txFromCurrentBlock++;
@@ -179,5 +176,24 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             int roundedIndex = (int) Math.Round(percentileOfLastIndex);
             return roundedIndex;
         }
+
+        internal struct BlockToValueCache
+        {
+            public UInt256? LastGasPrice { get; set; }
+            public Block? LastHeadBlock { get; set; }
+
+            public BlockToValueCache(UInt256? lastGasPrice, Block? lastHeadBlock)
+            {
+                LastGasPrice = lastGasPrice;
+                LastHeadBlock = lastHeadBlock;
+            }
+            
+            public BlockToValueCache(UInt256? lastGasPrice)
+            {
+                LastGasPrice = lastGasPrice;
+                LastHeadBlock = null;
+            }
+        }
+        
     }
 }
