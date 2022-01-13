@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         private readonly UInt256 _minGasPrice;
         internal BlockToValueCache _gasPriceEstimation;
         private BlockToValueCache _maxPriorityFeePerGasEstimation;
-        private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastGasPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
+        private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastGasPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero); 
         private ISpecProvider SpecProvider { get; }
         internal UInt256 IgnoreUnder { get; set; } = EthGasPriceConstants.DefaultIgnoreUnder;
         internal int BlockLimit { get; set; } = EthGasPriceConstants.DefaultBlocksLimit;
@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             Block? headBlock = _blockFinder.Head;
             if (headBlock is null)
             {
-                return FallbackGasPrice();
+                return (UInt256)EthGasPriceConstants.FallbackMaxPriorityFeePerGas;;
             }
             
             if (_maxPriorityFeePerGasEstimation.LastGasPrice is not null && _maxPriorityFeePerGasEstimation.LastHeadBlock!.Hash == headBlock!.Hash)
@@ -116,7 +116,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, func);
         }
 
-        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, Func<Transaction, bool, UInt256, UInt256> calculatingFunction)
+        private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, Func<Transaction, bool, UInt256, UInt256> getGasEstimateFromTransaction)
         {
             int txCount = 0;
             
@@ -127,7 +127,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 bool eip1559Enabled = SpecProvider.GetSpec(currentBlock.Number).IsEip1559Enabled;
                 UInt256 baseFee = currentBlock.BaseFeePerGas;
                 IEnumerable<UInt256> effectiveGasPrices = currentBlockTransactions.Where(tx => tx.SenderAddress != currentBlock.Beneficiary)
-                        .Select(tx => calculatingFunction(tx, eip1559Enabled, baseFee))
+                        .Select(tx => getGasEstimateFromTransaction(tx, eip1559Enabled, baseFee))
                         .Where(g => g >= IgnoreUnder)
                         .OrderBy(g => g);
     
