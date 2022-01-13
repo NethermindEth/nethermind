@@ -81,7 +81,7 @@ namespace Nethermind.Merge.Plugin.Test
         public void IsPos_returning_expected_results(long terminalBlockDifficulty)
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree);
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree, new MemDb(), new TestSpecProvider(London.Instance));
             
             Block block1 = Build.A.Block.WithTotalDifficulty(100L).WithNumber(1).TestObject;
             blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block1));

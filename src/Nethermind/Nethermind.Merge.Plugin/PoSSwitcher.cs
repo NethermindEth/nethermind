@@ -176,7 +176,8 @@ namespace Nethermind.Merge.Plugin
 
         public bool IsPos(BlockHeader header)
         {
-            return header.IsPostMerge || header.Number > _terminalPoWBlockNumber;
+            return header.IsPostMerge || header.Number > _terminalPoWBlockNumber ||
+                (_firstPoSBlockHeader != null && header.Number >= _firstPoSBlockHeader.Number); // ToDo need to think more about the last case 
         }
 
         public bool HasEverReachedTerminalPoWBlock() => _hasEverReachedTerminalDifficulty;
