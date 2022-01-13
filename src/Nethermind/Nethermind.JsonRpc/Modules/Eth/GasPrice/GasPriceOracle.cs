@@ -92,17 +92,23 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return gasPriceEstimate!;
         }
 
+        private Func<Transaction, bool, UInt256, UInt256> CalculateEffectiveGasPrice =
+            (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee);
+        
+        private Func<Transaction, bool, UInt256, UInt256> CalculateMaxPriorityFeePerGas =
+            (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee);
+
         private UInt256 GetMinimumGasPrice(in UInt256 baseFeePerGas) => (_minGasPrice + baseFeePerGas) * _defaultMinGasPriceMultiplier / 100ul;
 
         internal IEnumerable<UInt256>GetSortedGasPricesFromRecentBlocks(long blockNumber) 
-            => GetGasPricesFromRecentBlocks(blockNumber, BlockLimit, (t, e, b) => t.CalculateEffectiveGasPrice(e, b))
+            => GetGasPricesFromRecentBlocks(blockNumber, BlockLimit, CalculateEffectiveGasPrice)
                 .OrderBy(gasPrice => gasPrice);
             
         private IEnumerable<UInt256>GetSortedMaxPriorityFeePerGasFromRecentBlocks(long blockNumber) 
-            => GetGasPricesFromRecentBlocks(blockNumber, EthGasPriceConstants.DefaultBlocksLimitMaxPriorityFeePerGas, (t, e, b) => t.CalculateMaxPriorityFeePerGas(e, b))
+            => GetGasPricesFromRecentBlocks(blockNumber, EthGasPriceConstants.DefaultBlocksLimitMaxPriorityFeePerGas, CalculateMaxPriorityFeePerGas)
                 .OrderBy(gasPrice => gasPrice);
 
-        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber, int numberOfBlocks, Func<Transaction, bool, UInt256, UInt256> func)
+        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber, int numberOfBlocks, Func<Transaction, bool, UInt256, UInt256> getGasEstimateFromTransaction)
         {
             IEnumerable<Block> GetBlocks(long currentBlockNumber)
             {
@@ -113,7 +119,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 }
             }
             
-            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, func);
+            return GetGasPricesFromRecentBlocks(GetBlocks(blockNumber), numberOfBlocks, getGasEstimateFromTransaction);
         }
 
         private IEnumerable<UInt256> GetGasPricesFromRecentBlocks(IEnumerable<Block> blocks, int blocksToGoBack, Func<Transaction, bool, UInt256, UInt256> getGasEstimateFromTransaction)
