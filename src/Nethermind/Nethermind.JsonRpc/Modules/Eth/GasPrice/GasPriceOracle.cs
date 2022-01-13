@@ -31,8 +31,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
     {
         private readonly IBlockFinder _blockFinder;
         private readonly UInt256 _minGasPrice;
-        internal BlockToValueCache _gasPriceEstimation;
-        private BlockToValueCache _maxPriorityFeePerGasEstimation;
+        internal GasPriceEstimationCache _gasPriceEstimation;
+        private MaxPriorityFeePerGasEstimationCache _maxPriorityFeePerGasEstimation;
         private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastGasPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero); 
         private ISpecProvider SpecProvider { get; }
         internal UInt256 IgnoreUnder { get; set; } = EthGasPriceConstants.DefaultIgnoreUnder;
@@ -76,19 +76,19 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             Block? headBlock = _blockFinder.Head;
             if (headBlock is null)
             {
-                return (UInt256)EthGasPriceConstants.FallbackMaxPriorityFeePerGas;;
+                return EthGasPriceConstants.FallbackMaxPriorityFeePerGas;;
             }
             
-            if (_maxPriorityFeePerGasEstimation.LastGasPrice is not null && _maxPriorityFeePerGasEstimation.LastHeadBlock!.Hash == headBlock!.Hash)
+            if (_maxPriorityFeePerGasEstimation.MaxPriorityFeePerGas is not null && _maxPriorityFeePerGasEstimation.LastHeadBlock!.Hash == headBlock!.Hash)
             {
-                return _maxPriorityFeePerGasEstimation.LastGasPrice.Value;
+                return _maxPriorityFeePerGasEstimation.MaxPriorityFeePerGas.Value;
             }
 
             _maxPriorityFeePerGasEstimation.LastHeadBlock = headBlock;
             IEnumerable<UInt256> gasPricesWithFee = GetSortedMaxPriorityFeePerGasFromRecentBlocks(headBlock.Number);
-            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastGasPrice ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
+            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.MaxPriorityFeePerGas ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
             gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
-            _maxPriorityFeePerGasEstimation.LastGasPrice = gasPriceEstimate;
+            _maxPriorityFeePerGasEstimation.MaxPriorityFeePerGas = gasPriceEstimate;
             return gasPriceEstimate!;
         }
 
@@ -177,23 +177,40 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return roundedIndex;
         }
 
-        internal struct BlockToValueCache
+        internal struct GasPriceEstimationCache
         {
             public UInt256? LastGasPrice { get; set; }
-            public Block? LastHeadBlock { get; set; }
-
-            public BlockToValueCache(UInt256? lastGasPrice, Block? lastHeadBlock)
+            public Block? LastHeadBlock { get; set; } 
+            
+            public GasPriceEstimationCache(UInt256? lastGasPrice, Block? lastHeadBlock)
             {
                 LastGasPrice = lastGasPrice;
                 LastHeadBlock = lastHeadBlock;
             }
             
-            public BlockToValueCache(UInt256? lastGasPrice)
+            public GasPriceEstimationCache(UInt256? lastGasPrice)
             {
                 LastGasPrice = lastGasPrice;
                 LastHeadBlock = null;
             }
         }
         
+        internal struct MaxPriorityFeePerGasEstimationCache
+        {
+            public UInt256? MaxPriorityFeePerGas { get; set; }
+            public Block? LastHeadBlock { get; set; } 
+            
+            public MaxPriorityFeePerGasEstimationCache(UInt256? lastGasPrice, Block? lastHeadBlock)
+            {
+                MaxPriorityFeePerGas = lastGasPrice;
+                LastHeadBlock = lastHeadBlock;
+            }
+            
+            public MaxPriorityFeePerGasEstimationCache(UInt256? lastGasPrice)
+            {
+                MaxPriorityFeePerGas = lastGasPrice;
+                LastHeadBlock = null;
+            }
+        }
     }
 }
