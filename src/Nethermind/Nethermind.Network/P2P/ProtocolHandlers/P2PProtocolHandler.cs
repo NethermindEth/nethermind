@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -40,6 +40,37 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private List<Capability> _agreedCapabilities { get; }
         private List<Capability> _availableCapabilities { get; set; }
 
+        private byte _protocolVersion = 5;
+
+        public override byte ProtocolVersion => _protocolVersion;
+
+        public override string ProtocolCode => Protocol.P2P;
+
+        public override int MessageIdSpaceSize => 0x10;
+
+        protected override TimeSpan InitTimeout => Timeouts.P2PHello;
+
+        public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
+        {
+            new(Protocol.Eth, 62),
+            new(Protocol.Eth, 63),
+            new(Protocol.Eth, 64),
+            new(Protocol.Eth, 65),
+            new(Protocol.Eth, 66),
+            // new Capability(Protocol.Les, 3)
+        };
+
+        public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
+        public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
+        private readonly List<Capability> SupportedCapabilities = DefaultCapabilities.ToList();
+
+        public int ListenPort { get; }
+        public PublicKey LocalNodeId { get; }
+        public string RemoteClientId { get; private set; }
+
+        public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+
+        public override event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
         public P2PProtocolHandler(
             ISession session,
@@ -55,11 +86,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _availableCapabilities = new List<Capability>();
         }
 
-        public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
-        public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-        public int ListenPort { get; }
-        public PublicKey LocalNodeId { get; }
-        public string RemoteClientId { get; private set; }
         public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
         public bool HasAgreedCapability(Capability capability) => _agreedCapabilities.Contains(capability);
         public void AddSupportedCapability(Capability capability)
@@ -71,10 +97,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             SupportedCapabilities.Add(capability);
         }
-
-        public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
-
-        public override event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
         public override void Init()
         {
@@ -90,14 +112,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 }
             });
         }
-
-        private byte _protocolVersion = 5;
-        
-        public override byte ProtocolVersion => _protocolVersion;
-
-        public override string ProtocolCode => Protocol.P2P;
-
-        public override int MessageIdSpaceSize => 0x10;
 
         public override void HandleMessage(Packet msg)
         {
@@ -293,20 +307,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             if(NetworkDiagTracer.IsEnabled)
                 NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
         }
-
-        protected override TimeSpan InitTimeout => Timeouts.P2PHello;
-
-        public static readonly IEnumerable<Capability> DefaultCapabilities = new Capability[]
-        {
-            new(Protocol.Eth, 62),
-            new(Protocol.Eth, 63),
-            new(Protocol.Eth, 64),
-            new(Protocol.Eth, 65),
-            new(Protocol.Eth, 66),
-            // new Capability(Protocol.Les, 3)
-        };
-
-        private readonly List<Capability> SupportedCapabilities = DefaultCapabilities.ToList();
         
         private void SendHello()
         {

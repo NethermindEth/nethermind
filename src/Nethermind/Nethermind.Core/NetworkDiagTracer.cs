@@ -60,6 +60,8 @@ namespace Nethermind.Core
                 }
             }
 
+            _events.Clear();
+
             string contents = stringBuilder.ToString();
             File.WriteAllText(NetworkDiagTracerPath, contents);
             _logger?.Info(contents);

@@ -79,6 +79,12 @@ namespace Nethermind.AuRa.Test.Transactions
         }
         
         [Test]
+        public void should_not_allow_null_sender()
+        {
+            ShouldAllowAddress(null, expected: false);
+        }
+        
+        [Test]
         public void should_not_allow_addresses_on_contract_error()
         {
             Address address = TestItem.Addresses.First();
@@ -96,7 +102,7 @@ namespace Nethermind.AuRa.Test.Transactions
             ShouldAllowAddress(TestItem.Addresses.First(), 1ul, expected);
         }
         
-        private void ShouldAllowAddress(Address address, ulong gasPrice = 0ul, bool expected = true)
+        private void ShouldAllowAddress(Address? address, ulong gasPrice = 0ul, bool expected = true)
         {
             _filter.IsAllowed(
                 Build.A.Transaction.WithGasPrice(gasPrice).WithSenderAddress(address).TestObject,
