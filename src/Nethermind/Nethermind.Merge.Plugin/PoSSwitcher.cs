@@ -119,9 +119,7 @@ namespace Nethermind.Merge.Plugin
         {
             _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
         }
-
-        // In reverse header sync, this method will be needed when we find the TerminalPoWBlock
-        // Note: In the first post-merge release, the terminal block will be known
+        
         public void UpdateTerminalBlock(BlockHeader blockHeader)
         {
             if (blockHeader.Difficulty != 0) // PostMerge blocks have Difficulty == 0. We are interested here in Terminal PoW block
