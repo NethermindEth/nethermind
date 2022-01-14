@@ -18,10 +18,14 @@
 using System.Buffers.Text;
 using System.Net;
 using System.Text;
+using DotNetty.Buffers;
+using DotNetty.Codecs.Base64;
+using DotNetty.Common.Utilities;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -70,60 +74,87 @@ public class EnrDiscovery : INodeSource
 
     private async Task SearchNode(IDnsClient client, string query, SearchContext searchContext)
     {
-        if (!searchContext.VisitedRefs.Contains(query))
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+        try
         {
-            searchContext.VisitedRefs.Add(query);
-
-            string[][] lookupResult = await client.Lookup(query);
-            foreach (string[] strings in lookupResult)
+            if (!searchContext.VisitedRefs.Contains(query))
             {
-                string s = string.Join(string.Empty, strings);
-                EnrTreeNode treeNode = EnrTreeParser.ParseNode(s);
-                foreach (string link in treeNode.Links)
+                searchContext.VisitedRefs.Add(query);
+                string[][] lookupResult = await client.Lookup(query);
+                foreach (string[] strings in lookupResult)
                 {
-                    DnsClient linkedTreeLookup = new(link);
-                    await SearchTree(linkedTreeLookup, searchContext);
-                }
-
-                foreach (string nodeRecordText in treeNode.Records)
-                {
-                    try
+                    string s = string.Join(string.Empty, strings);
+                    EnrTreeNode treeNode = EnrTreeParser.ParseNode(s);
+                    foreach (string link in treeNode.Links)
                     {
-                        int minLength = nodeRecordText.Length % 4;
-                        const int prefixLength = 4;
-                        int length = Math.Max(0, nodeRecordText.Length - prefixLength);
-                        StringBuilder builder = new StringBuilder(nodeRecordText, prefixLength, length, Math.Max(length, minLength))
-                            .Replace('-', '+')
-                            .Replace('_', '/');
-
-                        // PadRight(minLength)
-                        // This doesn't make sense and won't change length of the string
-                        builder.AppendJoin(string.Empty, Enumerable.Repeat(' ', Math.Max(0, minLength - builder.Length)));
-                        RlpStream rlpStream = new(Convert.FromBase64String(builder.ToString()));
-                        NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
-
-                        CompressedPublicKey? compressedPublicKey =
-                            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
-                        Node node = new(
-                            compressedPublicKey!.Decompress(),
-                            nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip)!.ToString(),
-                            nodeRecord.GetValue<int>(EnrContentKey.Tcp)!.Value);
-
-                        // here could add network info to the node
-                        NodeAdded?.Invoke(this, new NodeEventArgs(node));
+                        DnsClient linkedTreeLookup = new(link);
+                        await SearchTree(linkedTreeLookup, searchContext);
                     }
-                    catch (Exception e)
+
+                    foreach (string nodeRecordText in treeNode.Records)
                     {
-                        if (_logger.IsError) _logger.Error("failed to parse enr record", e);
+                        try
+                        {
+                            Node node = ParseRecord(nodeRecordText, buffer);
+                            // Node node = ParseRecordOld(nodeRecordText);
+                            
+                            // here could add network info to the node
+                            NodeAdded?.Invoke(this, new NodeEventArgs(node));
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug) _logger.Error($"failed to parse enr record {nodeRecordText}", e);
+                        }
                     }
-                }
 
-                foreach (string nodeRef in treeNode.Refs)
-                {
-                    searchContext.RefsToVisit.Enqueue(nodeRef);
+                    foreach (string nodeRef in treeNode.Refs)
+                    {
+                        searchContext.RefsToVisit.Enqueue(nodeRef);
+                    }
                 }
             }
         }
+        finally
+        {
+            buffer.Release();
+        }
+    }
+
+    private Node ParseRecordOld(string nodeRecordText)
+    {
+        string broken = nodeRecordText[4..].Replace("-", "+").Replace("_", "/");
+        broken = broken.PadRight(nodeRecordText.Length % 4);
+        RlpStream rlpStream = new(Convert.FromBase64String(broken));
+        return DeserializeNode(rlpStream);
+    }
+
+    private Node ParseRecord(string nodeRecordText, IByteBuffer buffer)
+    {
+        buffer.Clear();
+        buffer.WriteCharSequence(new StringCharSequence(nodeRecordText, 4, nodeRecordText.Length - 4), Encoding.UTF8);
+        IByteBuffer base64Buffer = DotNetty.Codecs.Base64.Base64.Decode(buffer, Base64Dialect.URL_SAFE);
+        try
+        {
+            NettyRlpStream rlpStream = new(base64Buffer);
+            return DeserializeNode(rlpStream);
+        }
+        finally
+        {
+            base64Buffer.Release();
+        }
+    }
+
+    private Node DeserializeNode(RlpStream rlpStream)
+    {
+        NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
+        CompressedPublicKey compressedPublicKey =
+            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1)!;
+        Node node = new(
+            compressedPublicKey!.Decompress(),
+            nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip)!.ToString(),
+            nodeRecord.GetValue<int>(EnrContentKey.Tcp)!.Value);
+
+        return node;
     }
 
     public List<Node> LoadInitialList()

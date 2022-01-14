@@ -16,9 +16,12 @@
 // 
 
 using System.Text;
+using DotNetty.Buffers;
+using DotNetty.Codecs.Base64;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -236,22 +239,27 @@ public class NodeRecord
     {
         RequireSignature();
 
-        int rlpLength = GetRlpLengthWithSignature();
-        RlpStream rlpStream = new(rlpLength);
-        Encode(rlpStream);
-        byte[] rlpData = rlpStream.Data!;
-        
-        // https://tools.ietf.org/html/rfc4648#section-5
-        // Base64Url must be used, hence the replace calls.
-        // Convert.ToBase64String uses '+'. '/' signs and padding.
-        string base64String = Convert.ToBase64String(rlpData);
         const string prefix = "enr:";
-        return new StringBuilder(base64String, base64String.Length + prefix.Length)
-            .Replace('+', '-')
-            .Replace('/', '_')
-            .Replace("=", string.Empty)
-            .Insert(0, prefix)
-            .ToString();
+        int rlpLength = GetRlpLengthWithSignature();
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(rlpLength);
+        try
+        {
+            NettyRlpStream rlpStream = new(buffer);
+            Encode(rlpStream);
+            IByteBuffer resultBuffer = Base64.Encode(buffer, Base64Dialect.URL_SAFE);
+            try
+            {
+                return prefix + resultBuffer.ReadString(resultBuffer.ReadableBytes - 1, Encoding.UTF8);
+            }
+            finally
+            {
+                resultBuffer.Release();
+            }
+        }
+        finally
+        {
+            buffer.Release();
+        }
     }
 
     private void RequireSignature()

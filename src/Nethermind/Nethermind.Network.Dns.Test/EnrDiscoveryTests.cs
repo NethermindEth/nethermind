@@ -1,19 +1,25 @@
+using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
+using FluentAssertions;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Dns.Test;
 
 public class EnrDiscoveryTests
 {
-    [SetUp]
-    public void Setup()
-    {
-    }
-
     [Test]
-    public void Test_enr_discovery()
+    [Explicit("Do not run this test on CI - takes a lot of time")]
+    public async Task Test_enr_discovery()
     {
-        // do not run this test on CI
-        // EnrDiscovery enrDiscovery = new();
-        // Assert.AreEqual(3000, enrDiscovery.SearchTree("all.mainnet.ethdisco.net").Count);
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        TestErrorLogManager testErrorLogManager = new();
+        EnrDiscovery enrDiscovery = new(testErrorLogManager);
+        int count = 0;
+        enrDiscovery.NodeAdded += (o, e) => Interlocked.Increment(ref count); 
+        await enrDiscovery.SearchTree("all.mainnet.ethdisco.net");
+        await TestContext.Out.WriteLineAsync(stopwatch.Elapsed.ToString("g"));
+        count.Should().Be(3000);
     }
 }
