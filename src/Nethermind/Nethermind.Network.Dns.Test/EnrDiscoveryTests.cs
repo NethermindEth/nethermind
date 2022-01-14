@@ -18,6 +18,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Dns.Test;
 
 [Parallelizable(ParallelScope.All)]
+[Explicit("CI blocks DNS requests.")]
 public class EnrDiscoveryTests
 {
     [Test]
