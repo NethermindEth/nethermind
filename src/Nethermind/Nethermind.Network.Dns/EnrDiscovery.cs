@@ -97,6 +97,7 @@ public class EnrDiscovery : INodeSource
                             .Replace('_', '/');
 
                         // PadRight(minLength)
+                        // This doesn't make sense and won't change length of the string
                         builder.AppendJoin(string.Empty, Enumerable.Repeat(' ', Math.Max(0, minLength - builder.Length)));
                         RlpStream rlpStream = new(Convert.FromBase64String(builder.ToString()));
                         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
