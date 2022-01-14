@@ -56,8 +56,8 @@ namespace Nethermind.Synchronization.Test
             
             _localPublicKey = localPublicKey;
             _remoteSyncServer = remoteSyncServer;
-            Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, remoteHost, 1234, false);
-            LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, localHost, 1235, false);
+            Node = new Node(remotePublicKey ?? TestItem.PublicKeyA, remoteHost, 1234);
+            LocalNode = new Node(localPublicKey ?? TestItem.PublicKeyB, localHost, 1235);
             Node.ClientId = remoteClientId;
             LocalNode.ClientId = localClientId;
 

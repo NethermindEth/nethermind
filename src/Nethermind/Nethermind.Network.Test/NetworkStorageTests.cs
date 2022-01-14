@@ -72,11 +72,11 @@ namespace Nethermind.Network.Test
 
             var nodes = new[]
             {
-                new Node(TestItem.PublicKeyA, "192.1.1.1", 3441, false),
-                new Node(TestItem.PublicKeyB, "192.1.1.2", 3442, false),
-                new Node(TestItem.PublicKeyC, "192.1.1.3", 3443, false),
-                new Node(TestItem.PublicKeyD, "192.1.1.4", 3444, false),
-                new Node(TestItem.PublicKeyE, "192.1.1.5", 3445, false)
+                new Node(TestItem.PublicKeyA, "192.1.1.1", 3441),
+                new Node(TestItem.PublicKeyB, "192.1.1.2", 3442),
+                new Node(TestItem.PublicKeyC, "192.1.1.3", 3443),
+                new Node(TestItem.PublicKeyD, "192.1.1.4", 3444),
+                new Node(TestItem.PublicKeyE, "192.1.1.5", 3445)
             };
 
             var managers = nodes.Select(CreateLifecycleManager).ToArray();
@@ -126,11 +126,11 @@ namespace Nethermind.Network.Test
 
             var nodes = new[]
             {
-                new Node(TestItem.PublicKeyA, "192.1.1.1", 3441, false),
-                new Node(TestItem.PublicKeyB, "192.1.1.2", 3442, false),
-                new Node(TestItem.PublicKeyC, "192.1.1.3", 3443, false),
-                new Node(TestItem.PublicKeyD, "192.1.1.4", 3444, false),
-                new Node(TestItem.PublicKeyE, "192.1.1.5", 3445, false)
+                new Node(TestItem.PublicKeyA, "192.1.1.1", 3441),
+                new Node(TestItem.PublicKeyB, "192.1.1.2", 3442),
+                new Node(TestItem.PublicKeyC, "192.1.1.3", 3443),
+                new Node(TestItem.PublicKeyD, "192.1.1.4", 3444),
+                new Node(TestItem.PublicKeyE, "192.1.1.5", 3445)
             };
 
             var peers = nodes.Select(x => new NetworkNode(x.Id, x.Host, x.Port, 0L)).ToArray();

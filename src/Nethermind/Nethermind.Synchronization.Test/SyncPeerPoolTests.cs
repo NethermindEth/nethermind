@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.Test
         {
             public SimpleSyncPeerMock(PublicKey publicKey, string description = "simple mock")
             {
-                Node = new Node(publicKey, "127.0.0.1", 30303, false);
+                Node = new Node(publicKey, "127.0.0.1", 30303);
                 ClientId = description;
             }
 
@@ -275,7 +275,7 @@ namespace Nethermind.Synchronization.Test
             await using Context ctx = new();
             ctx.Pool.Start();
             var syncPeer = Substitute.For<ISyncPeer>();
-            syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, false));
+            syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
             ctx.Pool.AddPeer(syncPeer);
             ctx.Pool.RefreshTotalDifficulty(syncPeer, null);
             await Task.Delay(100);
@@ -286,7 +286,7 @@ namespace Nethermind.Synchronization.Test
         private void SetupSpeedStats(Context ctx, PublicKey publicKey, int transferSpeed)
         {
             
-            Node node = new(publicKey, "127.0.0.1", 30303, false);
+            Node node = new(publicKey, "127.0.0.1", 30303);
             NodeStatsLight stats = new (node);
             stats.AddTransferSpeedCaptureEvent(TransferSpeedType.Headers, transferSpeed);
 

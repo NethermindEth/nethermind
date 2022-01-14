@@ -226,7 +226,7 @@ namespace Nethermind.Synchronization.Test
             public Context()
             {
                 NodeWhoSentTheBlock = Substitute.For<ISyncPeer>();
-                NodeWhoSentTheBlock.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, false));
+                NodeWhoSentTheBlock.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
                 PeerPool = Substitute.For<ISyncPeerPool>();
 
                 BlockTree = Substitute.For<IBlockTree>();

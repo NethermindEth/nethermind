@@ -107,7 +107,7 @@ namespace Nethermind.Network.P2P
                         throw new InvalidOperationException("Cannot create a session's node object without knowing remote node details");
                     }
 
-                    _node = new Node(RemoteNodeId, RemoteHost, RemotePort, false);
+                    _node = new Node(RemoteNodeId, RemoteHost, RemotePort);
                 }
 
                 return _node;
@@ -340,7 +340,7 @@ namespace Nethermind.Network.P2P
                     _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId}, new: {handshakeRemoteNodeId}");
                 ObsoleteRemoteNodeId = RemoteNodeId;
                 RemoteNodeId = handshakeRemoteNodeId;
-                Node = new Node(RemoteNodeId, RemoteHost, RemotePort, false);
+                Node = new Node(RemoteNodeId, RemoteHost, RemotePort);
             }
 
             Metrics.Handshakes++;

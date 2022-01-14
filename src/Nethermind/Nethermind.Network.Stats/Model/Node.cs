@@ -88,17 +88,12 @@ namespace Nethermind.Stats.Model
             SetIPEndPoint(address);
         }
 
-        public Node(NetworkNode networkNode)
-            : this(networkNode.NodeId, networkNode.Host, networkNode.Port, false)
-        {
-        }
-        
-        public Node(NetworkNode networkNode, bool isStatic)
+        public Node(NetworkNode networkNode, bool isStatic = false)
             : this(networkNode.NodeId, networkNode.Host, networkNode.Port, isStatic)
         {
         }
 
-        public Node(PublicKey id, string host, int port, bool isStatic)
+        public Node(PublicKey id, string host, int port, bool isStatic = false)
         {
             Id = id;
             IdHash = Keccak.Compute(Id.PrefixedBytes);

@@ -32,7 +32,7 @@ namespace Nethermind.Network.Test
         [SetUp]
         public void Initialize()
         {
-            _node = new Node(TestItem.PublicKeyA, "192.1.1.1", 3333, false);
+            _node = new Node(TestItem.PublicKeyA, "192.1.1.1", 3333);
         }
 
         [TestCase(TransferSpeedType.Bodies)]

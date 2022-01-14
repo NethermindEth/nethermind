@@ -126,7 +126,7 @@ public class NodeTable : INodeTable
 
     public void Initialize(PublicKey masterNodeKey)
     {
-        MasterNode = new Node(masterNodeKey, _networkConfig.ExternalIp, _networkConfig.DiscoveryPort, false);
+        MasterNode = new Node(masterNodeKey, _networkConfig.ExternalIp, _networkConfig.DiscoveryPort);
         if (_logger.IsTrace) _logger.Trace($"Created MasterNode: {MasterNode}");
     }
 }

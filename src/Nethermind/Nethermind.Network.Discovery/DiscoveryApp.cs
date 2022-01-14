@@ -272,7 +272,7 @@ public class DiscoveryApp : IDiscoveryApp
             Node node;
             try
             {
-                node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port, false);
+                node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
             }
             catch (Exception)
             {
@@ -443,7 +443,7 @@ public class DiscoveryApp : IDiscoveryApp
                 _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
             }
             
-            Node node = new (bootnode.NodeId, bootnode.Host, bootnode.Port, false);
+            Node node = new (bootnode.NodeId, bootnode.Host, bootnode.Port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             if (manager != null)
             {

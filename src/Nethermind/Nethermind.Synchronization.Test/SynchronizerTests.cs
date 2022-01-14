@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization.Test
                 TotalDifficulty = HeadBlock.TotalDifficulty ?? 0;
             }
 
-            public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234, false);
+            public Node Node { get; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
 
             public string ClientId { get; }
             public Keccak HeadHash { get; set; }

@@ -40,13 +40,13 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_sort_by_Reputation()
         {
-            Node a = new(TestItem.PublicKeyA, "127.0.0.1", 30303, false);
+            Node a = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
             Peer peerA = new(a);
 
-            Node b = new(TestItem.PublicKeyB, "127.0.0.1", 30303, false);
+            Node b = new(TestItem.PublicKeyB, "127.0.0.1", 30303);
             Peer peerB = new(b);
 
-            Node c = new(TestItem.PublicKeyC, "127.0.0.1", 30303, false);
+            Node c = new(TestItem.PublicKeyC, "127.0.0.1", 30303);
             Peer peerC = new(c);
 
             _statsManager.GetCurrentReputation(a).Returns(100);
@@ -66,16 +66,16 @@ namespace Nethermind.Network.Test
         [Test]
         public void Can_sort()
         {
-            Node a = new(TestItem.PublicKeyA, "127.0.0.1", 30303, false);
+            Node a = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
             Peer peerA = new(a);
 
-            Node b = new(TestItem.PublicKeyB, "127.0.0.1", 30304, false);
+            Node b = new(TestItem.PublicKeyB, "127.0.0.1", 30304);
             Peer peerB = new(b);
 
-            Node c = new(TestItem.PublicKeyC, "127.0.0.1", 30305, false);
+            Node c = new(TestItem.PublicKeyC, "127.0.0.1", 30305);
             Peer peerC = new(c);
             
-            Node d = new(TestItem.PublicKeyD, "127.0.0.1", 30306, false);
+            Node d = new(TestItem.PublicKeyD, "127.0.0.1", 30306);
             Peer peerD = new(d);
             Peer peerE = null;
 

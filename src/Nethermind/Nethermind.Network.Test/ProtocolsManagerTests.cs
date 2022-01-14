@@ -137,7 +137,7 @@ namespace Nethermind.Network.Test
             public Context CreateOutgoingSession()
             {
                 IChannel channel = Substitute.For<IChannel>();
-                _currentSession = new Session(_localPort, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort, false), channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                _currentSession = new Session(_localPort, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort), channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
                 _rlpxHost.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;

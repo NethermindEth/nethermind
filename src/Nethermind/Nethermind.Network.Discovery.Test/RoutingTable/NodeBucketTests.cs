@@ -29,9 +29,9 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
     [TestFixture]
     public class NodeBucketTests
     {
-        private Node _node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000, false);
-        private Node _node2 = new(TestItem.PublicKeyB, IPAddress.Broadcast.ToString(), 30000, false);
-        private Node _node3 = new(TestItem.PublicKeyC, IPAddress.Broadcast.ToString(), 30000, false);
+        private Node _node = new(TestItem.PublicKeyA, IPAddress.Broadcast.ToString(), 30000);
+        private Node _node2 = new(TestItem.PublicKeyB, IPAddress.Broadcast.ToString(), 3000);
+        private Node _node3 = new(TestItem.PublicKeyC, IPAddress.Broadcast.ToString(), 3000);
         
         [Test]
         public void Bonded_count_is_tracked()
@@ -79,7 +79,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             Node node = new(
                 TestItem.PublicKeyA,
                 IPAddress.Broadcast.ToString(),
-                30001, false);
+                30001);
 
             Node existing = nodeBucket.BondedItems.First().Node!;
             nodeBucket.ReplaceNode(existing, node);
@@ -114,12 +114,12 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
             Node node = new(
                 TestItem.PublicKeyA,
                 IPAddress.Broadcast.ToString(),
-                30001, false);
+                30001);
             
             Node nonExisting = new(
                 TestItem.PublicKeyA,
                 IPAddress.Broadcast.ToString(),
-                30002, false);
+                30002);
             
             Assert.Throws<InvalidOperationException>(() => nodeBucket.ReplaceNode(nonExisting, node));
         }
@@ -131,7 +131,7 @@ namespace Nethermind.Network.Discovery.Test.RoutingTable
                 Node node = new(
                     TestItem.PublicKeys[i],
                     IPAddress.Broadcast.ToString(),
-                    30000, false);
+                    30000);
 
                 nodeBucket.AddNode(node);
             }

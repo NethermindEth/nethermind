@@ -101,7 +101,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task sending_ping_receiving_proper_pong_sets_bounded()
         {
-            Node node = new(TestItem.PublicKeyB, _host, _port, false);
+            Node node = new(TestItem.PublicKeyB, _host, _port);
             NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
             , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
 
@@ -122,7 +122,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task sending_ping_receiving_incorrect_pong_does_not_bond()
         {
-            Node node = new(TestItem.PublicKeyB, _host, _port, false);
+            Node node = new(TestItem.PublicKeyB, _host, _port);
             NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
             , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
 
@@ -135,7 +135,7 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public void Wrong_pong_will_get_ignored()
         {
-            Node node = new(TestItem.PublicKeyB, _host, _port, false);
+            Node node = new(TestItem.PublicKeyB, _host, _port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager?.State);
             
@@ -150,7 +150,7 @@ namespace Nethermind.Network.Discovery.Test
         [Retry(3)]
         public async Task UnreachableStateTest()
         {
-            Node node = new(TestItem.PublicKeyB, _host, _port, false);
+            Node node = new(TestItem.PublicKeyB, _host, _port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager?.State);
 
@@ -168,7 +168,7 @@ namespace Nethermind.Network.Discovery.Test
             for (int i = 0; i < 3; i++)
             {
                 string host = "192.168.1." + i;
-                Node node = new(_nodeIds[i], host, _port, false);
+                Node node = new(_nodeIds[i], host, _port);
                 INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
                 if (manager is null)
                 {
@@ -191,7 +191,7 @@ namespace Nethermind.Network.Discovery.Test
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 0);
 
             //adding 4th node - table can store only 3, eviction process should start
-            Node candidateNode = new(_nodeIds[3], _host, _port, false);
+            Node candidateNode = new(_nodeIds[3], _host, _port);
             INodeLifecycleManager? candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);
@@ -239,7 +239,7 @@ namespace Nethermind.Network.Discovery.Test
             for (int i = 0; i < 3; i++)
             {
                 string host = "192.168.1." + i;
-                Node node = new(_nodeIds[i], host, _port, false);
+                Node node = new(_nodeIds[i], host, _port);
                 INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
                 if (manager is null)
                 {
@@ -264,7 +264,7 @@ namespace Nethermind.Network.Discovery.Test
             }
 
             //adding 4th node - table can store only 3, eviction process should start
-            Node candidateNode = new(_nodeIds[3], _host, _port, false);
+            Node candidateNode = new(_nodeIds[3], _host, _port);
 
             INodeLifecycleManager? candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
             Assert.AreEqual(NodeLifecycleState.New, candidateManager?.State);

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -243,8 +244,14 @@ public class NodeRecord
         // https://tools.ietf.org/html/rfc4648#section-5
         // Base64Url must be used, hence the replace calls.
         // Convert.ToBase64String uses '+'. '/' signs and padding.
-        return string.Concat("enr:",
-            Convert.ToBase64String(rlpData).Replace("+", "-").Replace("/", "_").Replace("=", ""));
+        string base64String = Convert.ToBase64String(rlpData);
+        const string prefix = "enr:";
+        return new StringBuilder(base64String, base64String.Length + prefix.Length)
+            .Replace('+', '-')
+            .Replace('/', '_')
+            .Replace("=", string.Empty)
+            .Insert(0, prefix)
+            .ToString();
     }
 
     private void RequireSignature()
