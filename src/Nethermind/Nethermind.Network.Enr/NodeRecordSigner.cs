@@ -101,6 +101,7 @@ public class NodeRecordSigner : INodeRecordSigner
                 default:
                     canVerify = false;
                     rlpStream.SkipItem();
+                    nodeRecord.Snap = true;
                     break;
             }
         }

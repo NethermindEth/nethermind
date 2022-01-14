@@ -40,7 +40,7 @@ public class DnsClient : IDnsClient
     {
         string queryString = (string.IsNullOrWhiteSpace(query) ? string.Empty : (query + ".")) + _domain;
         DnsQuestion rootQuestion = new(queryString, QueryType.TXT);
-        IDnsQueryResponse response = await _client.QueryAsync(rootQuestion);
+        IDnsQueryResponse response = await _client.QueryAsync(rootQuestion, CancellationToken.None);
         return response.Answers.OfType<TxtRecord>().Select(txt => txt.Text.ToArray()).ToArray();
     }
 }

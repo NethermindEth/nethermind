@@ -101,6 +101,8 @@ public class NodeRecord
     /// </summary>
     public Signature? Signature { get; set; }
 
+    public bool Snap { get; set; }
+
     public NodeRecord()
     {
         SetEntry(IdEntry.Instance);

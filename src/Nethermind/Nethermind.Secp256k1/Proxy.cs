@@ -317,10 +317,10 @@ namespace Nethermind.Secp256k1
                 throw new ArgumentException($"{nameof(serializedPublicKey)} must be 33 or 65 bytes");
             }
 
-            // if (publicKeyOutput.Length < 64)
-            // {
-            //     throw new ArgumentException($"{nameof(publicKeyOutput)} must be {64} bytes");
-            // }
+            if (publicKeyOutput.Length < 64)
+            {
+                throw new ArgumentException($"{nameof(publicKeyOutput)} must be {64} bytes");
+            }
 
             fixed (byte* pubKeyPtr = &MemoryMarshal.GetReference(publicKeyOutput), serializedPtr = &MemoryMarshal.GetReference(serializedPublicKey))
             {
@@ -345,11 +345,11 @@ namespace Nethermind.Secp256k1
                 throw new ArgumentException($"{nameof(serializedPublicKeyOutput)} ({compressedStr}) must be {serializedPubKeyLength} bytes");
             }
 
-            // int expectedInputLength = flags == Secp256K1EcCompressed ? 33 : 64;
-            // if (publicKey.Length != expectedInputLength)
-            // {
-            //     throw new ArgumentException($"{nameof(publicKey)} must be {expectedInputLength} bytes");
-            // }
+            int expectedInputLength = flags == Secp256K1EcCompressed ? 33 : 64;
+            if (publicKey.Length != expectedInputLength)
+            {
+                throw new ArgumentException($"{nameof(publicKey)} must be {expectedInputLength} bytes");
+            }
 
             uint newLength = (uint) serializedPubKeyLength;
 
