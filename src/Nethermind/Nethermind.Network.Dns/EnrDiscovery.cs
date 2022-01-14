@@ -33,7 +33,7 @@ namespace Nethermind.Network.Dns;
 
 public class EnrDiscovery : INodeSource
 {
-    private readonly NodeRecordSigner _nodeRecordSigner;
+    private readonly INodeRecordSigner _nodeRecordSigner;
     private readonly ILogger _logger;
 
     private class SearchContext
@@ -48,11 +48,9 @@ public class EnrDiscovery : INodeSource
         public Queue<string> RefsToVisit { get; } = new();
     }
 
-    public EnrDiscovery(ILogManager logManager)
+    public EnrDiscovery(INodeRecordSigner nodeRecordSigner, ILogManager logManager)
     {
-        // I do not use the key here -> API is broken - no sense to use the node signer here
-        PrivateKeyGenerator generator = new();
-        _nodeRecordSigner = new NodeRecordSigner(new Ecdsa(), generator.Generate());
+        _nodeRecordSigner = nodeRecordSigner;
         _logger = logManager.GetClassLogger();
     }
 
@@ -95,11 +93,13 @@ public class EnrDiscovery : INodeSource
                     {
                         try
                         {
-                            Node node = ParseRecord(nodeRecordText, buffer);
-                            // Node node = ParseRecordOld(nodeRecordText);
+                            Node? node = ParseRecord(nodeRecordText, buffer);
                             
-                            // here could add network info to the node
-                            NodeAdded?.Invoke(this, new NodeEventArgs(node));
+                            if (node is not null)
+                            {
+                                // here could add network info to the node
+                                NodeAdded?.Invoke(this, new NodeEventArgs(node));
+                            }
                         }
                         catch (Exception e)
                         {
@@ -120,18 +120,25 @@ public class EnrDiscovery : INodeSource
         }
     }
 
-    private Node ParseRecordOld(string nodeRecordText)
+    private Node? ParseRecord(string nodeRecordText, IByteBuffer buffer)
     {
-        string broken = nodeRecordText[4..].Replace("-", "+").Replace("_", "/");
-        broken = broken.PadRight(nodeRecordText.Length % 4);
-        RlpStream rlpStream = new(Convert.FromBase64String(broken));
-        return DeserializeNode(rlpStream);
-    }
+        void AddPadding(IByteBuffer byteBuffer, ICharSequence base64)
+        {
+            if (base64[^1] != '=')
+            {
+                int mod3 = base64.Count % 4;
+                for (int i = 0; i < mod3; i++)
+                {
+                    byteBuffer.WriteString("=", Encoding.UTF8);
+                }
+            }
+        }
 
-    private Node ParseRecord(string nodeRecordText, IByteBuffer buffer)
-    {
         buffer.Clear();
-        buffer.WriteCharSequence(new StringCharSequence(nodeRecordText, 4, nodeRecordText.Length - 4), Encoding.UTF8);
+        StringCharSequence base64Sequence = new(nodeRecordText, 4, nodeRecordText.Length - 4);
+        buffer.WriteCharSequence(base64Sequence, Encoding.UTF8);
+        AddPadding(buffer, base64Sequence);
+        
         IByteBuffer base64Buffer = DotNetty.Codecs.Base64.Base64.Decode(buffer, Base64Dialect.URL_SAFE);
         try
         {
@@ -144,17 +151,20 @@ public class EnrDiscovery : INodeSource
         }
     }
 
-    private Node DeserializeNode(RlpStream rlpStream)
+    private Node? DeserializeNode(RlpStream rlpStream)
     {
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
-        CompressedPublicKey compressedPublicKey =
-            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1)!;
-        Node node = new(
-            compressedPublicKey!.Decompress(),
-            nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip)!.ToString(),
-            nodeRecord.GetValue<int>(EnrContentKey.Tcp)!.Value);
-
-        return node;
+        CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
+        IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
+        int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
+        if (compressedPublicKey is not null && ipAddress is not null && port is not null)
+        {
+            return new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value);
+        }
+        else
+        {
+            return null;
+        }
     }
 
     public List<Node> LoadInitialList()

@@ -249,7 +249,9 @@ public class NodeRecord
             IByteBuffer resultBuffer = Base64.Encode(buffer, Base64Dialect.URL_SAFE);
             try
             {
-                return prefix + resultBuffer.ReadString(resultBuffer.ReadableBytes - 1, Encoding.UTF8);
+                string base64String = resultBuffer.ReadString(resultBuffer.ReadableBytes, Encoding.UTF8);
+                int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0; 
+                return string.Concat(prefix, base64String.AsSpan(0, base64String.Length - skipLast));
             }
             finally
             {

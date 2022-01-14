@@ -482,7 +482,10 @@ namespace Nethermind.Init.Steps
             }
             
             NodesLoader nodesLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.RlpxPeer, _api.LogManager);
-            EnrDiscovery enrDiscovery = new(_api.LogManager); // initialize with a proper network
+            
+            // I do not use the key here -> API is broken - no sense to use the node signer here
+            NodeRecordSigner nodeRecordSigner = new(_api.EthereumEcdsa, new PrivateKeyGenerator().Generate());
+            EnrDiscovery enrDiscovery = new(nodeRecordSigner, _api.LogManager); // initialize with a proper network
             CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
             _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
             _api.PeerManager = new PeerManager(

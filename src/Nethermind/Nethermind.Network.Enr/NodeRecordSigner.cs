@@ -25,7 +25,7 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-778
 /// </summary>
-public class NodeRecordSigner
+public class NodeRecordSigner : INodeRecordSigner
 {
     private readonly IEcdsa _ecdsa;
 
