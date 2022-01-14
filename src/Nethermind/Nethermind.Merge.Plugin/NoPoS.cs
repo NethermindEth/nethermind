@@ -37,5 +37,6 @@ namespace Nethermind.Merge.Plugin
 
         public event EventHandler? TerminalPoWBlockReached;
         public UInt256? TerminalTotalDifficulty => null;
+        public void UpdateTerminalBlock(BlockHeader blockHeader) { }
     }
 }

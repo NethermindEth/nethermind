@@ -33,5 +33,7 @@ namespace Nethermind.Consensus
         event EventHandler TerminalPoWBlockReached;
 
         UInt256? TerminalTotalDifficulty { get; }
+
+        void UpdateTerminalBlock(BlockHeader blockHeader);
     }
 }

@@ -22,18 +22,15 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
-using Nethermind.State;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
@@ -111,12 +108,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"Invalid total difficulty: {newHeadBlock!.Header.TotalDifficulty} for block header: {newHeadBlock!.Header}", MergeErrorCodes.InvalidTerminalBlock);
             }
 
+            EnsureTerminalBlock(forkchoiceState, blocks);
+
             if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
             {
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
             }
             else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
                 if (_logger.IsWarn) _logger.Warn($"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
+            
             
             // In future safeBlockHash will be added to JSON-RPC
              _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
@@ -149,6 +149,42 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
 
             return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result() { PayloadId = payloadId?.ToHexString(true), Status = ForkchoiceStatus.Success});
+        }
+
+        // This method will detect reorg in terminal PoW block
+        private void EnsureTerminalBlock(ForkchoiceStateV1 forkchoiceState, Block[]? blocks)
+        {
+            // we can reorg terminal block only if we haven't finalized PoS yet and we're not finalizing PoS now 
+            // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#ability-to-jump-between-terminal-pow-blocks
+            bool notFinalizingPoS = forkchoiceState.FinalizedBlockHash == Keccak.Zero;
+            bool notFinalizedPoS = _manualBlockFinalizationManager.LastFinalizedHash == Keccak.Zero;
+            if (notFinalizingPoS && notFinalizedPoS && blocks != null)
+            {
+                BlockHeader? parent = null;
+                for (int i = 0; i < blocks.Length; ++i)
+                {
+                    if (blocks[i].TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
+                        parent = blocks[i].Header;
+                    else
+                    {
+                        if (parent == null)
+                        {
+                            parent = _blockTree.FindHeader(blocks[i].ParentHash!, BlockTreeLookupOptions.None);
+                        }
+
+                        if (parent != null && parent.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
+                        {
+                            // it means that we found terminal PoW Block
+                            // Terminal PoW block: A PoW block that satisfies the following conditions pow_block.total_difficulty >= TERMINAL_TOTAL_DIFFICULTY and pow_block.parent_block.total_difficulty < TERMINAL_TOTAL_DIFFICULTY
+                            // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#specification
+                            _poSSwitcher.UpdateTerminalBlock(blocks[i].Header);
+                        }
+
+                        break;
+                    }
+                }
+            }
+            
         }
 
         private ResultWrapper<ForkchoiceUpdatedV1Result> ReturnSyncing()

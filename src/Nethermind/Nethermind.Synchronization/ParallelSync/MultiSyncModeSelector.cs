@@ -57,6 +57,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private Timer _timer;
 
+        public event EventHandler<SyncModeChangedEventArgs>? Preparing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changing;
+        public event EventHandler<SyncModeChangedEventArgs>? Changed;
+
+        public SyncMode Current { get; private set; } = SyncMode.Disconnected;
+
         public MultiSyncModeSelector(
             ISyncProgressResolver syncProgressResolver,
             ISyncPeerPool syncPeerPool,
@@ -236,8 +242,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
             _timer.Enabled = true;
         }
-
-        public SyncMode Current { get; private set; } = SyncMode.Disconnected;
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
@@ -564,10 +568,6 @@ namespace Nethermind.Synchronization.ParallelSync
             _logger.Trace(
                 $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})");
         }
-
-        public event EventHandler<SyncModeChangedEventArgs>? Preparing;
-        public event EventHandler<SyncModeChangedEventArgs>? Changing;
-        public event EventHandler<SyncModeChangedEventArgs>? Changed;
 
         protected ref struct Snapshot
         {

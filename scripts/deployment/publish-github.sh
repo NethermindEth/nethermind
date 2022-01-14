@@ -15,7 +15,6 @@ GIT_SHORT_TAG_FIRST3="${GIT_SHORT_TAG:0:3}"
 echo The TAG is $GIT_SHORT_TAG_FIRST3
 
 cd $RELEASE_DIRECTORY
-cd plugins && PUB_PLUGINS_FILE="$(basename *.zip)" && cd ..
 cd $LIN_RELEASE && PUB_LIN_FILE="$(basename nethermind-linux-amd64-*)" && cd ..
 cd $OSX_RELEASE && PUB_OSX_FILE="$(basename nethermind-darwin-amd64-*)" && cd ..
 cd $WIN_RELEASE && PUB_WIN_FILE="$(basename nethermind-windows-amd64-*)" && cd ..

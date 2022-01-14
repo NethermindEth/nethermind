@@ -202,8 +202,7 @@ namespace Nethermind.Network.P2P
 
             zeroPacket.PacketType = (byte) messageId;
             IProtocolHandler protocolHandler = _protocols[protocol];
-            IZeroProtocolHandler zeroProtocolHandler = protocolHandler as IZeroProtocolHandler;
-            if (zeroProtocolHandler != null)
+            if (protocolHandler is IZeroProtocolHandler zeroProtocolHandler)
             {
                 zeroProtocolHandler.HandleMessage(zeroPacket);
             }

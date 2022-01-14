@@ -21,8 +21,21 @@ namespace Nethermind.Core.Specs
     /// </summary>
     public interface ISpecProvider
     {
+        /// <summary>
+        /// The merge block number is different from the rest forks because we don't know the merge block before it happens.
+        /// This function handles change of the merge block
+        /// </summary>
         void UpdateMergeTransitionInfo(long blockNumber);
-
+        
+        /// <summary>
+        /// We have two different block numbers for merge transition:
+        /// https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#definitions
+        /// 1.FORK_NEXT_VALUE (MergeForkId in chain spec) - we know it before the merge happens. It is included in TransitionsBlocks.
+        /// It will affect fork_id calculation for networking.
+        /// 2. The real merge block (ISpecProvider.MergeBlockNumber) - the real merge block number. We don't know it before the transition.
+        /// It affects all post-merge logic, for example, difficulty opcode, post-merge block rewards.
+        /// This block number doesn't affect fork_id calculation and it isn't included in ISpecProvider.TransitionsBlocks
+        /// </summary>
         long? MergeBlockNumber { get; }
 
         /// <summary>
