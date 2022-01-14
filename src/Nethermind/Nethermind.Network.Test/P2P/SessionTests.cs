@@ -554,7 +554,7 @@ namespace Nethermind.Network.Test.P2P
 
             long beforeLocal = Network.Metrics.LocalOtherDisconnects;
             long beforeRemote = Network.Metrics.OtherDisconnects;
-            session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "");
+            session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, string.Empty);
             long afterLocal = Network.Metrics.LocalOtherDisconnects;
             long afterRemote = Network.Metrics.OtherDisconnects;
             Assert.AreEqual(beforeLocal + 1, afterLocal);
@@ -568,7 +568,7 @@ namespace Nethermind.Network.Test.P2P
 
             beforeLocal = Network.Metrics.LocalOtherDisconnects;
             beforeRemote = Network.Metrics.OtherDisconnects;
-            session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "");
+            session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, string.Empty);
             afterLocal = Network.Metrics.LocalOtherDisconnects;
             afterRemote = Network.Metrics.OtherDisconnects;
             Assert.AreEqual(beforeLocal, afterLocal);

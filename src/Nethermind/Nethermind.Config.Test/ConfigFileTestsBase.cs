@@ -151,7 +151,7 @@ namespace Nethermind.Config.Test
             List<IEnumerable<string>> toIntersect = new();
             foreach (string singleWildcard in configWildcards)
             {
-                string singleWildcardBase = singleWildcard.Replace("^", "");
+                string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
                 IEnumerable<string> result = groups.ContainsKey(singleWildcardBase)
                     ? groups[singleWildcardBase]
                     : Enumerable.Repeat(singleWildcardBase, 1);

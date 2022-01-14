@@ -126,7 +126,7 @@ namespace Nethermind.Network.Rlpx
                         if (aggregateException?.InnerException is SocketException socketException
                             && socketException.ErrorCode == 10048)
                         {
-                            if(_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", "")}.{nameof(NetworkConfig.P2PPort)} 30303");    
+                            if(_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", string.Empty)}.{nameof(NetworkConfig.P2PPort)} 30303");    
                         }
                         else
                         {

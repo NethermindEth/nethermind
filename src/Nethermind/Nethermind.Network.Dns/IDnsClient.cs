@@ -38,7 +38,7 @@ public class DnsClient : IDnsClient
     
     public async Task<string[][]> Lookup(string query)
     {
-        string queryString = (string.IsNullOrWhiteSpace(query) ? "" : (query + ".")) + _domain;
+        string queryString = (string.IsNullOrWhiteSpace(query) ? string.Empty : (query + ".")) + _domain;
         DnsQuestion rootQuestion = new(queryString, QueryType.TXT);
         IDnsQueryResponse response = await _client.QueryAsync(rootQuestion);
         return response.Answers.OfType<TxtRecord>().Select(txt => txt.Text.ToArray()).ToArray();

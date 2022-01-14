@@ -55,7 +55,7 @@ public class EnrDiscovery : INodeSource
     public async Task SearchTree(string domain)
     {
         DnsClient client = new(domain);
-        SearchContext searchContext = new("");
+        SearchContext searchContext = new(string.Empty);
         await SearchTree(client, searchContext);
     }
 
