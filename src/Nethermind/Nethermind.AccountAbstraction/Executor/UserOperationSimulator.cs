@@ -126,11 +126,10 @@ namespace Nethermind.AccountAbstraction.Executor
             return transaction;
         }
 
-        public Task<ResultWrapper<Keccak>> Simulate(
-            UserOperation userOperation,
+        public Task<ResultWrapper<Keccak>> Simulate(UserOperation userOperation,
             BlockHeader parent,
-            CancellationToken cancellationToken = default,
-            UInt256? timestamp = null)
+            UInt256? timestamp = null,
+            CancellationToken cancellationToken = default)
         {
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv =
@@ -149,8 +148,7 @@ namespace Nethermind.AccountAbstraction.Executor
             if (userOperation.AlreadySimulated)
             {
                 // if previously simulated we must make sure it doesn't access any more than it did on the first round
-                if (!UserOperationAccessList.AccessListContains(userOperation.AccessList.Data,
-                    validationAccessList.Data))
+                if (!userOperation.AccessList.AccessListContains(validationAccessList.Data))
                     return Task.FromResult(ResultWrapper<Keccak>.Fail("access list exceeded"));
             }
             else

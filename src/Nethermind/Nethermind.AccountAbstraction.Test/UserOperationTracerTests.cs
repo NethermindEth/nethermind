@@ -36,13 +36,13 @@ namespace Nethermind.AccountAbstraction.Test
     public class UserOperationTracerTests : VirtualMachineTestsBase
     {
         
-        [TestCase(Instruction.SELFDESTRUCT, 1, true)]
-        [TestCase(Instruction.DELEGATECALL, 1, true)]
-        [TestCase(Instruction.ADD, 1, true)]        
-        [TestCase(Instruction.SELFDESTRUCT, 2, false)]
-        [TestCase(Instruction.DELEGATECALL, 2, false)]
-        [TestCase(Instruction.ADD, 2, true)]
-        public void Bans_selfdestruct_and_delegatecall_only_when_paymaster_mode_is_active(Instruction instruction, int selfBalanceCalls, bool success)
+        [TestCase(Instruction.SELFDESTRUCT, 0, true)]
+        [TestCase(Instruction.DELEGATECALL, 0, true)]
+        [TestCase(Instruction.ADD, 0, true)]        
+        [TestCase(Instruction.SELFDESTRUCT, 1, false)]
+        [TestCase(Instruction.DELEGATECALL, 1, false)]
+        [TestCase(Instruction.ADD, 1, true)]
+        public void Bans_selfdestruct_and_delegatecall_only_when_paymaster_mode_is_active(Instruction instruction, int numberOpcodeCalls, bool success)
         {
             byte[] deployedCode = Prepare.EvmCode
                 .PushData("0x01")
@@ -59,8 +59,8 @@ namespace Nethermind.AccountAbstraction.Test
             TestState.UpdateCodeHash(TestItem.AddressC, deployedCodeHash, Spec);
 
             byte[] code = Prepare.EvmCode
-                .Op(Instruction.SELFBALANCE)
-                .Op(selfBalanceCalls > 1 ? Instruction.SELFBALANCE : Instruction.DUP1)
+                //.Op(Instruction.NUMBER)
+                .Op(numberOpcodeCalls > 0 ? Instruction.NUMBER : Instruction.SELFBALANCE)
                 .Call(TestItem.AddressC, 50000)
                 .Op(Instruction.STOP)
                 .Done;

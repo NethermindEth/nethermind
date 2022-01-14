@@ -96,10 +96,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 // the failedOp error in the entrypoint provides useful error messages, use if possible
                 object[] decoded = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature,
                     _abi.Errors["FailedOp"].GetCallInfo().Signature, Output);
-                FailedOp = new FailedOp
-                {
-                    OpIndex = (UInt256)decoded[0], Paymaster = (Address)decoded[1], Reason = (string)decoded[2]
-                };
+                FailedOp = new FailedOp((UInt256)decoded[0], (Address)decoded[1], (string)decoded[2]);
             }
             catch (Exception)
             {

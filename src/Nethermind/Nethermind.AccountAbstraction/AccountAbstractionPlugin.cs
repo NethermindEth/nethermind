@@ -24,6 +24,9 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Mev;
 using Nethermind.AccountAbstraction.Bundler;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Blockchain.Find;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -64,7 +67,7 @@ namespace Nethermind.AccountAbstraction
                         _entryPointContractAddress,
                         _logger,
                         new PaymasterThrottler(BundleMiningEnabled),
-                        _nethermindApi.ReceiptStorage!,
+                        _nethermindApi.LogFinder!,
                         _nethermindApi.EngineSigner!,
                         _nethermindApi.StateProvider!,
                         _nethermindApi.Timestamper,
@@ -142,7 +145,9 @@ namespace Nethermind.AccountAbstraction
                     _accountAbstractionConfig.EntryPointContractAddress,
                     out Address? entryPointContractAddress);
                 if (!parsed)
+                {
                     if (_logger.IsError) _logger.Error("Account Abstraction Plugin: EntryPoint contract address could not be parsed");
+                }
                 else
                 {
                     if (_logger.IsInfo) _logger.Info($"Parsed EntryPoint Address: {entryPointContractAddress}");
@@ -153,7 +158,9 @@ namespace Nethermind.AccountAbstraction
                     _accountAbstractionConfig.Create2FactoryAddress,
                     out Address? create2FactoryAddress);
                 if (!parsedCreate2Factory)
+                {
                     if (_logger.IsError) _logger.Error("Account Abstraction Plugin: Create2Factory contract address could not be parsed");
+                }
                 else
                 {
                     if (_logger.IsInfo) _logger.Info($"Parsed Create2Factory Address: {create2FactoryAddress}");

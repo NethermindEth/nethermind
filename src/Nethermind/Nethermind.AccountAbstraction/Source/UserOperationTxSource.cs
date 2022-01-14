@@ -65,7 +65,7 @@ namespace Nethermind.AccountAbstraction.Source
                 if (gasUsed >= (ulong)gasLimit) continue;
 
                 // no intersect of accessed addresses between ops
-                if (UserOperationAccessList.AccessListOverlaps(usedAccessList, userOperation.AccessList.Data)) continue;
+                if (userOperation.AccessList.AccessListOverlaps(usedAccessList)) continue;
 
                 // simulate again to make sure the op is still valid
                 Task<ResultWrapper<Keccak>> resultTask = _userOperationSimulator.Simulate(userOperation, parent);

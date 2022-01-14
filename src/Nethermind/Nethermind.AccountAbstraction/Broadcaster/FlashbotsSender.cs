@@ -69,7 +69,7 @@ namespace Nethermind.AccountAbstraction.Flashbots
             {
                 if (_logger!.IsWarn)
                     _logger.Warn(
-                        $"eth_sendBundle failed with status code {response.StatusCode} with message {await new StreamReader(await response.Content.ReadAsStreamAsync()).ReadToEndAsync()}");
+                        $"eth_sendBundle failed with status code {response.StatusCode} with message {await response.Content.ReadAsStringAsync()}");
             }
         }
 
@@ -110,7 +110,8 @@ namespace Nethermind.AccountAbstraction.Flashbots
                 RevertingTxHashes = Array.Empty<Keccak>();
             }
 
-            [JsonProperty("txs")] public IEnumerable<string> Transactions { get; }
+            [JsonProperty("txs")] 
+            public IEnumerable<string> Transactions { get; }
 
             [JsonProperty("revertingTxHashes", NullValueHandling = NullValueHandling.Ignore)]
             public Keccak[] RevertingTxHashes { get; }

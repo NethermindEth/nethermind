@@ -44,13 +44,12 @@ namespace Nethermind.AccountAbstraction.Data
             return accessList1;
         }
 
-        public static bool AccessListContains(IDictionary<Address, HashSet<UInt256>> accessList1,
-            IDictionary<Address, HashSet<UInt256>> accessList2)
+        public bool AccessListContains(IDictionary<Address, HashSet<UInt256>> accessList2)
         {
             foreach (KeyValuePair<Address, HashSet<UInt256>> kv in accessList2)
-                if (accessList1.ContainsKey(kv.Key))
+                if (Data.ContainsKey(kv.Key))
                 {
-                    if (!accessList1[kv.Key].IsSupersetOf(kv.Value)) return false;
+                    if (!Data[kv.Key].IsSupersetOf(kv.Value)) return false;
                 }
                 else
                     return false;
@@ -58,10 +57,9 @@ namespace Nethermind.AccountAbstraction.Data
             return true;
         }
 
-        public static bool AccessListOverlaps(IDictionary<Address, HashSet<UInt256>> accessList1,
-            IDictionary<Address, HashSet<UInt256>> accessList2)
+        public bool AccessListOverlaps(IDictionary<Address, HashSet<UInt256>> accessList2)
         {
-            foreach (KeyValuePair<Address, HashSet<UInt256>> kv in accessList1)
+            foreach (KeyValuePair<Address, HashSet<UInt256>> kv in Data)
                 if (accessList2.ContainsKey(kv.Key))
                     if (accessList2[kv.Key].Overlaps(kv.Value))
                         return true;

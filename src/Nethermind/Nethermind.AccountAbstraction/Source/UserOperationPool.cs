@@ -26,6 +26,9 @@ using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -45,7 +48,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly Address _entryPointAddress;
         private readonly ILogger _logger;
         private readonly IPaymasterThrottler _paymasterThrottler;
-        private readonly IReceiptFinder _receiptFinder;
+        private readonly ILogFinder _logFinder;
         private readonly ISigner _signer;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
@@ -65,7 +68,7 @@ namespace Nethermind.AccountAbstraction.Source
             Address entryPointAddress,
             ILogger logger,
             IPaymasterThrottler paymasterThrottler,
-            IReceiptFinder receiptFinder,
+            ILogFinder logFinder,
             ISigner signer,
             IStateProvider stateProvider,
             ITimestamper timestamper,
@@ -75,7 +78,7 @@ namespace Nethermind.AccountAbstraction.Source
             _blockTree = blockTree;
             _stateProvider = stateProvider;
             _paymasterThrottler = paymasterThrottler;
-            _receiptFinder = receiptFinder;
+            _logFinder = logFinder;
             _signer = signer;
             _timestamper = timestamper;
             _entryPointAddress = entryPointAddress;
@@ -195,40 +198,40 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 foreach (var userOperationHash in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperationHash);
             }
+            
+            BlockParameter currentBlockParameter = new BlockParameter(block.Number);
+            AddressFilter entryPointAddressFilter = new AddressFilter(_entryPointAddress);
+            IEnumerable<FilterLog> foundLogs = _logFinder.FindLogs(new LogFilter(0, 
+                currentBlockParameter, 
+                currentBlockParameter,
+                entryPointAddressFilter,
+                new SequenceTopicsFilter(new TopicExpression[] {new SpecificTopic(_userOperationEventTopic)})));
 
             // find any userOps included on chain submitted by this miner, delete from the pool
-            foreach (TxReceipt receipt in _receiptFinder.Get(block))
+            foreach (FilterLog log in foundLogs)
             {
-                if (receipt?.Recipient == _entryPointAddress
-                    && receipt?.Sender == _signer.Address
-                    && receipt.Logs is not null)
+                if (log?.Topics[0] == _userOperationEventTopic)
                 {
-                    foreach (LogEntry log in receipt.Logs)
+                    Address senderAddress = new(log.Topics[1]);
+                    Address paymasterAddress = new(log.Topics[2]);
+                    UInt256 nonce = new(log.Data.Slice(0, 32), true);
+                    if (_userOperationSortedPool.TryGetBucket(senderAddress, out UserOperation[] opsOfSender))
                     {
-                        if (log?.Topics[0] == _userOperationEventTopic)
+                        foreach (UserOperation op in opsOfSender)
                         {
-                            Address senderAddress = new(log.Topics[1]);
-                            Address paymasterAddress = new(log.Topics[2]);
-                            UInt256 nonce = new(log.Data.Slice(0, 32), true);
-                            if (_userOperationSortedPool.TryGetBucket(senderAddress, out UserOperation[] opsOfSender))
+                            if (op.Nonce == nonce && op.Paymaster == paymasterAddress)
                             {
-                                foreach (UserOperation op in opsOfSender)
-                                {
-                                    if (op.Nonce == nonce && op.Paymaster == paymasterAddress)
+                                if (_logger.IsDebug) _logger.Debug($"UserOperation {op.Hash} removed from pool after being included by miner");
+                                Metrics.UserOperationsIncluded++;
+                                _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
+                                RemoveUserOperation(op.Hash);
+                                _removedUserOperations.AddOrUpdate(block.Number,
+                                    k => new HashSet<UserOperation>() { op },
+                                    (k, v) =>
                                     {
-                                        if (_logger.IsDebug) _logger.Debug($"UserOperation {op.Hash} removed from pool after being included by miner");
-                                        Metrics.UserOperationsIncluded++;
-                                        _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
-                                        RemoveUserOperation(op.Hash);
-                                        _removedUserOperations.AddOrUpdate(block.Number,
-                                            k => new HashSet<UserOperation>() { op },
-                                            (k, v) =>
-                                            {
-                                                v.Add(op);
-                                                return v;
-                                            });
-                                    }
-                                }
+                                        v.Add(op);
+                                        return v;
+                                    });
                             }
                         }
                     }
@@ -304,8 +307,7 @@ namespace Nethermind.AccountAbstraction.Source
             ResultWrapper<Keccak> success = await _userOperationSimulator.Simulate(
                 userOperation,
                 parent,
-                CancellationToken.None,
-                _timestamper.UnixTime.Seconds);
+                _timestamper.UnixTime.Seconds, CancellationToken.None);
 
             return success;
         }

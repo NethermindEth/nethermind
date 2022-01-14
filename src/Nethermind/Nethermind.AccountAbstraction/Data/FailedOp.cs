@@ -20,16 +20,23 @@ using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
 {
-    public struct FailedOp
+    public readonly struct FailedOp
     {
-        public UInt256 OpIndex;
-        public Address Paymaster;
-        public string Reason;
+        public readonly UInt256 _opIndex;
+        public readonly Address _paymaster;
+        public readonly string _reason;
+
+        public FailedOp(UInt256 opIndex, Address paymaster, string reason)
+        {
+            _opIndex = opIndex;
+            _paymaster = paymaster;
+            _reason = reason;
+        }
 
         public override string ToString()
         {
-            string type = Paymaster == Address.Zero ? "wallet" : "paymaster";
-            return $"{type} simulation failed with reason '{Reason}'";
+            string type = _paymaster == Address.Zero ? "wallet" : "paymaster";
+            return $"{type} simulation failed with reason '{_reason}'";
         }
     }
 }

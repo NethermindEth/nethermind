@@ -2,12 +2,16 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Antlr4.Runtime.Misc;
 using FluentAssertions;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -31,6 +35,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
         private IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
+        private ILogFinder _logFinder = Substitute.For<ILogFinder>();
         private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly Keccak _userOperationEventTopic = new("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
@@ -77,7 +82,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             _userOperationPool.AddUserOperation(op);
 
-            _simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
+            _simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<UInt256>(), Arg.Any<CancellationToken>());
         }
 
         [Test]
@@ -92,13 +97,13 @@ namespace Nethermind.AccountAbstraction.Test
             IEnumerable<UserOperation> expectedOp2 = new[] { op2 };
 
             _userOperationPool.AddUserOperation(op);
-            _simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
+            _simulator.Received().Simulate(op, Arg.Any<BlockHeader>(), Arg.Any<UInt256>(), Arg.Any<CancellationToken>());
             _userOperationPool.GetUserOperations().Count().Should().Be(1);
             _userOperationPool.GetUserOperations().Should().BeEquivalentTo(expectedOp);
 
             _userOperationPool.AddUserOperation(op2);
             _simulator.Received()
-                .Simulate(op2, Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>(), Arg.Any<UInt256>());
+                .Simulate(op2, Arg.Any<BlockHeader>(), Arg.Any<UInt256>(), Arg.Any<CancellationToken>());
             _userOperationPool.GetUserOperations().Count().Should().Be(1);
             _userOperationPool.GetUserOperations().Should().BeEquivalentTo(expectedOp2);
         }
@@ -165,7 +170,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void should_remove_user_operations_from_pool_when_included_in_block()
         {
             int capacity = 256;
-            int expectedTransactions = 100;
+            int expectedTransactions = 1;
             _userOperationPool = GenerateUserOperationPool(capacity);
             _signer.Address.Returns(Address.SystemUser);
             Address senderAddress = _signer.Address;
@@ -193,7 +198,14 @@ namespace Nethermind.AccountAbstraction.Test
             };
 
             Block block = Nethermind.Core.Test.Builders.Build.A.Block.TestObject;
-            _receiptFinder.Get(block).Returns(new[]{receipt});
+            _logFinder.FindLogs(Arg.Any<LogFilter>()).Returns(new[]
+            {
+                new FilterLog(0, 0, receipt,
+                    new LogEntry(new Address(_entryPointContractAddress), 
+                        Bytes.Zero32,
+                        new[] {_userOperationEventTopic, new Keccak(senderAddress.Bytes.PadLeft(32)), Keccak.Zero}))
+            });
+            //_receiptFinder.Get(block).Returns(new[]{receipt});
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
             
             ManualResetEvent manualResetEvent = new(false);
@@ -332,7 +344,7 @@ namespace Nethermind.AccountAbstraction.Test
                 new Address(_entryPointContractAddress), 
                 NullLogger.Instance, 
                 paymasterThrottler, 
-                _receiptFinder, 
+                _logFinder, 
                 _signer, 
                 _stateProvider, 
                 Substitute.For<ITimestamper>(), 

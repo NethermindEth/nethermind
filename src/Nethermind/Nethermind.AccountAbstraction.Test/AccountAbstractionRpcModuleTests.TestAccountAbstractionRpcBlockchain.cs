@@ -174,7 +174,7 @@ namespace Nethermind.AccountAbstraction.Test
                     entryPointContractAddress!, 
                     LogManager.GetClassLogger(),
                     new PaymasterThrottler(), 
-                    ReceiptStorage, 
+                    LogFinder, 
                     Signer, 
                     State, 
                     Timestamper, 
@@ -190,7 +190,7 @@ namespace Nethermind.AccountAbstraction.Test
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
-                AccountAbstractionRpcModule = new AccountAbstractionRpcModule(UserOperationPool);
+                AccountAbstractionRpcModule = new AccountAbstractionRpcModule(UserOperationPool, new []{new Address(_accountAbstractionConfig.EntryPointContractAddress)});
                 
                 return chain;
             }
