@@ -10,7 +10,7 @@ namespace Nethermind.Network.Dns.Test;
 public class EnrDiscoveryTests
 {
     [Test]
-    [Explicit("Do not run this test on CI - takes a lot of time")]
+    // [Explicit("Do not run this test on CI - takes a lot of time")]
     public async Task Test_enr_discovery()
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
