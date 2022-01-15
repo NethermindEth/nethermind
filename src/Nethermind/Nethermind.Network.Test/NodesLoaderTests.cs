@@ -19,7 +19,9 @@ using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -27,13 +29,13 @@ namespace Nethermind.Network.Test
 {
     [Parallelizable(ParallelScope.Self)]
     [TestFixture]
-    public class PeerLoaderTests
+    public class NodesLoaderTests
     {
         private NetworkConfig _networkConfig;
         private DiscoveryConfig _discoveryConfig;
         private INodeStatsManager _statsManager;
         private INetworkStorage _peerStorage;
-        private PeerLoader _loader;
+        private NodesLoader _loader;
 
         [SetUp]
         public void SetUp()
@@ -42,13 +44,14 @@ namespace Nethermind.Network.Test
             _discoveryConfig = new DiscoveryConfig();
             _statsManager = Substitute.For<INodeStatsManager>();
             _peerStorage = Substitute.For<INetworkStorage>();
-            _loader = new PeerLoader(_networkConfig, _statsManager, _peerStorage, LimboLogs.Instance);
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>(); 
+            _loader = new NodesLoader(_networkConfig, _statsManager, _peerStorage, rlpxHost, LimboLogs.Instance);
         }
 
         [Test]
         public void When_no_peers_then_no_peers_nada_zero()
         {
-            List<Peer> peers = _loader.LoadPeers();
+            List<Node> peers = _loader.LoadInitialList();
             Assert.AreEqual(0, peers.Count);
         }
 
@@ -60,11 +63,11 @@ namespace Nethermind.Network.Test
         public void Can_load_static_nodes()
         {
             _networkConfig.StaticPeers = enodesString;
-            List<Peer> peers = _loader.LoadPeers();
-            Assert.AreEqual(2, peers.Count);
-            foreach (Peer peer in peers)
+            List<Node> nodes = _loader.LoadInitialList();
+            Assert.AreEqual(2, nodes.Count);
+            foreach (Node node in nodes)
             {
-                Assert.True(peer.Node.IsStatic);
+                Assert.True(node.IsStatic);
             }
         }
 
@@ -73,11 +76,11 @@ namespace Nethermind.Network.Test
         {
             _discoveryConfig.Bootnodes = enodesString;
             _networkConfig.Bootnodes = _discoveryConfig.Bootnodes;
-            List<Peer> peers = _loader.LoadPeers();
-            Assert.AreEqual(2, peers.Count);
-            foreach (Peer peer in peers)
+            List<Node> nodes = _loader.LoadInitialList();
+            Assert.AreEqual(2, nodes.Count);
+            foreach (Node node in nodes)
             {
-                Assert.True(peer.Node.IsBootnode);
+                Assert.True(node.IsBootnode);
             }
         }
 
@@ -85,12 +88,12 @@ namespace Nethermind.Network.Test
         public void Can_load_persisted()
         {
             _peerStorage.GetPersistedNodes().Returns(new[] {new NetworkNode(enode1String), new NetworkNode(enode2String)});
-            List<Peer> peers = _loader.LoadPeers();
-            Assert.AreEqual(2, peers.Count);
-            foreach (Peer peer in peers)
+            List<Node> nodes = _loader.LoadInitialList();
+            Assert.AreEqual(2, nodes.Count);
+            foreach (Node node in nodes)
             {
-                Assert.False(peer.Node.IsBootnode);
-                Assert.False(peer.Node.IsStatic);
+                Assert.False(node.IsBootnode);
+                Assert.False(node.IsStatic);
             }
         }
     }

@@ -8,6 +8,11 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
+      <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="DotNetty.Buffers" Version="0.6.0" />
     </ItemGroup>
 
 </Project>

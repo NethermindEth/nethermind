@@ -48,7 +48,7 @@ namespace Nethermind.Trie
             }
         }
         
-        private string GetPrefix(TrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : "", $"{GetChildIndex(context)}");
+        private string GetPrefix(TrieVisitContext context) => string.Concat($"{GetIndent(context.Level)}", context.IsStorage ? "STORAGE " : string.Empty, $"{GetChildIndex(context)}");
         
         private string GetIndent(int level) => new('+', level * 2);
         private string GetChildIndex(TrieVisitContext context) => context.BranchChildIndex == null ? string.Empty : $"{context.BranchChildIndex:x2} ";

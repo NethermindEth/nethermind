@@ -57,21 +57,21 @@ namespace Nethermind.Synchronization.Test
             _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
-            SyncConfig quickConfig = new SyncConfig();
+            SyncConfig quickConfig = new();
             quickConfig.FastSync = false;
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             var stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _pool = new SyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
-            SyncConfig syncConfig = new SyncConfig();
-            SyncProgressResolver resolver = new SyncProgressResolver(
+            SyncConfig syncConfig = new();
+            SyncProgressResolver resolver = new(
                 _blockTree,
                 _receiptStorage,
                 _stateDb,
                 new TrieStore(_stateDb, LimboLogs.Instance),  
                 syncConfig,
                 LimboLogs.Instance);
-            MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(resolver, _pool, syncConfig, LimboLogs.Instance);
+            MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, LimboLogs.Instance);
             _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, LimboLogs.Instance);
             _syncServer = new SyncServer(
                 _stateDb,
@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.Test
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSize.Max* 2).TestObject;
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
-            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
@@ -143,7 +143,7 @@ namespace Nethermind.Synchronization.Test
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
-            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) => { resetEvent.Set(); };
             _pool.Start();
             _synchronizer.Start();
@@ -160,7 +160,7 @@ namespace Nethermind.Synchronization.Test
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSize.Max).TestObject;
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
-            SemaphoreSlim semaphore = new SemaphoreSlim(0);
+            SemaphoreSlim semaphore = new(0);
             _synchronizer.SyncEvent += (sender, args) =>
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) semaphore.Release(1);
@@ -184,7 +184,7 @@ namespace Nethermind.Synchronization.Test
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SyncBatchSize.Max).TestObject;
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
 
-            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
@@ -208,7 +208,7 @@ namespace Nethermind.Synchronization.Test
             BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
             ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 
-            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
                 TestContext.WriteLine(args.SyncEvent);
@@ -248,7 +248,7 @@ namespace Nethermind.Synchronization.Test
             BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
             ISyncPeer miner1 = new SyncPeerMock(miner1Tree);
 
-            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
@@ -282,7 +282,7 @@ namespace Nethermind.Synchronization.Test
             BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
             ISyncPeer miner1 = new SyncPeerMock(minerTree);
 
-            AutoResetEvent resetEvent = new AutoResetEvent(false);
+            AutoResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
@@ -320,7 +320,7 @@ namespace Nethermind.Synchronization.Test
             BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
             ISyncPeer miner1 = new SyncPeerMock(minerTree);
 
-            AutoResetEvent resetEvent = new AutoResetEvent(false);
+            AutoResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();

@@ -92,7 +92,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<
         {
             if (!rlp.HasBeenRead)
             {
-                int enrSequence = rlp.DecodeInt();
+                long enrSequence = rlp.DecodeLong();
                 msg.EnrSequence = enrSequence;
             }
         }
