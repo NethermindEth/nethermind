@@ -119,7 +119,12 @@ namespace Nethermind.Merge.Plugin
         {
             _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
         }
-        
+
+        public bool IsTerminalPoWBlock(BlockHeader blockHeader, BlockHeader? parent = null)
+        {
+            throw new NotImplementedException();
+        }
+
         public void UpdateTerminalBlock(BlockHeader blockHeader)
         {
             if (blockHeader.Difficulty != 0) // PostMerge blocks have Difficulty == 0. We are interested here in Terminal PoW block

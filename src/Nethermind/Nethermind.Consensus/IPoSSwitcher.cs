@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -34,7 +35,8 @@ namespace Nethermind.Consensus
 
         UInt256? TerminalTotalDifficulty { get; }
 
-
+        bool IsTerminalPoWBlock(BlockHeader blockHeader, BlockHeader? parent = null);
+        
         // We can get TerminalBlock from three different points in the system:
         // 1) Block Processing - it is needed because we need to switch classes, for example, block production, during the transition
         // 2) forkchoice - it will handle reorgs in terminal blocks during the transition process

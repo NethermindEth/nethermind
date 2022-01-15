@@ -17,6 +17,7 @@
 
 using System;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs.Test
 {
@@ -38,6 +39,7 @@ namespace Nethermind.Specs.Test
         }
         
         public long? MergeBlockNumber => _theMergeBlock;
+        public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public IReleaseSpec GenesisSpec => _overrideAction(_specProvider.GenesisSpec);
 

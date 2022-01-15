@@ -16,6 +16,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs
@@ -30,6 +31,7 @@ namespace Nethermind.Specs
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
+        public UInt256? TerminalTotalDifficulty => null;
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)

@@ -15,13 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs
 {
     public class RopstenSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
+        private long? _theMergeBlock;
 
         public void UpdateMergeTransitionInfo(long blockNumber)
         {
@@ -29,6 +30,7 @@ namespace Nethermind.Specs
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
+        public UInt256? TerminalTotalDifficulty => null;
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)

@@ -29,7 +29,10 @@ namespace Nethermind.Merge.Plugin
 
         public static NoPoS Instance { get; } = new();
 
-        public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedBlockHash) { }
+        public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedBlockHash) 
+        {
+            throw new NotImplementedException();
+        }
 
         public bool IsPos(BlockHeader header) => false;
 
@@ -37,6 +40,14 @@ namespace Nethermind.Merge.Plugin
 
         public event EventHandler? TerminalPoWBlockReached;
         public UInt256? TerminalTotalDifficulty => null;
-        public void UpdateTerminalBlock(BlockHeader blockHeader) { }
+        public bool IsTerminalPoWBlock(BlockHeader blockHeader, BlockHeader? parent = null)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void UpdateTerminalBlock(BlockHeader blockHeader)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

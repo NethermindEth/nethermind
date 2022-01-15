@@ -345,7 +345,7 @@ namespace Nethermind.Blockchain
             }
 
             BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
-            var bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
+            BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
             BestSuggestedBody = bestSuggestedBodyHeader is null ? null : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
         }
 
@@ -564,9 +564,7 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0);
-            bool postMergeImprovementRequirementSatisfied = header.IsPostMerge || header.Number >= _specProvider.MergeBlockNumber || header.Difficulty == 0; // ToDo hack
-            if (header.IsGenesis || preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied)
+            if (header.IsGenesis || TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0))
             {
                 if (header.IsGenesis)
                 {
@@ -574,8 +572,6 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
-                if (postMergeImprovementRequirementSatisfied)
-                    BestSuggestedBody = block;
                 
                 if (block is not null && shouldProcess)
                 {
@@ -1139,10 +1135,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Block added to main {block}");
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
-            
-            bool preMergeImprovementRequirementSatisfied = block.TotalDifficulty > (Head?.TotalDifficulty ?? 0);
-            bool postMergeImprovementRequirementSatisfied = block.IsPostMerge || block.Number >= _specProvider.MergeBlockNumber || block.Difficulty == 0; // hack
-            if (forceUpdateHeadBlock || block.IsGenesis || postMergeImprovementRequirementSatisfied || preMergeImprovementRequirementSatisfied)
+            if (forceUpdateHeadBlock || block.IsGenesis || TotalDifficultyRequirementSatisfied(block.Header, Head?.TotalDifficulty ?? 0))
             {
                 if (block.Number == 0)
                 {
@@ -1161,6 +1154,22 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
+        }
+
+        private bool TotalDifficultyRequirementSatisfied(BlockHeader header, UInt256 totalDifficultyToCheck)
+        {
+            // before merge TD requirements are satisfied only if TD > block head
+            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > totalDifficultyToCheck 
+                                                           && (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty 
+                                                               || _specProvider.TerminalTotalDifficulty == null);
+            
+            // after the merge, we will accept only the blocks with Difficulty = 0. However, during the transition process
+            // we can have terminal PoW blocks with Difficulty > 0. That is why we accept everything greater or equal
+            // than current head and header.TD >= TTD. The validity of blocks is verified in block validators classes.
+            bool postMergeImprovementRequirementSatisfied = header.TotalDifficulty >= totalDifficultyToCheck &&
+                                                            _specProvider.TerminalTotalDifficulty != null &&
+                                                            header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty;
+            return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
 
         private void LoadStartBlock()
@@ -1274,7 +1283,7 @@ namespace Nethermind.Blockchain
 
         private ChainLevelInfo UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
         {
-            using (var batch = _chainLevelInfoRepository.StartBatch())
+            using (BatchWrite? batch = _chainLevelInfoRepository.StartBatch())
             {
                 ChainLevelInfo level = LoadLevel(number, false);
 

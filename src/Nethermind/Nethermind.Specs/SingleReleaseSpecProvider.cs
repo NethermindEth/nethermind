@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs
@@ -29,6 +30,7 @@ namespace Nethermind.Specs
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
+        public UInt256? TerminalTotalDifficulty => null;
         public ulong ChainId { get; }
         public long[] TransitionBlocks { get; } = {0};
 

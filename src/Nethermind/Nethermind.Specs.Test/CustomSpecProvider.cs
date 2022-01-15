@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs.Test
@@ -57,7 +58,8 @@ namespace Nethermind.Specs.Test
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
-        
+        public UInt256? TerminalTotalDifficulty { get; set; }
+
 #pragma warning disable CS8602
 #pragma warning disable CS8603
         public IReleaseSpec GenesisSpec => _transitions?.Length == 0 ? null : _transitions[0].Release;

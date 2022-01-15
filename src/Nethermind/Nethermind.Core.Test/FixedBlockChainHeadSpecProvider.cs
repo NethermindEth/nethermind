@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Core.Test
 {
@@ -27,6 +28,7 @@ namespace Nethermind.Core.Test
         }
 
         public long? MergeBlockNumber => _specProvider.MergeBlockNumber;
+        public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
         private readonly ISpecProvider _specProvider;
         private readonly long _fixedBlock;
 

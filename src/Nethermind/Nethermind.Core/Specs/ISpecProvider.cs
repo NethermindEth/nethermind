@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Int256;
+
 namespace Nethermind.Core.Specs
 {
     /// <summary>
@@ -37,6 +39,8 @@ namespace Nethermind.Core.Specs
         /// This block number doesn't affect fork_id calculation and it isn't included in ISpecProvider.TransitionsBlocks
         /// </summary>
         long? MergeBlockNumber { get; }
+        
+        UInt256? TerminalTotalDifficulty { get; }
 
         /// <summary>
         /// Retrieves the list of enabled EIPs at genesis block.

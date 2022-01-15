@@ -26,7 +26,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public class ChainSpecBasedSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
         private (long BlockNumber, ReleaseSpec Release)[] _transitions;
 
         private ChainSpec _chainSpec;
@@ -168,15 +167,19 @@ namespace Nethermind.Specs.ChainSpecStyle
                 index++;
             }
             
-            _theMergeBlock = _chainSpec.Parameters.TerminalPowBlockNumber + 1;
+            MergeBlockNumber = _chainSpec.Parameters.TerminalPowBlockNumber + 1;
+            TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
         public void UpdateMergeTransitionInfo(long blockNumber)
         {
-            _theMergeBlock = blockNumber;
+            MergeBlockNumber = blockNumber;
         }
 
-        public long? MergeBlockNumber => _theMergeBlock;
+        public long? MergeBlockNumber { get; private set; }
+
+        public UInt256? TerminalTotalDifficulty { get; private set; }
+
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
 
         public IReleaseSpec GetSpec(long blockNumber)
@@ -188,7 +191,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 : null;
             
             if (releaseSpec != null)
-                releaseSpec.TheMergeEnabled = blockNumber >= _theMergeBlock;
+                releaseSpec.TheMergeEnabled = blockNumber >= MergeBlockNumber;
             
             return releaseSpec;
         }
