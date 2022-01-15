@@ -23,6 +23,11 @@ using System.Collections.Generic;
 
 namespace Nethermind.Trie
 {
+    [StructLayout(LayoutKind.Sequential)]
+    public class Proof{
+        public IntPtr ptr;
+        public int len;
+    }
     public static class RustVerkleLib {
         
         static RustVerkleLib()
@@ -53,12 +58,6 @@ namespace Nethermind.Trie
 
         [DllImport("rust_verkle")]
         private static extern bool verify_verkle_proof_multiple(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[,] key, byte[,] value, int len);
-
-        [DllImport("rust_verkle")]
-        private static extern int get_proof_len(IntPtr Proof_Box);
-
-        [DllImport("rust_verkle")]
-        private static extern IntPtr get_proof_ptr(IntPtr Proof_Box);
 
         public static IntPtr VerkleTrieNew()
         {
@@ -104,9 +103,9 @@ namespace Nethermind.Trie
 
         public static byte[] VerkleProofGet(IntPtr verkleTrie, byte[] key){
             IntPtr proof_box =  get_verkle_proof(verkleTrie, key);
-            int len = get_proof_len(proof_box);
-            byte[] proof_bytes = new byte[len];
-            Marshal.Copy(get_proof_ptr(proof_box), proof_bytes, 0, len);
+            Proof vp = (Proof)Marshal.PtrToStructure(proof_box, typeof(Proof));
+            byte[] proof_bytes = new byte[vp.len];
+            Marshal.Copy(vp.ptr, proof_bytes, 0, vp.len);
             return proof_bytes;
         }
 
@@ -120,9 +119,9 @@ namespace Nethermind.Trie
 
         public static byte[] VerkleProofGetMultiple(IntPtr verkleTrie, byte[,] keys, int len){
             IntPtr proof_box =  get_verkle_proof_multiple(verkleTrie, keys, len);
-            int proof_len = get_proof_len(proof_box);
-            byte[] proof_bytes = new byte[proof_len];
-            Marshal.Copy(get_proof_ptr(proof_box), proof_bytes, 0, proof_len);
+            Proof vp = (Proof)Marshal.PtrToStructure(proof_box, typeof(Proof));
+            byte[] proof_bytes = new byte[vp.len];
+            Marshal.Copy(vp.ptr, proof_bytes, 0, vp.len);
             return proof_bytes;
         }
 
