@@ -21,14 +21,7 @@ namespace Nethermind.AccountAbstraction.Bundler
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
-            try
-            {
-                TriggerBundle?.Invoke(this, new BundleUserOpsEventArgs(e.Block));
-            }
-            catch (System.Exception ex)
-            {
-                _logger.Error(ex.Message);
-            }
+            TriggerBundle?.Invoke(this, new BundleUserOpsEventArgs(e.Block));
         }
     }
 }
