@@ -13,18 +13,17 @@ jobs:
       USER: ${{ github.event.issue.user.login }}
       AUTHOR_ASSOCIATION: ${{ github.event.issue.author_association }}
       ISSUE_URL: ${{ github.event.issue.html_url }}
-      ISSUE_TITLE: ${{ github.event.issue.title }}
     steps:
     - name: Alert Nethermind Team
       if: ${{ env.AUTHOR_ASSOCIATION == 'NONE' }}
       run: |
-        MESSAGE="An issue ${{ env.ISSUE_TITLE }} has been created by a user: ${{ env.USER }}" 
+        MESSAGE="An issue has been created by an user: $USER" 
         MESSAGE_FORMATTED=$(echo $MESSAGE | tr -d '"')
         composeMessage() {
         cat <<EOF
         {
           "message": "$MESSAGE_FORMATTED",
-          "description":"Github issue URL: ${{ env.ISSUE_URL }}",
+          "description":"Github issue URL: $ISSUE_URL",
           "tags": ["GithubIssues"]
         }
         EOF
