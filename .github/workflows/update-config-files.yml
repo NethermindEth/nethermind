@@ -4,6 +4,9 @@ on:
   schedule:
     - cron:  '0 0 * * *'
 
+permissions:
+  pull-requests: read|write
+
 jobs:
   update-configs:
     if: github.repository_owner == 'NethermindEth'

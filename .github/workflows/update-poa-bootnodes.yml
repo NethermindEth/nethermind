@@ -5,7 +5,9 @@ on:
     types: update_bootnodes
   workflow_dispatch:
 
-
+permissions:
+  pull-requests: read|write
+  
 jobs:
   update-bootnodes:
     name: Updating POA Bootnodes
