@@ -25,41 +25,27 @@ namespace Nethermind.Synchronization.Peers
     public static class SyncPeerExtensions
     {
         // Check if OpenEthereum supports GetNodeData
-        private static readonly Version _openEthereumSecondRemoveGetNodeDataVersion = new(3, 3, 0);
+        private static readonly Version _openEthereumSecondRemoveGetNodeDataVersion = new(3, 3, 3);
         private static readonly Version _openEthereumFirstRemoveGetNodeDataVersion = new(3, 1, 0);
         
         public static bool SupportsAllocation(this PeerInfo peerInfo, AllocationContexts contexts)
         {
-            // only for State allocations
-            if ((contexts & AllocationContexts.State) != 0)
+            if ((contexts & AllocationContexts.State) != 0 // only for State allocations 
+                && peerInfo.SyncPeer.ClientType == NodeClientType.OpenEthereum) // only for OE
             {
                 // try get OpenEthereum version
                 Version? openEthereumVersion = peerInfo.SyncPeer.GetOpenEthereumVersion(out int releaseCandidate);
                 if (openEthereumVersion is not null)
                 {
                     int versionComparision = openEthereumVersion.CompareTo(_openEthereumSecondRemoveGetNodeDataVersion);
-                    switch (versionComparision)
-                    {
-                        case < 0:
-                            return openEthereumVersion < _openEthereumFirstRemoveGetNodeDataVersion;
-                        case 0:
-                            switch (releaseCandidate)
-                            {
-                                case <= 3:
-                                case >= 8 and <= 10:
-                                    return false;
-                                // >= 11, we should support only for AuRa, but we can ignore it for now
-                                default:
-                                    return true;
-                            }
-                    }
+                    return versionComparision >= 0 || openEthereumVersion < _openEthereumFirstRemoveGetNodeDataVersion;
                 }
             }
 
             return true;
         }
         
-        private static readonly Regex _openEthereumVersionRegex = new(@"OpenEthereum\/([a-zA-z-0-9]*\/)*v(?<version>(?<mainVersion>[0-9]\.[0-9]\.[0-9])-(rc\.(?<rc>[0-9]*))?)", RegexOptions.Compiled);
+        private static readonly Regex _openEthereumVersionRegex = new(@"OpenEthereum\/([a-zA-z-0-9]*\/)*v(?<version>(?<mainVersion>[0-9]\.[0-9]\.[0-9])-?(rc\.(?<rc>[0-9]*))?)", RegexOptions.Compiled);
         
         public static Version? GetOpenEthereumVersion(this ISyncPeer peer, out int releaseCandidate)
         {

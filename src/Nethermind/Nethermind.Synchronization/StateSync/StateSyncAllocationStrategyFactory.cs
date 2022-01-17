@@ -26,11 +26,9 @@ namespace Nethermind.Synchronization.StateSync
 {
     public class StateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
     {
-        private static readonly IPeerAllocationStrategy DefaultStrategy = new TotalDiffStrategy(
-            new ClientTypeStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), false,
-                //Enum.GetValues<NodeClientType>()),
-                Enum.GetValues<NodeClientType>().Except(new[] { NodeClientType.OpenEthereum })),
-            TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
+        private static readonly IPeerAllocationStrategy DefaultStrategy =
+            new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true),
+                TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse);
         
         public StateSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {

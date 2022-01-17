@@ -41,11 +41,15 @@ namespace Nethermind.Synchronization.Test
         [TestCase("OpenEthereum/xdai-friends/v3.3.0-rc.10-stable-d8305c5-20210903/x86_64-linux-gnu", AllocationContexts.State, ExpectedResult = false)]
         [TestCase("OpenEthereum/v3.2.5-stable-32d8b54-20210505/x86_64-linux-gnu/rustc1.51.0", AllocationContexts.State, ExpectedResult = false)]
         [TestCase("OpenEthereum/v3.1.1-stable-32d8b54-20210505/x86_64-linux-gnu/rustc1.51.0", AllocationContexts.State, ExpectedResult = false)]
+        [TestCase("OpenEthereum/v3.3.0-rc.4-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = false)]
+        [TestCase("OpenEthereum/v3.3.0-rc.7-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = false)]
+        [TestCase("OpenEthereum/v3.3.0-rc.11-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = false)]
+        [TestCase("OpenEthereum/v3.3.0-rc.15-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = false)]
+        [TestCase("OpenEthereum/v3.3.1/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = false)]
+        [TestCase("OpenEthereum/v3.3.2/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = false)]
         [TestCase("OpenEthereum/v3.0.0-stable-32d8b54-20210505/x86_64-linux-gnu/rustc1.51.0", AllocationContexts.State, ExpectedResult = true)]
-        [TestCase("OpenEthereum/v3.3.0-rc.4-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = true)]
-        [TestCase("OpenEthereum/v3.3.0-rc.7-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = true)]
-        [TestCase("OpenEthereum/v3.3.0-rc.11-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = true)]
-        [TestCase("OpenEthereum/v3.3.0-rc.15-stable/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = true)]
+        [TestCase("OpenEthereum/v3.3.3/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = true)]
+        [TestCase("OpenEthereum/v3.3.4/x86_64-linux-musl/rustc1.47.0", AllocationContexts.State, ExpectedResult = true)]
         public bool SupportsAllocation(string versionString, AllocationContexts contexts)
         {
             PeerInfo peerInfo = new(SetupSyncPeer(versionString));
