@@ -19,8 +19,8 @@ namespace Nethermind.Db
 {
     public static class MetadataDbKeys
     {
-        // we can use other types for keys, for example strings, byte arrays
-        // In the merge we're using now below keys:
+        // we can use other types for keys, for example, strings, byte arrays
+        // In the merge, we're using the below keys:
         public const int TerminalPoWHash = 1;
         public const int TerminalPoWNumber = 2;
         public const int FirstPoSHash = 3;
