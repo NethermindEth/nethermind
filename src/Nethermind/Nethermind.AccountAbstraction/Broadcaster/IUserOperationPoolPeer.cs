@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Broadcaster
     {
         public PublicKey Id { get; }
         public string Enode => string.Empty;
-        void SendNewUserOperation(UserOperation uop) => SendNewUserOperations(new[]{uop});
+        void SendNewUserOperation(UserOperation uop);
         void SendNewUserOperations(IEnumerable<UserOperation> uops);
     }
 }
