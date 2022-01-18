@@ -23,7 +23,7 @@ namespace Nethermind.Crypto
     [RequiresSecurityReview("Analyze RNGCryptoServiceProvider quality and its behaviour on reuse")]
     public class CryptoRandom : ICryptoRandom
     {
-        private readonly RandomNumberGenerator _secureRandom = new RNGCryptoServiceProvider();
+        private readonly RandomNumberGenerator _secureRandom = RandomNumberGenerator.Create();
         private readonly Random _random = new();
         
         public void GenerateRandomBytes(Span<byte> bytes)

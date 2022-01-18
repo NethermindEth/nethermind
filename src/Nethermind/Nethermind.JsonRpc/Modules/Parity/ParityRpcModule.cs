@@ -27,7 +27,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using Nethermind.Network;
@@ -55,7 +54,6 @@ namespace Nethermind.JsonRpc.Modules.Parity
             ISignerStore signerStore,
             IKeyStore keyStore,
             ISpecProvider specProvider,
-            ILogManager logManager,
             IPeerManager peerManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -85,22 +83,11 @@ namespace Nethermind.JsonRpc.Modules.Parity
             Block block = searchResult.Object;
             TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
             bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
-            IEnumerable<ReceiptForRpc> result = receipts.Zip(block.Transactions, (r, t) => new ReceiptForRpc(t.Hash, r, t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas)));
+            IEnumerable<ReceiptForRpc> result = receipts
+                .Zip(block.Transactions, (r, t) => 
+                    new ReceiptForRpc(t.Hash, r, t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), receipts.GetBlockLogFirstIndex(r.Index)));
             ReceiptForRpc[] resultAsArray = result.ToArray();
-            MakeLogIndexesUniqueInBlock(resultAsArray);
             return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
-        }
-
-        private static void MakeLogIndexesUniqueInBlock(ReceiptForRpc[] resultAsArray)
-        {
-            int logIndexInBlock = 0;
-            for (int receiptIndex = 0; receiptIndex < resultAsArray.Length; receiptIndex++)
-            {
-                for (int logIndexInTx = 0; logIndexInTx < resultAsArray[receiptIndex].Logs.Length; logIndexInTx++)
-                {
-                    resultAsArray[receiptIndex].Logs[logIndexInTx].LogIndex = logIndexInBlock++;
-                }
-            }
         }
 
         public ResultWrapper<bool> parity_setEngineSigner(Address address, string password)

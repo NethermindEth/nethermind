@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
 
         public IByteBuffer Decode(IByteBuffer input, bool throwOnCorruptedFrames = true)
         {
-            List<object> result = new List<object>();
+            List<object> result = new();
             try
             {
                 base.Decode(_context, input, result);

@@ -153,6 +153,7 @@ namespace Nethermind.Cli
             Serializer.RegisterConverter(new ParityTraceResultConverter());
             Serializer.RegisterConverter(new ParityVmOperationTraceConverter());
             Serializer.RegisterConverter(new ParityVmTraceConverter());
+            Serializer.RegisterConverter(new TransactionForRpcWithTraceTypesConverter());
         }
     }
 }

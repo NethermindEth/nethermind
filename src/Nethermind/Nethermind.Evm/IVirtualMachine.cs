@@ -16,14 +16,16 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 
 namespace Nethermind.Evm
 {
     public interface IVirtualMachine
     {
-        TransactionSubstate Run(EvmState state, ITxTracer tracer);
+        TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer tracer);
         
-        CodeInfo GetCachedCodeInfo(Address codeSource, IReleaseSpec spec);
+        CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
     }
 }

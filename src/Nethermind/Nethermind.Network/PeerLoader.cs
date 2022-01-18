@@ -28,26 +28,24 @@ namespace Nethermind.Network
     public class PeerLoader : IPeerLoader
     {
         private readonly INetworkConfig _networkConfig;
-        private readonly IDiscoveryConfig _discoveryConfig;
         private readonly INodeStatsManager _stats;
         private readonly INetworkStorage _peerStorage;
         private readonly ILogger _logger;
 
-        public PeerLoader(INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, INodeStatsManager stats, INetworkStorage peerStorage, ILogManager logManager)
+        public PeerLoader(INetworkConfig networkConfig, INodeStatsManager stats, INetworkStorage peerStorage, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-            _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         }
 
-        public List<Peer> LoadPeers(IEnumerable<NetworkNode> staticNodes = null)
+        public List<Peer> LoadPeers(IEnumerable<NetworkNode>? staticNodes = null)
         {
-            List<Peer> allPeers = new List<Peer>();
+            List<Peer> allPeers = new();
             LoadPeersFromDb(allPeers);
             
-            LoadConfigPeers(allPeers, _discoveryConfig.Bootnodes, n =>
+            LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
             {
                 n.IsBootnode = true;
                 if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
@@ -104,7 +102,7 @@ namespace Nethermind.Network
             }
         }
 
-        private void LoadConfigPeers(List<Peer> peers, string enodesString, Action<Node> nodeUpdate)
+        private void LoadConfigPeers(List<Peer> peers, string? enodesString, Action<Node> nodeUpdate)
         {
             if (enodesString == null || !enodesString.Any())
             {
@@ -118,7 +116,7 @@ namespace Nethermind.Network
         {
             foreach (NetworkNode networkNode in networkNodes)
             {
-                Node node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
+                Node node = new(networkNode.NodeId, networkNode.Host, networkNode.Port);
                 nodeUpdate.Invoke(node);
                 peers.Add(new Peer(node));
             }

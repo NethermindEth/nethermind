@@ -16,6 +16,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -54,6 +58,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -82,6 +90,15 @@ jobs:
     - name: Nethermind.Network.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Network.Test
+    - name: Nethermind.Network.Discovery.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Network.Discovery.Test
+    - name: Nethermind.Network.Dns.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Network.Dns.Test
+    - name: Nethermind.Network.Enr.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Network.Enr.Test
     - name: Nethermind.Facade.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Facade.Test
@@ -98,6 +115,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -139,6 +160,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -168,6 +193,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -181,30 +210,6 @@ jobs:
     - name: Nethermind.Sockets.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Sockets.Test
-    - name: Nethermind.DataMarketplace.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Test
-    - name: Nethermind.DataMarketplace.Channels.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Channels.Test
-    - name: Nethermind.DataMarketplace.Consumers.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
-    - name: Nethermind.DataMarketplace.Providers.Infrastructure.Tests
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Providers.Infrastructure.Tests
-    - name: Nethermind.DataMarketplace.Providers.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Providers.Test
-    - name: Nethermind.DataMarketplace.Infrastructure.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Infrastructure.Test
-    - name: Nethermind.DataMarketplace.Subprotocols.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.Subprotocols.Test
-    - name: Nethermind.DataMarketplace.WebSockets.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.DataMarketplace.WebSockets.Test
   neth-runner:
     name: Nethermind Runner Tests
     runs-on: ubuntu-latest
@@ -212,6 +217,10 @@ jobs:
     - uses: actions/checkout@v2
       with:
         submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Installing Linux packages
       run: |
         sudo apt-get update
@@ -227,6 +236,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
     - name: Unshallow fetching
       run: git fetch --unshallow
     - name: Updating submodules

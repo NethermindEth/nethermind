@@ -54,21 +54,15 @@ namespace Nethermind.Trie.Pruning
 
             public TrieNode FindCachedOrUnknown(Keccak hash)
             {
-                bool isMissing = !_objectsCache.TryGetValue(hash, out TrieNode trieNode);
-                if (isMissing)
+                if (_objectsCache.TryGetValue(hash, out TrieNode trieNode))
                 {
-                    if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
-                    trieNode = new TrieNode(NodeType.Unknown, hash);
-                    if (trieNode.Keccak is null)
-                    {
-                        throw new InvalidOperationException($"Adding node with null hash {trieNode}");
-                    }
-
-                    SaveInCache(trieNode);
+                    Metrics.LoadedFromCacheNodesCount++;
                 }
                 else
                 {
-                    Metrics.LoadedFromCacheNodesCount++;
+                    if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
+                    trieNode = new TrieNode(NodeType.Unknown, hash); 
+                    SaveInCache(trieNode);
                 }
 
                 return trieNode;
@@ -77,12 +71,7 @@ namespace Nethermind.Trie.Pruning
             public TrieNode FromCachedRlpOrUnknown(Keccak hash)
             {
                 // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                bool isMissing = !_objectsCache.TryGetValue(hash, out TrieNode? trieNode);
-                if (isMissing)
-                {
-                    trieNode = new TrieNode(NodeType.Unknown, hash);
-                }
-                else
+                if (_objectsCache.TryGetValue(hash, out TrieNode? trieNode))
                 {
                     if (trieNode!.FullRlp is null)
                     {
@@ -98,12 +87,17 @@ namespace Nethermind.Trie.Pruning
 
                     Metrics.LoadedFromCacheNodesCount++;
                 }
+                else
+                {
+                    trieNode = new TrieNode(NodeType.Unknown, hash);
+                }
 
                 if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
                 return trieNode;
             }
 
-            public bool IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash);
+            public bool 
+                IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash);
 
             public ConcurrentDictionary<Keccak, TrieNode> AllNodes => _objectsCache;
 
@@ -136,8 +130,8 @@ namespace Nethermind.Trie.Pruning
         }
 
         private int _isFirst;
-        
-        private readonly ThreadLocal<IBatch> _currentBatch = new();
+
+        private IBatch? _currentBatch = null;
 
         private readonly DirtyNodesCache _dirtyNodes;
 
@@ -315,8 +309,8 @@ namespace Nethermind.Trie.Pruning
             }
             finally
             {
-                _currentBatch.Value?.Dispose();
-                _currentBatch.Value = null;
+                _currentBatch?.Dispose();
+                _currentBatch = null;
             }
         }
 
@@ -330,7 +324,7 @@ namespace Nethermind.Trie.Pruning
         internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore)
         {
             keyValueStore ??= _keyValueStore;
-            byte[]? rlp = _currentBatch.Value?[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? keyValueStore[keccak.Bytes];
 
             if (rlp is null)
             {
@@ -611,7 +605,7 @@ namespace Nethermind.Trie.Pruning
 
             try
             {
-                _currentBatch.Value ??= _keyValueStore.StartBatch();
+                _currentBatch ??= _keyValueStore.StartBatch();
                 if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
@@ -629,8 +623,8 @@ namespace Nethermind.Trie.Pruning
             {
                 // For safety we prefer to commit half of the batch rather than not commit at all.
                 // Generally hanging nodes are not a problem in the DB but anything missing from the DB is.
-                _currentBatch.Value?.Dispose();
-                _currentBatch.Value = null;
+                _currentBatch?.Dispose();
+                _currentBatch = null;
             }
 
             PruneCurrentSet();
@@ -638,7 +632,7 @@ namespace Nethermind.Trie.Pruning
 
         private void Persist(TrieNode currentNode, long blockNumber)
         {
-            _currentBatch.Value ??= _keyValueStore.StartBatch();
+            _currentBatch ??= _keyValueStore.StartBatch();
             if (currentNode is null)
             {
                 throw new ArgumentNullException(nameof(currentNode));
@@ -655,7 +649,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (_logger.IsTrace)
                     _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                _currentBatch.Value[currentNode.Keccak.Bytes] = currentNode.FullRlp;
+                _currentBatch[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = blockNumber;
                 PersistedNodesCount++;

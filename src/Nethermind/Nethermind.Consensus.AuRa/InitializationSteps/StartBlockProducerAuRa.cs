@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class StartBlockProducerAuRa
     {
-        private new readonly AuRaNethermindApi _api;
+        private readonly AuRaNethermindApi _api;
         
         private BlockProducerEnv? _blockProducerContext;
         private INethermindApi NethermindApi => _api;
@@ -73,7 +73,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public IBlockProductionTrigger CreateTrigger()
         {
-            BuildBlocksOnAuRaSteps onAuRaSteps = new(_api.LogManager, StepCalculator);
+            BuildBlocksOnAuRaSteps onAuRaSteps = new(StepCalculator, _api.LogManager);
             BuildBlocksOnlyWhenNotProcessing onlyWhenNotProcessing = new(
                 onAuRaSteps, 
                 _api.BlockProcessingQueue, 
@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.LogManager, 
                 !_auraConfig.AllowAuRaPrivateChains);
             
-            _api.DisposeStack.Push(onlyWhenNotProcessing);
+            _api.DisposeStack.Push((IAsyncDisposable) onlyWhenNotProcessing);
 
             return onlyWhenNotProcessing;
         }
@@ -124,13 +124,15 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.EngineSigner == null) throw new StepDependencyException(nameof(_api.EngineSigner));
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.GasPriceOracle == null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
 
             var chainSpecAuRa = _api.ChainSpec.AuRa;
 
             ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
                 _api,
                 constantContractTxProcessingEnv,
-                _api.SpecProvider);
+                _api.SpecProvider, 
+                new LocalTxFilter(_api.EngineSigner));
 
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
                     changeableTxProcessingEnv.StateProvider,
@@ -146,6 +148,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                     _api.LogManager,
                     _api.EngineSigner,
                     _api.SpecProvider,
+                    _api.GasPriceOracle,
                     _api.ReportingContractValidatorCache, chainSpecAuRa.PosdaoTransition, true)
                 .CreateValidatorProcessor(chainSpecAuRa.Validators, _api.BlockTree.Head?.Header);
 

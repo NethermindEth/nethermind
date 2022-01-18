@@ -25,6 +25,9 @@ namespace Nethermind.Blockchain.Spec
     {
         private readonly ISpecProvider _specProvider;
         private readonly IBlockFinder _blockFinder;
+        private long _lastHeader = -1;
+        private IReleaseSpec? _headerSpec = null;
+        private readonly object _lock = new();
 
         public ChainHeadSpecProvider(ISpecProvider specProvider, IBlockFinder blockFinder)
         {
@@ -42,6 +45,28 @@ namespace Nethermind.Blockchain.Spec
 
         public long[] TransitionBlocks => _specProvider.TransitionBlocks;
         
-        public IReleaseSpec GetSpec() => GetSpec(_blockFinder.FindBestSuggestedHeader()?.Number ?? 0);
+        public IReleaseSpec GetCurrentHeadSpec()
+        {
+            long headerNumber = _blockFinder.FindBestSuggestedHeader()?.Number ?? 0;
+            
+            // we are fine with potential concurrency issue here, that the spec will change
+            // between this if and getting actual header spec
+            // this is used only in tx pool and this is not a problem there
+            if (headerNumber == _lastHeader)
+            {
+                IReleaseSpec releaseSpec = _headerSpec;
+                if (releaseSpec is not null)
+                {
+                    return releaseSpec;
+                }
+            }
+
+            // we want to make sure updates to both fields are consistent though
+            lock (_lock)
+            {
+                _lastHeader = headerNumber;
+                return _headerSpec = GetSpec(headerNumber);
+            }
+        }
     }
 }

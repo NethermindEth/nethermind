@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
@@ -68,7 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
+        public ResultWrapper<FeeHistoryResults> eth_feeHistory(long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
         {
             throw new NotSupportedException();
         }

@@ -44,7 +44,7 @@ namespace Nethermind.Crypto
         /// </returns>
         public static Keccak512 Zero { get; } = new(new byte[Size]);
 
-        public byte[] Bytes { get; }
+        public byte[]? Bytes { get; }
 
         public override string ToString()
         {
@@ -66,7 +66,7 @@ namespace Nethermind.Crypto
             return InternalCompute(rlp.Bytes);
         }
 
-        public static Keccak512 Compute(byte[] input)
+        public static Keccak512 Compute(byte[]? input)
         {
             if (input is null || input.Length == 0)
             {
@@ -76,7 +76,7 @@ namespace Nethermind.Crypto
             return InternalCompute(input);
         }
 
-        [ThreadStatic] private static HashLib.Crypto.SHA3.Keccak512 _hash;
+        [ThreadStatic] private static HashLib.Crypto.SHA3.Keccak512? _hash;
         
         public static uint[] ComputeToUInts(byte[] input)
         {
@@ -138,7 +138,7 @@ namespace Nethermind.Crypto
             return new Keccak512(_hash.ComputeBytes(input).GetBytes());
         }
 
-        public static Keccak512 Compute(string input)
+        public static Keccak512 Compute(string? input)
         {
             if (string.IsNullOrWhiteSpace(input))
             {

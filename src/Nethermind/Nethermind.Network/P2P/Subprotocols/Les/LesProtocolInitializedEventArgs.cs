@@ -16,6 +16,7 @@
 
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.EventArg;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {

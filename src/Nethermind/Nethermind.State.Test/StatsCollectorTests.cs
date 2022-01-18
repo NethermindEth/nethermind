@@ -36,11 +36,11 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats([Values(false, true)] bool parallel)
         {
-            MemDb memDb = new MemDb();
+            MemDb memDb = new();
             IDb stateDb = memDb;
-            TrieStore trieStore = new TrieStore(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
-            StateProvider stateProvider = new StateProvider(trieStore, stateDb, LimboLogs.Instance);
-            StorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, LimboLogs.Instance);
+            TrieStore trieStore = new(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
+            StateProvider stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
+            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
             Keccak codeHash = stateProvider.UpdateCode(new byte[] {1, 2, 3});
@@ -52,7 +52,7 @@ namespace Nethermind.Store.Test
 
             for (int i = 0; i < 1000; i++)
             {
-                StorageCell storageCell = new StorageCell(TestItem.AddressA, (UInt256)i);
+                StorageCell storageCell = new(TestItem.AddressA, (UInt256)i);
                 storageProvider.Set(storageCell, new byte[] {(byte)i});    
             }
 
@@ -65,11 +65,11 @@ namespace Nethermind.Store.Test
             stateProvider.CommitTree(1);
 
             memDb.Delete(codeHash2); // missing code
-            Keccak storageKey = new Keccak("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
+            Keccak storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
             memDb.Delete(storageKey); // deletes some storage
             trieStore.ClearCache();
 
-            TrieStatsCollector statsCollector = new TrieStatsCollector(stateDb, LimboLogs.Instance)
+            TrieStatsCollector statsCollector = new(stateDb, LimboLogs.Instance)
             {
                 SupportsParallelVisits = parallel
             };

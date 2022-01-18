@@ -169,7 +169,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
-            using (var timer = new Timer(1000) {Enabled = true})
+            using (Timer timer = new Timer(1000) {Enabled = true})
             {
                 timer.Elapsed += (ElapsedEventHandler) ((o, e) =>
                 {
@@ -178,7 +178,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                 try
                 {
-                    foreach (var block in GetBlockBodiesForMigration())
+                    foreach (Block block in GetBlockBodiesForMigration())
                     {
                         TxReceipt?[] receipts = _receiptStorage.Get(block);
                         TxReceipt[] notNullReceipts = receipts.Length == 0 ? receipts : receipts.Where(r => r != null).ToArray();
@@ -214,8 +214,8 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
                     {
-                        using var batch = _chainLevelInfoRepository.StartBatch();
-                        var level = _chainLevelInfoRepository.LoadLevel(number);
+                        using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+                        ChainLevelInfo level = _chainLevelInfoRepository.LoadLevel(number);
                         if (level != null)
                         {
                             if (!level.HasBlockOnMainChain)
@@ -248,7 +248,7 @@ namespace Nethermind.Init.Steps.Migrations
                         
                         if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                         {
-                            var header = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+                            Block header = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlock(i, blockHash);
                         }
 

@@ -61,7 +61,7 @@ namespace Nethermind.HealthChecks
             service.AddHealthChecks()
                 .AddTypeActivatedCheck<NodeHealthCheck>(
                     "node-health", 
-                    args: new object[] { _nodeHealthService });
+                    args: new object[] { _nodeHealthService, _api.LogManager });
             if (_healthChecksConfig.UIEnabled)
             {
                 service.AddHealthChecksUI(setup =>
@@ -84,7 +84,7 @@ namespace Nethermind.HealthChecks
 
                             string hostname = Dns.GetHostName();
 
-                            HealthChecksWebhookInfo info = new HealthChecksWebhookInfo(description, _api.IpResolver, metricsConfig, hostname);
+                            HealthChecksWebhookInfo info = new(description, _api.IpResolver, metricsConfig, hostname);
                             return info.GetFullInfo();
                         }
                         );
@@ -103,8 +103,8 @@ namespace Nethermind.HealthChecks
             if (_healthChecksConfig.Enabled)
             {
                 IInitConfig initConfig = _api.Config<IInitConfig>();
-                _nodeHealthService = new NodeHealthService(_api.SyncServer, new ReadOnlyBlockTree(_api.BlockTree), _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService, initConfig.IsMining);
-                HealthRpcModule healthRpcModule = new HealthRpcModule(_nodeHealthService);
+                _nodeHealthService = new NodeHealthService(_api.SyncServer, new ReadOnlyBlockTree(_api.BlockTree), _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService, _api.EthSyncingInfo, initConfig.IsMining);
+                HealthRpcModule healthRpcModule = new(_nodeHealthService);
                 _api.RpcModuleProvider!.Register(new SingletonModulePool<IHealthRpcModule>(healthRpcModule, true));
                 if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");
             }

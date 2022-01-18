@@ -31,6 +31,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Hive;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -61,11 +62,15 @@ namespace Nethermind.Runner
         {
             AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
             {
-                ILogger logger = new NLogLogger("logs.txt");
+                ILogger logger = GetCriticalLogger();
                 if (eventArgs.ExceptionObject is Exception e)
+                {
                     logger.Error(FailureString, e);
+                }
                 else
+                {
                     logger.Error(FailureString + eventArgs.ExceptionObject);
+                }
             };
 
             try
@@ -74,19 +79,21 @@ namespace Nethermind.Runner
             }
             catch (AggregateException e)
             {
-                ILogger logger = new NLogLogger("logs.txt");
+                ILogger logger = GetCriticalLogger();
                 logger.Error(FailureString, e.InnerException);
             }
             catch (Exception e)
             {
-                ILogger logger = new NLogLogger("logs.txt");
+                ILogger logger = GetCriticalLogger();
                 logger.Error(FailureString, e);
             }
             finally
             {
-                NLogLogger.Shutdown();
+                NLogManager.Shutdown();
             }
         }
+
+        private static ILogger GetCriticalLogger() => new NLogManager("logs.txt").GetClassLogger();
 
         private static void Run(string[] args)
         {
@@ -98,7 +105,7 @@ namespace Nethermind.Runner
             CommandLineApplication app = new() { Name = "Nethermind.Runner" };
             _ = app.HelpOption("-?|-h|--help");
             _ = app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
-            
+
             CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "data directory", CommandOptionType.SingleValue);
             CommandOption configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
@@ -111,7 +118,7 @@ namespace Nethermind.Runner
             
             string pluginsDirectoryPath = LoadPluginsDirectory(args);
             PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem, 
-                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin));
+                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin));
 
             // leaving here as an example of adding Debug plugin
             // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
@@ -161,7 +168,7 @@ namespace Nethermind.Runner
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
-                NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory);
+                NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
                 _logger = logManager.GetClassLogger();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");

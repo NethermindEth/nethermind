@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
     </PropertyGroup>
 
     <ItemGroup>
@@ -9,6 +9,8 @@
       <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
       <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
       <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
+      <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
+      <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
       <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     </ItemGroup>
 

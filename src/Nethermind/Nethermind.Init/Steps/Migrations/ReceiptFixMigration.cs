@@ -54,13 +54,13 @@ namespace Nethermind.Init.Steps.Migrations
         public void Run()
         {
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            var logger = _api.LogManager.GetClassLogger();
+            ILogger logger = _api.LogManager.GetClassLogger();
             if (syncConfig.FixReceipts && _api.BlockTree != null)
             {
                 _cancellationTokenSource = new CancellationTokenSource();
                 CancellationToken cancellationToken = _cancellationTokenSource.Token;
                 
-                var visitor = new MissingReceiptsFixVisitor(
+                MissingReceiptsFixVisitor visitor = new MissingReceiptsFixVisitor(
                     syncConfig.PivotNumberParsed,
                     _api.BlockTree.Head?.Number - 2 ?? 0,
                     _api.ReceiptStorage!,
@@ -114,7 +114,7 @@ namespace Nethermind.Init.Steps.Migrations
                     throw new ArgumentException("Cannot download receipts for a block without a known hash.");
                 }
                 
-                var strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true);
+                FastBlocksAllocationStrategy strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true);
                 SyncPeerAllocation peer = await _syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
                 ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
                 if (currentSyncPeer != null)

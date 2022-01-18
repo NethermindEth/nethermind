@@ -84,35 +84,28 @@ namespace Nethermind.Blockchain.Filters
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
         {
-            var filters = _filterStore.GetFilters<PendingTransactionFilter>();
-            if (filters == null || filters.Length == 0)
+            IEnumerable<PendingTransactionFilter> filters = _filterStore.GetFilters<PendingTransactionFilter>();
+            foreach (PendingTransactionFilter filter in filters)
             {
-                return;
-            }
-
-            for (var i = 0; i < filters.Length; i++)
-            {
-                var filterId = filters[i].Id;
-                var transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
+                int filterId = filter.Id;
+                List<Keccak> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
                 transactions.Add(e.Transaction.Hash);
                 if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
+                
             }
         }
 
         private void OnRemovedPendingTransaction(object sender, TxPool.TxEventArgs e)
         {
-            var filters = _filterStore.GetFilters<PendingTransactionFilter>();
-            if (filters == null || filters.Length == 0)
-            {
-                return;
-            }
+            IEnumerable<PendingTransactionFilter> filters = _filterStore.GetFilters<PendingTransactionFilter>();
 
-            for (var i = 0; i < filters.Length; i++)
+            foreach (PendingTransactionFilter filter in filters)
             {
-                var filterId = filters[i].Id;
-                var transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
+                int filterId = filter.Id;
+                List<Keccak> transactions = _pendingTransactions.GetOrAdd(filterId, _ => new List<Keccak>());
                 transactions.Remove(e.Transaction.Hash);
                 if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filterId}' contains {transactions.Count} transactions.");
+                
             }
         }
 
@@ -187,15 +180,13 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            var filters = _filterStore.GetFilters<LogFilter>();
-            if (filters == null || filters.Length == 0)
+            IEnumerable<LogFilter> filters = _filterStore.GetFilters<LogFilter>();
+            foreach (LogFilter filter in filters)
             {
-                return;
-            }
-
-            for (var i = 0; i < txReceipts.Length; i++)
-            {
-                StoreLogs(filters, txReceipts[i], ref _logIndex);
+                for (int i = 0; i < txReceipts.Length; i++)
+                {
+                    StoreLogs(filter, txReceipts[i], ref _logIndex);
+                }
             }
         }
 
@@ -206,20 +197,11 @@ namespace Nethermind.Blockchain.Filters
                 throw new ArgumentNullException(nameof(block));
             }
 
-            var filters = _filterStore.GetFilters<BlockFilter>();
-            if (filters == null || filters.Length == 0)
+            IEnumerable<BlockFilter> filters = _filterStore.GetFilters<BlockFilter>();
+            
+            foreach (BlockFilter filter in filters)
             {
-                return;
-            }
-
-            StoreBlock(filters, block);
-        }
-
-        private void StoreBlock(BlockFilter[] filters, Block block)
-        {
-            for (var i = 0; i < filters.Length; i++)
-            {
-                StoreBlock(filters[i], block);
+                StoreBlock(filter, block);
             }
         }
 
@@ -230,17 +212,9 @@ namespace Nethermind.Blockchain.Filters
                 throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             }
 
-            var blocks = _blockHashes.GetOrAdd(filter.Id, i => new List<Keccak>());
+            List<Keccak> blocks = _blockHashes.GetOrAdd(filter.Id, i => new List<Keccak>());
             blocks.Add(block.Hash);
             if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {blocks.Count} blocks.");
-        }
-
-        private void StoreLogs(LogFilter[] filters, TxReceipt txReceipt, ref long logIndex)
-        {
-            for (var i = 0; i < filters.Length; i++)
-            {
-                StoreLogs(filters[i], txReceipt, ref logIndex);
-            }
         }
 
         private void StoreLogs(LogFilter filter, TxReceipt txReceipt, ref long logIndex)
@@ -250,8 +224,8 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            var logs = _logs.GetOrAdd(filter.Id, i => new List<FilterLog>());
-            for (var i = 0; i < txReceipt.Logs.Length; i++)
+            List<FilterLog> logs = _logs.GetOrAdd(filter.Id, i => new List<FilterLog>());
+            for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
                 var logEntry = txReceipt.Logs[i];
                 var filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, i);

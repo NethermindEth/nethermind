@@ -26,7 +26,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Synchronization.BeamSync;
+using Nethermind.State;
 using Newtonsoft.Json;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc
         {
             try
             {
-                (int? errorCode, string errorMessage) = Validate(rpcRequest, context.RpcEndpoint);
+                (int? errorCode, string errorMessage) = Validate(rpcRequest, context);
                 if (errorCode.HasValue)
                 {
                     return GetErrorResponse(rpcRequest.Method, errorCode.Value, errorMessage, null, rpcRequest.Id);
@@ -168,9 +168,6 @@ namespace Nethermind.JsonRpc
             Action? returnAction = returnImmediately ? (Action) null : () => _rpcModuleProvider.Return(methodName, rpcModule);
             try
             {
-                BeamSyncContext.LastFetchUtc.Value = DateTime.UtcNow;
-                BeamSyncContext.Description.Value = $"[JSON RPC {methodName}]";
-
                 object invocationResult = method.Info.Invoke(rpcModule, parameters);
                 switch (invocationResult)
                 {
@@ -185,16 +182,18 @@ namespace Nethermind.JsonRpc
             }
             catch (TargetParameterCountException e)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id, returnAction);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id,
+                    returnAction);
             }
             catch (Exception e) when (e.InnerException is OperationCanceledException)
             {
                 string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
                 return GetErrorResponse(methodName, ErrorCodes.Timeout, errorMessage, null, request.Id, returnAction);
             }
-            catch (TargetInvocationException invocationException) when (invocationException.InnerException is BeamSyncException beamSyncException)
+            catch (Exception e) when (e.InnerException is InsufficientBalanceException)
             {
-                return GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, beamSyncException.Message, invocationException.Data, request.Id, returnAction);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, null, request.Id,
+                    returnAction);
             }
             finally
             {
@@ -248,10 +247,11 @@ namespace Nethermind.JsonRpc
                     }
 
                     object? executionParam;
-                    if (typeof(IJsonRpcRequest).IsAssignableFrom(paramType))
+                    if (typeof(IJsonRpcParam).IsAssignableFrom(paramType))
                     {
-                        executionParam = Activator.CreateInstance(paramType) as IJsonRpcRequest;
-                        ((IJsonRpcRequest) executionParam).FromJson(providedParameter);
+                        IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
+                        jsonRpcParam!.FromJson(providedParameter);
+                        executionParam = jsonRpcParam;
                     }
                     else if (paramType == typeof(string))
                     {
@@ -325,7 +325,7 @@ namespace Nethermind.JsonRpc
             return response;
         }
 
-        private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest? rpcRequest, RpcEndpoint rpcEndpoint)
+        private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest? rpcRequest, JsonRpcContext context)
         {
             if (rpcRequest == null)
             {
@@ -340,12 +340,12 @@ namespace Nethermind.JsonRpc
 
             methodName = methodName.Trim();
 
-            ModuleResolution result = _rpcModuleProvider.Check(methodName, rpcEndpoint);
+            ModuleResolution result = _rpcModuleProvider.Check(methodName, context);
             return result switch
             {
                 ModuleResolution.Unknown => ((int?) ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
-                ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled, consider adding module to JsonRpcConfig.EnabledModules"),
-                ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found but disabled for {rpcEndpoint}"),
+                ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
+                ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
                 _ => (null, null)
             };
         }

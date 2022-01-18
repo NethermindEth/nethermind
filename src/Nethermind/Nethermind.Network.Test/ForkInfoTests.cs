@@ -49,8 +49,10 @@ namespace Nethermind.Network.Test
         [TestCase(9_200_000, "0xe029e991", 12_244_000, "Last Muir Glacier")]
         [TestCase(12_244_000, "0x0eb440f6", 12_965_000, "First Berlin")]
         [TestCase(12_964_999, "0x0eb440f6", 12_965_000, "Last Berlin")]
-        [TestCase(12_965_000, "0xb715077d", 0L, "First London")]
-        [TestCase(12_985_100, "0xb715077d", 0L, "Future London")]
+        [TestCase(12_965_000, "0xb715077d", 13_773_000L, "First London")]
+        [TestCase(13_772_999, "0xb715077d", 13_773_000L, "Last London")]
+        [TestCase(13_773_000, "0x20c327fc", 0L, "First Arrow Glacier")]
+        [TestCase(14_811_000, "0x20c327fc", 0L, "Future Arrow Glacier")]
         public void Fork_id_and_hash_as_expected(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
@@ -114,9 +116,9 @@ namespace Nethermind.Network.Test
         {
             Test(head, genesisHash, forkHashHex, next, description, specProvider);
 
-            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
             ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/" + chainSpec));
-            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            ChainSpecBasedSpecProvider provider = new(spec);
             Test(head, genesisHash, forkHashHex, next, description, provider);
         }
 

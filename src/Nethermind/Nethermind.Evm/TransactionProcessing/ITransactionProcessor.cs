@@ -35,5 +35,10 @@ namespace Nethermind.Evm.TransactionProcessing
         /// Execute transaction, keep the state uncommitted
         /// </summary>
         void BuildUp(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+
+        /// <summary>
+        /// Call transaction, no validations, commit state
+        /// </summary>
+        void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer);
     }
 }

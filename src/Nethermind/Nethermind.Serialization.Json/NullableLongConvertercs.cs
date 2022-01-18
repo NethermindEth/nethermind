@@ -46,7 +46,7 @@ namespace Nethermind.Serialization.Json
 
         public override long? ReadJson(JsonReader reader, Type objectType, long? existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            if (reader.TokenType == JsonToken.Null)
+            if (reader.TokenType == JsonToken.Null || reader.Value is null)
             {
                 return null;
             }

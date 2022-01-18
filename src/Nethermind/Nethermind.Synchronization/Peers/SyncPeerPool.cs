@@ -550,7 +550,7 @@ namespace Nethermind.Synchronization.Peers
                         {
                             if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
-                            syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - timeout");
+                            syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - faulted");
                         }
                         else if (firstToComplete.IsCanceled)
                         {

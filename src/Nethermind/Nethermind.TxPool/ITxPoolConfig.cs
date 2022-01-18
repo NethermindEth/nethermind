@@ -20,15 +20,12 @@ namespace Nethermind.TxPool
 {
     public interface ITxPoolConfig : IConfig
     {
-        [ConfigItem(DefaultValue = "5", Description = "Defines percentage of peers receiving the tx gossips.")]
+        [ConfigItem(DefaultValue = "1", Description = "Defines average percent of tx hashes from persistent broadcast send to peer together with hashes of last added txs.")]
         int PeerNotificationThreshold { get; set; }
         
         [ConfigItem(DefaultValue = "2048", Description = "Max number of transactions held in mempool (more transactions in mempool mean more memory used")]
         int Size { get; set; }
-        
-        [ConfigItem(DefaultValue = "256", Description = "Defines how much into the future transactions are kept.")]
-        uint FutureNonceRetention { get; set; }
-        
+
         [ConfigItem(DefaultValue = "524288",
             Description = "Max number of cached hashes of already known transactions." +
                           "It is set automatically by the memory hint.")]

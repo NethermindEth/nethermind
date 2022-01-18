@@ -61,15 +61,15 @@ namespace Nethermind.Blockchain.Validators
         /// </summary>
         /// <param name="header">BlockHeader to validate</param>
         /// <param name="parent">BlockHeader which is the parent of <paramref name="header"/></param>
-        /// <param name="isOmmer"><value>True</value> if uncle block, otherwise <value>False</value></param>
+        /// <param name="isUncle"><value>True</value> if uncle block, otherwise <value>False</value></param>
         /// <returns></returns>
-        public bool Validate(BlockHeader header, BlockHeader? parent, bool isOmmer = false)
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
             bool hashAsExpected = ValidateHash(header);
 
             IReleaseSpec spec = _specProvider.GetSpec(header.Number);
             bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
-                                  && (isOmmer
+                                  && (isUncle
                                       || _daoBlockNumber == null
                                       || header.Number < _daoBlockNumber
                                       || header.Number >= _daoBlockNumber + 10
@@ -168,7 +168,23 @@ namespace Nethermind.Blockchain.Validators
             long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
-            bool gasLimitNotTooHigh = header.GasLimit < adjustedParentGasLimit + maxGasLimitDifference;
+            long maxNextGasLimit = adjustedParentGasLimit + maxGasLimitDifference;
+            bool gasLimitNotTooHigh;
+            bool notToHighWithOverflow = long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit;
+            if (notToHighWithOverflow)
+            {
+                // The edge case used in hive tests. If adjustedParentGasLimit + maxGasLimitDifference >=  long.MaxValue,
+                // we can check for long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
+                // In hive we have tests that using long.MaxValue in the genesis block
+                // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than long.MaxValue
+                gasLimitNotTooHigh = true;
+            }
+            else
+            {
+                gasLimitNotTooHigh = header.GasLimit < maxNextGasLimit;
+            }
+
+            
             if (!gasLimitNotTooHigh)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit too high");
@@ -187,12 +203,12 @@ namespace Nethermind.Blockchain.Validators
         /// Validates all the header elements (usually in relation to parent). Difficulty calculation is validated in <see cref="ISealValidator"/>
         /// </summary>
         /// <param name="header">Block header to validate</param>
-        /// <param name="isOmmer"><value>True</value> if the <paramref name="header"/> is an ommer, otherwise <value>False</value></param>
+        /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
         /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        public bool Validate(BlockHeader header, bool isOmmer = false)
+        public bool Validate(BlockHeader header, bool isUncle = false)
         {
             BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return Validate(header, parent, isOmmer);
+            return Validate(header, parent, isUncle);
         }
 
         private bool ValidateGenesis(BlockHeader header)

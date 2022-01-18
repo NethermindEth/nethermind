@@ -17,6 +17,8 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -25,13 +27,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class NewPendingTransactionsSubscription : Subscription
     {
         private readonly ITxPool _txPool;
-        private readonly ILogger _logger;
+        private readonly bool _includeTransactions;
 
-        public NewPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager) 
+        public NewPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager, Filter? filter = null) 
             : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _includeTransactions = filter?.IncludeTransactions ?? false;
             
             _txPool.NewPending += OnNewPending;
             if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will track NewPendingTransactions");
@@ -39,26 +42,24 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnNewPending(object? sender, TxEventArgs e)
         {
-            Task.Run(() =>
+            ScheduleAction(() =>
             {
-                JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
+                JsonRpcResult result = CreateSubscriptionMessage(_includeTransactions ? new TransactionForRpc(e.Transaction) : e.Transaction.Hash);
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
-            }).ContinueWith(
-                t =>
-                    t.Exception?.Handle(ex =>
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"NewPendingTransactions subscription {Id}: Failed Task.Run after NewPending event.");
-                        return true;
-                    })
-                , TaskContinuationOptions.OnlyOnFaulted
-            );
+            });
         }
 
+        protected override string GetErrorMsg()
+        {
+            return $"NewPendingTransactions subscription {Id}: Failed Task.Run after NewPending event.";
+        }
+        
         public override SubscriptionType Type => SubscriptionType.NewPendingTransactions;
 
         public override void Dispose()
         {
+            base.Dispose();
             _txPool.NewPending -= OnNewPending;
             if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} will no longer track NewPendingTransactions");
         }

@@ -54,7 +54,7 @@ namespace Nethermind.Network.Rlpx
 
         private AesEngine MakeMacCipher()
         {
-            AesEngine aesFastEngine = new AesEngine();
+            AesEngine aesFastEngine = new();
             aesFastEngine.Init(true, new KeyParameter(_macSecret));
             return aesFastEngine;
         }

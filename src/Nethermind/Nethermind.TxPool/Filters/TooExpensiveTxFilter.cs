@@ -43,9 +43,9 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        public (bool Accepted, AddTxResult? Reason) Accept(Transaction tx, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
         {
-            IReleaseSpec spec = _specProvider.GetSpec();
+            IReleaseSpec spec = _specProvider.GetCurrentHeadSpec();
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
             UInt256 cumulativeCost = UInt256.Zero;
@@ -55,6 +55,11 @@ namespace Nethermind.TxPool.Filters
 
             for (int i = 0; i < transactions.Length; i++)
             {
+                if (transactions[i].Nonce < account.Nonce)
+                {
+                    continue;
+                }
+
                 if (transactions[i].Nonce < tx.Nonce)
                 {
                     overflow |= UInt256.MultiplyOverflow(
@@ -81,17 +86,17 @@ namespace Nethermind.TxPool.Filters
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, cost overflow.");
-                return (false, AddTxResult.Int256Overflow);
+                return AcceptTxResult.Int256Overflow;
             }
             
             if (balance < cumulativeCost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, insufficient funds.");
-                return (false, AddTxResult.InsufficientFunds);
+                return AcceptTxResult.InsufficientFunds.WithMessage($"Account balance: {balance}, cumulative cost: {cumulativeCost}");
             }
 
-            return (true, null);
+            return AcceptTxResult.Accepted;
         }
     }
 }

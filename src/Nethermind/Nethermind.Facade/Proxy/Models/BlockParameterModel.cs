@@ -28,7 +28,7 @@ namespace Nethermind.Facade.Proxy.Models
             Number = (UInt256?) number
         };
 
-        public static BlockParameterModel FromNumber(UInt256 number) => new()
+        public static BlockParameterModel FromNumber(in UInt256 number) => new()
         {
             Number = number
         };

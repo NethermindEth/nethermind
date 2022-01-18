@@ -162,17 +162,17 @@ namespace Nethermind.Core.Test.Builders
             return WithParent(block.Header);
         }
 
-        public BlockBuilder WithOmmers(params Block[] ommers)
+        public BlockBuilder WithUncles(params Block[] uncles)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
-                TestObjectInternal.Body.WithChangedOmmers(ommers.Select(o => o.Header).ToArray()));
+                TestObjectInternal.Body.WithChangedUncles(uncles.Select(o => o.Header).ToArray()));
             return this;
         }
 
-        public BlockBuilder WithOmmers(params BlockHeader[] ommers)
+        public BlockBuilder WithUncles(params BlockHeader[] uncles)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
-                TestObjectInternal.Body.WithChangedOmmers(ommers));
+                TestObjectInternal.Body.WithChangedUncles(uncles));
             return this;
         }
 
@@ -194,7 +194,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithAura(long step, byte[] signature = null)
+        public BlockBuilder WithAura(long step, byte[]? signature = null)
         {
             TestObjectInternal.Header.AuRaStep = step;
             TestObjectInternal.Header.AuRaSignature = signature;

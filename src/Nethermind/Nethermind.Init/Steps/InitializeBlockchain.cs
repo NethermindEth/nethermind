@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -34,14 +35,15 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
-using Nethermind.Synchronization.BeamSync;
 using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -72,7 +74,7 @@ namespace Nethermind.Init.Steps
         {
             InitBlockTraceDumper();
 
-            var (getApi, setApi) = _api.ForBlockchain;
+            (IApiWithStores getApi, IApiWithBlockchain setApi) = _api.ForBlockchain;
             
             if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
             if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
@@ -82,6 +84,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
             IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
+            IMiningConfig miningConfig = getApi.Config<IMiningConfig>();
 
             if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
             {
@@ -161,7 +164,7 @@ namespace Nethermind.Init.Steps
                 stateProvider.StateRoot = getApi.BlockTree.Head.StateRoot;
             }
             
-            var txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
+            TxValidator txValidator = setApi.TxValidator = new TxValidator(getApi.SpecProvider.ChainId);
             
             ITxPool txPool = _api.TxPool = CreateTxPool();
 
@@ -181,16 +184,14 @@ namespace Nethermind.Init.Steps
                 getApi.BlockTree, getApi.LogManager);
 
             VirtualMachine virtualMachine = new (
-                stateProvider,
-                storageProvider,
                 blockhashProvider,
                 getApi.SpecProvider,
                 getApi.LogManager);
 
-            ITransactionProcessor transactionProcessor = _api.TransactionProcessor = new TransactionProcessor(
+            WorldState worldState = new (stateProvider, storageProvider);
+            _api.TransactionProcessor = new TransactionProcessor(
                 getApi.SpecProvider,
-                stateProvider,
-                storageProvider,
+                worldState,
                 virtualMachine,
                 getApi.LogManager);
 
@@ -200,7 +201,7 @@ namespace Nethermind.Init.Steps
             /* validation */
             IHeaderValidator? headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
 
-            OmmersValidator ommersValidator = new(
+            UnclesValidator unclesValidator = new(
                 getApi.BlockTree,
                 headerValidator,
                 getApi.LogManager);
@@ -208,13 +209,14 @@ namespace Nethermind.Init.Steps
             IBlockValidator? blockValidator = setApi.BlockValidator = new BlockValidator(
                 txValidator,
                 headerValidator,
-                ommersValidator,
+                unclesValidator,
                 getApi.SpecProvider,
                 getApi.LogManager);
 
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
+            setApi.GasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
             IBlockProcessor? mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
@@ -224,29 +226,13 @@ namespace Nethermind.Init.Steps
                 getApi.LogManager,
                 new BlockchainProcessor.Options
                 {
-                    AutoProcess = !syncConfig.BeamSync,
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump
                 });
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
-
-            if (syncConfig.BeamSync)
-            {
-                BeamBlockchainProcessor beamBlockchainProcessor = new(
-                    new ReadOnlyDbProvider(_api.DbProvider, false),
-                    getApi.BlockTree,
-                    getApi.SpecProvider,
-                    getApi.LogManager,
-                    blockValidator,
-                    _api.BlockPreprocessor,
-                    _api.RewardCalculatorSource!, // TODO: does it work with AuRa?
-                    blockchainProcessor,
-                    getApi.SyncModeSelector!);
-
-                _api.DisposeStack.Push(beamBlockchainProcessor);
-            }
+            setApi.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree);
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);

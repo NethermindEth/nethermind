@@ -19,8 +19,6 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using FluentAssertions;
-using FluentAssertions.Specialized;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -51,11 +49,13 @@ namespace Nethermind.JsonRpc.Test
             Assembly jConfig = typeof(JsonRpcConfig).Assembly;
             _configurationProvider = new ConfigProvider();
             _logManager = LimboLogs.Instance;
+            _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
         private IJsonRpcService _jsonRpcService;
         private IConfigProvider _configurationProvider;
         private ILogManager _logManager;
+        private JsonRpcContext _context;
 
         private JsonRpcResponse TestRequest<T>(T module, string method, params string[] parameters) where T : IRpcModule
         {
@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test
             moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
             _jsonRpcService = new JsonRpcService(moduleProvider, _logManager);
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
-            JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, JsonRpcContext.Http).Result;
+            JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
             Assert.AreEqual(request.Id, response.Id);
             return response;
         }

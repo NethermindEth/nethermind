@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder<T> WithTo(Address address)
+        public TransactionBuilder<T> WithTo(Address? address)
         {
             TestObjectInternal.To = address;
             return this;
@@ -138,7 +138,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder<T> WithSenderAddress(Address address)
+        public TransactionBuilder<T> WithSenderAddress(Address? address)
         {
             TestObjectInternal.SenderAddress = address;
             return this;
@@ -192,6 +192,12 @@ namespace Nethermind.Core.Test.Builders
         public TransactionBuilder<T> WithType(TxType txType)
         {
             TestObjectInternal.Type = txType;
+            return this;
+        }
+
+        public TransactionBuilder<T> WithIsServiceTransaction(bool isServiceTransaction)
+        {
+            TestObjectInternal.IsServiceTransaction = isServiceTransaction;
             return this;
         }
     }

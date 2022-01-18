@@ -24,9 +24,15 @@ namespace Nethermind.Mev
     {
         [Description("Total number of bundles received for inclusion")]
         public static int BundlesReceived { get; set; } = 0;
-        
+
         [Description("Total number of valid bundles received for inclusion")]
         public static int ValidBundlesReceived { get; set; } = 0;
+
+        [Description("Total number of megabundles received for inclusion")]
+        public static int MegabundlesReceived { get; set; } = 0;
+
+        [Description("Total number of valid megabundles received for inclusion")]
+        public static int ValidMegabundlesReceived { get; set; } = 0;
 
         [Description("Total number of bundles simulated")]
         public static int BundlesSimulated { get; set; } = 0;

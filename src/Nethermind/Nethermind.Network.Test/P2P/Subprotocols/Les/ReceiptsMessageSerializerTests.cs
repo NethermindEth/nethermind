@@ -15,13 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
-using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using NUnit.Framework;
-using Nethermind.Network.Test.P2P.Subprotocols.Eth.V62;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Les
 {
@@ -32,10 +29,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         public void RoundTrip()
         {
             TxReceipt[][] data = { new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject}, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}, new[] { Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
-            Network.P2P.Subprotocols.Eth.V63.ReceiptsMessage ethMessage = new Network.P2P.Subprotocols.Eth.V63.ReceiptsMessage(data);
-            ReceiptsMessage receiptsMessage = new ReceiptsMessage(ethMessage, 1, 2000);
+            Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = new(data);
+            ReceiptsMessage receiptsMessage = new(ethMessage, 1, 2000);
 
-            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer(RopstenSpecProvider.Instance);
+            ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
 
             // Eth.ReceiptsMessageSerializer intentionally excludes fields when deserializing.
             // I think it's probably best to not copy the test logic checking for this here.

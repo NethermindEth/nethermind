@@ -32,14 +32,14 @@ namespace Nethermind.Core.Test
         [Test]
         public void Null_string()
         {
-            string result = Keccak512.Compute((string)null).ToString();
+            string result = Keccak512.Compute((string?)null).ToString();
             Assert.AreEqual(Keccak512.OfAnEmptyString.ToString(), result);
         }
 
         [Test]
         public void Null_bytes()
         {
-            string result = Keccak512.Compute((byte[])null).ToString();
+            string result = Keccak512.Compute((byte[]?)null).ToString();
             Assert.AreEqual(Keccak512.OfAnEmptyString.ToString(), result);
         }
 

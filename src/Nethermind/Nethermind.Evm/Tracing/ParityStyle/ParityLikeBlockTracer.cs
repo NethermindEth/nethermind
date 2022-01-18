@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -60,10 +61,10 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public override void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
-            ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
-            if (rewardTrace == null)
+           ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
+           if (rewardTrace == null)
                 return;
-            
+        
             rewardTrace.Action = new ParityTraceAction();
             rewardTrace.Action.RewardType = rewardType;
             rewardTrace.Action.Value = rewardValue;

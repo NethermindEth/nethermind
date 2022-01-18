@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -47,43 +48,37 @@ namespace Nethermind.Consensus.AuRa.Transactions
             _logger = logManager?.GetClassLogger<TxCertifierFilter>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        public (bool Allowed, string Reason) IsAllowed(Transaction tx, BlockHeader parentHeader) => 
-            IsCertified(tx, parentHeader) ? (true, string.Empty) : _notCertifiedFilter.IsAllowed(tx, parentHeader);
+        public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader) => 
+            IsCertified(tx, parentHeader) ? AcceptTxResult.Accepted : _notCertifiedFilter.IsAllowed(tx, parentHeader);
 
         private bool IsCertified(Transaction tx, BlockHeader parentHeader)
         {
-            bool isEip1559Enabled = _specProvider.GetSpec(parentHeader.Number + 1).IsEip1559Enabled;
-            bool checkByFeeCap = isEip1559Enabled && tx.IsEip1559;
-            if (checkByFeeCap && !tx.MaxFeePerGas.IsZero) // only 0 gas price transactions are system transactions and can be whitelissted
-            {
-                return false;
-            }
-            else if (!tx.GasPrice.IsZero && !checkByFeeCap)
-            {
-                return false;
-            }
-            
             Address sender = tx.SenderAddress;
-            if (_logger.IsTrace) _logger.Trace($"Checking service transaction checker contract from {sender}.");
-            IDictionary<Address, bool> cache = GetCache(parentHeader.Hash);
-            
-            if (cache.TryGetValue(sender, out bool isCertified))
+            if (tx.IsZeroGasPrice(parentHeader, _specProvider) && sender is not null)
             {
-                tx.IsServiceTransaction = isCertified;
-                return isCertified;
+                if (_logger.IsTrace) _logger.Trace($"Checking service transaction checker contract from {sender}.");
+                IDictionary<Address, bool> cache = GetCache(parentHeader.Hash);
+
+                if (cache.TryGetValue(sender, out bool isCertified))
+                {
+                    tx.IsServiceTransaction = isCertified;
+                    return isCertified;
+                }
+
+                try
+                {
+                    bool isCertifiedByContract = _certifierContract.Certified(parentHeader, sender);
+                    tx.IsServiceTransaction = isCertifiedByContract;
+                    return cache[sender] = isCertifiedByContract;
+                }
+                catch (AbiException e)
+                {
+                    if (_logger.IsError) _logger.Error($"Call to certifier contract failed on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}.", e);
+                    return false;
+                }
             }
 
-            try
-            {
-                bool isCertifiedByContract = _certifierContract.Certified(parentHeader, sender);
-                tx.IsServiceTransaction = isCertifiedByContract;
-                return cache[sender] = isCertifiedByContract;
-            }
-            catch (AbiException e)
-            {
-                if (_logger.IsError) _logger.Error($"Call to certifier contract failed on block {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}.", e);
-                return false;
-            }
+            return false;
         }
 
         private IDictionary<Address, bool> GetCache(Keccak blockHash)

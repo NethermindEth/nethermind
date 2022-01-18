@@ -54,12 +54,12 @@ namespace Nethermind.Blockchain.Test.Validators
             return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         }
 
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isOmmer)
+        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle)
         {
             return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         }
 
-        public bool Validate(BlockHeader header, bool isOmmer)
+        public bool Validate(BlockHeader header, bool isUncle)
         {
             return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         }

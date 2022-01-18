@@ -58,20 +58,17 @@ namespace Nethermind.Runner.Test
         [TestCase("poacore_validator.cfg", true, true)]
         [TestCase("xdai_validator.cfg", true, true)]
         [TestCase("spaceneth", false, false)]
-        [TestCase("archive", false, false, false)]
-        [TestCase("baseline", false, false, false)]
-        [TestCase("beam", true, true, true)]
+        [TestCase("archive", false, false)]
+        [TestCase("baseline", false, false)]
         [TestCase("fast", true, true)]
-        public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled, bool beamSyncEnabled = false)
+        public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.FastSync, fastSyncEnabled);
             Test<ISyncConfig, bool>(configWildcard, c => c.FastBlocks, fastBlocksEnabled);
-            Test<ISyncConfig, bool>(configWildcard, c => c.BeamSync, beamSyncEnabled);
         }
 
         [TestCase("archive", true)]
         [TestCase("fast", true)]
-        [TestCase("beam", true)]
         [TestCase("spaceneth", false)]
         [TestCase("baseline", true)]
         [TestCase("ndm_consumer_goerli.cfg", true)]
@@ -86,7 +83,6 @@ namespace Nethermind.Runner.Test
         
         [TestCase("archive", true)]
         [TestCase("fast", true)]
-        [TestCase("beam", true)]
         [TestCase("spaceneth", false)]
         [TestCase("baseline", true)]
         [TestCase("ndm_consumer_goerli.cfg", true)]
@@ -200,8 +196,8 @@ namespace Nethermind.Runner.Test
 
         [TestCase("mainnet archive", 4096000000)]
         [TestCase("mainnet ^archive", 2048000000)]
-        [TestCase("volta archive", 256000000)]
-        [TestCase("volta ^archive", 256000000)]
+        [TestCase("volta archive", 768000000)]
+        [TestCase("volta ^archive", 768000000)]
         [TestCase("goerli archive", 768000000)]
         [TestCase("goerli ^archive", 768000000)]
         [TestCase("rinkeby archive", 1536000000)]
@@ -279,10 +275,9 @@ namespace Nethermind.Runner.Test
             Test<IJsonRpcConfig, int>(configWildcard, c => c.Timeout, 20000);
         }
 
-        [TestCase("^mainnet ^validators ^beam ^archive", true, true)]
-        [TestCase("mainnet ^beam ^fast", false, false)]
+        [TestCase("^mainnet ^validators ^archive", true, true)]
+        [TestCase("mainnet ^fast", false, false)]
         [TestCase("mainnet fast", true, true)]
-        [TestCase("beam", false, false, false)]
         [TestCase("validators", true, false)]
         public void Fast_sync_settings_as_expected(string configWildcard, bool downloadBodies, bool downloadsReceipts, bool downloadHeaders = true)
         {
@@ -408,12 +403,10 @@ namespace Nethermind.Runner.Test
         }
         
         [TestCase("^mainnet ^goerli", false)]
-        [TestCase("^beam ^pruned ^goerli.cfg ^mainnet.cfg", false)]
+        [TestCase("^pruned ^goerli.cfg ^mainnet.cfg", false)]
         [TestCase("mainnet.cfg", true)]
-        [TestCase("mainnet_beam.cfg", true)]
         [TestCase("mainnet_pruned.cfg", true)]
         [TestCase("goerli.cfg", true)]
-        [TestCase("goerli_beam.cfg", true)]
         [TestCase("goerli_pruned.cfg", true)]
         public void Witness_defaults_are_correct(string configWildcard, bool witnessProtocolEnabled)
         {
@@ -455,25 +448,20 @@ namespace Nethermind.Runner.Test
         protected override IEnumerable<string> Configs { get; } = new HashSet<string>
         {
             "ropsten_archive.cfg",
-            "ropsten_beam.cfg",
             "ropsten.cfg",
             "rinkeby_archive.cfg",
-            "rinkeby_beam.cfg",
             "rinkeby.cfg",
             "goerli_archive.cfg",
-            "goerli_beam.cfg",
             "goerli.cfg",
             "kovan.cfg",
             "kovan_archive.cfg",
             "mainnet_archive.cfg",
-            "mainnet_beam.cfg",
             "mainnet.cfg",
             "sokol.cfg",
             "sokol_archive.cfg",
             "sokol_validator.cfg",
             "poacore.cfg",
             "poacore_archive.cfg",
-            "poacore_beam.cfg",
             "poacore_validator.cfg",
             "xdai.cfg",
             "xdai_archive.cfg",

@@ -29,6 +29,8 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
@@ -51,7 +53,7 @@ namespace Nethermind.Api
         IFilterStore? FilterStore { get; set; }
         IFilterManager? FilterManager { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
-        IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; }
+        IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         ISealer? Sealer { get; set; }
@@ -90,5 +92,9 @@ namespace Nethermind.Api
         IGasLimitCalculator GasLimitCalculator { get; set; }
         
         IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
+        
+        IGasPriceOracle? GasPriceOracle { get; set; }
+        
+        IEthSyncingInfo? EthSyncingInfo { get; set; }
     }
 }

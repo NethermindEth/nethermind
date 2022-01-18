@@ -19,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
@@ -32,15 +31,15 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
-        private readonly Random _random = new Random(1);
+        private readonly Random _random = new(1);
 
-        private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
+        private readonly PrivateKey _privateKey = new(TestPrivateKeyHex);
 
-        private readonly AuthEip8MessageSerializer _serializer = new AuthEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom()));
+        private readonly AuthEip8MessageSerializer _serializer = new(new Eip8MessagePad(new CryptoRandom()));
 
         private void TestEncodeDecode(IEthereumEcdsa ecdsa)
         {
-            AuthEip8Message authMessage = new AuthEip8Message();
+            AuthEip8Message authMessage = new();
             authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength]; // sic!
             authMessage.Signature = ecdsa.Sign(_privateKey, Keccak.Compute("anything"));
             authMessage.PublicKey = _privateKey.PublicKey;
@@ -62,7 +61,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.EthereumClassicTestnet)]
         public void Encode_decode_before_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(ChainId.Olympic, LimboLogs.Instance);
             TestEncodeDecode(ecdsa);
         }
 
@@ -71,7 +70,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.Kovan)]
         public void Encode_decode_with_eip155(int chainId)
         {
-            EthereumEcdsa ecdsa = new EthereumEcdsa(ChainId.Olympic, LimboLogs.Instance);
+            EthereumEcdsa ecdsa = new(ChainId.Olympic, LimboLogs.Instance);
             TestEncodeDecode(ecdsa);
         }
     }

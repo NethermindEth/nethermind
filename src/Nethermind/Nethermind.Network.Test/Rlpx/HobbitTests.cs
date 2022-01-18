@@ -28,10 +28,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
@@ -81,12 +80,12 @@ namespace Nethermind.Network.Test.Rlpx
                 hashes[i] = Keccak.Compute(i.ToString());
             }
 
-            GetBlockBodiesMessage message = new GetBlockBodiesMessage(hashes);
+            GetBlockBodiesMessage message = new(hashes);
 
-            GetBlockBodiesMessageSerializer serializer = new GetBlockBodiesMessageSerializer();
+            GetBlockBodiesMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);
 
-            Packet packet = new Packet("eth", 5, data);
+            Packet packet = new("eth", 5, data);
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
         }
 
@@ -97,12 +96,12 @@ namespace Nethermind.Network.Test.Rlpx
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(a, b).TestObject;
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
-            NewBlockMessageSerializer newBlockMessageSerializer = new NewBlockMessageSerializer();
+            NewBlockMessageSerializer newBlockMessageSerializer = new();
             byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
-            Packet packet = new Packet("eth", 7, data);
+            Packet packet = new("eth", 7, data);
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
         }
 
@@ -112,12 +111,12 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction[] txs = Build.A.Transaction.SignedAndResolved().TestObjectNTimes(10);
             Block block = Build.A.Block.WithTransactions(txs).TestObject;
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
-            NewBlockMessageSerializer newBlockMessageSerializer = new NewBlockMessageSerializer();
+            NewBlockMessageSerializer newBlockMessageSerializer = new();
             byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
-            Packet packet = new Packet("eth", 7, data);
+            Packet packet = new("eth", 7, data);
 
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
@@ -135,11 +134,11 @@ namespace Nethermind.Network.Test.Rlpx
                 hashes[i] = Keccak.Compute(i.ToString());
             }
             
-            GetReceiptsMessage message = new GetReceiptsMessage(hashes);
+            GetReceiptsMessage message = new(hashes);
 
-            GetReceiptsMessageSerializer serializer = new GetReceiptsMessageSerializer();
+            GetReceiptsMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);
-            Packet packet = new Packet("eth", 7, data);
+            Packet packet = new("eth", 7, data);
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             GetReceiptsMessage decodedMessage = serializer.Deserialize(decoded.Data);
@@ -150,16 +149,16 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Status_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            StatusMessage message = new StatusMessage();
+            StatusMessage message = new();
             message.BestHash = Keccak.Zero;
             message.GenesisHash = Keccak.Zero;
             message.ProtocolVersion = 63;
             message.TotalDifficulty = 10000000000;
             message.ChainId = 5;
 
-            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            StatusMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);
-            Packet packet = new Packet("eth", 7, data);
+            Packet packet = new("eth", 7, data);
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             StatusMessage decodedMessage = serializer.Deserialize(decoded.Data);
@@ -234,7 +233,7 @@ namespace Nethermind.Network.Test.Rlpx
                 Assert.AreEqual(int.MaxValue, splitter.MaxFrameSize, "max frame size when framing disabled");
             }
 
-            EmbeddedChannel embeddedChannel = new EmbeddedChannel();
+            EmbeddedChannel embeddedChannel = new();
             embeddedChannel.Pipeline.AddLast(decoder);
             embeddedChannel.Pipeline.AddLast(merger);
             embeddedChannel.Pipeline.AddLast(encoder);

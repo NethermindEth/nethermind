@@ -69,12 +69,7 @@ namespace Nethermind.Blockchain.Processing
         /// EVM tracing needs to process blocks without storing the data on chain.
         /// </summary>
         Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
-        
-        /// <summary>
-        /// Switches used by the beam sync processor.
-        /// </summary>
-        Beam = IgnoreParentNotOnMainChain | DoNotUpdateHead,
-        
+
         EthereumMerge = ReadOnlyChain | ForceProcessing | DoNotUpdateHead | IgnoreParentNotOnMainChain
     }
 

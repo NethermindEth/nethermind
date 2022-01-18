@@ -22,14 +22,14 @@ namespace Nethermind.Crypto
 {
     public static class BlockHeaderExtensions
     {
-        private static HeaderDecoder _headerDecoder = new();
+        private static readonly HeaderDecoder _headerDecoder = new();
 
         public static Keccak CalculateHash(this BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            KeccakHash keccakHash = KeccakHash.Create();
-            KeccakRlpStream stream = new(keccakHash);
+            KeccakRlpStream stream = new();
             _headerDecoder.Encode(stream, header, behaviors);
-            return new Keccak(keccakHash.Hash);
+
+            return stream.GetHash();
         }
 
         public static Keccak CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None)

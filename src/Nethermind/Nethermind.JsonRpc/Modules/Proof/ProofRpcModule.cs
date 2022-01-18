@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Proofs;
+using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -160,20 +161,21 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             Block block = searchResult.Object;
             TxReceipt receipt = _receiptFinder.Get(block).ForTransaction(txHash);
-            
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             _tracer.Trace(block, receiptsTracer);
 
             TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
             Transaction[] txs = block.Transactions;
-
             ReceiptWithProof receiptWithProof = new();
             bool isEip1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas));
+            
+            int logIndexStart = _receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
+            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Number, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Number), receipt.Index);
+            
             if (includeHeader)
             {
                 receiptWithProof.BlockHeader = _headerDecoder.Encode(block.Header).Bytes;

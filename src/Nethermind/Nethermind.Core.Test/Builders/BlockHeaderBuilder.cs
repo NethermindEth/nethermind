@@ -75,9 +75,9 @@ namespace Nethermind.Core.Test.Builders
 
         private bool _doNotCalculateHash;
 
-        public BlockHeaderBuilder WithOmmersHash(Keccak ommersHash)
+        public BlockHeaderBuilder WithUnclesHash(Keccak unclesHash)
         {
-            TestObjectInternal.OmmersHash = ommersHash;
+            TestObjectInternal.UnclesHash = unclesHash;
             return this;
         }
 
@@ -177,7 +177,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public BlockHeaderBuilder WithAura(long step, byte[] signature = null)
+        public BlockHeaderBuilder WithAura(long step, byte[]? signature = null)
         {
             TestObjectInternal.AuRaStep = step;
             TestObjectInternal.AuRaSignature = signature;

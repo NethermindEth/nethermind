@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;
@@ -44,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, 
             Description = "Returns syncing status", 
             IsSharable = true, 
-            ExampleResponse = "{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x0\",\"highestBlock\":\"0x4df8a4\"},\"id\":1}")]
+            ExampleResponse = "{\"isSyncing\":true,\"startingBlock\":\"0x0\",\"currentBlock\":\"0x0\",\"highestBlock\":\"0x4df8a4\"},\"id\":1}")]
         ResultWrapper<SyncingResult> eth_syncing();
         
         [JsonRpcMethod(IsImplemented = false, 
@@ -60,7 +61,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Description = "Returns block fee history.", 
             IsSharable = true, 
             ExampleResponse = "{\"baseFeePerGas\": [\"0x116c1cbb03\", \"0x10c3714c06\"], \"gasUsedRatio\": [0.3487305666666667, 0.3], \"oldestBlock\": \"0xc7e5ff\", \"reward\": [[\"0x3b9aca00\",\"0x3b9aca00\"], [\"0x0\",\"0x3bb24dfa\"]]}")]
-        ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null);
+        ResultWrapper<FeeHistoryResults> eth_feeHistory(long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null);
         
         [JsonRpcMethod(IsImplemented = false, Description = "Returns full state snapshot", IsSharable = true)]
         ResultWrapper<byte[]> eth_snapshot();

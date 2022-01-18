@@ -23,12 +23,13 @@ using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public class Filter : IJsonRpcRequest
+    public class Filter : IJsonRpcParam
     {
         public BlockParameter FromBlock { get; set; }
         public BlockParameter ToBlock { get; set; }
         public object? Address { get; set; }
-        public IEnumerable<object> Topics { get; set; }
+        public IEnumerable<object?> Topics { get; set; }
+        public bool IncludeTransactions { get; set;  }
 
         private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
 
@@ -39,11 +40,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ToBlock = BlockParameterConverter.GetBlockParameter(filter["toBlock"]?.ToObject<string>());
             Address = GetAddress(filter["address"]);
             Topics = GetTopics(filter["topics"] as JArray);
+            IncludeTransactions = GetIncludeTransactions(filter["includeTransactions"]);
         }
 
         private static object? GetAddress(JToken? token) => GetSingleOrMany(token);
 
-        private static IEnumerable<object> GetTopics(JArray? array)
+        private static IEnumerable<object?> GetTopics(JArray? array)
         {
             if (array is null)
             {
@@ -52,11 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             foreach (JToken token in array)
             {
-                object? singleOrMany = GetSingleOrMany(token);
-                if (singleOrMany is not null)
-                {
-                    yield return singleOrMany;
-                }
+                yield return GetSingleOrMany(token);
             }
         }
 
@@ -70,6 +68,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return token.ToObject<IEnumerable<string>>();
                 default:
                     return token.ToObject<string>();
+            }
+        }
+        
+        private static bool GetIncludeTransactions(JToken? token)
+        {
+            switch (token)
+            {
+                case null:
+                    return false;
+                default:
+                    return token.ToObject<bool>();
             }
         }
     }

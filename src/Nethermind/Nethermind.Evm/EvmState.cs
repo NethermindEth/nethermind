@@ -20,11 +20,16 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
 using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm
 {
+    /// <summary>
+    /// State for EVM Calls
+    /// </summary>
     [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
     public class EvmState : IDisposable // TODO: rename to CallState
     {
@@ -93,33 +98,53 @@ namespace Nethermind.Evm
                 return (RentDataStack(), RentReturnStack());
             }
         }
+        private static readonly ThreadLocal<StackPool> _stackPool = new(() => new StackPool());
 
         public byte[]? DataStack;
-        
+       
         public int[]? ReturnStack;
+
+        /// <summary>
+        /// EIP-2929 accessed addresses
+        /// </summary>
+        public IReadOnlySet<Address> AccessedAddresses => _accessedAddresses;
+
+        /// <summary>
+        /// EIP-2929 accessed storage keys
+        /// </summary>
+        public IReadOnlySet<StorageCell> AccessedStorageCells => _accessedStorageCells;
         
-        private HashSet<Address>? _accessedAddresses;
-        
-        private HashSet<StorageCell>? _accessedStorageKeys;
-        
+        // As we can add here from VM, we need it as ICollection
+        public ICollection<Address> DestroyList => _destroyList;
+        // As we can add here from VM, we need it as ICollection
+        public ICollection<LogEntry> Logs => _logs;
+
+        private readonly JournalSet<Address> _accessedAddresses;
+        private readonly JournalSet<StorageCell> _accessedStorageCells;
+        private readonly JournalCollection<LogEntry> _logs;
+        private readonly JournalSet<Address> _destroyList;
+        private readonly int _accessedAddressesSnapshot;
+        private readonly int _accessedStorageKeysSnapshot;
+        private readonly int _destroyListSnapshot;
+        private readonly int _logsSnapshot;
+
         public int DataStackHead = 0;
         
         public int ReturnStackHead = 0;
+        private bool _canRestore = true;
 
         public EvmState(
             long gasAvailable, 
             ExecutionEnvironment env, 
             ExecutionType executionType, 
             bool isTopLevel, 
-            int stateSnapshot,
-            int storageSnapshot,
+            Snapshot snapshot,
             bool isContinuation)
             : this(gasAvailable, 
                 env, 
                 executionType, 
                 isTopLevel, 
-                stateSnapshot, 
-                storageSnapshot, 
+                snapshot, 
                 0L, 
                 0L, 
                 false, 
@@ -136,8 +161,7 @@ namespace Nethermind.Evm
             ExecutionEnvironment env,
             ExecutionType executionType,
             bool isTopLevel,
-            int stateSnapshot,
-            int storageSnapshot,
+            Snapshot snapshot,
             long outputDestination,
             long outputLength,
             bool isStatic,
@@ -153,15 +177,36 @@ namespace Nethermind.Evm
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             IsTopLevel = isTopLevel;
-            StateSnapshot = stateSnapshot;
-            StorageSnapshot = storageSnapshot;
+            _canRestore = !isTopLevel;
+            Snapshot = snapshot;
             Env = env;
             OutputDestination = outputDestination;
             OutputLength = outputLength;
             IsStatic = isStatic;
             IsContinuation = isContinuation;
             IsCreateOnPreExistingAccount = isCreateOnPreExistingAccount;
-            CopyAccessLists(stateForAccessLists?._accessedAddresses, stateForAccessLists?._accessedStorageKeys);
+            if (stateForAccessLists is not null)
+            {
+                // if we are sub-call, then we use the main collection for this transaction
+                _accessedAddresses = stateForAccessLists._accessedAddresses;
+                _accessedStorageCells = stateForAccessLists._accessedStorageCells;
+                _destroyList = stateForAccessLists._destroyList;
+                _logs = stateForAccessLists._logs;
+            }
+            else
+            {
+                // if we are top level, then we need to create the collections
+                _accessedAddresses = new JournalSet<Address>();
+                _accessedStorageCells = new JournalSet<StorageCell>();
+                _destroyList = new JournalSet<Address>();
+                _logs = new JournalCollection<LogEntry>();
+            }
+
+            _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();
+            _accessedStorageKeysSnapshot = _accessedStorageCells.TakeSnapshot();
+            _destroyListSnapshot = _destroyList.TakeSnapshot();
+            _logsSnapshot = _logs.TakeSnapshot();
+
         }
 
         public Address From
@@ -200,23 +245,13 @@ namespace Nethermind.Evm
         public bool IsStatic { get; } // TODO: move to CallEnv
         public bool IsContinuation { get; set; } // TODO: move to CallEnv
         public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
-        public int StateSnapshot { get; } // TODO: move to CallEnv
-        public int StorageSnapshot { get; } // TODO: move to CallEnv
+        public Snapshot Snapshot { get; } // TODO: move to CallEnv
         public EvmPooledMemory? Memory { get; set; } // TODO: move to CallEnv
-
-        public HashSet<Address> DestroyList
-        {
-            get { return LazyInitializer.EnsureInitialized(ref _destroyList, () => new HashSet<Address>()); }
-        }
-
-        public List<LogEntry> Logs
-        {
-            get { return LazyInitializer.EnsureInitialized(ref _logs, () => new List<LogEntry>()); }
-        }
 
         public void Dispose()
         {
             if (DataStack != null) _stackPool.Value.ReturnStacks(DataStack, ReturnStack!);
+            Restore(); // we are trying to restore when disposing
             Memory?.Dispose();
         }
 
@@ -229,15 +264,9 @@ namespace Nethermind.Evm
             }
         }
 
-        public bool IsCold(Address? address)
-        {
-            return _accessedAddresses is null || !AccessedAddresses.Contains(address);
-        }
+        public bool IsCold(Address? address) => !_accessedAddresses.Contains(address);
         
-        public bool IsCold(StorageCell storageCell)
-        {
-            return _accessedStorageKeys is null || !AccessedStorageCells.Contains(storageCell);
-        }
+        public bool IsCold(StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
 
         public void WarmUp(AccessList? accessList)
         {
@@ -254,80 +283,25 @@ namespace Nethermind.Evm
             }
         }
 
-        public void WarmUp(Address address)
-        {
-            AccessedAddresses.Add(address);
-        }
-        
-        public void WarmUp(StorageCell storageCell)
-        {
-            AccessedStorageCells.Add(storageCell);
-        }
+        public void WarmUp(Address address) => _accessedAddresses.Add(address);
 
-        // TODO: all of this should be done via checkpoints the same way as storage and state changes in general
+        public void WarmUp(StorageCell storageCell) => _accessedStorageCells.Add(storageCell);
+
         public void CommitToParent(EvmState parentState)
         {
             parentState.Refund += Refund;
-            
-            if (_destroyList is not null)
-            {
-                foreach (Address address in DestroyList)
-                {
-                    parentState.DestroyList.Add(address);
-                }
-            }
-
-            if (_logs is not null)
-            {
-                for (int i = 0; i < Logs.Count; i++)
-                {
-                    LogEntry logEntry = Logs[i];
-                    parentState.Logs.Add(logEntry);
-                }
-            }
-
-            parentState.CopyAccessLists(_accessedAddresses, _accessedStorageKeys);
+            _canRestore = false; // we can't restore if we commited
         }
 
-        private void CopyAccessLists(HashSet<Address>? addresses, HashSet<StorageCell>? storage)
+        private void Restore()
         {
-            if (addresses is not null)
+            if (_canRestore) // if we didn't commit and we are not top level, then we need to restore and drop the changes done in this call
             {
-                foreach (Address address in addresses)
-                {
-                    AccessedAddresses.Add(address);
-                }
-            }
-
-            if (storage is not null)
-            {
-                foreach (StorageCell storageCell in storage)
-                {
-                    AccessedStorageCells.Add(storageCell);
-                }
+                _logs.Restore(_logsSnapshot);
+                _destroyList.Restore(_destroyListSnapshot);
+                _accessedAddresses.Restore(_accessedAddressesSnapshot);
+                _accessedStorageCells.Restore(_accessedStorageKeysSnapshot);
             }
         }
-        
-        /// <summary>
-        /// EIP-2929 accessed addresses
-        /// </summary>
-        internal HashSet<Address> AccessedAddresses
-        {
-            get { return LazyInitializer.EnsureInitialized(ref _accessedAddresses, () => new HashSet<Address>()); }
-        }
-        
-        /// <summary>
-        /// EIP-2929 accessed storage keys
-        /// </summary>
-        internal HashSet<StorageCell> AccessedStorageCells
-        {
-            get { return LazyInitializer.EnsureInitialized(ref _accessedStorageKeys, () => new HashSet<StorageCell>()); }
-        }
-
-        private static readonly ThreadLocal<StackPool> _stackPool = new(() => new StackPool());
-        
-        private HashSet<Address>? _destroyList;
-        
-        private List<LogEntry>? _logs;
     }
 }

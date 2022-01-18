@@ -40,14 +40,17 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
+using Nethermind.Facade.Eth;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -100,8 +103,7 @@ namespace Nethermind.Api
                 Timestamper,
                 LogFinder,
                 SpecProvider!,
-                miningConfig.Enabled,
-                syncConfig.BeamSync && syncConfig.FastSync
+                miningConfig.Enabled
             );
         }
 
@@ -131,7 +133,7 @@ namespace Nethermind.Api
         public IFilterManager? FilterManager { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
-        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
+        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; } =
             new BuildBlocksWhenRequested();
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }
@@ -181,6 +183,9 @@ namespace Nethermind.Api
         public IGasLimitCalculator GasLimitCalculator { get; set; }
         
         public IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
+        public IGasPriceOracle? GasPriceOracle { get; set; }
+        
+        public IEthSyncingInfo EthSyncingInfo { get; set; }
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();

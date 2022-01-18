@@ -29,6 +29,8 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -72,14 +74,15 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockTree,
                 _txPool,
                 _receiptStorage,
-                _filterStore);
+                _filterStore,
+                new EthSyncingInfo(_blockTree));
             
             _subscriptionManager = new SubscriptionManager(
                 subscriptionFactory,
                 _logManager);
             
             _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager);
-            _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.WebSocket, _jsonRpcDuplexClient);
+            _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
             
             // block numbers matching filters in LogsSubscriptions with null arguments will be 33333-77777
             BlockHeader fromBlock = Build.A.BlockHeader.WithNumber(33333).TestObject;
@@ -88,9 +91,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(toBlock);
         }
 
-        private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId)
+        private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, Filter filter = null)
         {
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, filter);
             
             JsonRpcResult jsonRpcResult = new();
             
@@ -127,9 +130,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             return jsonRpcResults;
         }
         
-        private JsonRpcResult GetNewPendingTransactionsResult(TxEventArgs txEventArgs, out string subscriptionId)
+        private JsonRpcResult GetNewPendingTransactionsResult(TxEventArgs txEventArgs, out string subscriptionId, Filter filter = null)
         {
-            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _logManager);
+            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _logManager, filter);
             JsonRpcResult jsonRpcResult = new();
 
             ManualResetEvent manualResetEvent = new(false);
@@ -145,6 +148,25 @@ namespace Nethermind.JsonRpc.Test.Modules
             subscriptionId = newPendingTransactionsSubscription.Id;
             return jsonRpcResult;
         }
+        
+        private JsonRpcResult GetDroppedPendingTransactionsResult(TxEventArgs txEventArgs, out string subscriptionId)
+        {
+            DroppedPendingTransactionsSubscription droppedPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _logManager);
+            JsonRpcResult jsonRpcResult = new();
+
+            ManualResetEvent manualResetEvent = new(false);
+            droppedPendingTransactionsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResult = j;
+                manualResetEvent.Set();
+            }));
+            
+            _txPool.EvictedPending += Raise.EventWith(new object(), txEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
+
+            subscriptionId = droppedPendingTransactionsSubscription.Id;
+            return jsonRpcResult;
+        }
 
         private SyncingSubscription GetSyncingSubscription(int bestSuggested, int head)
         {
@@ -153,8 +175,10 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Block block = Build.A.Block.WithNumber(head).TestObject;
             _blockTree.Head.Returns(block);
+
+            EthSyncingInfo ethSyncingInfo = new(_blockTree);
             
-            SyncingSubscription syncingSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager);
+            SyncingSubscription syncingSubscription = new(_jsonRpcDuplexClient, _blockTree, ethSyncingInfo, _logManager);
             
             return syncingSubscription;
         }
@@ -203,6 +227,32 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
+        public void NewHeadSubscription_with_includeTransactions_arg()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads","{\"includeTransactions\":true}");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void NewHeadSubscription_on_BlockAddedToMain_event2()
+        {
+            Block block = Build.A.Block.WithDifficulty(1991).WithExtraData(new byte[] {3, 5, 8}).TestObject;
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block);
+            Filter filter = new()
+            {
+                IncludeTransactions = true
+            };
+
+            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out var subscriptionId, filter);
+
+            jsonRpcResult.Response.Should().NotBeNull();
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0x7c7\",\"extraData\":\"0x030508\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2e3c1c2a507dc3071a16300858d4e75390e5f43561515481719a1e0dadf22585\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0xff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09c\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x200\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
         public void NewHeadSubscription_on_BlockAddedToMain_event()
         {
             Block block = Build.A.Block.WithDifficulty(1991).WithExtraData(new byte[] {3, 5, 8}).TestObject;
@@ -246,11 +296,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
             
             Block block0 = Build.A.Block.Genesis.WithTotalDifficulty(0L).TestObject;
-            Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
-            Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
-            Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
-            Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
-            Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
+            Block block1 = Build.A.Block.WithParent(block0).WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
+            Block block2 = Build.A.Block.WithParent(block1).WithDifficulty(2).WithTotalDifficulty(3L).TestObject;
+            Block block3 = Build.A.Block.WithParent(block2).WithDifficulty(3).WithTotalDifficulty(6L).TestObject;
+            Block block1B = Build.A.Block.WithParent(block0).WithDifficulty(4).WithTotalDifficulty(4L).TestObject;
+            Block block2B = Build.A.Block.WithParent(block1B).WithDifficulty(5).WithTotalDifficulty(9L).TestObject;
 
             blockTree.SuggestBlock(block0);
             blockTree.SuggestBlock(block1);
@@ -278,8 +328,68 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockTree.Head.Should().Be(block2B);
 
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Last().Response);
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0x1\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x2a50f16b6461467b6e5e58c3ac5205763641165455fa9bafc1e9e77a06dc1fe3\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0x3a7518031f6de870575b043216dedcbb57188476103e40ac5c5d4862da2fbcc8\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x1\",\"timestamp\":\"0xf4242\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
-            expectedResult.Should().Be(serialized);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", newHeadSubscription.Id, "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0x5\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0x13f51c304a84742a660b0327c003765af51cb255f7cfa8d1d6c41c99c1c3ecd4\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x2ba5557a4c62a513c7e56d1bf13373e0da6bec016755483e91589fe1c6d212e2\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x2\",\"parentHash\":\"0xd07062cc54724bd878b1b826bfa59f24cac986a11a151f2239b16f2a4436f9b2\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x1fe\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x9\",\"timestamp\":\"0xf4242\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}");
+            serialized.Should().Be(expectedResult);
+        }
+        
+        [Test]
+        public void NewHeadSubscription_should_send_notifications_in_order()
+        {
+            MemDb blocksDb = new();
+            MemDb headersDb = new();
+            MemDb blocksInfosDb = new();
+            ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
+            BlockTree blockTree = new(
+                blocksDb,
+                headersDb,
+                blocksInfosDb,
+                chainLevelInfoRepository,
+                MainnetSpecProvider.Instance,
+                NullBloomStorage.Instance,
+                LimboLogs.Instance);
+
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager);
+            ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
+            
+            Block block0 = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
+
+            List<Block> blocks = new() { block0 };
+            
+            for (int i = 1; i < 21; i++)
+            {
+                var difficulty = (UInt256)i;
+                blocks.Add(Build.A.Block.WithParent(blocks[i-1]).WithDifficulty(difficulty).WithTotalDifficulty(blocks[i-1].TotalDifficulty + difficulty).TestObject);
+            }
+
+            foreach (Block block in blocks)
+            {
+                blockTree.SuggestBlock(block);
+            }
+            
+            ManualResetEvent manualResetEvent = new(false);
+            newHeadSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResult.Enqueue(j);
+
+                if (jsonRpcResult.Count == 21)
+                {
+                    manualResetEvent.Set();
+                }
+            }));
+
+            blockTree.UpdateMainChain(blocks.ToArray(), true);
+            
+            manualResetEvent.WaitOne();
+            
+            jsonRpcResult.Count.Should().Be(21);
+            blockTree.Head.Should().Be(blocks[20]);
+
+            for (int i = 0; i < 21; i++)
+            {
+                jsonRpcResult.TryDequeue(out var result);
+
+                ((BlockForRpc)((JsonRpcSubscriptionResponse)result.Response).Params.Result).Difficulty.Should().Be((UInt256)i);
+            }
         }
         
         [Test]
@@ -307,6 +417,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        [Retry(3)]
         public void LogsSubscription_with_null_arguments_on_NewHeadBlock_event()
         {
             int blockNumber = 55555;
@@ -645,6 +756,74 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxEventArgs txEventArgs = new(transaction);
             
             JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out var subscriptionId);
+            
+            jsonRpcResult.Response.Should().NotBeNull();
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\"}}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void NewPendingTransactionsSubscription_on_NewPending_with_includeTransactions_param()
+        {
+            Transaction transaction = Build.A.Transaction.TestObject;
+            transaction.Hash = null;
+            TxEventArgs txEventArgs = new(transaction);
+            
+            Filter filter = new()
+            {
+                IncludeTransactions = true
+            };
+            
+            JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out var subscriptionId, filter);
+            
+            jsonRpcResult.Response.Should().NotBeNull();
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"",subscriptionId,"\",\"result\":{\"nonce\":\"0x0\",\"blockHash\":null,\"blockNumber\":null,\"transactionIndex\":null,\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"type\":\"0x0\"}}}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void DroppedPendingTransactionsSubscription_creating_result()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "droppedPendingTransactions");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void DroppedPendingTransactionsSubscription_on_EvictedPending_event()
+        {
+            Transaction transaction = Build.A.Transaction.TestObject;
+            transaction.Hash = TestItem.KeccakA;
+            TxEventArgs txEventArgs = new(transaction);
+            
+            JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out var subscriptionId);
+            
+            jsonRpcResult.Response.Should().NotBeNull();
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":\"", TestItem.KeccakA, "\"}}");
+            expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
+        public void DroppedPendingTransactionsSubscription_on_EvictedPending_event_with_null_transaction()
+        {
+            TxEventArgs txEventArgs = new(null);
+            
+            JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out _);
+            
+            jsonRpcResult.Response.Should().BeNull();
+        }
+        
+        [Test]
+        public void DroppedPendingTransactionsSubscription_on_EvictedPending_event_with_null_transactions_hash()
+        {
+            Transaction transaction = Build.A.Transaction.TestObject;
+            transaction.Hash = null;
+            TxEventArgs txEventArgs = new(transaction);
+            
+            JsonRpcResult jsonRpcResult = GetDroppedPendingTransactionsResult(txEventArgs, out var subscriptionId);
             
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);

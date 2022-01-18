@@ -72,8 +72,6 @@ namespace Nethermind.Blockchain.Test.Producers
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(
-                stateProvider,
-                storageProvider,
                 blockhashProvider,
                 specProvider,
                 LimboLogs.Instance);

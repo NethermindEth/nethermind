@@ -32,16 +32,16 @@ namespace Nethermind.Core
 
         public BlockHeader(
             Keccak parentHash,
-            Keccak ommersHash,
+            Keccak unclesHash,
             Address beneficiary,
-            UInt256 difficulty,
+            in UInt256 difficulty,
             long number,
             long gasLimit,
-            UInt256 timestamp,
+            in UInt256 timestamp,
             byte[] extraData)
         {
             ParentHash = parentHash;
-            OmmersHash = ommersHash;
+            UnclesHash = unclesHash;
             Beneficiary = beneficiary;
             Difficulty = difficulty;
             Number = number;
@@ -54,7 +54,7 @@ namespace Nethermind.Core
 
         public bool IsGenesis => Number == 0L;
         public Keccak? ParentHash { get; set; }
-        public Keccak? OmmersHash { get; set; }
+        public Keccak? UnclesHash { get; set; }
         public Address? Author { get; set; }
         public Address? Beneficiary { get; set; }
         public Address? GasBeneficiary => Author ?? Beneficiary;
@@ -77,7 +77,7 @@ namespace Nethermind.Core
         public long? AuRaStep { get; set; }
         public UInt256 BaseFeePerGas { get; set; }
 
-        public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
+        public bool HasBody => UnclesHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
 
         public string ToString(string indent)
@@ -94,7 +94,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Difficulty: {Difficulty}");
             builder.AppendLine($"{indent}Mix Hash: {MixHash}");
             builder.AppendLine($"{indent}Nonce: {Nonce}");
-            builder.AppendLine($"{indent}Ommers Hash: {OmmersHash}");
+            builder.AppendLine($"{indent}Uncles Hash: {UnclesHash}");
             builder.AppendLine($"{indent}Tx Root: {TxRoot}");
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");

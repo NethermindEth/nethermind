@@ -16,22 +16,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using Nethermind.Blockchain.Find;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Data;
-using Nethermind.Int256;
-using Nethermind.Core;
-using Nethermind.Facade;
-using Nethermind.Logging;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
@@ -39,7 +32,6 @@ using Nethermind.Mev.Source;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
-using Newtonsoft.Json;
 
 namespace Nethermind.Mev
 {
@@ -81,6 +73,16 @@ namespace Nethermind.Mev
             BundleTransaction[] txs = Decode(mevBundleRpc.Txs, mevBundleRpc.RevertingTxHashes?.ToHashSet());
             MevBundle bundle = new(mevBundleRpc.BlockNumber, txs, mevBundleRpc.MinTimestamp, mevBundleRpc.MaxTimestamp);
             bool result = _bundlePool.AddBundle(bundle);
+            return ResultWrapper<bool>.Success(result);
+        }
+
+        public ResultWrapper<bool> eth_sendMegabundle(MevMegabundleRpc mevMegabundleRpc)
+        {
+            BundleTransaction[] txs = Decode(mevMegabundleRpc.Txs, mevMegabundleRpc.RevertingTxHashes?.ToHashSet());
+            Signature relaySignature = new(mevMegabundleRpc.RelaySignature);
+            MevMegabundle megabundle = new(mevMegabundleRpc.BlockNumber, txs, mevMegabundleRpc.RevertingTxHashes,
+                relaySignature, mevMegabundleRpc.MinTimestamp, mevMegabundleRpc.MaxTimestamp);
+            bool result = _bundlePool.AddMegabundle(megabundle);
             return ResultWrapper<bool>.Success(result);
         }
 
@@ -126,7 +128,7 @@ namespace Nethermind.Mev
             BundleTransaction[] txs = new BundleTransaction[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
-                BundleTransaction bundleTransaction = Rlp.Decode<BundleTransaction>(transactions[i]);
+                BundleTransaction bundleTransaction = Rlp.Decode<BundleTransaction>(transactions[i], RlpBehaviors.SkipTypedWrapping);
                 Keccak transactionHash = bundleTransaction.Hash!;
                 bundleTransaction.CanRevert = revertingTxHashes.Contains(transactionHash);
                 revertingTxHashes.Remove(transactionHash);

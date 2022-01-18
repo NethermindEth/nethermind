@@ -77,11 +77,8 @@ namespace Nethermind.Blockchain.Processing
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _options = options;
-
-            if (_options.AutoProcess)
-            {
-                _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
-            }
+            
+            _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
             _blockTree.NewHeadBlock += OnNewHeadBlock;
 
             _stats = new ProcessingStats(_logger);
@@ -378,7 +375,8 @@ namespace Nethermind.Blockchain.Processing
                     }
                 }
             }
-            
+
+            Keccak? invalidBlockHash = null;
             Block[]? processedBlocks;
             try
             {
@@ -390,20 +388,19 @@ namespace Nethermind.Blockchain.Processing
             }
             catch (InvalidBlockException ex)
             {
-                DeleteInvalidBlocks(ex.InvalidBlockHash);
-                
+                invalidBlockHash = ex.InvalidBlockHash;
                 TraceFailingBranch(
                     processingBranch,
                     options,
                     new BlockReceiptsTracer(),
                     DumpOptions.Receipts);
-                
+
                 TraceFailingBranch(
                     processingBranch,
                     options,
                     new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
                     DumpOptions.Parity);
-                
+
                 TraceFailingBranch(
                     processingBranch,
                     options,
@@ -411,6 +408,13 @@ namespace Nethermind.Blockchain.Processing
                     DumpOptions.Geth);
 
                 processedBlocks = null;
+            }
+            finally
+            {
+                if (invalidBlockHash is not null)
+                {
+                    DeleteInvalidBlocks(invalidBlockHash);
+                }
             }
 
             return processedBlocks;
@@ -437,8 +441,6 @@ namespace Nethermind.Blockchain.Processing
 
                     blocksToProcess.Add(block);
                 }
-
-                blocksToProcess.Reverse();
             }
 
             if (_logger.IsTrace) _logger.Trace($"Processing {blocksToProcess.Count} blocks from state root {processingBranch.Root}");
@@ -471,8 +473,11 @@ namespace Nethermind.Blockchain.Processing
                     break;
                 }
 
+                // !!!
                 // for beam sync we do not expect previous blocks to necessarily be there and we
                 // do not need them since we can requests state from outside
+                // TODO: remove this and verify the current usage scenarios - seems wrong
+                // !!!
                 if ((options & ProcessingOptions.IgnoreParentNotOnMainChain) != 0)
                 {
                     break;
@@ -516,6 +521,7 @@ namespace Nethermind.Blockchain.Processing
 
             Keccak stateRoot = branchingPoint?.StateRoot;
             if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
+            blocksToBeAddedToMain.Reverse();
             return new ProcessingBranch(stateRoot, blocksToBeAddedToMain);
         }
 
@@ -541,12 +547,12 @@ namespace Nethermind.Blockchain.Processing
                 throw new InvalidOperationException("Block hash should be known at this stage if running in a validating mode");
             }
 
-            for (int i = 0; i < suggestedBlock.Ommers.Length; i++)
+            for (int i = 0; i < suggestedBlock.Uncles.Length; i++)
             {
-                if (suggestedBlock.Ommers[i].Hash == null)
+                if (suggestedBlock.Uncles[i].Hash == null)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null ommer hash ar {i}");
-                    throw new InvalidOperationException($"Ommer's {i} hash is null when processing block");
+                    if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
+                    throw new InvalidOperationException($"Uncle's {i} hash is null when processing block");
                 }
             }
 
@@ -584,11 +590,6 @@ namespace Nethermind.Blockchain.Processing
             public static Options Default = new();
 
             public bool StoreReceiptsByDefault { get; set; } = true;
-
-            /// <summary>
-            /// Registers for OnNewHeadBlock events at block tree. 
-            /// </summary>
-            public bool AutoProcess { get; set; } = true;
 
             public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
         }

@@ -185,11 +185,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             private readonly IDb _codeDb;
             private readonly IDb _stateDb;
 
-            private Func<IList<Keccak>, Task<byte[][]>> _executorResultFunction;
+            private Func<IReadOnlyList<Keccak>, Task<byte[][]>> _executorResultFunction;
 
             private Keccak[] _filter;
 
-            public SyncPeerMock(IDb stateDb, IDb codeDb, Func<IList<Keccak>, Task<byte[][]>> executorResultFunction = null)
+            public SyncPeerMock(IDb stateDb, IDb codeDb, Func<IReadOnlyList<Keccak>, Task<byte[][]>> executorResultFunction = null)
             {
                 _stateDb = stateDb;
                 _codeDb = codeDb;
@@ -213,7 +213,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -240,17 +240,17 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public bool SendNewTransaction(Transaction transaction, bool isPriority)
+            public void SendNewTransactions(IEnumerable<Transaction> txs)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
             {
                 if (_executorResultFunction != null) return _executorResultFunction(hashes);
 
@@ -298,7 +298,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
-            ctx.Feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, new MemDb(), ctx.SyncModeSelector, blockTree, _logManager);
+            ctx.Feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, ctx.SyncModeSelector, blockTree, _logManager);
             ctx.StateSyncDispatcher =
                 new StateSyncDispatcher(ctx.Feed, ctx.Pool, new StateSyncAllocationStrategyFactory(), _logManager);
             ctx.StateSyncDispatcher.Start(CancellationToken.None);

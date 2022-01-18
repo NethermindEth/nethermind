@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         ErrorCodes.ResourceUnavailable);
                 }
 
-                FixCallTx(transactionCall);
+                transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 if ((transactionCall.MaxFeePerGas != null || transactionCall.MaxPriorityFeePerGas != null) &&
                     transactionCall.GasPrice != null)
@@ -88,20 +88,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
                 ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
-            
-            private void FixCallTx(TransactionForRpc transactionCall)
-            {
-                if (transactionCall.Gas == null || transactionCall.Gas == 0)
-                {
-                    transactionCall.Gas = _rpcConfig.GasCap ?? long.MaxValue;
-                }
-                else
-                {
-                    transactionCall.Gas = Math.Min(_rpcConfig.GasCap ?? long.MaxValue, transactionCall.Gas.Value);
-                }
-
-                transactionCall.From ??= Address.SystemUser;
-            }
         }
 
         private class CallTxExecutor : TxExecutor<string>
@@ -144,7 +130,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 return result.InputError
                     ? GetInputError(result)
-                    : ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.InternalError);
+                    : ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError);
             }
         }
         
@@ -169,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 return result.InputError
                     ? GetInputError(result)
-                    : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.InternalError, new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
+                    : ResultWrapper<AccessListForRpc>.Fail(result.Error, ErrorCodes.ExecutionError, new(GetResultAccessList(tx, result), GetResultGas(tx, result)));
             }
 
             private static AccessListItemForRpc[] GetResultAccessList(Transaction tx, BlockchainBridge.CallOutput result)

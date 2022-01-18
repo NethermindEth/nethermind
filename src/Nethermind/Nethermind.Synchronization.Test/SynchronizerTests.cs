@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.Test
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
-            public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
                 {
@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.Test
                     {
                         if (block.Hash == blockHashes[i])
                         {
-                            result[i] = new BlockBody(block.Transactions, block.Ommers);
+                            result[i] = new BlockBody(block.Transactions, block.Uncles);
                         }
                     }
                 }
@@ -192,15 +192,15 @@ namespace Nethermind.Synchronization.Test
             public event EventHandler Disconnected;
 
             public PublicKey Id => Node.Id;
+            
+            public void SendNewTransactions(IEnumerable<Transaction> txs) { }
 
-            public bool SendNewTransaction(Transaction transaction, bool isPriority) => true;
-
-            public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -298,7 +298,6 @@ namespace Nethermind.Synchronization.Test
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
-                    new MemDb(),
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     _logManager);

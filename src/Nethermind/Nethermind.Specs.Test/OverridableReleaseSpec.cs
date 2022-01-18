@@ -21,8 +21,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.Test
 {
-    /// <summary>Only for testing purposes.
-    // If we want to override only a few properties for tests based on different releases spec we can use this class.</summary>
+    /// <summary>
+    /// Only for testing purposes.
+    /// If we want to override only a few properties for tests based on different releases spec we can use this class.
+    /// </summary>
     public class OverridableReleaseSpec : IReleaseSpec
     {
         private readonly IReleaseSpec _spec;
@@ -30,6 +32,7 @@ namespace Nethermind.Specs.Test
         public OverridableReleaseSpec(IReleaseSpec spec)
         {
             _spec = spec;
+            IsEip3607Enabled = _spec.IsEip3607Enabled;
         }
 
         public string Name => "OverridableReleaseSpec";
@@ -123,6 +126,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip3529Enabled => _spec.IsEip3529Enabled;
         
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
+        public bool IsEip3607Enabled { get; set; }
+        public bool IsEip3675Enabled => _spec.IsEip3675Enabled;
 
         public bool IsEip158IgnoredAccount(Address address)
         {
@@ -141,5 +146,7 @@ namespace Nethermind.Specs.Test
                 _overridenEip1559TransitionBlock = value;
             }
         }
+
+        public Address? Eip1559FeeCollector => _spec.Eip1559FeeCollector;
     }
 }

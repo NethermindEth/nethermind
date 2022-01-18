@@ -1,20 +1,25 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
 
         <IsPackable>false</IsPackable>
 
         <OutputType>Library</OutputType>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
     <ItemGroup>
         <PackageReference Include="coverlet.msbuild" Version="3.0.1" />
-        <PackageReference Include="FluentAssertions" Version="5.10.3" />
+        <PackageReference Include="FluentAssertions" Version="6.2.0" />
         <PackageReference Include="NSubstitute" Version="4.2.2" />
         <PackageReference Include="nunit" Version="3.13.2" />
-        <PackageReference Include="NUnit3TestAdapter" Version="4.0.0" />
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.10.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="4.1.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.0.0" />
     </ItemGroup>
 
     <ItemGroup>
@@ -58,10 +63,6 @@
         <Link>configs\goerli_archive.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="..\Nethermind.Runner\configs\goerli_beam.cfg">
-        <Link>configs\goerli_beam.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
       <Content Include="..\Nethermind.Runner\configs\goerli_nchain.cfg">
         <Link>configs\goerli_nchain.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -84,10 +85,6 @@
       </Content>
       <Content Include="..\Nethermind.Runner\configs\mainnet_archive.cfg">
         <Link>configs\mainnet_archive.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\mainnet_beam.cfg">
-        <Link>configs\mainnet_beam.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="..\Nethermind.Runner\configs\ndm_consumer_goerli.cfg">
@@ -118,10 +115,6 @@
         <Link>configs\poacore_archive.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="..\Nethermind.Runner\configs\poacore_beam.cfg">
-        <Link>configs\poacore_beam.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
       <Content Include="..\Nethermind.Runner\configs\poacore_validator.cfg">
         <Link>configs\poacore_validator.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -134,20 +127,12 @@
         <Link>configs\rinkeby_archive.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="..\Nethermind.Runner\configs\rinkeby_beam.cfg">
-        <Link>configs\rinkeby_beam.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
       <Content Include="..\Nethermind.Runner\configs\ropsten.cfg">
         <Link>configs\ropsten.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="..\Nethermind.Runner\configs\ropsten_archive.cfg">
         <Link>configs\ropsten_archive.cfg</Link>
-		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      </Content>
-      <Content Include="..\Nethermind.Runner\configs\ropsten_beam.cfg">
-        <Link>configs\ropsten_beam.cfg</Link>
 		<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="..\Nethermind.Runner\configs\sokol.cfg">

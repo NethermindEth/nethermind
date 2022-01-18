@@ -36,11 +36,11 @@ namespace Nethermind.Core.Test
         [TestCase("0x01", "0x01", 0)]
         [TestCase("0x01", "0x0102", 1)]
         [TestCase("0x0102", "0x01", -1)]
-        public void Compares_bytes_properly(string hexString1, string hexString2, int expectedResult)
+        public void Compares_bytes_properly(string? hexString1, string? hexString2, int expectedResult)
         {
             IComparer<byte[]> comparer = Bytes.Comparer;
-            byte[] x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
-            byte[] y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
+            byte[]? x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
+            byte[]? y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
             Assert.AreEqual(expectedResult, comparer.Compare(x, y));
         }
 
@@ -82,12 +82,12 @@ namespace Nethermind.Core.Test
         [TestCase("0x01", "0x01", true)]
         [TestCase("0x01", "0x0102", false)]
         [TestCase("0x0102", "0x01", false)]
-        public void Compares_bytes_equality_properly(string hexString1, string hexString2, bool expectedResult)
+        public void Compares_bytes_equality_properly(string? hexString1, string? hexString2, bool expectedResult)
         {
             // interestingly, sequence equals that we have been using for some time returns 0x == null, null == 0x
             IEqualityComparer<byte[]> comparer = Bytes.EqualityComparer;
-            byte[] x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
-            byte[] y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
+            byte[]? x = hexString1 == null ? null : Bytes.FromHexString(hexString1);
+            byte[]? y = hexString2 == null ? null : Bytes.FromHexString(hexString2);
             Assert.AreEqual(expectedResult, comparer.Equals(x, y));
         }
 
@@ -95,8 +95,8 @@ namespace Nethermind.Core.Test
         public void Stream_hex_works()
         {
             byte[] bytes = new byte[] {15, 16, 255};
-            StreamWriter sw = null;
-            StreamReader sr = null;
+            StreamWriter? sw = null;
+            StreamReader? sr = null;
 
             try
             {
@@ -127,7 +127,7 @@ namespace Nethermind.Core.Test
             if (System.Runtime.Intrinsics.X86.Avx2.IsSupported)
             {
                 byte[] bytes = Bytes.FromHexString("0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-                byte[] before = bytes.Clone() as byte[];
+                byte[] before = (byte[])bytes.Clone();
                 Assert.AreEqual(32, bytes.Length);
 
                 Bytes.Avx2Reverse256InPlace(bytes);

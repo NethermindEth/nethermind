@@ -1,17 +1,22 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net5.0</TargetFramework>
+        <TargetFramework>net6.0</TargetFramework>
         <LangVersion>latest</LangVersion>
         <Deterministic>true</Deterministic>
         <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
     <ItemGroup>
-      <PackageReference Include="Google.Protobuf" Version="3.14.0" />
-      <PackageReference Include="Google.Protobuf.Tools" Version="3.14.0" />
-      <PackageReference Include="Grpc" Version="2.34.1" />
-      <PackageReference Include="Grpc.Tools" Version="2.34.1">
+      <PackageReference Include="Google.Protobuf" Version="3.19.1" />
+      <PackageReference Include="Google.Protobuf.Tools" Version="3.19.1" />
+      <PackageReference Include="Grpc" Version="2.41.1" />
+      <PackageReference Include="Grpc.Tools" Version="2.41.1">
         <PrivateAssets>all</PrivateAssets>
         <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       </PackageReference>

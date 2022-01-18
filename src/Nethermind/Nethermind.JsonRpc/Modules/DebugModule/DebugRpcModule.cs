@@ -73,6 +73,24 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
+        public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
+        {
+            blockParameter ??= BlockParameter.Latest;
+            call.EnsureDefaults(_jsonRpcConfig.GasCap);
+            Transaction tx = call.ToTransaction();
+            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
+            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            
+            GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(tx, blockParameter, cancellationToken, options);
+            if (transactionTrace == null)
+            {
+                return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {tx.Hash}", ErrorCodes.ResourceNotFound);
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+        }
+
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Keccak blockhash, int index, GethTraceOptions options = null)
         {
             using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);

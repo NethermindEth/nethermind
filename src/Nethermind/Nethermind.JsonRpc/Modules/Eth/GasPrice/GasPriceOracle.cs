@@ -31,13 +31,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
     {
         private readonly IBlockFinder _blockFinder;
         private readonly UInt256 _minGasPrice;
-        public UInt256 FallbackGasPrice => LastGasPrice ?? _minGasPrice;
+        private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => LastGasPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
         private ISpecProvider SpecProvider { get; }
-        public UInt256? LastGasPrice { get; set; }
-        public Block? LastHeadBlock { get; set; }
-        public UInt256 IgnoreUnder { get; set; } = EthGasPriceConstants.DefaultIgnoreUnder;
-        public int BlockLimit { get; set; } = EthGasPriceConstants.DefaultBlocksLimit;
+        internal UInt256? LastGasPrice { get; set; }
+        internal Block? LastHeadBlock { get; set; }
+        internal UInt256 IgnoreUnder { get; set; } = EthGasPriceConstants.DefaultIgnoreUnder;
+        internal int BlockLimit { get; set; } = EthGasPriceConstants.DefaultBlocksLimit;
         private int SoftTxThreshold => BlockLimit * 2;
+        private readonly UInt256 _defaultMinGasPriceMultiplier = 110;
 
         public GasPriceOracle(
             IBlockFinder blockFinder,
@@ -54,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             Block? headBlock = _blockFinder.Head;
             if (headBlock is null)
             {
-                return FallbackGasPrice;
+                return FallbackGasPrice();
             }
             
             if (LastGasPrice is not null && LastHeadBlock!.Hash == headBlock!.Hash)
@@ -64,15 +65,18 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
             LastHeadBlock = headBlock;
             IEnumerable<UInt256> txGasPrices = GetSortedGasPricesFromRecentBlocks(headBlock.Number);
-            UInt256? gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList());
-            gasPriceEstimate = UInt256.Min((UInt256) gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
+            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
+            gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
             LastGasPrice = gasPriceEstimate;
-            return (UInt256) gasPriceEstimate!;
+            return gasPriceEstimate!;
         }
+
+        private UInt256 GetMinimumGasPrice(in UInt256 baseFeePerGas) => (_minGasPrice + baseFeePerGas) * _defaultMinGasPriceMultiplier / 100ul;
+
         private IEnumerable<UInt256> GetSortedGasPricesFromRecentBlocks(long blockNumber) 
             => GetGasPricesFromRecentBlocks(blockNumber).OrderBy(gasPrice => gasPrice);
 
-        public IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber)
+        internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(long blockNumber)
         {
             IEnumerable<Block> GetBlocks(long currentBlockNumber)
             {
@@ -116,7 +120,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
                 if (txFromCurrentBlock == 0)
                 {
-                    yield return FallbackGasPrice;
+                    yield return FallbackGasPrice(currentBlock.BaseFeePerGas);
                 }
 
                 if (txFromCurrentBlock > 1 || txCount + blocksToGoBack >= SoftTxThreshold)
@@ -131,12 +135,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             }
         }
         
-        private UInt256 GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
+        private UInt256? GetGasPriceAtPercentile(List<UInt256> txGasPriceList)
         {
             int roundedIndex = GetRoundedIndexAtPercentile(txGasPriceList.Count);
             
             return roundedIndex < 0 
-                ? _minGasPrice 
+                ? null 
                 : txGasPriceList[roundedIndex];
         }
 

@@ -22,6 +22,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.Processing
@@ -67,6 +68,12 @@ namespace Nethermind.Blockchain.Processing
                     return args.Set(TxAction.Skip, "Transaction already in block");
                 }
 
+                IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+                if (stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                {
+                    return args.Set(TxAction.Skip, $"Sender is contract");
+                }
+
                 UInt256 expectedNonce = stateProvider.GetNonce(currentTx.SenderAddress);
                 if (expectedNonce != currentTx.Nonce)
                 {
@@ -74,7 +81,7 @@ namespace Nethermind.Blockchain.Processing
                 }
 
                 UInt256 balance = stateProvider.GetBalance(currentTx.SenderAddress);
-                if (!HasEnoughFounds(currentTx, balance, args, block))
+                if (!HasEnoughFounds(currentTx, balance, args, block, spec))
                 {
                     return args;
                 }
@@ -83,9 +90,8 @@ namespace Nethermind.Blockchain.Processing
                 return args;
             }
 
-            private bool HasEnoughFounds(Transaction transaction, UInt256 senderBalance, AddingTxEventArgs e, Block block)
+            private bool HasEnoughFounds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
             {
-                IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Number);
                 bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
                 UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
 
