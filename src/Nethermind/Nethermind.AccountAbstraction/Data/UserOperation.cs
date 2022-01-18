@@ -21,8 +21,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
 {
-    public partial class UserOperation
+    public class UserOperation
     {
+        private static readonly UserOperationDecoder _decoder = new();
+
         public UserOperation(UserOperationRpc userOperationRpc)
         {
             Sender = userOperationRpc.Sender;
@@ -41,6 +43,11 @@ namespace Nethermind.AccountAbstraction.Data
             AccessList = UserOperationAccessList.Empty;
 
             Hash = CalculateHash(this);
+        }
+        
+        public static Keccak CalculateHash(UserOperation userOperation)
+        {
+            return Keccak.Compute(_decoder.Encode(userOperation).Bytes);
         }
 
         public UserOperationAbi Abi => new()
