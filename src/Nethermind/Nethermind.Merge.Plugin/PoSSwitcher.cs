@@ -60,10 +60,11 @@ namespace Nethermind.Merge.Plugin
         private Keccak? _terminalBlockHash;
         private BlockHeader? _firstPoSBlockHeader;
 
-        private long? _terminalPoWBlockNumber;
+        private long? _terminalBlockNumber;
         private long? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
         private Keccak _finalizedBlockHash = Keccak.Zero;
+        private bool _terminalBlockExplicitSpecified;
 
         public PoSSwitcher(
             IMergeConfig mergeConfig,
@@ -86,18 +87,18 @@ namespace Nethermind.Merge.Plugin
         private void Initialize()
         {
             LoadTerminalTotalDifficulty();
-            LoadTerminalPoWBlock();
+            LoadTerminalPreMergeBlock();
             LoadFinalizedBlockHash();
             
-            if (_terminalPoWBlockNumber != null)
+            if (_terminalBlockNumber != null)
                 _hasEverReachedTerminalDifficulty = true;
             if (_firstPoSBlockNumber != null && _specProvider.MergeBlockNumber != _firstPoSBlockNumber)
                 _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
             
-            if (_terminalPoWBlockNumber == null)
+            if (_terminalBlockNumber == null)
                 _blockTree.NewHeadBlock += CheckIfTerminalPoWBlockReached;
 
-            if (_terminalPoWBlockNumber != null && _finalizedBlockHash != Keccak.Zero)
+            if (_terminalBlockNumber != null && _finalizedBlockHash != Keccak.Zero)
                 _blockTree.NewHeadBlock -= CheckIfTerminalPoWBlockReached;
         }
         
@@ -145,9 +146,9 @@ namespace Nethermind.Merge.Plugin
         {
             if (blockHeader.Difficulty != 0) // PostMerge blocks have Difficulty == 0. We are interested here in Terminal PoW block
             {
-                _terminalPoWBlockNumber = blockHeader.Number;
+                _terminalBlockNumber = blockHeader.Number;
                 _terminalBlockHash = blockHeader.Hash;
-                _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalPoWBlockNumber.Value).Bytes);
+                _metadataDb.Set(MetadataDbKeys.TerminalPoWNumber, Rlp.Encode(_terminalBlockNumber.Value).Bytes);
                 _metadataDb.Set(MetadataDbKeys.TerminalPoWHash, Rlp.Encode(_terminalBlockHash).Bytes);
                 _firstPoSBlockNumber = blockHeader.Number + 1;
                 _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
@@ -181,7 +182,7 @@ namespace Nethermind.Merge.Plugin
                 }
 
                 _finalizedBlockHash = finalizedHash;
-                // ToDo need to discuss with Sarah, this method should be moved to BlockTree or FinalizationManager
+                // ToDo need to discuss with Sarah, this should be moved to BlockTree or FinalizationManager
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(_finalizedBlockHash).Bytes);
             }
 
@@ -198,18 +199,22 @@ namespace Nethermind.Merge.Plugin
         public (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent)
         {
             bool isTerminal = false, isPostMerge = false;
-            if (TransitionFinished == false && header.IsPostMerge == false)
+            if (header.IsPostMerge)
+                return (false, true);
+
+            // ToDo TTD nulls?
+            if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
+                return (false, false);
+
+            bool theMergeEnabled = _specProvider.GetSpec(header.Number).TheMergeEnabled;
+            if (TransitionFinished && theMergeEnabled || _terminalBlockExplicitSpecified && theMergeEnabled)
+            {
+                isPostMerge = true;
+            }
+            else
             {
                 isTerminal = IsTerminalPoWBlock(header, parent);
                 isPostMerge = !isTerminal;
-            }
-            // else if () // we know transition block from config/specProvider
-            // {
-            //     
-            // }
-            else
-            {
-                isPostMerge = true;
             }
             
             header.IsPostMerge = isPostMerge;
@@ -218,7 +223,7 @@ namespace Nethermind.Merge.Plugin
 
         public bool IsPoS(BlockHeader header)
         {
-            return header.IsPostMerge || header.Number > _terminalPoWBlockNumber ||
+            return header.IsPostMerge || header.Number > _terminalBlockNumber ||
                 (_firstPoSBlockHeader != null && header.Number >= _firstPoSBlockHeader.Number); // ToDo need to think more about the last case, probably we will remove it
         }
 
@@ -228,18 +233,20 @@ namespace Nethermind.Merge.Plugin
 
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
 
-        private void LoadTerminalPoWBlock()
+        private void LoadTerminalPreMergeBlock()
         {
-            _terminalPoWBlockNumber = _mergeConfig.TerminalBlockNumber ??
-                                      _specProvider.MergeBlockNumber - 1 ??
-                                      LoadPoWBlockNumberFromDb();
+            _terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
+                                   _specProvider.MergeBlockNumber - 1;
+
+            _terminalBlockExplicitSpecified = _terminalBlockNumber != null;
+            _terminalBlockNumber ??= LoadPoWBlockNumberFromDb();
             
             _terminalBlockHash = _mergeConfig.TerminalBlockHash != Keccak.Zero 
                                     ? _mergeConfig.TerminalBlockHash 
                                     : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
-            if (_terminalPoWBlockNumber != null)
-                _firstPoSBlockNumber = _terminalPoWBlockNumber + 1;
+            if (_terminalBlockNumber != null)
+                _firstPoSBlockNumber = _terminalBlockNumber + 1;
         }
         
         private long? LoadPoWBlockNumberFromDb()
