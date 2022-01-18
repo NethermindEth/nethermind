@@ -120,9 +120,25 @@ namespace Nethermind.Merge.Plugin
             _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
         }
 
-        public bool IsTerminalPoWBlock(BlockHeader blockHeader, BlockHeader? parent = null)
+        // Terminal PoW block: A PoW block that satisfies the following conditions pow_block.total_difficulty >= TERMINAL_TOTAL_DIFFICULTY and pow_block.parent_block.total_difficulty < TERMINAL_TOTAL_DIFFICULTY
+        // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#specification
+        public bool IsTerminalPoWBlock(BlockHeader header, BlockHeader? parent = null)
         {
-            throw new NotImplementedException();
+            bool isTerminalBlock = false;
+            if (header.TotalDifficulty >= TerminalTotalDifficulty && header.IsPostMerge == false)
+            {
+                if (parent == null)
+                {
+                    parent = _blockTree.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None);
+                }
+                
+                if (parent != null && parent.TotalDifficulty < TerminalTotalDifficulty)
+                {
+                    isTerminalBlock = true;
+                }
+            }
+
+            return isTerminalBlock;
         }
 
         public void UpdateTerminalBlock(BlockHeader blockHeader)
@@ -177,7 +193,30 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public bool IsPos(BlockHeader header)
+        public bool TransitionFinished => _finalizedBlockHash != Keccak.Zero;
+
+        public (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent)
+        {
+            bool isTerminal = false, isPostMerge = false;
+            if (TransitionFinished == false && header.IsPostMerge == false)
+            {
+                isTerminal = IsTerminalPoWBlock(header, parent);
+                isPostMerge = !isTerminal;
+            }
+            // else if () // we know transition block from config/specProvider
+            // {
+            //     
+            // }
+            else
+            {
+                isPostMerge = true;
+            }
+            
+            header.IsPostMerge = isPostMerge;
+            return (isTerminal, isPostMerge);
+        }
+
+        public bool IsPoS(BlockHeader header)
         {
             return header.IsPostMerge || header.Number > _terminalPoWBlockNumber ||
                 (_firstPoSBlockHeader != null && header.Number >= _firstPoSBlockHeader.Number); // ToDo need to think more about the last case, probably we will remove it

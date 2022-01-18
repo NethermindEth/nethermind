@@ -34,13 +34,13 @@ namespace Nethermind.Merge.Plugin
             throw new NotImplementedException();
         }
 
-        public bool IsPos(BlockHeader header) => false;
+        public bool IsPoS(BlockHeader header) => false;
 
         public bool HasEverReachedTerminalPoWBlock() => false;
 
         public event EventHandler? TerminalPoWBlockReached;
         public UInt256? TerminalTotalDifficulty => null;
-        public bool IsTerminalPoWBlock(BlockHeader blockHeader, BlockHeader? parent = null)
+        public bool IsTerminalPoWBlock(BlockHeader header, BlockHeader? parent = null)
         {
             throw new NotImplementedException();
         }

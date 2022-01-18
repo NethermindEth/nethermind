@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin.Data
         {
             BlockHash = block.Hash!;
             ParentHash = block.ParentHash!;
-            FeeRecipient = block.Beneficiary;
+            FeeRecipient = block.Beneficiary!;
             StateRoot = block.StateRoot!;
             BlockNumber = block.Number;
             GasLimit = block.GasLimit;
@@ -69,6 +69,7 @@ namespace Nethermind.Merge.Plugin.Data
                     BaseFeePerGas = BaseFeePerGas,
                     Nonce = 0,
                     MixHash = Random,
+                    Author = FeeRecipient
                 };
                 Transaction[] transactions = GetTransactions();
                 header.TxRoot = new TxTrie(transactions).RootHash;
@@ -84,7 +85,7 @@ namespace Nethermind.Merge.Plugin.Data
         }
         
         public Keccak ParentHash { get; set; } = null!;
-        public Address? FeeRecipient { get; set; }
+        public Address FeeRecipient { get; set; }
         public Keccak StateRoot { get; set; } = null!;
         public Keccak ReceiptsRoot { get; set; } = null!;
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]

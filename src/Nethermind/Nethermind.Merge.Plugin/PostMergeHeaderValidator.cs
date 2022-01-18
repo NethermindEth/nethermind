@@ -55,7 +55,7 @@ namespace Nethermind.Merge.Plugin
 
         private bool ValidateTheMergeChecks(BlockHeader header)
         {
-            if (_poSSwitcher.IsPos(header) == false)
+            if (_poSSwitcher.IsPoS(header) == false)
                 return true;
             bool validDifficulty =
                 ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
@@ -73,7 +73,7 @@ namespace Nethermind.Merge.Plugin
 
         protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
         {
-             return _poSSwitcher.IsPos(header) || base.ValidateTotalDifficulty(parent, header);
+             return _poSSwitcher.IsPoS(header) || base.ValidateTotalDifficulty(parent, header);
         }
         
         private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)

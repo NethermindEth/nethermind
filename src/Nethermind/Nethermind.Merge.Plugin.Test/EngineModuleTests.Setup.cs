@@ -131,7 +131,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Eth2BlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
                     IdealBlockProductionContext);
                 IdealBlockProductionContext.BlockProducer = postMergeBlockProducer;
-                return new MergeBlockProducer(preMergeBlockProducer,postMergeBlockProducer, PoSSwitcher);
+                return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
             }
             
             protected override BlockProcessor CreateBlockProcessor()

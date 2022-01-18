@@ -288,7 +288,7 @@ namespace Nethermind.Consensus.Producers
             BlockHeader header = new(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
-                payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address,
+                blockAuthor,
                 UInt256.Zero, 
                 parent.Number + 1,
                 _gasLimitCalculator.GetGasLimit(parent),
