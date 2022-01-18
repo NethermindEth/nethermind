@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,21 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 namespace Nethermind.Db
 {
-    public static class DbNames
+    public static class MetadataDbKeys
     {
-        public const string Storage = "storage";
-        public const string State = "state";
-        public const string Code = "code";
-        public const string Blocks = "blocks";
-        public const string Headers = "headers";
-        public const string Receipts = "receipts";
-        public const string BlockInfos = "blockInfos";
-        public const string Bloom = "bloom";
-        public const string Witness = "witness";
-        public const string CHT = "canonicalHashTrie";
-        public const string Metadata = "metadata";
+        // we can use other types for keys, for example strings, byte arrays
+        // In the merge we're using now below keys:
+        public const int TerminalPoWHash = 1;
+        public const int TerminalPoWNumber = 2;
+        public const int FirstPoSHash = 3;
+        public const int FinalizedBlockHash = 3;
+        public const int SafeBlockHash = 4;
     }
 }
