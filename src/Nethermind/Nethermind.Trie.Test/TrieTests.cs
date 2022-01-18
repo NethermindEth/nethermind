@@ -24,6 +24,7 @@ namespace Nethermind.Trie.Test
     {
         private ILogger _logger;
         private ILogManager _logManager;
+        private Random _random = new();
 
         [SetUp]
         public void SetUp()
@@ -236,7 +237,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -247,7 +248,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j);
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
@@ -261,7 +262,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -281,7 +282,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j);
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
 
@@ -302,14 +303,14 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j + 1);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -320,7 +321,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j + 1);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
             }
         }
@@ -334,7 +335,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -343,7 +344,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j + 1);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
                 patriciaTree.Set(key.Bytes, value);
                 _logger.Trace($"Setting {key.Bytes.ToHexString()} = {value.ToHexString()}");
             }
@@ -355,7 +356,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j + 1);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
 
                 _logger.Trace($"Checking {key.Bytes.ToHexString()} = {value.ToHexString()}");
                 checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
@@ -372,7 +373,7 @@ namespace Nethermind.Trie.Test
             {
                 _logger.Trace($"  set {j}");
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -403,7 +404,7 @@ namespace Nethermind.Trie.Test
             for (int j = 0; j < i; j++)
             {
                 Keccak key = TestItem.Keccaks[j];
-                byte[] value = GenerateIndexedAccountRlp(j);
+                byte[] value = TestItem.GenerateIndexedAccountRlp(j);
                 patriciaTree.Set(key.Bytes, value);
             }
 
@@ -676,9 +677,6 @@ namespace Nethermind.Trie.Test
             checkTree.Get(_keyD).Should().BeEquivalentTo(_longLeaf1);
         }
 
-        private AccountDecoder _accountDecoder = new();
-        private Random _random = new();
-
         // [TestCase(256, 128, 128, 32)]
         [TestCase(128, 128, 8, 8)]
         // [TestCase(4, 16, 4, 4)]
@@ -718,7 +716,7 @@ namespace Nethermind.Trie.Test
                 }
                 else
                 {
-                    randomValues[i] = GenerateRandomAccountRlp();
+                    randomValues[i] = TestItem.GenerateRandomAccountRlp();
                 }
             }
 
@@ -791,42 +789,6 @@ namespace Nethermind.Trie.Test
             }
         }
 
-        private byte[] GenerateRandomAccountRlp()
-        {
-            Account account = GenerateRandomAccount();
-            byte[] value = _accountDecoder.Encode(account).Bytes;
-            return value;
-        }
-
-        private Account GenerateRandomAccount()
-        {
-            Account account = new(
-                (UInt256) _random.Next(1000),
-                (UInt256) _random.Next(1000),
-                Keccak.EmptyTreeHash,
-                Keccak.OfAnEmptyString);
-
-            return account;
-        }
-
-        private Account GenerateIndexedAccount(int index)
-        {
-            Account account = new(
-                (UInt256) index,
-                (UInt256) index,
-                Keccak.EmptyTreeHash,
-                Keccak.OfAnEmptyString);
-
-            return account;
-        }
-
-        private byte[] GenerateIndexedAccountRlp(int index)
-        {
-            Account account = GenerateIndexedAccount(index);
-            byte[] value = _accountDecoder.Encode(account).Bytes;
-            return value;
-        }
-
         // [TestCase(256, 128, 128, 32)]
         // [TestCase(128, 128, 8, 8)]
         [TestCase(4, 16, 4, 4, null)]
@@ -872,7 +834,7 @@ namespace Nethermind.Trie.Test
                 }
                 else
                 {
-                    randomValues[i] = GenerateRandomAccountRlp();
+                    randomValues[i] = TestItem.GenerateRandomAccountRlp();
                 }
             }
 
@@ -1027,7 +989,7 @@ namespace Nethermind.Trie.Test
                 }
                 else
                 {
-                    accounts[i] = GenerateRandomAccount();
+                    accounts[i] = TestItem.GenerateRandomAccount();
                 }
 
                 addresses[i] = TestItem.GetRandomAddress(_random);

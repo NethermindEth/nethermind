@@ -14,20 +14,18 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.SnapSync
 {
-    public class SnapProvider
+    public static class SnapProvider
     {
-        private readonly TrieStore _store;
-
-        public SnapProvider(TrieStore store)
-        {;
-            _store = store;
+        public static Keccak? AddAccountRange(TrieStore store, long blockNumber, Keccak expectedRootHash, Keccak startingHash, AccountWithAddressHash[] accounts, byte[][] proofs = null)
+        {
+            StateTree tree = new(store, LimboLogs.Instance);
+            return AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
         }
 
-        public Keccak? AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, AccountWithAddressHash[] accounts, byte[][] proofs = null)
+        public static Keccak? AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, AccountWithAddressHash[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
-            StateTree tree = new StateTree(_store, LimboLogs.Instance);
             Keccak lastHash = accounts.Last().AddressHash;
 
             bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
@@ -41,7 +39,7 @@ namespace Nethermind.State.SnapSync
 
                 tree.UpdateRootHash();
 
-                if(tree.RootHash != expectedRootHash)
+                if (tree.RootHash != expectedRootHash)
                 {
                     // TODO: log incorrect range
                     return Keccak.EmptyTreeHash;
@@ -53,11 +51,16 @@ namespace Nethermind.State.SnapSync
             return tree.RootHash;
         }
 
-        public Keccak? AddStorageRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
+        public static Keccak? AddStorageRange(TrieStore store, long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
+        {
+            StorageTree tree = new(store, LimboLogs.Instance);
+            return AddStorageRange(tree, blockNumber, expectedRootHash, startingHash, slots, proofs);
+        }
+
+        public static Keccak? AddStorageRange(StorageTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
         {
             // TODO: Check the slots boundaries and sorting
 
-            StorageTree tree = new(_store, LimboLogs.Instance);
             Keccak lastHash = slots.Last().KeyHash;
 
             bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
@@ -83,7 +86,7 @@ namespace Nethermind.State.SnapSync
             return tree.RootHash;
         }
 
-        private bool ProcessProofs(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak lastHash, byte[][] proofs = null)
+        private static bool ProcessProofs(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak lastHash, byte[][] proofs = null)
         {
             if (proofs != null && proofs.Length > 0)
             {
@@ -95,7 +98,7 @@ namespace Nethermind.State.SnapSync
                     return false;
                 }
 
-                SnapProviderHelper.FillBoundaryTree(_store, tree, expectedRootHash, proofs, startingHash, lastHash);
+                SnapProviderHelper.FillBoundaryTree(tree, expectedRootHash, proofs, startingHash, lastHash);
             }
 
             return true;
