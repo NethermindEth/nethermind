@@ -211,6 +211,26 @@ namespace Nethermind.Core.Crypto
             return !(a == b);
         }
 
+        public static bool operator >(Keccak? k1, Keccak? k2)
+        {
+            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) > 0;
+        }
+
+        public static bool operator <(Keccak? k1, Keccak? k2)
+        {
+            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) < 0;
+        }
+
+        public static bool operator >=(Keccak? k1, Keccak? k2)
+        {
+            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) >= 0;
+        }
+
+        public static bool operator <=(Keccak? k1, Keccak? k2)
+        {
+            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) <= 0;
+        }
+
         public KeccakStructRef ToStructRef() => new(Bytes);
     }
     

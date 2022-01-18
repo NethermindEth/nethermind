@@ -12,7 +12,7 @@ namespace Nethermind.State.SnapSync
 {
     internal static class SnapProviderHelper
     {
-        internal static void FillBoundaryTree(TrieStore store, PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
+        internal static void FillBoundaryTree(PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
         {
             if (tree == null)
             {
@@ -34,8 +34,8 @@ namespace Nethermind.State.SnapSync
 
                 var node = new TrieNode(NodeType.Unknown, proof, true);
                 node.IsBoundaryProofNode = true;
-                node.ResolveNode(store);
-                node.ResolveKey(store, i == 0);
+                node.ResolveNode(tree.TrieStore);
+                node.ResolveKey(tree.TrieStore, i == 0);
                 Keccak currentKeccak = node.Keccak;
 
                 if (processed.TryGetValue(currentKeccak, out TrieNode processedNode))
@@ -44,17 +44,15 @@ namespace Nethermind.State.SnapSync
                 }
                 else
                 {
-                    processed.Add(currentKeccak, node);
-                }
-
-                if (currentKeccak == expectedRootHash)
-                {
-                    if (tree.RootRef is null)
+                    if (currentKeccak == expectedRootHash)
                     {
                         tree.RootRef = node;
                     }
+
+                    processed.Add(currentKeccak, node);
                 }
-                else
+
+                if(parent != null)
                 {
                     TrieNode newChild = node.IsLeaf ? null : node;
 

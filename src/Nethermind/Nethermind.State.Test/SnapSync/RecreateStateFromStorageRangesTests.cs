@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-#nullable enable 
+#nullable disable 
 
 using System;
 using System.Collections.Generic;
@@ -39,41 +39,16 @@ namespace Nethermind.Store.Test
     [TestFixture]
     public class RecreateStateFromStorageRangesTests
     {
-        private Account? _account;
-        private Keccak _accountAddress = new Keccak("0000000000000000000000000000000000000000000000000000000000001234");
-        private TrieStore? _store;
-        private StateTree? _inputStateTree;
-        private StorageTree? _inputStorageTree;
 
-        private SlotWithKeyHash[] _slots = new SlotWithKeyHash[]
-        {
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001101234"), Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001112345"), Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001113456"), Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001114567"), Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001123456"), Bytes.FromHexString("0xab90000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001123457"), Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-        };
+        private TrieStore _store;
+        private StateTree _inputStateTree;
+        private StorageTree _inputStorageTree;
 
         [OneTimeSetUp]
         public void Setup()
         {
             _store = new TrieStore(new MemDb(), LimboLogs.Instance);
-            _inputStorageTree = new StorageTree(_store, LimboLogs.Instance);
-
-            _inputStorageTree.Set(_slots[0].KeyHash, _slots[0].SlotValue);
-            _inputStorageTree.Set(_slots[1].KeyHash, _slots[1].SlotValue);
-            _inputStorageTree.Set(_slots[2].KeyHash, _slots[2].SlotValue);
-            _inputStorageTree.Set(_slots[3].KeyHash, _slots[3].SlotValue);
-            _inputStorageTree.Set(_slots[4].KeyHash, _slots[4].SlotValue);
-            _inputStorageTree.Set(_slots[5].KeyHash, _slots[5].SlotValue);
-
-            _inputStorageTree.Commit(0);
-
-            _account = Build.An.Account.WithBalance(1).WithStorageRoot(_inputStorageTree.RootHash).TestObject;
-            _inputStateTree = new StateTree(_store, LimboLogs.Instance);
-            _inputStateTree.Set(_accountAddress, _account);
-            _inputStateTree.Commit(0);
+            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
         }
 
         [Test]
@@ -81,16 +56,14 @@ namespace Nethermind.Store.Test
         {
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            AccountProofCollector accountProofCollector = new(_accountAddress.Bytes, new Keccak[] { Keccak.Zero, _slots[5].KeyHash });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[5].KeyHash });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
 
-            SnapProvider snapProvider = new(store);
-
-            Keccak? result = snapProvider.AddStorageRange(1, rootHash, Keccak.Zero, _slots, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            Keccak result = SnapProvider.AddStorageRange(store, 1, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
             Assert.AreEqual(rootHash, result);
         }
@@ -100,16 +73,14 @@ namespace Nethermind.Store.Test
         {
             Keccak rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            AccountProofCollector accountProofCollector = new(_accountAddress.Bytes, new Keccak[] { _slots[0].KeyHash, _slots[5].KeyHash });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[0].KeyHash, TestItem.Tree.SlotsWithPaths[5].KeyHash });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
 
-            SnapProvider snapProvider = new(store);
-
-            Keccak? result = snapProvider.AddStorageRange(1, rootHash, Keccak.Zero, _slots, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            Keccak result = SnapProvider.AddStorageRange(store, 1, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
             Assert.AreEqual(rootHash, result);
         }
@@ -122,9 +93,7 @@ namespace Nethermind.Store.Test
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
 
-            SnapProvider snapProvider = new(store);
-
-            Keccak? result = snapProvider.AddStorageRange(1, rootHash, _slots[0].KeyHash, _slots);
+            Keccak result = SnapProvider.AddStorageRange(store, 1, rootHash, TestItem.Tree.SlotsWithPaths[0].KeyHash, TestItem.Tree.SlotsWithPaths);
 
             Assert.AreEqual(rootHash, result);
         }
@@ -137,25 +106,24 @@ namespace Nethermind.Store.Test
             // output state
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
-            SnapProvider snapProvider = new(store);
 
-            AccountProofCollector accountProofCollector = new(_accountAddress.Bytes, new Keccak[] { Keccak.Zero, _slots[1].KeyHash });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].KeyHash });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            Keccak? result1 = snapProvider.AddStorageRange(1, rootHash, Keccak.Zero, _slots[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            Keccak result1 = SnapProvider.AddStorageRange(store, 1, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            accountProofCollector = new(_accountAddress.Bytes, new Keccak[] { _slots[2].KeyHash, _slots[3].KeyHash });
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[2].KeyHash, TestItem.Tree.SlotsWithPaths[3].KeyHash });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
-            Keccak? result2 = snapProvider.AddStorageRange(1, rootHash, _slots[2].KeyHash, _slots[2..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            Keccak result2 = SnapProvider.AddStorageRange(store, 1, rootHash, TestItem.Tree.SlotsWithPaths[2].KeyHash, TestItem.Tree.SlotsWithPaths[2..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            accountProofCollector = new(_accountAddress.Bytes, new Keccak[] { _slots[4].KeyHash, _slots[5].KeyHash });
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[4].KeyHash, TestItem.Tree.SlotsWithPaths[5].KeyHash });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
-            Keccak? result3 = snapProvider.AddStorageRange(1, rootHash, _slots[4].KeyHash, _slots[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            Keccak result3 = SnapProvider.AddStorageRange(store, 1, rootHash, TestItem.Tree.SlotsWithPaths[4].KeyHash, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
             Assert.AreEqual(rootHash, result1);
             Assert.AreEqual(rootHash, result2);
@@ -170,25 +138,24 @@ namespace Nethermind.Store.Test
             // output state
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
-            SnapProvider snapProvider = new(store);
 
-            AccountProofCollector accountProofCollector = new(_accountAddress.Bytes, new Keccak[] { Keccak.Zero, _slots[1].KeyHash });
+            AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].KeyHash });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            Keccak? result1 = snapProvider.AddStorageRange(1, rootHash, Keccak.Zero, _slots[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            Keccak result1 = SnapProvider.AddStorageRange(store, 1, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths[0..2], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            accountProofCollector = new(_accountAddress.Bytes, new Keccak[] { _slots[2].KeyHash, _slots[3].KeyHash });
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[2].KeyHash, TestItem.Tree.SlotsWithPaths[3].KeyHash });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
-            Keccak? result2 = snapProvider.AddStorageRange(1, rootHash, _slots[2].KeyHash, _slots[3..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            Keccak result2 = SnapProvider.AddStorageRange(store, 1, rootHash, TestItem.Tree.SlotsWithPaths[2].KeyHash, TestItem.Tree.SlotsWithPaths[3..4], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
-            accountProofCollector = new(_accountAddress.Bytes, new Keccak[] { _slots[4].KeyHash, _slots[5].KeyHash });
+            accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new Keccak[] { TestItem.Tree.SlotsWithPaths[4].KeyHash, TestItem.Tree.SlotsWithPaths[5].KeyHash });
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             proof = accountProofCollector.BuildResult();
 
-            Keccak? result3 = snapProvider.AddStorageRange(1, rootHash, _slots[4].KeyHash, _slots[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
+            Keccak result3 = SnapProvider.AddStorageRange(store, 1, rootHash, TestItem.Tree.SlotsWithPaths[4].KeyHash, TestItem.Tree.SlotsWithPaths[4..6], proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
 
             Assert.AreEqual(rootHash, result1);
             Assert.AreNotEqual(rootHash, result2);
