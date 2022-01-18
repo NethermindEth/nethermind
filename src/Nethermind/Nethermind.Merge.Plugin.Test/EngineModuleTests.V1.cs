@@ -254,27 +254,18 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public async Task getPayloadBodiesV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_skip_unknown_hashes()
         {
-            int delay = 100;
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            Keccak startingHead = chain.BlockTree.HeadHash;
-            UInt256 timestamp = Timestamper.UnixTime.Seconds;
-            Keccak random = Keccak.Zero;
-            Address feeRecipient = Address.Zero;
+
+            BlockRequestResult blockRequestResult1 = await SendNewBlockV1(rpc, chain);
             
-            BlockRequestResult? blockRequestResult = await BuildAndGetPayloadResult(rpc, startingHead,
-                Keccak.Zero, startingHead, timestamp, random, feeRecipient, delay);
-            Transaction[] txs =
-            {
-                Build.A.Transaction
-                    .WithGasLimit(GasCostOf.Transaction)
-                    .SignedAndResolved(TestItem.PrivateKeyA).TestObject
-            };
+            PrivateKey from = TestItem.PrivateKeyA;
+            Address to = TestItem.AddressB;
+            Transaction[] txs = BuildTransactions(chain, blockRequestResult1.BlockHash, from, to, 3, 0, out _, out _);
             chain.AddTransactions(txs);
-            BlockRequestResult? blockRequestResult1 = await BuildAndGetPayloadResult(rpc, startingHead,
-                Keccak.Zero, startingHead, timestamp + 1, random, feeRecipient, delay);
+            BlockRequestResult? blockRequestResult2 = await SendNewBlockV1(rpc, chain, txs);
             Keccak[] blockHashes =
-                new[] {blockRequestResult.BlockHash, TestItem.KeccakA, blockRequestResult1.BlockHash};
+                new[] {blockRequestResult1.BlockHash, TestItem.KeccakA, blockRequestResult2.BlockHash};
             ExecutionPayloadBodyV1Result[] payloadBodies = rpc.engine_getPayloadBodiesV1(blockHashes).Result.Data;
             ExecutionPayloadBodyV1Result[] expected = new[]
             {
@@ -976,6 +967,21 @@ namespace Nethermind.Merge.Plugin.Test
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressD);
+            ResultWrapper<ExecutePayloadV1Result> executePayloadResult =
+                await rpc.engine_executePayloadV1(blockRequestResult);
+            executePayloadResult.Data.Status.Should().Be(ExecutePayloadStatus.Valid);
+            return blockRequestResult;
+        }
+        
+        private async Task<BlockRequestResult> SendNewBlockV1(IEngineRpcModule rpc, MergeTestBlockchain chain, Transaction[] txs)
+        {
+            int delay = 100;
+            Keccak head = chain.BlockTree.HeadHash;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = Address.Zero;
+            BlockRequestResult blockRequestResult = await BuildAndGetPayloadResult(rpc, head,
+                Keccak.Zero, head, timestamp, random, feeRecipient, delay);
             ResultWrapper<ExecutePayloadV1Result> executePayloadResult =
                 await rpc.engine_executePayloadV1(blockRequestResult);
             executePayloadResult.Data.Status.Should().Be(ExecutePayloadStatus.Valid);

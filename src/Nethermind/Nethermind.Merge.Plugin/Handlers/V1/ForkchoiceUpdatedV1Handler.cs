@@ -107,6 +107,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"Invalid total difficulty: {newHeadBlock!.Header.TotalDifficulty} for block header: {newHeadBlock!.Header}", MergeErrorCodes.InvalidTerminalBlock);
             }
+            
+            // this check is needed for correct behaviour. It will be defined in the new spec
+            if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
+            {
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"Invalid payload attributes timestamp: {payloadAttributes.Timestamp} parent block header: {newHeadBlock!.Header}", ErrorCodes.InvalidInput);
+            }
 
             EnsureTerminalBlock(forkchoiceState, blocks);
 
