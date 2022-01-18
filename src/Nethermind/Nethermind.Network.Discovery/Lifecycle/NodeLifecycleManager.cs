@@ -121,18 +121,18 @@ public class NodeLifecycleManager : INodeLifecycleManager
     
     public void ProcessEnrRequestMsg(EnrRequestMsg enrRequestMessage)
     {
-        if (!IsBonded)
+        if (IsBonded)
         {
-            if (_logger.IsWarn) _logger.Warn("Attempt to request ENR before bonding");
-            return;
+            Rlp requestRlp = Rlp.Encode(Rlp.Encode(enrRequestMessage.ExpirationTime));
+            EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, Keccak.Compute(requestRlp.Bytes));
+            _discoveryManager.SendMessage(msg);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
         }
-
-        Rlp requestRlp = Rlp.Encode(
-            Rlp.Encode(enrRequestMessage.ExpirationTime));
-        EnrResponseMsg msg = new(ManagedNode.Address, _nodeRecord, Keccak.Compute(requestRlp.Bytes));
-        _discoveryManager.SendMessage(msg);
-        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrRequestIn);
-        NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryEnrResponseOut);
+        else
+        {
+            if (_logger.IsDebug) _logger.Warn("Attempt to request ENR before bonding");
+        }
     }
 
     public void ProcessPongMsg(PongMsg pongMsg)
