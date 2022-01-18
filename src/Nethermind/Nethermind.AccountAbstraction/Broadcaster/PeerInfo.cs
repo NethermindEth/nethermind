@@ -26,7 +26,7 @@ namespace Nethermind.AccountAbstraction.Broadcaster
     {
         private IUserOperationPoolPeer Peer { get; }
 
-        private LruKeyCache<Keccak> NotifiedUserOperations { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedUserOperations");
+        private LruKeyCache<Keccak> NotifiedUserOperations { get; } = new(MemoryAllowance.MemPoolSize, "notifiedUserOperations");
 
         public PeerInfo(IUserOperationPoolPeer peer)
         {
