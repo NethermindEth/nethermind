@@ -122,11 +122,10 @@ namespace Nethermind.Merge.Plugin.Handlers
                 await _synchronizer.StopAsync();
                 synced = true;
             }
-
-
+            
             if (parentHeader.TotalDifficulty < _mergeConfig.TerminalTotalDifficulty)
             {
-                ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {parentHeader.TotalDifficulty} for block header: {parentHeader}", MergeErrorCodes.InvalidTerminalBlock);
+                return ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {parentHeader.TotalDifficulty} for block header: {parentHeader}", MergeErrorCodes.InvalidTerminalBlock);
             }
             
             (ValidationResult ValidationResult, string? Message) result = ValidateRequestAndProcess(request, out Block? processedBlock, parentHeader);

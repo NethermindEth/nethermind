@@ -433,12 +433,12 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).TestObject;
-            block.Header.Hash = new Keccak("0xdc3419cbd81455372f3e576f930560b35ec828cd6cdfbd4958499e43c68effdf");
-            chain.BlockTree.SuggestBlock(block);
-
+            Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0).TestObject;
+            block.Header.Hash = block.CalculateHash();
+            chain.BlockTree.SuggestBlock(block!);
+            BlockRequestResult blockRequest = new(block);
             ResultWrapper<ExecutePayloadV1Result> executePayloadResult =
-                await rpc.engine_executePayloadV1(new BlockRequestResult(block));
+                await rpc.engine_executePayloadV1(blockRequest);
             executePayloadResult.Data.Status.Should().Be(ExecutePayloadStatus.Valid);
         }
 
@@ -696,7 +696,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             async Task CanPrepareBlock(BlockRequestResult block)
             {
-                UInt256 timestamp = block.Timestamp;
+                UInt256 timestamp = block.Timestamp + 1;
                 Keccak random = Keccak.Zero;
                 Address feeRecipient = Address.Zero;
                 BlockRequestResult? blockResult = await BuildAndGetPayloadResult(rpc, block.BlockHash, block.ParentHash,
