@@ -56,7 +56,7 @@ namespace Nethermind.Trie
 
         private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
 
-        protected readonly ITrieStore TrieStore;
+        public readonly ITrieStore TrieStore;
 
         private readonly bool _parallelBranches;
 

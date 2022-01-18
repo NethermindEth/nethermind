@@ -22,7 +22,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    internal class DetailedProgress
+    public class DetailedProgress
     {
         private long _lastDataSize;
         // private long _lastHandledNodesCount;

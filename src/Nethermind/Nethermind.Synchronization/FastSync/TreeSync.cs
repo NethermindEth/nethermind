@@ -425,6 +425,11 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        public DetailedProgress GetDetailedProgress()
+        {
+            return _data;
+        }
+
         private AddNodeResult AddNodeToPending(StateSyncItem syncItem, DependentItem? dependentItem, string reason, bool missing = false)
         {
             if (!missing)
