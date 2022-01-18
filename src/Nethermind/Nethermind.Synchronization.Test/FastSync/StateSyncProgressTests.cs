@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Start_values_are_correct()
         {
-            BranchProgress progress = new BranchProgress(7, LimboTraceLogger.Instance);
+            BranchProgress progress = new(7, LimboTraceLogger.Instance);
             Assert.AreEqual(7, progress.CurrentSyncBlock);
             Assert.AreEqual(0M, progress.LastProgress);
         }
@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [TestCase(2, -1, 1, (double) 1 / 16)]
         public void Single_item_progress_is_correct(int level, int parentIndex, int childIndex, double expectedResult)
         {
-            BranchProgress progress = new BranchProgress(7, LimboTraceLogger.Instance);
+            BranchProgress progress = new(7, LimboTraceLogger.Instance);
             progress.ReportSynced(level, parentIndex, childIndex, NodeDataType.State, NodeProgressState.Empty);
             Assert.AreEqual((decimal) expectedResult, progress.LastProgress, "state, empty");
 
@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Multiple_items()
         {
-            BranchProgress progress = new BranchProgress(7, LimboTraceLogger.Instance);
+            BranchProgress progress = new(7, LimboTraceLogger.Instance);
             progress.ReportSynced(2, 1, 1, NodeDataType.State, NodeProgressState.Saved);
             Assert.AreEqual((decimal) 1/256, progress.LastProgress, "0");
             

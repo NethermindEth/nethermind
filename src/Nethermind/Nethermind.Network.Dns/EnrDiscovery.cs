@@ -15,70 +15,72 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Buffers.Text;
+using System.Net;
+using DotNetty.Buffers;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+using Nethermind.Logging;
+using Nethermind.Network.Enr;
+using Nethermind.Stats.Model;
+
 namespace Nethermind.Network.Dns;
 
-public class EnrDiscovery
+public class EnrDiscovery : INodeSource
 {
-    private class SearchContext
+    private readonly IEnrRecordParser _parser;
+    private readonly ILogger _logger;
+    private readonly EnrTreeCrawler _crawler;
+
+    public EnrDiscovery(IEnrRecordParser parser, ILogManager logManager)
     {
-        public SearchContext(string startRef)
-        {
-            RefsToVisit.Enqueue(startRef);
-        }
-
-        public List<string> DiscoveredNodes { get; } = new();
-
-        public HashSet<string> VisitedRefs { get; } = new();
-
-        public Queue<string> RefsToVisit { get; } = new();
+        _parser = parser;
+        _logger = logManager.GetClassLogger();
+        _crawler = new EnrTreeCrawler();
     }
 
-    public List<string> SearchTree(string domain)
+    public async Task SearchTree(string domain)
     {
-        DnsClient client = new(domain);
-        SearchContext searchContext = new("");
-        SearchTree(client, searchContext);
-        return searchContext.DiscoveredNodes;
-    }
-    
-    private void SearchTree(DnsClient client, SearchContext searchContext)
-    {
-        while (searchContext.RefsToVisit.Any())
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+        try
         {
-            string @ref = searchContext.RefsToVisit.Dequeue();
-            SearchNode(client, @ref, searchContext);
-        }
-    }
-
-    private void SearchNode(IDnsClient client, string query, SearchContext searchContext)
-    {
-        if (searchContext.VisitedRefs.Contains(query))
-        {
-            return;
-        }
-
-        searchContext.VisitedRefs.Add(query);
-
-        string[][] lookupResult = client.Lookup(query);
-        foreach (string[] strings in lookupResult)
-        {
-            string s = string.Join("", strings);
-            EnrTreeNode treeNode = EnrTreeParser.ParseNode(s);
-            foreach (string link in treeNode.Links)
+            await foreach (string nodeRecordText in _crawler.SearchTree(domain))
             {
-                DnsClient linkedTreeLookup = new(link);
-                SearchTree(linkedTreeLookup, searchContext);
-            }
-
-            foreach (string nodeRecord in treeNode.Records)
-            {
-                searchContext.DiscoveredNodes.Add(nodeRecord);
-            }
-
-            foreach (string nodeRef in treeNode.Refs)
-            {
-                searchContext.RefsToVisit.Enqueue(nodeRef);
+                try
+                {
+                    NodeRecord nodeRecord = _parser.ParseRecord(nodeRecordText, buffer);
+                    Node? node = CreateNode(nodeRecord);
+                    if (node is not null)
+                    {
+                        // here could add network info to the node
+                        NodeAdded?.Invoke(this, new NodeEventArgs(node));
+                    }
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsDebug) _logger.Error($"failed to parse enr record {nodeRecordText}", e);
+                }
             }
         }
+        finally
+        {
+            buffer.Release();
+        }
     }
+
+    private Node? CreateNode(NodeRecord nodeRecord)
+    {
+        CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
+        IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
+        int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
+        return compressedPublicKey is not null && ipAddress is not null && port is not null 
+            ? new(compressedPublicKey.Decompress(), ipAddress.ToString(), port.Value) 
+            : null;
+    }
+
+    public List<Node> LoadInitialList() => new();
+
+    public event EventHandler<NodeEventArgs>? NodeAdded;
+
+    public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 }

@@ -20,29 +20,40 @@ using System.Linq;
 using Nethermind.Config;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
-    public class PeerLoader : IPeerLoader
+    /// <summary>
+    /// This class should be split into multiple sources
+    /// </summary>
+    public class NodesLoader : INodeSource
     {
         private readonly INetworkConfig _networkConfig;
         private readonly INodeStatsManager _stats;
         private readonly INetworkStorage _peerStorage;
+        private readonly IRlpxHost _rlpxHost;
         private readonly ILogger _logger;
 
-        public PeerLoader(INetworkConfig networkConfig, INodeStatsManager stats, INetworkStorage peerStorage, ILogManager logManager)
+        public NodesLoader(
+            INetworkConfig networkConfig,
+            INodeStatsManager stats,
+            INetworkStorage peerStorage,
+            IRlpxHost rlpxHost,
+            ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
+            _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         }
 
-        public List<Peer> LoadPeers(IEnumerable<NetworkNode>? staticNodes = null)
+        public List<Node> LoadInitialList()
         {
-            List<Peer> allPeers = new();
+            List<Node> allPeers = new();
             LoadPeersFromDb(allPeers);
             
             LoadConfigPeers(allPeers, _networkConfig.Bootnodes, n =>
@@ -57,19 +68,12 @@ namespace Nethermind.Network
                 if (_logger.IsInfo) _logger.Info($"Static node  : {n}");
             });
 
-            if (!(staticNodes is null))
-            {
-                LoadConfigPeers(allPeers, staticNodes, n =>
-                {
-                    n.IsStatic = true;
-                    if (_logger.IsInfo) _logger.Info($"Static node : {n}");
-                });
-            }
-
-            return allPeers.Where(p => !_networkConfig.OnlyStaticPeers || p.Node.IsStatic).ToList();
+            return allPeers
+                .Where(p => p.Id != _rlpxHost.LocalNodeId)
+                .Where(p => !_networkConfig.OnlyStaticPeers || p.IsStatic).ToList();
         }
 
-        private void LoadPeersFromDb(List<Peer> peers)
+        private void LoadPeersFromDb(List<Node> peers)
         {
             if (!_networkConfig.IsPeersPersistenceOn)
             {
@@ -80,29 +84,29 @@ namespace Nethermind.Network
 
             if (_logger.IsDebug) _logger.Debug($"Initializing persisted peers: {networkNodes.Length}.");
 
-            foreach (NetworkNode persistedPeer in networkNodes)
+            foreach (NetworkNode networkNode in networkNodes)
             {
                 Node node;
                 try
                 {
-                    node = new Node(persistedPeer.NodeId, persistedPeer.Host, persistedPeer.Port);
+                    node = new Node(networkNode);
                 }
                 catch (Exception)
                 {
-                    if(_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {persistedPeer.NodeId}@{persistedPeer.Host}:{persistedPeer.Port}");
+                    if(_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                     continue;
                 }
                 
                 INodeStats nodeStats = _stats.GetOrAdd(node);
-                nodeStats.CurrentPersistedNodeReputation = persistedPeer.Reputation;
+                nodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
 
-                peers.Add(new Peer(node));
+                peers.Add(node);
 
                 if (_logger.IsTrace) _logger.Trace($"Adding a new peer candidate {node}");
             }
         }
 
-        private void LoadConfigPeers(List<Peer> peers, string? enodesString, Action<Node> nodeUpdate)
+        private void LoadConfigPeers(List<Node> peers, string? enodesString, Action<Node> nodeUpdate)
         {
             if (enodesString == null || !enodesString.Any())
             {
@@ -112,14 +116,18 @@ namespace Nethermind.Network
             LoadConfigPeers(peers, NetworkNode.ParseNodes(enodesString, _logger), nodeUpdate);
         }
 
-        private void LoadConfigPeers(List<Peer> peers, IEnumerable<NetworkNode> networkNodes, Action<Node> nodeUpdate)
+        private static void LoadConfigPeers(List<Node> peers, IEnumerable<NetworkNode> networkNodes, Action<Node> nodeUpdate)
         {
             foreach (NetworkNode networkNode in networkNodes)
             {
-                Node node = new(networkNode.NodeId, networkNode.Host, networkNode.Port);
+                Node node = new(networkNode);
                 nodeUpdate.Invoke(node);
-                peers.Add(new Peer(node));
+                peers.Add(node);
             }
         }
+
+        public event EventHandler<NodeEventArgs>? NodeAdded { add { } remove { } }
+        
+        public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
     }
 }

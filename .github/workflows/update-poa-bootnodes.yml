@@ -5,6 +5,8 @@ on:
     types: update_bootnodes
   workflow_dispatch:
 
+permissions:
+  pull-requests: write
 
 jobs:
   update-bootnodes:

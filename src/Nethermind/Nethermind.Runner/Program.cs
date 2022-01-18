@@ -391,7 +391,7 @@ namespace Nethermind.Runner
             }
             else
             {
-                initConfig.BaseDbPath ??= "".GetApplicationResourcePath("db");
+                initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
             }
         }
 
@@ -416,9 +416,9 @@ namespace Nethermind.Runner
             }
             else
             {
-                initConfig.BaseDbPath ??= "".GetApplicationResourcePath("db");
-                keyStoreConfig.KeyStoreDirectory ??= "".GetApplicationResourcePath("keystore");
-                initConfig.LogDirectory ??= "".GetApplicationResourcePath("logs");
+                initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
+                keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
+                initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
             }
         }
 

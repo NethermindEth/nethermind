@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc
 
         public override string ToString()
         {
-            string paramsString =  Params == null ? "" : $"{string.Join(",", Params)}";
+            string paramsString =  Params == null ? string.Empty : $"{string.Join(",", Params)}";
             return $"ID {Id}, {Method}({paramsString})";
         }
     }

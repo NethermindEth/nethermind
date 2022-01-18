@@ -14,12 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Seq.Config
 {
     public class SeqConfig : ISeqConfig
     {
         public string MinLevel { get; set; } = "Off";
         public string ServerUrl {get; set; } =  "http://localhost:5341";
-        public string ApiKey {get; set; } = "";
+        public string ApiKey {get; set; } = string.Empty;
     }
 }

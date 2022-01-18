@@ -210,7 +210,7 @@ namespace Nethermind.Hive
                     return;
                 }
 
-                AddBlockResult result = _blockTree.SuggestBlock(block);
+                AddBlockResult result = await _blockTree.SuggestBlockAsync(block);
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
                 {
                     if (_logger.IsError)
