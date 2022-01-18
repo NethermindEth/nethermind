@@ -78,7 +78,7 @@ namespace Nethermind.GitBook
             {
                 Attribute attr = property.GetCustomAttribute(typeof(ConfigItemAttribute));
                 if(((ConfigItemAttribute)attr)?.HiddenFromDocs ?? false) continue;
-                docBuilder.AppendLine($"| {property.Name} | {ToSnakeCase(property.Name).ToUpper()} | {((ConfigItemAttribute)attr)?.Description ?? ""} | {((ConfigItemAttribute)attr)?.DefaultValue ?? ""} |");
+                docBuilder.AppendLine($"| {property.Name} | NETHERMIND_{moduleName.ToUpper()}CONFIG_{ToSnakeCase(property.Name).ToUpper()} | {((ConfigItemAttribute)attr)?.Description ?? ""} | {((ConfigItemAttribute)attr)?.DefaultValue ?? ""} |");
             }
 
             string path = string.Concat(docsDir, "/ethereum-client/configuration");
