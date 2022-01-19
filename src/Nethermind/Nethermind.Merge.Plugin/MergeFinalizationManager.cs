@@ -39,8 +39,8 @@ namespace Nethermind.Merge.Plugin
             _manualBlockFinalizationManager = manualBlockFinalizationManager;
             _auRaBlockFinalizationManager = blockFinalizationManager as IAuRaBlockFinalizationManager;
 
-            poSSwitcher.TerminalPoWBlockReached += OnSwitchHappened;
-            if (poSSwitcher.HasEverReachedTerminalPoWBlock())
+            poSSwitcher.TerminalBlockReached += OnSwitchHappened;
+            if (poSSwitcher.HasEverReachedTerminalBlock())
             {
                 IsPostMerge = true;
             }

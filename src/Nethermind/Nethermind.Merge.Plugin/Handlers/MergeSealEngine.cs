@@ -48,7 +48,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
-            if (_poSSwitcher.HasEverReachedTerminalPoWBlock())
+            if (_poSSwitcher.HasEverReachedTerminalBlock())
             {
                 return Task.FromResult(block);
             }
@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public bool CanSeal(long blockNumber, Keccak parentHash)
         {
-            if (_poSSwitcher.HasEverReachedTerminalPoWBlock())
+            if (_poSSwitcher.HasEverReachedTerminalBlock())
             {
                 return true;
             }
@@ -66,7 +66,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return _preMergeSealValidator.CanSeal(blockNumber, parentHash);
         }
 
-        public Address Address => _poSSwitcher.HasEverReachedTerminalPoWBlock() ? _preMergeSealValidator.Address : _signer.Address;
+        public Address Address => _poSSwitcher.HasEverReachedTerminalBlock() ? _preMergeSealValidator.Address : _signer.Address;
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {

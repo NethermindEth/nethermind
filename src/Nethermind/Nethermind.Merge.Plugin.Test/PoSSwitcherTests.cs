@@ -102,11 +102,11 @@ namespace Nethermind.Merge.Plugin.Test
             ISpecProvider specProvider = new TestSpecProvider(Berlin.Instance);
             PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree, new MemDb(), specProvider);
 
-            Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalPoWBlock());
+            Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());
             Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(1).TestObject;
             blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block));
 
-            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalPoWBlock());
+            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalBlock());
         }
         
         [Test]
@@ -124,14 +124,14 @@ namespace Nethermind.Merge.Plugin.Test
             block.Header.Hash = block.CalculateHash();
             blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block));
             Assert.AreEqual(terminalBlock + 1, specProvider.MergeBlockNumber);
-            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalPoWBlock());
+            Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalBlock());
 
             TestSpecProvider newSpecProvider = new(London.Instance);
             // we're using the same MemDb for a new switcher
             PoSSwitcher newPoSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, blockTree, metadataDb, newSpecProvider);
             
             Assert.AreEqual(terminalBlock + 1, newSpecProvider.MergeBlockNumber);
-            Assert.AreEqual(true, newPoSSwitcher.HasEverReachedTerminalPoWBlock());
+            Assert.AreEqual(true, newPoSSwitcher.HasEverReachedTerminalBlock());
         }
 
         private static PoSSwitcher CreatePosSwitcher(UInt256 terminalTotalDifficulty, IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)

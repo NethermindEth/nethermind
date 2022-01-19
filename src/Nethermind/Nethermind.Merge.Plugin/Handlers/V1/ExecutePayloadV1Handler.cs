@@ -17,7 +17,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -29,8 +28,6 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
@@ -39,7 +36,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Synchronization;
 
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Merge.Plugin.Handlers.V1
 {
     /// <summary>
     /// https://hackmd.io/@n0ble/kintsugi-spec

@@ -48,7 +48,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _preMergeProducer = preMergeProducer;
             _eth2BlockProducer = postMergeBlockProducer ?? throw new ArgumentNullException(nameof(postMergeBlockProducer));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _poSSwitcher.TerminalPoWBlockReached += OnSwitchHappened;
+            _poSSwitcher.TerminalBlockReached += OnSwitchHappened;
             if (HasPreMergeProducer)
                 _preMergeProducer!.BlockProduced += OnBlockProduced;
             
@@ -68,7 +68,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         public async Task Start()
         {
             await _eth2BlockProducer.Start();
-            if (_poSSwitcher.HasEverReachedTerminalPoWBlock() == false && HasPreMergeProducer)
+            if (_poSSwitcher.HasEverReachedTerminalBlock() == false && HasPreMergeProducer)
             {
                 await _preMergeProducer!.Start();
             }
@@ -77,13 +77,13 @@ namespace Nethermind.Merge.Plugin.Handlers
         public async Task StopAsync()
         {
             await _eth2BlockProducer.StopAsync();
-            if (_poSSwitcher.HasEverReachedTerminalPoWBlock() && HasPreMergeProducer)
+            if (_poSSwitcher.HasEverReachedTerminalBlock() && HasPreMergeProducer)
                 await _preMergeProducer!.StopAsync();
         }
 
         public bool IsProducingBlocks(ulong? maxProducingInterval)
         {
-            return _poSSwitcher.HasEverReachedTerminalPoWBlock() || HasPreMergeProducer == false
+            return _poSSwitcher.HasEverReachedTerminalBlock() || HasPreMergeProducer == false
                 ? _eth2BlockProducer.IsProducingBlocks(maxProducingInterval)
                 : _preMergeProducer!.IsProducingBlocks(maxProducingInterval);
         }
