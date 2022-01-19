@@ -126,7 +126,7 @@ namespace Nethermind.AccountAbstraction.Executor
             return transaction;
         }
 
-        public Task<ResultWrapper<Keccak>> Simulate(UserOperation userOperation,
+        public ResultWrapper<Keccak> Simulate(UserOperation userOperation,
             BlockHeader parent,
             UInt256? timestamp = null,
             CancellationToken cancellationToken = default)
@@ -143,13 +143,13 @@ namespace Nethermind.AccountAbstraction.Executor
                 SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
             if (!validationSuccess)
-                return Task.FromResult(ResultWrapper<Keccak>.Fail(error ?? "unknown simulation failure"));
+                return ResultWrapper<Keccak>.Fail(error ?? "unknown simulation failure");
 
             if (userOperation.AlreadySimulated)
             {
                 // if previously simulated we must make sure it doesn't access any more than it did on the first round
                 if (!userOperation.AccessList.AccessListContains(validationAccessList.Data))
-                    return Task.FromResult(ResultWrapper<Keccak>.Fail("access list exceeded"));
+                    return ResultWrapper<Keccak>.Fail("access list exceeded");
             }
             else
             {
@@ -157,7 +157,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 userOperation.AlreadySimulated = true;
             }
 
-            return Task.FromResult(ResultWrapper<Keccak>.Success(userOperation.Hash));
+            return ResultWrapper<Keccak>.Success(userOperation.Hash);
         }
 
         private (bool success, UserOperationAccessList accessList, string? error) SimulateValidation(

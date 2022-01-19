@@ -29,12 +29,12 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public interface IUserOperationSimulator
     {
-        Task<ResultWrapper<Keccak>> Simulate(UserOperation userOperation,
+        ResultWrapper<Keccak> Simulate(UserOperation userOperation,
             BlockHeader parent,
             UInt256? timestamp = null,
             CancellationToken cancellationToken = default);
 
-        public Transaction BuildTransactionFromUserOperations(
+        Transaction BuildTransactionFromUserOperations(
             IEnumerable<UserOperation> userOperations,
             BlockHeader parent,
             IReleaseSpec spec);

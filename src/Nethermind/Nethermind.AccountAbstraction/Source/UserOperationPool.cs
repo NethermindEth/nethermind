@@ -282,8 +282,7 @@ namespace Nethermind.AccountAbstraction.Source
                     return ResultWrapper<Keccak>.Fail("paymaster is used but is not a contract or is banned");
             }
 
-            Task<ResultWrapper<Keccak>> successfulSimulationTask = Simulate(userOperation, _blockTree.Head!.Header);
-            ResultWrapper<Keccak> successfulSimulation = successfulSimulationTask.Result;
+            ResultWrapper<Keccak> successfulSimulation = Simulate(userOperation, _blockTree.Head!.Header);
 
             // throttled userOp can only stay for 10 blocks
             if (paymasterStatus == PaymasterStatus.Throttled && successfulSimulation.Result == Result.Success)
@@ -301,10 +300,10 @@ namespace Nethermind.AccountAbstraction.Source
             return successfulSimulation;
         }
 
-        private async Task<ResultWrapper<Keccak>> Simulate(UserOperation userOperation, BlockHeader parent)
+        private ResultWrapper<Keccak> Simulate(UserOperation userOperation, BlockHeader parent)
         {
             Metrics.UserOperationsSimulated++;
-            ResultWrapper<Keccak> success = await _userOperationSimulator.Simulate(
+            ResultWrapper<Keccak> success = _userOperationSimulator.Simulate(
                 userOperation,
                 parent,
                 _timestamper.UnixTime.Seconds, CancellationToken.None);
