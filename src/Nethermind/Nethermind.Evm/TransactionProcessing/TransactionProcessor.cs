@@ -72,7 +72,7 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Zero Gas price
             /// </summary>
-            SkipGasPricingValidation = 4,
+            SkipGasPricingValidation = 8,
 
             /// <summary>
             /// Commit and restore with zero gas price
@@ -195,7 +195,7 @@ namespace Nethermind.Evm.TransactionProcessing
             //!commit - is for build up during block production, we won't commit state after each transaction to support rollbacks
             //we commit only after all block is constructed
             
-            bool skipGasPricing = (executionOptions & ExecutionOptions.SkipGasPricingValidation) != ExecutionOptions.None;
+            bool skipGasPricing = (executionOptions & ExecutionOptions.SkipGasPricingValidation) == ExecutionOptions.SkipGasPricingValidation;
 
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
@@ -222,7 +222,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return; 
             }
 
-            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !skipGasPricing)
+            if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !skipGasPricing && !restore)
             {
                 // max fee per gas (feeCap) less than block base fee
                 TraceLogInvalidTx(transaction, "MAX FEE PER GAS LESS THAN BLOCK BASE FEE");
@@ -309,45 +309,45 @@ namespace Nethermind.Evm.TransactionProcessing
                         $"Failed to recover sender address on tx {transaction.Hash} when previously recovered sender account did not exist.");
                 }
             }
-            // UInt256 senderReservedGasPayment = skipGasPricing ? UInt256.Zero : (ulong) gasLimit * effectiveGasPrice;
+            UInt256 senderReservedGasPayment = skipGasPricing ? UInt256.Zero : (ulong) gasLimit * effectiveGasPrice;
 
-            UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : (ulong)gasLimit * effectiveGasPrice;
+            // UInt256 senderReservedGasPayment = noValidation ? UInt256.Zero : (ulong)gasLimit * effectiveGasPrice;
 
             if (notSystemTransaction)
             {
                 UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
-                                      senderReservedGasPayment + value > senderBalance))
-                // if (!skipGasPricing && ((ulong) intrinsicGas * effectiveGasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
+                // if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
+                //                       senderReservedGasPayment + value > senderBalance))
+                if (!skipGasPricing && ((ulong) intrinsicGas * effectiveGasPrice + value > senderBalance || senderReservedGasPayment + value > senderBalance))
                 {
-                    TraceLogInvalidTx(transaction,
-                        $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
-                    // TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, $"insufficient funds for gas * price + value: address {caller}, have {senderBalance}, want {senderReservedGasPayment + value}", deleteCallerAccount && restore);
-                    // return;
+                    // TraceLogInvalidTx(transaction,
+                    //     $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
+                    TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, $"insufficient funds for gas * price + value: address {caller}, have {senderBalance}, want {senderReservedGasPayment + value}", deleteCallerAccount && restore);
+                    return;
                 }
 
-                if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
-                    senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
-                    // if (!skipGasPricing && spec.IsEip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
+                // if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
+                //     senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
+                if (!skipGasPricing && spec.IsEip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                 {
-                    TraceLogInvalidTx(transaction,
-                        $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled,
-                        "insufficient MaxFeePerGas for sender balance");
-                    // TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, $"insufficient MaxFeePerGas for sender balance: address {{caller}}, sender_balance = {senderBalance}, maxFeePerGas: {transaction.MaxFeePerGas}", deleteCallerAccount && restore);
+                    // TraceLogInvalidTx(transaction,
+                    //     $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled,
+                    //     "insufficient MaxFeePerGas for sender balance");
+                    TraceLogInvalidTx(transaction, $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, $"insufficient MaxFeePerGas for sender balance: address {{caller}}, sender_balance = {senderBalance}, maxFeePerGas: {transaction.MaxFeePerGas}", deleteCallerAccount && restore);
                     return;
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(caller))
                 {
-                    TraceLogInvalidTx(transaction,
-                        $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
-                    // TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
-                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce", deleteCallerAccount && restore);
+                    // TraceLogInvalidTx(transaction,
+                    //     $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce");
+                    TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(caller)})");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "wrong transaction nonce", deleteCallerAccount && restore);
                     return;
                 }
 

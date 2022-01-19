@@ -129,7 +129,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 serialized);
         }
         
-        
         [Test]
         public async Task should_not_reject_transactions_with_deployed_code_when_eip3607_enabled()
         {
