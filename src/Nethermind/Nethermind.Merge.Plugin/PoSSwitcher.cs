@@ -159,6 +159,8 @@ namespace Nethermind.Merge.Plugin
             }
             else
                 if (_logger.IsInfo) _logger.Info($"Updated terminal block {header}");
+
+            return true;
         }
 
         public void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash)

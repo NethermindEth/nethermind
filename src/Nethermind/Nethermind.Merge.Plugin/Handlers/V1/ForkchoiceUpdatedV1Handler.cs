@@ -189,7 +189,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         parent = blocks[i].Header;
                     else
                     {
-                        if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header, parent);
+                        if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header, parent))
+                        {
+                            if (_logger.IsInfo) _logger.Info($"Terminal block {blocks[i].Header} updated during the forkchoice");
+                        }
 
                         break;
                     }

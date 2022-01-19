@@ -79,6 +79,8 @@ namespace Nethermind.Merge.Plugin
                 _api.SealValidator = _api.SealEngine;
                 _api.Sealer = _api.SealEngine;
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockFinalizationManager);
+                
+                _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
             }
 
             return Task.CompletedTask;

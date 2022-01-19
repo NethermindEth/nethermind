@@ -40,12 +40,12 @@ namespace Nethermind.Merge.Plugin
 
         public event EventHandler? TerminalBlockReached;
         public UInt256? TerminalTotalDifficulty => null;
-        public bool IsTerminalPoWBlock(BlockHeader header, BlockHeader? parent = null)
+        public bool TryUpdateTerminalBlock(BlockHeader header, BlockHeader? parent = null)
         {
             throw new NotImplementedException();
         }
 
-        public void TryUpdateTerminalBlock(BlockHeader blockHeader)
+        public (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent = null)
         {
             throw new NotImplementedException();
         }

@@ -71,11 +71,8 @@ namespace Nethermind.Merge.Plugin.Handlers
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             return true;
-            if (_poSSwitcher.IsPoS(header))
-            {
-                return true;
-            }
 
+            // ToDo
             return _preMergeSealValidator.ValidateParams(parent, header);
         }
 

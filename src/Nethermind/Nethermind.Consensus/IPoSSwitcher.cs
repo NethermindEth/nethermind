@@ -42,5 +42,7 @@ namespace Nethermind.Consensus
         // 3) reverse header sync - we need to find the terminal block to process blocks correctly
         // Note: In the first post-merge release, the terminal block will be known, it explains why we can override it through settings.
         bool TryUpdateTerminalBlock(BlockHeader header, BlockHeader? parent = null);
+
+        (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent = null);
     }
 }

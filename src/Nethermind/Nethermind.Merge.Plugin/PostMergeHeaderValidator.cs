@@ -43,39 +43,62 @@ namespace Nethermind.Merge.Plugin
 
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
-            bool theMergeValid = ValidateTheMergeChecks(header);
+            bool theMergeValid = ValidateTheMergeChecks(header, parent);
             return base.Validate(header, parent, isUncle) && theMergeValid;
         }
 
-        public override bool Validate(BlockHeader header, bool isUncle = false)
+        private bool ValidateTheMergeChecks(BlockHeader header, BlockHeader? parent)
         {
-            bool theMergeValid = ValidateTheMergeChecks(header);
-            return base.Validate(header, isUncle)  && theMergeValid;
-        }
+            bool validDifficulty = true, validNonce = true, validUncles = true;
+            (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockSwitchInfo(header, parent);
+            bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, switchInfo.IsTerminal);
+            if (switchInfo.IsPostMerge)
+            {
 
-        private bool ValidateTheMergeChecks(BlockHeader header)
-        {
-            if (_poSSwitcher.IsPoS(header) == false)
-                return true;
-            bool validDifficulty =
-                ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
-            bool validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
-            // validExtraData needed in previous version of EIP-3675 specification
-            //bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
-            bool validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
-                nameof(header.UnclesHash));
+                validDifficulty =
+                    ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
+                validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
+                // validExtraData needed in previous version of EIP-3675 specification
+                //bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
+                validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
+                    nameof(header.UnclesHash));
+            }
 
-            return validDifficulty
+            return terminalTotalDifficultyChecks
+                   && validDifficulty
                    && validNonce
                    //&& validExtraData
                    && validUncles;
         }
 
-        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
+        private bool ValidateTerminalTotalDifficultyChecks(BlockHeader header, bool isTerminal)
         {
-             return _poSSwitcher.IsPoS(header) || base.ValidateTotalDifficulty(parent, header);
+            if (header.TotalDifficulty == null || _poSSwitcher.TerminalTotalDifficulty == null)
+                return true;
+            
+            bool isValid = true;
+            bool isPostMerge = header.IsPostMerge;
+            if (isPostMerge == false && isTerminal == false)
+            {
+                if (header.TotalDifficulty >= _poSSwitcher.TerminalTotalDifficulty)
+                    isValid = false;
+            }
+            else
+            {
+                if (header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
+                    isValid = false;
+            }
+
+            if (isValid == false)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - total difficulty is incorrect because of TTD, TerminalTotalDifficulty: {_poSSwitcher.TerminalTotalDifficulty}, IsPostMerge {header.IsPostMerge} IsTerminalBlock: {isTerminal}");
+            }
+
+            return isValid;
         }
-        
+
         private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
         {
             if (Equals(value, expected)) return true;

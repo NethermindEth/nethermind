@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,28 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 
-namespace Nethermind.Consensus.Clique
+namespace Nethermind.Merge.Plugin;
+
+public class MergeProcessingRecoveryStep : IBlockPreprocessorStep
 {
-    public class AuthorRecoveryStep : IBlockPreprocessorStep
+    private readonly IPoSSwitcher _poSSwitcher;
+
+    public MergeProcessingRecoveryStep(
+        IPoSSwitcher poSSwitcher)
     {
-        private readonly ISnapshotManager _snapshotManager;
-
-        [Todo(Improve.Refactor, "Strong coupling here")]
-        public AuthorRecoveryStep(ISnapshotManager snapshotManager)
-        {
-            _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
-        }
-
-        public void RecoverData(Block block)
-        {
-            if (block.Header.Author != null) return;
-            block.Header.Author = _snapshotManager.GetBlockSealer(block.Header);
-        }
+        _poSSwitcher = poSSwitcher;
+    }
+    
+    public void RecoverData(Block block)
+    {
+        block.Header.IsPostMerge = _poSSwitcher.GetBlockSwitchInfo(block.Header).IsPostMerge;
+        if (block.Author == null && block.IsPostMerge)
+            block.Header.Author = block.Beneficiary;
     }
 }
