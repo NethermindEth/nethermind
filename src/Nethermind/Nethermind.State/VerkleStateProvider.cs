@@ -47,7 +47,7 @@ namespace Nethermind.State
         public const int CodeHash = 3;
         public const int CodeSize = 4;
     }
-    public class VerkleStateProvider
+    public class VerkleStateProvider: IAccountStateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
@@ -777,8 +777,23 @@ namespace Nethermind.State
             return GetCode(account.CodeHash);
         }
         
+        public byte[] GetStorageValue(StorageCell storageCell)
+        {
+            byte[] storageKey = _tree.GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
+            byte[]? value = _tree.GetValue(storageKey);
+            if (value is null)
+            {
+                return new byte[32];
+            }
+
+            return value;
+        }
+        
+        public void SetStorageValue(StorageCell storageCell, byte[] value)
+        {
+            byte[] storageKey = _tree.GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
+            _tree.SetValue(storageKey, value);
+        }
+        
     }
-    
-    
-    
 }

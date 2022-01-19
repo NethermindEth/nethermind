@@ -43,6 +43,10 @@ namespace Nethermind.Trie
         
         public static void VerkleTrieInsert(IntPtr verkleTrie, byte[] keys, byte[] value)
         {
+            if (value.Length != 32)
+            {
+                throw new InvalidOperationException("Value length must be less than 32");
+            }
             verkle_trie_insert(verkleTrie, keys, value);
         }
 

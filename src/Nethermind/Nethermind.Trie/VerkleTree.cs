@@ -188,7 +188,7 @@ public class VerkleTree
         return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[0]);
     }
 
-    private byte[] GetTreeKeyForStorageSlot(Address address, UInt256 storageKey)
+    public byte[] GetTreeKeyForStorageSlot(Address address, UInt256 storageKey)
     {
         UInt256 pos;
         
