@@ -26,6 +26,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using System.Runtime.CompilerServices;
+using Nethermind.State.Witnesses;
 using Metrics = Nethermind.Db.Metrics;
 
 
@@ -55,6 +56,7 @@ namespace Nethermind.State
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
         private readonly VerkleStateTree _tree;
+        private readonly IKeyValueStore _codeDb;
         
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change?[StartCapacity];
@@ -65,9 +67,10 @@ namespace Nethermind.State
         
         
         
-        public VerkleStateProvider(ILogManager? logManager)
+        public VerkleStateProvider(ILogManager? logManager, IKeyValueStore? codeDb)
         {
             _tree = new VerkleStateTree(logManager);
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
@@ -485,27 +488,26 @@ namespace Nethermind.State
                 Keccak? beforeCodeHash = before?.CodeHash;
                 Keccak? afterCodeHash = after?.CodeHash;
                 
-                // TODO: handle this after GetCode is done
-                // if (beforeCodeHash != afterCodeHash)
-                // {
-                //     byte[]? beforeCode = beforeCodeHash is null
-                //         ? null
-                //         : beforeCodeHash == Keccak.OfAnEmptyString
-                //             ? Array.Empty<byte>()
-                //             : _codeDb[beforeCodeHash.Bytes];
-                //     byte[]? afterCode = afterCodeHash is null
-                //         ? null
-                //         : afterCodeHash == Keccak.OfAnEmptyString
-                //             ? Array.Empty<byte>()
-                //             : _codeDb[afterCodeHash.Bytes];
-                //
-                //     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
-                //     {
-                //         stateTracer.ReportCodeChange(address, beforeCode, afterCode);
-                //     }
-                //
-                //     someChangeReported = true;
-                // }
+                if (beforeCodeHash != afterCodeHash)
+                {
+                    byte[]? beforeCode = beforeCodeHash is null
+                        ? null
+                        : beforeCodeHash == Keccak.OfAnEmptyString
+                            ? Array.Empty<byte>()
+                            : _codeDb[beforeCodeHash.Bytes];
+                    byte[]? afterCode = afterCodeHash is null
+                        ? null
+                        : afterCodeHash == Keccak.OfAnEmptyString
+                            ? Array.Empty<byte>()
+                            : _codeDb[afterCodeHash.Bytes];
+                
+                    if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
+                    {
+                        stateTracer.ReportCodeChange(address, beforeCode, afterCode);
+                    }
+                
+                    someChangeReported = true;
+                }
 
                 if (afterBalance != beforeBalance)
                 {
@@ -723,14 +725,13 @@ namespace Nethermind.State
             }
         }
         
-        // TODO: what to do here?
-        // public void TouchCode(Keccak codeHash)
-        // {
-        //     if (_codeDb is WitnessingStore witnessingStore)
-        //     {
-        //         witnessingStore.Touch(codeHash.Bytes);
-        //     }
-        // }
+        public void TouchCode(Keccak codeHash)
+        {
+            if (_codeDb is WitnessingStore witnessingStore)
+            {
+                witnessingStore.Touch(codeHash.Bytes);
+            }
+        }
 
         public Keccak UpdateCode(Address address, ReadOnlyMemory<byte> code)
         {
@@ -741,7 +742,7 @@ namespace Nethermind.State
             }
 
             Keccak codeHash = Keccak.Compute(code.Span);
-            
+            _codeDb[codeHash.Bytes] = code.ToArray();
             _tree.SetCode(address, code.ToArray());
 
             return codeHash;
@@ -754,27 +755,27 @@ namespace Nethermind.State
         }
     
         // TODO: get code function implementation - refer to geth code
-        // public byte[] GetCode(Keccak codeHash)
-        // {
-        //     byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
-        //     if (code is null)
-        //     {
-        //         throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
-        //     }
-        //
-        //     return code;
-        // }
-        //
-        // public byte[] GetCode(Address address)
-        // {
-        //     Account? account = GetThroughCache(address);
-        //     if (account is null)
-        //     {
-        //         return Array.Empty<byte>();
-        //     }
-        //
-        //     return GetCode(account.CodeHash);
-        // }
+        public byte[] GetCode(Keccak codeHash)
+        {
+            byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+            if (code is null)
+            {
+                throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+            }
+        
+            return code;
+        }
+        
+        public byte[] GetCode(Address address)
+        {
+            Account? account = GetThroughCache(address);
+            if (account is null)
+            {
+                return Array.Empty<byte>();
+            }
+        
+            return GetCode(account.CodeHash);
+        }
         
     }
     

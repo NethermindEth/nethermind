@@ -40,29 +40,31 @@ namespace Nethermind.Store.Test
         private static readonly Keccak Hash2 = Keccak.Compute("2");
         private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
+        private IDb _codeDb;
 
         [SetUp]
         public void Setup()
         {
+            _codeDb = new MemDb();
         }
 
-        // [Test]
-        // public void Eip_158_zero_value_transfer_deletes()
-        // {
-        //     VerkleStateProvider frontierProvider = new(Logger);
-        //     frontierProvider.CreateAccount(_address1, 0);
-        //     frontierProvider.Commit(Frontier.Instance);
-        //     frontierProvider.CommitTree(0);
-        //     
-        //     frontierProvider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
-        //     frontierProvider.Commit(SpuriousDragon.Instance);
-        //     Assert.False(frontierProvider.AccountExists(_address1));
-        // }
+        [Test]
+        public void Eip_158_zero_value_transfer_deletes()
+        {
+            VerkleStateProvider frontierProvider = new(Logger, _codeDb);
+            frontierProvider.CreateAccount(_address1, 0);
+            frontierProvider.Commit(Frontier.Instance);
+            frontierProvider.CommitTree(0);
+            
+            frontierProvider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
+            frontierProvider.Commit(SpuriousDragon.Instance);
+            Assert.False(frontierProvider.AccountExists(_address1));
+        }
 
         [Test]
         public void Eip_158_touch_zero_value_system_account_is_not_deleted()
         {
-            VerkleStateProvider provider = new(Logger);
+            VerkleStateProvider provider = new(Logger, _codeDb);
             var systemUser = Address.SystemUser;
         
             provider.CreateAccount(systemUser, 0);
@@ -114,7 +116,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Empty_commit_restore()
         {
-            VerkleStateProvider provider = new(Logger);
+            VerkleStateProvider provider = new(Logger, _codeDb);
             provider.Commit(Frontier.Instance);
             provider.Restore(-1);
         }
@@ -122,7 +124,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Update_balance_on_non_existing_account_throws()
         {
-            VerkleStateProvider provider = new(Logger);
+            VerkleStateProvider provider = new(Logger, _codeDb);
             Assert.Throws<InvalidOperationException>(() =>
                 provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
         }
@@ -130,24 +132,24 @@ namespace Nethermind.Store.Test
         [Test]
         public void Is_empty_account()
         {
-            VerkleStateProvider provider = new(Logger);
+            VerkleStateProvider provider = new(Logger, _codeDb);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             Assert.True(provider.IsEmptyAccount(_address1));
         }
         
-        // [Test]
-        // public void Returns_empty_byte_code_for_non_existing_accounts()
-        // {
-        //     VerkleStateProvider provider = new(Logger);
-        //     byte[] code = provider.GetCode(TestItem.AddressA);
-        //     code.Should().BeEmpty();
-        // }
+        [Test]
+        public void Returns_empty_byte_code_for_non_existing_accounts()
+        {
+            VerkleStateProvider provider = new(Logger, _codeDb);
+            byte[] code = provider.GetCode(TestItem.AddressA);
+            code.Should().BeEmpty();
+        }
         
         [Test]
         public void Restore_update_restore()
         {
-            VerkleStateProvider provider = new(Logger);
+            VerkleStateProvider provider = new(Logger, _codeDb);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -173,7 +175,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Keep_in_cache()
         {
-            VerkleStateProvider provider = new(Logger);
+            VerkleStateProvider provider = new(Logger, _codeDb);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             provider.GetBalance(_address1);
@@ -232,7 +234,7 @@ namespace Nethermind.Store.Test
         {
             ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
         
-            VerkleStateProvider provider = new(Logger);
+            VerkleStateProvider provider = new(Logger, _codeDb);
             provider.CreateAccount(_address1, 0);
             Account account = provider.GetAccount(_address1);
             Assert.True(account.IsEmpty);
@@ -250,7 +252,7 @@ namespace Nethermind.Store.Test
         // [Test]
         // public void Does_not_require_recalculation_after_reset()
         // {
-        //     VerkleStateProvider provider = new(Logger);
+        //     VerkleStateProvider provider = new(Logger, _codeDb);
         //     provider.CreateAccount(TestItem.AddressA, 5);
         //
         //     Action action = () => { _ = provider.StateRoot; };

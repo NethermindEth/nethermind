@@ -71,13 +71,29 @@ namespace Nethermind.State
             {
                 return null;
             }
+
+            UInt256 balanceU = new UInt256(balance.AsSpan(), true);
+            UInt256 nonceU = new UInt256(nonce.AsSpan(), true);
+            Keccak codeHash = new Keccak(codeKeccak);
+            UInt256 codeSizeU = new UInt256(codeSize.AsSpan(), true);
+            UInt256 versionU = new UInt256(version.AsSpan(), true);
+        
+            if (
+                versionU.Equals(UInt256.Zero) &&
+                balanceU.Equals(UInt256.Zero) &&
+                nonceU.Equals(UInt256.Zero) &&
+                codeHash.Equals(Keccak.Zero) &&
+                codeSizeU.Equals(UInt256.Zero)
+            )
+            {
+                return null;
+            }
             Account account = new (
-                
-                new UInt256(balance.AsSpan(), true),
-                new UInt256(nonce.AsSpan(), true),
-                new Keccak(codeKeccak),
-                new UInt256(codeSize.AsSpan(), true),
-                new UInt256(version.AsSpan(), true)
+                balanceU,
+                nonceU,
+                codeHash,
+                codeSizeU,
+                versionU
                 );
 
             return account;
@@ -91,13 +107,21 @@ namespace Nethermind.State
             byte[][] TreeKeys = GetTreeKeysForAccount(address);
             if (account is null)
             {
-                account = Account.TotallyEmpty;
+                SetValue(TreeKeys[AccountTreeIndexes.Version], UInt256.Zero.ToBigEndian());
+                SetValue(TreeKeys[AccountTreeIndexes.Balance], UInt256.Zero.ToBigEndian());
+                SetValue(TreeKeys[AccountTreeIndexes.Nonce], UInt256.Zero.ToBigEndian());
+                SetValue(TreeKeys[AccountTreeIndexes.CodeHash], Keccak.Zero.Bytes);
+                SetValue(TreeKeys[AccountTreeIndexes.CodeSize], UInt256.Zero.ToBigEndian());
             }
-            SetValue(TreeKeys[AccountTreeIndexes.Version], account.Version.ToBigEndian());
-            SetValue(TreeKeys[AccountTreeIndexes.Balance], account.Balance.ToBigEndian());
-            SetValue(TreeKeys[AccountTreeIndexes.Nonce], account.Nonce.ToBigEndian());
-            SetValue(TreeKeys[AccountTreeIndexes.CodeHash], account.CodeHash.Bytes);
-            SetValue(TreeKeys[AccountTreeIndexes.CodeSize], account.CodeSize.ToBigEndian());
+            else
+            {
+                SetValue(TreeKeys[AccountTreeIndexes.Version], account.Version.ToBigEndian());
+                SetValue(TreeKeys[AccountTreeIndexes.Balance], account.Balance.ToBigEndian());
+                SetValue(TreeKeys[AccountTreeIndexes.Nonce], account.Nonce.ToBigEndian());
+                SetValue(TreeKeys[AccountTreeIndexes.CodeHash], account.CodeHash.Bytes);
+                SetValue(TreeKeys[AccountTreeIndexes.CodeSize], account.CodeSize.ToBigEndian());
+            }
+            
         }
         
     }
