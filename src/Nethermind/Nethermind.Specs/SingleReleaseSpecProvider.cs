@@ -30,7 +30,7 @@ namespace Nethermind.Specs
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
-        public UInt256? TerminalTotalDifficulty => null;
+        public UInt256? TerminalTotalDifficulty { get; set; }
         public ulong ChainId { get; }
         public long[] TransitionBlocks { get; } = {0};
 

@@ -118,6 +118,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Beneficiary = address;
             return this;
         }
+        
+        public BlockBuilder WithPostMergeFlag(bool postMergeFlag)
+        {
+            TestObjectInternal.Header.IsPostMerge = postMergeFlag;
+            return this;
+        }
 
         public BlockBuilder WithTotalDifficulty(long difficulty)
         {

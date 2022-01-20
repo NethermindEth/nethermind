@@ -43,21 +43,9 @@ namespace Nethermind.Merge.Plugin.Test
         {
             UInt256? expectedTtd = null;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = new(new MergeConfig(), new MemDb(), blockTree, MainnetSpecProvider.Instance, new ChainSpec(), LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new MemDb(), blockTree, MainnetSpecProvider.Instance, LimboLogs.Instance);
 
             Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
-        }
-        
-        [Test]
-        public void Override_TTD_and_number_from_merge_config()
-        {
-            UInt256 expectedTtd = 340;
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            TestSpecProvider specProvider = new(London.Instance);
-            PoSSwitcher poSSwitcher = new(new MergeConfig() {TerminalTotalDifficulty = "340", TerminalBlockNumber = 2000}, new MemDb(), blockTree, specProvider, new ChainSpec() {TerminalTotalDifficulty = 500, TerminalPoWBlockNumber = 1000}, LimboLogs.Instance);
-
-            Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
-            Assert.AreEqual(2001, specProvider.MergeBlockNumber);
         }
         
         [Test]
@@ -70,37 +58,55 @@ namespace Nethermind.Merge.Plugin.Test
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
 
             ChainSpecBasedSpecProvider specProvider = new(chainSpec);
-            PoSSwitcher poSSwitcher = new(new MergeConfig(), new MemDb(), blockTree, specProvider, chainSpec, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
 
             Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
             Assert.AreEqual(101, specProvider.MergeBlockNumber);
         }
         
-        [TestCase(200)]
-        [TestCase(201)]
-        public void IsPos_returning_expected_results(long terminalBlockDifficulty)
+        [TestCase(5000000)]
+        [TestCase(4900000)]
+        public void IsTerminalBlock_returning_expected_results(long terminalTotalDifficulty)
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree, new MemDb(), new TestSpecProvider(London.Instance));
-            
-            Block block1 = Build.A.Block.WithTotalDifficulty(100L).WithNumber(1).TestObject;
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block1));
-            Block block2 = Build.A.Block.WithTotalDifficulty(terminalBlockDifficulty).WithNumber(2).TestObject;
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block2));
-            Block block3 = Build.A.Block.WithTotalDifficulty(300L).WithNumber(3).TestObject;
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block3));
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(6).TestObject;
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = (UInt256)terminalTotalDifficulty;
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
-            Assert.AreEqual(false, poSSwitcher.IsPoS(block1.Header)); // PoWBlock
-            Assert.AreEqual(false, poSSwitcher.IsPoS(block2.Header)); // terminal block
-            Assert.AreEqual(true, poSSwitcher.IsPoS(block3.Header)); // first merge block
+            BlockHeader? block3 = blockTree.FindHeader(3, BlockTreeLookupOptions.All);
+            BlockHeader? block4 = blockTree.FindHeader(4, BlockTreeLookupOptions.All);
+            BlockHeader? block5 = blockTree.FindHeader(5, BlockTreeLookupOptions.All);
+            Block blockWithPostMergeFlag = Build.A.Block.WithNumber(4).WithDifficulty(0).WithPostMergeFlag(true)
+                                            .WithParent(block3!).TestObject; 
+            Assert.AreEqual(false, poSSwitcher.IsTerminalBlock(block3!)); // PoWBlock
+            Assert.AreEqual(true, poSSwitcher.IsTerminalBlock(block4!)); // terminal block
+            Assert.AreEqual(false, poSSwitcher.IsTerminalBlock(block5!)); // incorrect PoW not terminal block
+            Assert.AreEqual(false, poSSwitcher.IsTerminalBlock(blockWithPostMergeFlag.Header)); // block with post merge flag
+        }
+        
+        [Test]
+        public void GetBlockSwitchInfo_returning_expected_results()
+        {
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(5).TestObject;
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = 4000000;
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
+
+            BlockHeader? block3 = blockTree.FindHeader(3, BlockTreeLookupOptions.All);
+            Assert.AreEqual((false, false), poSSwitcher.GetBlockSwitchInfo(block3!)); // PoWBlock
+            // Assert.AreEqual((true, false), poSSwitcher.GetBlockSwitchInfo(block2.Header)); // terminal block
+            // Assert.AreEqual((false, true), poSSwitcher.GetBlockSwitchInfo(block3.Header)); // first merge block
         }
 
         [Test]
         public void Switch_when_TTD_is_reached()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            ISpecProvider specProvider = new TestSpecProvider(Berlin.Instance);
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(200, blockTree, new MemDb(), specProvider);
+            TestSpecProvider specProvider = new(Berlin.Instance);
+            specProvider.TerminalTotalDifficulty = 200;
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());
             Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(1).TestObject;
@@ -114,12 +120,13 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MemDb metadataDb = new();
             
-            UInt256 configTerminalTotalDifficulty = 10L;
+            UInt256? configTerminalTotalDifficulty = 10L;
             long terminalBlock = 15_773_000;
             
             IBlockTree? blockTree = Substitute.For<IBlockTree>();
-            ISpecProvider specProvider = new TestSpecProvider(Berlin.Instance);
-            PoSSwitcher poSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, blockTree, metadataDb, specProvider);
+            TestSpecProvider specProvider = new(Berlin.Instance);
+            specProvider.TerminalTotalDifficulty = configTerminalTotalDifficulty;
+            PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
             Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(terminalBlock).TestObject;
             block.Header.Hash = block.CalculateHash();
             blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block));
@@ -127,18 +134,19 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalBlock());
 
             TestSpecProvider newSpecProvider = new(London.Instance);
+            newSpecProvider.TerminalTotalDifficulty = configTerminalTotalDifficulty;
             // we're using the same MemDb for a new switcher
-            PoSSwitcher newPoSSwitcher = CreatePosSwitcher(configTerminalTotalDifficulty, blockTree, metadataDb, newSpecProvider);
+            PoSSwitcher newPoSSwitcher = CreatePosSwitcher(blockTree, metadataDb, newSpecProvider);
             
             Assert.AreEqual(terminalBlock + 1, newSpecProvider.MergeBlockNumber);
             Assert.AreEqual(true, newPoSSwitcher.HasEverReachedTerminalBlock());
         }
 
-        private static PoSSwitcher CreatePosSwitcher(UInt256 terminalTotalDifficulty, IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)
+        private static PoSSwitcher CreatePosSwitcher(IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)
         {
             db ??= new MemDb();
             MergeConfig? mergeConfig = new() {Enabled = true};
-            return new PoSSwitcher(mergeConfig, db, blockTree, specProvider ?? MainnetSpecProvider.Instance, new ChainSpec() { TerminalTotalDifficulty = terminalTotalDifficulty}, LimboLogs.Instance);
+            return new PoSSwitcher(mergeConfig, db, blockTree, specProvider ?? MainnetSpecProvider.Instance, LimboLogs.Instance);
         }
     }
 }

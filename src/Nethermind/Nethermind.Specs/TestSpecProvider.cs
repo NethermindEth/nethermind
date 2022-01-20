@@ -35,7 +35,7 @@ namespace Nethermind.Specs
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
-        public UInt256? TerminalTotalDifficulty => null;
+        public UInt256? TerminalTotalDifficulty { get; set; }
 
         public IReleaseSpec GenesisSpec { get; set; }
 

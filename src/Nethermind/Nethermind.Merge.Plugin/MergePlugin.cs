@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin
                 
 
                 _poSSwitcher = new PoSSwitcher(_mergeConfig,
-                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.ChainSpec, _api.LogManager);
+                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 Address address;

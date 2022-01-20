@@ -165,7 +165,7 @@ namespace Nethermind.Merge.Plugin.Test
             IDb db= new MemDb();
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             MergeConfig? mergeConfig = new() {Enabled = true, TerminalTotalDifficulty = "2"};
-            return new PoSSwitcher(mergeConfig, db, blockTree, MainnetSpecProvider.Instance, new ChainSpec(), LimboLogs.Instance);
+            return new PoSSwitcher(mergeConfig, db, blockTree, MainnetSpecProvider.Instance, LimboLogs.Instance);
         }
         
     }

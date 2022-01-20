@@ -554,17 +554,18 @@ namespace Nethermind.Merge.Plugin.Test
         [Ignore("ToDo - our test setup seems to wrong now. We can't add PoW block")]
         public async Task Can_transition_from_PoW_chain()
         {
-            using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "1000001" });
+            using MergeTestBlockchain chain = await CreateBlockChain(1000001);
             IEngineRpcModule rpc = CreateEngineModule(chain);
             await chain.AddBlock();
             var head = chain.BlockTree.Head;
         }
 
-        [TestCase("")]
-        [TestCase("1000001")]
-        public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd(string terminalTotalDifficulty)
+        [TestCase(null)]
+        [TestCase(1000000000)]
+        [TestCase(1000001)]
+        public async Task executePayloadV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
         {
-            using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = terminalTotalDifficulty });
+            using MergeTestBlockchain chain = await CreateBlockChain(terminalTotalDifficulty);
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult blockRequestResult = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
@@ -572,12 +573,13 @@ namespace Nethermind.Merge.Plugin.Test
             ResultWrapper<ExecutePayloadV1Result> resultWrapper = await rpc.engine_executePayloadV1(blockRequestResult);
             resultWrapper.ErrorCode.Should().Be(MergeErrorCodes.InvalidTerminalBlock);
         }
-        
-        [TestCase("")]
-        [TestCase("1000001")]
-        public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd(string terminalTotalDifficulty)
+
+        [TestCase(null)]
+        [TestCase(1000000000)]
+        [TestCase(1000001)]
+        public async Task forkchoiceUpdatedV1_should_not_accept_blocks_with_incorrect_ttd(long? terminalTotalDifficulty)
         {
-            using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = terminalTotalDifficulty });
+            using MergeTestBlockchain chain = await CreateBlockChain(terminalTotalDifficulty);
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak blockHash = chain.BlockTree.HeadHash;
             ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blockHash, blockHash, blockHash), null);

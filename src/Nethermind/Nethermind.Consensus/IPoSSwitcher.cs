@@ -27,8 +27,6 @@ namespace Nethermind.Consensus
     {
         void ForkchoiceUpdated(BlockHeader newHeadHash, Keccak finalizedHash);
 
-        bool IsPoS(BlockHeader header);
-
         bool HasEverReachedTerminalBlock();
 
         event EventHandler TerminalBlockReached;
