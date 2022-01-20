@@ -47,7 +47,7 @@ namespace Nethermind.State
         public const int CodeHash = 3;
         public const int CodeSize = 4;
     }
-    public class VerkleStateProvider: IAccountStateProvider
+    public class VerkleStateProvider:  IJournal<int>, IAccountStateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
@@ -793,6 +793,12 @@ namespace Nethermind.State
         {
             byte[] storageKey = _tree.GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
             _tree.SetValue(storageKey, value);
+        }
+        
+        int IJournal<int>.TakeSnapshot()
+        {
+            if (_logger.IsTrace) _logger.Trace($"State snapshot {_currentPosition}");
+            return _currentPosition;
         }
         
     }

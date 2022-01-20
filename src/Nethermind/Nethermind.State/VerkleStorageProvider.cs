@@ -26,7 +26,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class VerkleStorageProvider
+public class VerkleStorageProvider: IStorageProvider
 {
     private readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
 
@@ -89,6 +89,16 @@ public class VerkleStorageProvider
     public void Set(StorageCell storageCell, byte[] newValue)
     {
         PushUpdate(storageCell, newValue);
+    }
+    
+    int IStorageProvider.TakeSnapshot(bool newTransactionStart)
+    {
+        if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
+        if (newTransactionStart && _currentPosition != Resettable.EmptyPosition)
+        {
+            _transactionChangesSnapshots.Push(_currentPosition);
+        }
+        return _currentPosition;
     }
 
     public void Restore(int snapshot)

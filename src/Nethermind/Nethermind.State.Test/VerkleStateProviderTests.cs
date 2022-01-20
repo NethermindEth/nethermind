@@ -76,30 +76,30 @@ namespace Nethermind.Store.Test
         
             provider.GetAccount(systemUser).Should().NotBeNull();
         }
-        //
-        // [Test]
-        // public void Can_dump_state()
-        // {
-        //     StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
-        //     provider.CreateAccount(TestItem.AddressA, 1.Ether());
-        //     provider.Commit(MuirGlacier.Instance);
-        //     provider.CommitTree(0);
-        //
-        //     string state = provider.DumpState();
-        //     state.Should().NotBeEmpty();
-        // }
-        //
-        // [Test]
-        // public void Can_collect_stats()
-        // {
-        //     StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
-        //     provider.CreateAccount(TestItem.AddressA, 1.Ether());
-        //     provider.Commit(MuirGlacier.Instance);
-        //     provider.CommitTree(0);
-        //
-        //     var stats = provider.CollectStats(_codeDb, Logger);
-        //     stats.AccountCount.Should().Be(1);
-        // }
+        
+        [Test]
+        public void Can_dump_state()
+        {
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            provider.CreateAccount(TestItem.AddressA, 1.Ether());
+            provider.Commit(MuirGlacier.Instance);
+            provider.CommitTree(0);
+        
+            string state = provider.DumpState();
+            state.Should().NotBeEmpty();
+        }
+        
+        [Test]
+        public void Can_collect_stats()
+        {
+            StateProvider provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            provider.CreateAccount(TestItem.AddressA, 1.Ether());
+            provider.Commit(MuirGlacier.Instance);
+            provider.CommitTree(0);
+        
+            var stats = provider.CollectStats(_codeDb, Logger);
+            stats.AccountCount.Should().Be(1);
+        }
         //
         // [Test]
         // public void Can_accepts_visitors()

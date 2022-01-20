@@ -67,21 +67,21 @@ public class VerkleStorageProviderTests
         return provider;
     }
     
-    // [TestCase(-1)]
-    // [TestCase(0)]
-    // [TestCase(1)]
-    // [TestCase(2)]
-    // public void Same_address_same_index_different_values_restore(int snapshot)
-    // {
-    //     Context ctx = new();
-    //     VerkleStorageProvider provider = BuildStorageProvider(ctx);
-    //     provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
-    //     provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
-    //     provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
-    //     provider.Restore(snapshot);
-    //
-    //     Assert.AreEqual(_values[snapshot + 1], provider.Get(new StorageCell(ctx.Address1, 1)));
-    // }
+    [TestCase(-1)]
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void Same_address_same_index_different_values_restore(int snapshot)
+    {
+        Context ctx = new();
+        VerkleStorageProvider provider = BuildStorageProvider(ctx);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+        provider.Set(new StorageCell(ctx.Address1, 1), _values[3]);
+        provider.Restore(snapshot);
+    
+        Assert.AreEqual(_values[snapshot + 1], provider.Get(new StorageCell(ctx.Address1, 1)));
+    }
     
     [Test]
     public void Keep_in_cache()
