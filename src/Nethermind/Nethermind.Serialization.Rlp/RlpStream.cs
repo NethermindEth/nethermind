@@ -1036,13 +1036,13 @@ namespace Nethermind.Serialization.Rlp
                 if (lengthOfLength > 4)
                 {
                     // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                    throw new RlpException("Expected length of lenth less or equal 4");
+                    throw new RlpException("Expected length of length less or equal 4");
                 }
 
                 int length = DeserializeLength(lengthOfLength);
                 if (length < 56)
                 {
-                    throw new RlpException("Expected length greater or equal 56 and was {length}");
+                    throw new RlpException($"Expected length greater or equal 56 and was {length}");
                 }
 
                 return Read(length);

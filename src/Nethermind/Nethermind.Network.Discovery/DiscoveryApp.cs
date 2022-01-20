@@ -76,18 +76,17 @@ public class DiscoveryApp : IDiscoveryApp
         _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-        _messageSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
+        _messageSerializationService =
+            msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
         _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
         _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _discoveryStorage.StartBatch();
     }
 
-    public event EventHandler<NodeEventArgs>? NodeDiscovered;
-
     public void Initialize(PublicKey masterPublicKey)
     {
-        _discoveryManager.NodeDiscovered += OnNewNodeDiscovered;
+        _discoveryManager.NodeDiscovered += OnNodeDiscovered;
         _nodeTable.Initialize(masterPublicKey);
         if (_nodeTable.MasterNode is null)
         {
@@ -95,7 +94,7 @@ public class DiscoveryApp : IDiscoveryApp
                 "Discovery node table initialization failed - master node is null",
                 NetworkExceptionType.Discovery);
         }
-        
+
         _nodesLocator.Initialize(_nodeTable.MasterNode);
     }
 
@@ -140,7 +139,8 @@ public class DiscoveryApp : IDiscoveryApp
 
     private void InitializeUdpChannel()
     {
-        if (_logger.IsDebug) _logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+        if (_logger.IsDebug)
+            _logger.Debug($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
         ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
 
         _group = new MultithreadEventLoopGroup(1);
@@ -176,7 +176,8 @@ public class DiscoveryApp : IDiscoveryApp
 
     private void InitializeChannel(IDatagramChannel channel)
     {
-        _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _timestamper, _logManager);
+        _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService,
+            _timestamper, _logManager);
         _discoveryManager.MsgSender = _discoveryHandler;
         _discoveryHandler.OnChannelActivated += OnChannelActivated;
 
@@ -200,7 +201,8 @@ public class DiscoveryApp : IDiscoveryApp
                 {
                     string faultMessage = "Cannot activate channel.";
                     _logger.Info(faultMessage);
-                    throw t.Exception ?? (Exception)new NetworkingException(faultMessage, NetworkExceptionType.Discovery);
+                    throw t.Exception ??
+                          (Exception)new NetworkingException(faultMessage, NetworkExceptionType.Discovery);
                 }
 
                 if (t.IsCompleted && !_appShutdownSource.IsCancellationRequested)
@@ -274,7 +276,9 @@ public class DiscoveryApp : IDiscoveryApp
             }
             catch (Exception)
             {
-                if (_logger.IsDebug) _logger.Error($"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                if (_logger.IsDebug)
+                    _logger.Error(
+                        $"ERROR/DEBUG peer could not be loaded for {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                 continue;
             }
 
@@ -283,14 +287,16 @@ public class DiscoveryApp : IDiscoveryApp
             {
                 if (_logger.IsDebug)
                 {
-                    _logger.Debug($"Skipping persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}, manager couldn't be created");
+                    _logger.Debug(
+                        $"Skipping persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}, manager couldn't be created");
                 }
 
                 continue;
             }
 
             manager.NodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
-            if (_logger.IsTrace) _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+            if (_logger.IsTrace)
+                _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
         }
 
         if (_logger.IsDebug) _logger.Debug($"Added persisted discovery nodes: {nodes.Length}");
@@ -299,7 +305,7 @@ public class DiscoveryApp : IDiscoveryApp
     private void InitializeDiscoveryTimer()
     {
         if (_logger.IsDebug) _logger.Debug("Starting discovery timer");
-        _discoveryTimer = new Timer(10) {AutoReset = false};
+        _discoveryTimer = new Timer(10) { AutoReset = false };
         _discoveryTimer.Elapsed += (_, _) =>
         {
             try
@@ -346,7 +352,7 @@ public class DiscoveryApp : IDiscoveryApp
     private void InitializeDiscoveryPersistenceTimer()
     {
         if (_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
-        _discoveryPersistenceTimer = new Timer(_discoveryConfig.DiscoveryPersistenceInterval) {AutoReset = false};
+        _discoveryPersistenceTimer = new Timer(_discoveryConfig.DiscoveryPersistenceInterval) { AutoReset = false };
         _discoveryPersistenceTimer.Elapsed += (_, _) =>
         {
             try
@@ -402,9 +408,11 @@ public class DiscoveryApp : IDiscoveryApp
 
             Task closeTask = _channel.CloseAsync();
             CancellationTokenSource delayCancellation = new();
-            if (await Task.WhenAny(closeTask, Task.Delay(_discoveryConfig.UdpChannelCloseTimeout, delayCancellation.Token)) != closeTask)
+            if (await Task.WhenAny(closeTask,
+                    Task.Delay(_discoveryConfig.UdpChannelCloseTimeout, delayCancellation.Token)) != closeTask)
             {
-                _logger.Error($"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} miliseconds");
+                _logger.Error(
+                    $"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} miliseconds");
             }
             else
             {
@@ -430,9 +438,12 @@ public class DiscoveryApp : IDiscoveryApp
         for (int i = 0; i < bootnodes.Length; i++)
         {
             NetworkNode bootnode = bootnodes[i];
-            Node node = bootnode.NodeId == null
-                ? new Node(bootnode.Host, bootnode.Port)
-                : new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, true);
+            if (bootnode.NodeId is null)
+            {
+                _logger.Warn($"Bootnode ignored because of missing node ID: {bootnode}");
+            }
+            
+            Node node = new (bootnode.NodeId, bootnode.Host, bootnode.Port);
             INodeLifecycleManager? manager = _discoveryManager.GetNodeLifecycleManager(node);
             if (manager != null)
             {
@@ -461,7 +472,9 @@ public class DiscoveryApp : IDiscoveryApp
 
             if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Any())
             {
-                if (_logger.IsTrace) _logger.Trace("Was not able to connect to any of the bootnodes, but successfully connected to at least one persisted node.");
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        "Was not able to connect to any of the bootnodes, but successfully connected to at least one persisted node.");
                 break;
             }
 
@@ -483,16 +496,20 @@ public class DiscoveryApp : IDiscoveryApp
             INodeLifecycleManager manager = managers[i];
             if (manager.State != NodeLifecycleState.Active)
             {
-                if (_logger.IsTrace) _logger.Trace($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                if (_logger.IsTrace)
+                    _logger.Trace($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                if (_logger.IsTrace)
+                    _logger.Trace($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
                 reachedNodeCounter++;
             }
         }
 
-        if (_logger.IsInfo) _logger.Info($"Connected to {reachedNodeCounter} bootnodes, {_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count} trusted/persisted nodes");
+        if (_logger.IsInfo)
+            _logger.Info(
+                $"Connected to {reachedNodeCounter} bootnodes, {_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count} trusted/persisted nodes");
         return reachedNodeCounter > 0;
     }
 
@@ -539,7 +556,8 @@ public class DiscoveryApp : IDiscoveryApp
         {
             IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetNodeLifecycleManagers();
             //we need to update all notes to update reputation
-            _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host, x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation)).ToArray());
+            _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host,
+                x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation)).ToArray());
 
             if (!_discoveryStorage.AnyPendingChange())
             {
@@ -569,9 +587,17 @@ public class DiscoveryApp : IDiscoveryApp
         }
     }
 
-    private void OnNewNodeDiscovered(object? sender, NodeEventArgs e)
+    private void OnNodeDiscovered(object? sender, NodeEventArgs e)
     {
-        e.Node.AddedToDiscovery = true;
-        NodeDiscovered?.Invoke(this, e);
+        NodeAdded?.Invoke(this, e);
     }
+
+    public List<Node> LoadInitialList()
+    {
+        return new List<Node>();
+    }
+
+    public event EventHandler<NodeEventArgs>? NodeAdded;
+
+    public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 }

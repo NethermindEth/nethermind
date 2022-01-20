@@ -275,7 +275,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                         return null;
                     }
                     
-                    BlockInfo blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty ?? 0);
+                    BlockInfo blockInfo = new(block.Hash, block.TotalDifficulty ?? 0);
                     blockInfo.BlockNumber = ci.Arg<long>();
                     return blockInfo;
                 });
@@ -304,7 +304,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             /* we have only 256 receipts altogether but we start with many peers
                so most of our requests will be empty */
 
-            List<ReceiptsSyncBatch> batches = new List<ReceiptsSyncBatch>();
+            List<ReceiptsSyncBatch> batches = new();
             for (int i = 0; i < 100; i++)
             {
                 batches.Add(_feed.PrepareRequest().Result);
@@ -333,7 +333,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             // so by using 1 here we create a different tx root
             batch.Response[0] = new [] {Build.A.Receipt.WithStatusCode(1).TestObject};
             
-            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             batch.ResponseSourcePeer = peerInfo;
             
             SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);

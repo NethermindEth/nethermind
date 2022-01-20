@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,7 +28,9 @@ namespace Nethermind.State
     public class StateTree : PatriciaTree
     {
         private readonly AccountDecoder _decoder = new();
-        
+
+        private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
+
         [DebuggerStepThrough]
         public StateTree()
             : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance)
@@ -66,8 +68,6 @@ namespace Nethermind.State
 
             return _decoder.Decode(bytes.AsRlpStream());
         }
-
-        private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
         public void Set(Address address, Account? account)
         {

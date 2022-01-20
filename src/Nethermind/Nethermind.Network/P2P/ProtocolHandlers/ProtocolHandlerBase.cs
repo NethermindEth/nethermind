@@ -23,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -54,12 +55,30 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected T Deserialize<T>(byte[] data) where T : P2PMessage
         {
-            return _serializer.Deserialize<T>(data);
+            try
+            {
+                return _serializer.Deserialize<T>(data);
+            }
+            catch (RlpException e)
+            {
+                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
+                ReportIn($"{typeof(T).Name} - Deserialization exception");
+                throw;
+            }
         }
 
         protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
         {
-            return _serializer.Deserialize<T>(data);
+            try
+            {
+                return _serializer.Deserialize<T>(data);
+            }
+            catch (RlpException e)
+            {
+                if (Logger.IsDebug) Logger.Debug($"Failed to deserialize message {typeof(T).Name}, with exception {e}");
+                ReportIn($"{typeof(T).Name} - Deserialization exception");
+                throw;
+            }
         }
         
         protected void Send<T>(T message) where T : P2PMessage

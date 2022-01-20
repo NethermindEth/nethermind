@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_shrink_and_expand()
         {
-            SyncBatchSize syncBatchSize = new SyncBatchSize(LimboLogs.Instance);
+            SyncBatchSize syncBatchSize = new(LimboLogs.Instance);
             int beforeShrink = syncBatchSize.Current;
             syncBatchSize.Shrink();
             Assert.AreEqual(beforeShrink / 2, syncBatchSize.Current);
@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Cannot_go_below_min()
         {
-            SyncBatchSize syncBatchSize = new SyncBatchSize(LimboLogs.Instance);
+            SyncBatchSize syncBatchSize = new(LimboLogs.Instance);
             for (int i = 0; i < 100; i++)
             {
                 syncBatchSize.Shrink();
@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Cannot_go_above_max()
         {
-            SyncBatchSize syncBatchSize = new SyncBatchSize(LimboLogs.Instance);
+            SyncBatchSize syncBatchSize = new(LimboLogs.Instance);
             for (int i = 0; i < 100; i++)
             {
                 syncBatchSize.Expand();

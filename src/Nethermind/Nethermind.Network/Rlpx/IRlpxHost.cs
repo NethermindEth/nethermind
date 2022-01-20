@@ -21,7 +21,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
 {
-    public interface IRlpxPeer
+    public interface IRlpxHost
     {
         Task Init();
         Task ConnectAsync(Node node);

@@ -82,7 +82,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private static StorageTree SetStorage(ITrieStore trieStore, byte i)
         {
-            StorageTree remoteStorageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree remoteStorageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256) j, new[] {(byte) j, i});
 
             remoteStorageTree.Commit(0);
@@ -124,7 +124,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LocalStateTree.RootHash = RemoteStateTree.RootHash;
 
                 if (!skipLogs) _logger.Info("-------------------- REMOTE --------------------");
-                TreeDumper dumper = new TreeDumper();
+                TreeDumper dumper = new();
                 RemoteStateTree.Accept(dumper, RemoteStateTree.RootHash);
                 string remote = dumper.ToString();
                 if (!skipLogs) _logger.Info(remote);
@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 if (stage == "END")
                 {
                     Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
-                    TrieStatsCollector collector = new TrieStatsCollector(LocalCodeDb, new OneLoggerLogManager(_logger));
+                    TrieStatsCollector collector = new(LocalCodeDb, new OneLoggerLogManager(_logger));
                     LocalStateTree.Accept(collector, LocalStateTree.RootHash);
                     Assert.AreEqual(0, collector.Stats.MissingNodes);
                     Assert.AreEqual(0, collector.Stats.MissingCode);
@@ -287,7 +287,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private SafeContext PrepareDownloader(DbContext dbContext, ISyncPeer syncPeer)
         {
-            SafeContext ctx = new SafeContext();
+            SafeContext ctx = new();
             ctx = new SafeContext();
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int) BlockTree.BestSuggestedHeader.Number).TestObject;
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
@@ -295,7 +295,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx.Pool.Start();
             ctx.Pool.AddPeer(syncPeer);
 
-            SyncConfig syncConfig = new SyncConfig();
+            SyncConfig syncConfig = new();
             syncConfig.FastSync = true;
             ctx.SyncModeSelector = StaticSelector.StateNodesWithFastBlocks;
             ctx.Feed = new StateSyncFeed(dbContext.LocalCodeDb, dbContext.LocalStateDb, ctx.SyncModeSelector, blockTree, _logManager);
@@ -312,14 +312,14 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Retry(3)]
         public async Task Big_test((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code0).Bytes] = TrieScenarios.Code0;
             dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code1).Bytes] = TrieScenarios.Code1;
             dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code2).Bytes] = TrieScenarios.Code2;
             dbContext.RemoteCodeDb[Keccak.Compute(TrieScenarios.Code3).Bytes] = TrieScenarios.Code3;
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             mock.SetFilter(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Take(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Count - 4).Select(k => new Keccak(k)).ToArray());
 
             dbContext.CompareTrees("BEFORE FIRST SYNC", true);
@@ -376,13 +376,13 @@ namespace Nethermind.Synchronization.Test.FastSync
         // [Retry(3)]
         public async Task Can_download_a_full_state((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
             
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             SafeContext ctx = PrepareDownloader(dbContext, mock);
             await ActivateAndWait(ctx, dbContext, 1024);
             
@@ -392,8 +392,8 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public async Task Can_download_an_empty_tree()
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            DbContext dbContext = new(_logger, _logManager);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             SafeContext ctx = PrepareDownloader(dbContext, mock);
             await ActivateAndWait(ctx, dbContext, 1000);
             dbContext.CompareTrees("END");
@@ -404,11 +404,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Retry(3)]
         public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
             
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             mock.SetFilter(new[] {dbContext.RemoteStateTree.RootHash});
 
             SafeContext ctx = PrepareDownloader(dbContext, mock);
@@ -426,7 +426,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private async Task ActivateAndWait(SafeContext safeContext, DbContext dbContext, long blockNumber, int timeout = TimeoutLength)
         {
-            DotNetty.Common.Concurrency.TaskCompletionSource dormantAgainSource = new DotNetty.Common.Concurrency.TaskCompletionSource();
+            DotNetty.Common.Concurrency.TaskCompletionSource dormantAgainSource = new();
             safeContext.Feed.StateChanged += (s, e) =>
             {
                 if (e.NewState == SyncFeedState.Dormant)
@@ -449,13 +449,13 @@ namespace Nethermind.Synchronization.Test.FastSync
         // [Retry(3)]
         public async Task Can_download_when_executor_sends_shorter_responses((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
             
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             mock.MaxResponseLength = 1;
 
             SafeContext ctx = PrepareDownloader(dbContext, mock);
@@ -469,14 +469,14 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Retry(3)]
         public async Task When_saving_root_goes_asleep()
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             dbContext.RemoteStateTree.Set(TestItem.KeccakA, Build.An.Account.TestObject);
             dbContext.RemoteStateTree.Commit(0);
             
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
 
             SafeContext ctx = PrepareDownloader(dbContext, mock);
             await ActivateAndWait(ctx, dbContext, 1024);
@@ -491,11 +491,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Retry(3)]
         public async Task Can_download_with_moving_target((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
             
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             mock.SetFilter(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Take(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Count - 1).Select(k => new Keccak(k)).ToArray());
 
             dbContext.CompareTrees("BEFORE FIRST SYNC");
@@ -536,11 +536,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Retry(3)]
         public async Task Dependent_branch_counter_is_zero_and_leaf_is_short((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
             
 
-            StorageTree remoteStorageTree = new StorageTree(dbContext.RemoteTrieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree remoteStorageTree = new(dbContext.RemoteTrieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
             remoteStorageTree.Set(
                 Bytes.FromHexString("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb000"), new byte[] {1});
             remoteStorageTree.Set(
@@ -556,7 +556,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             SafeContext ctx = PrepareDownloader(dbContext, mock);
             await ActivateAndWait(ctx, dbContext, 1024);
             
@@ -569,7 +569,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Retry(3)]
         public async Task Scenario_plus_one_code((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
             
 
@@ -581,7 +581,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             SafeContext ctx = PrepareDownloader(dbContext, mock);
             await ActivateAndWait(ctx, dbContext, 1024);
             
@@ -594,13 +594,13 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Retry(3)]
         public async Task Scenario_plus_one_code_one_storage((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
             
 
             dbContext.RemoteCodeDb.Set(Keccak.Compute(TrieScenarios.Code0), TrieScenarios.Code0);
 
-            StorageTree remoteStorageTree = new StorageTree(dbContext.RemoteTrieStore, Keccak.EmptyTreeHash, _logManager);
+            StorageTree remoteStorageTree = new(dbContext.RemoteTrieStore, Keccak.EmptyTreeHash, _logManager);
             remoteStorageTree.Set((UInt256) 1, new byte[] {1});
             remoteStorageTree.Commit(0);
 
@@ -609,7 +609,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             SafeContext ctx = PrepareDownloader(dbContext, mock);
             await ActivateAndWait(ctx, dbContext, 1024);
             
@@ -622,11 +622,11 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Retry(3)]
         public async Task Scenario_plus_one_storage((string Name, Action<StateTree, ITrieStore, IDb> SetupTree) testCase)
         {
-            DbContext dbContext = new DbContext(_logger, _logManager);
+            DbContext dbContext = new(_logger, _logManager);
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
             
 
-            StorageTree remoteStorageTree = new StorageTree(dbContext.RemoteTrieStore, Keccak.EmptyTreeHash, _logManager);
+            StorageTree remoteStorageTree = new(dbContext.RemoteTrieStore, Keccak.EmptyTreeHash, _logManager);
             remoteStorageTree.Set((UInt256) 1, new byte[] {1});
             remoteStorageTree.Commit(0);
 
@@ -636,7 +636,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("BEGIN");
 
-            SyncPeerMock mock = new SyncPeerMock(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
+            SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
             SafeContext ctx = PrepareDownloader(dbContext, mock);
             await ActivateAndWait(ctx, dbContext, 1024);
             

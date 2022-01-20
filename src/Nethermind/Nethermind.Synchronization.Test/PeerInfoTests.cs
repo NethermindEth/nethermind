@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_put_to_sleep_by_contexts()
         {
-            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             for (int i = 0; i < PeerInfo.SleepThreshold - 1; i++)
             {
                 AllocationContexts sleeps = peerInfo.IncreaseWeakness(_contexts);
@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_put_to_sleep()
         {
-            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             for (int i = 0; i < PeerInfo.SleepThreshold - 1; i++)
             {
                 AllocationContexts sleeps = peerInfo.IncreaseWeakness(_contexts);
@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_wake_up()
         {
-            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             for (int i = 0; i < PeerInfo.SleepThreshold - 1; i++)
             {
                 AllocationContexts sleeps = peerInfo.IncreaseWeakness(_contexts);
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_fail_to_wake_up()
         {
-            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             for (int i = 0; i < PeerInfo.SleepThreshold - 1; i++)
             {
                 AllocationContexts sleeps = peerInfo.IncreaseWeakness(_contexts);
@@ -111,7 +111,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_allocate()
         {
-            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             peerInfo.IsAllocated(_contexts).Should().BeFalse();
             peerInfo.TryAllocate(_contexts);
             peerInfo.IsAllocated(_contexts).Should().BeTrue();
@@ -121,7 +121,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Can_free()
         {
-            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             peerInfo.IsAllocated(_contexts).Should().BeFalse();
             peerInfo.TryAllocate(_contexts);
             peerInfo.IsAllocated(_contexts).Should().BeTrue();
@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Cannot_allocate_subcontext()
         {
-            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             peerInfo.TryAllocate(AllocationContexts.Blocks);
             peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeTrue();
             peerInfo.IsAllocated(AllocationContexts.Headers).Should().BeTrue();
@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public void Cannot_allocate_subcontext_of_sleeping()
         {
-            PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             peerInfo.PutToSleep(AllocationContexts.Blocks, DateTime.MinValue);
             peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
         }

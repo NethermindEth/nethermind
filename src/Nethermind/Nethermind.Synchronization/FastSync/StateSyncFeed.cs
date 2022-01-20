@@ -78,6 +78,10 @@ namespace Nethermind.Synchronization.FastSync
         private int _hintsToResetRoot;
         private long _blockNumber;
 
+        public override bool IsMultiFeed => true;
+
+        public override AllocationContexts Contexts => AllocationContexts.State;
+
         public StateSyncFeed(IDb codeDb,
             IDb stateDb,
             ISyncModeSelector syncModeSelector,
@@ -96,6 +100,339 @@ namespace Nethermind.Synchronization.FastSync
             _data = new DetailedProgress(_blockTree.ChainId, progress);
             _pendingItems = new PendingSyncItems();
             _branchProgress = new BranchProgress(0, _logger);
+        }
+
+        public override async Task<StateSyncBatch?> PrepareRequest()
+        {
+            if (_rootSaved == 1)
+            {
+                VerifyPostSyncCleanUp();
+                FinishThisSyncRound();
+                return EmptyBatch!;
+            }
+
+            if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
+            {
+                return EmptyBatch!;
+            }
+
+            try
+            {
+                if (_rootNode == Keccak.EmptyTreeHash)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Falling asleep - root is empty tree");
+                    FinishThisSyncRound();
+                    return EmptyBatch!;
+                }
+
+                if (_hintsToResetRoot >= 32)
+                {
+                    if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
+                    FinishThisSyncRound();
+                    return EmptyBatch!;
+                }
+
+                bool rootNodeKeyExists;
+                lock (_stateDbLock)
+                {
+                    try
+                    {
+                        // it finished downloading
+                        rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        return EmptyBatch!;
+                    }
+                }
+
+                if (rootNodeKeyExists)
+                {
+                    try
+                    {
+                        VerifyPostSyncCleanUp();
+                        FinishThisSyncRound();
+                        return EmptyBatch!;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        return EmptyBatch!;
+                    }
+                }
+
+                List<StateSyncItem> requestHashes = _pendingItems.TakeBatch(MaxRequestSize);
+                LogRequestInfo(requestHashes);
+
+                long secondsInCurrentSync = (long)(DateTime.UtcNow - _currentSyncStart).TotalSeconds;
+
+                if (requestHashes.Count > 0)
+                {
+                    StateSyncItem[] requestedNodes = requestHashes.ToArray();
+                    StateSyncBatch result = new(requestedNodes);
+
+                    Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
+                    Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + secondsInCurrentSync);
+
+                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
+                    if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
+                    _pendingRequests.TryAdd(result, null);
+
+                    Interlocked.Increment(ref Metrics.StateSyncRequests);
+                    return await Task.FromResult(result);
+                }
+
+                if (requestHashes.Count == 0 && secondsInCurrentSync >= Timeouts.Eth.Seconds)
+                {
+                    // trying to reproduce past behaviour where we can recognize the transition time this way
+                    Interlocked.Increment(ref _hintsToResetRoot);
+                }
+
+                return await Task.FromResult(EmptyBatch);
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error when preparing a batch", e);
+                return await Task.FromResult(EmptyBatch);
+            }
+        }
+
+        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch)
+        {
+            if (batch == EmptyBatch)
+            {
+                if (_logger.IsError) _logger.Error("Received empty batch as a response");
+                return SyncResponseHandlingResult.InternalError;
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"Removing pending request {batch}");
+            if (!_pendingRequests.TryRemove(batch, out _))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Cannot remove pending request {batch}");
+                return SyncResponseHandlingResult.OK;
+            }
+
+            int requestLength = batch.RequestedNodes?.Length ?? 0;
+            int responseLength = batch.Responses?.Length ?? 0;
+
+            void AddAgainAllItems()
+            {
+                for (int i = 0; i < requestLength; i++)
+                {
+                    AddNodeToPending(batch.RequestedNodes![i], null, "missing", true);
+                }
+            }
+
+            try
+            {
+                lock (_handleWatch)
+                {
+                    if (DateTime.UtcNow - _lastReview > TimeSpan.FromSeconds(60))
+                    {
+                        _lastReview = DateTime.UtcNow;
+                        string reviewMessage = _pendingItems.RecalculatePriorities();
+                        if (_logger.IsDebug) _logger.Debug(reviewMessage);
+                    }
+
+                    _handleWatch.Restart();
+
+                    bool isMissingRequestData = batch.RequestedNodes == null;
+                    if (isMissingRequestData)
+                    {
+                        _hintsToResetRoot++;
+
+                        AddAgainAllItems();
+                        if (_logger.IsWarn) _logger.Warn("Batch response had invalid format");
+                        Interlocked.Increment(ref _data.InvalidFormatCount);
+                        return isMissingRequestData ? SyncResponseHandlingResult.InternalError : SyncResponseHandlingResult.NotAssigned;
+                    }
+
+                    if (batch.Responses == null)
+                    {
+                        AddAgainAllItems();
+                        if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
+                        Interlocked.Increment(ref _data.NotAssignedCount);
+                        return SyncResponseHandlingResult.NotAssigned;
+                    }
+
+                    if (_logger.IsTrace) _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
+                    int nonEmptyResponses = 0;
+                    int invalidNodes = 0;
+                    for (int i = 0; i < batch.RequestedNodes!.Length; i++)
+                    {
+                        StateSyncItem currentStateSyncItem = batch.RequestedNodes[i];
+
+                        /* if the peer has limit on number of requests in a batch then the response will possibly be
+                           shorter than the request */
+                        if (batch.Responses.Length < i + 1)
+                        {
+                            AddNodeToPending(currentStateSyncItem, null, "missing", true);
+                            continue;
+                        }
+
+                        /* if the peer does not have details of this particular node */
+                        byte[] currentResponseItem = batch.Responses[i];
+                        if (currentResponseItem == null)
+                        {
+                            AddNodeToPending(batch.RequestedNodes[i], null, "missing", true);
+                            continue;
+                        }
+
+                        /* node sent data that is not consistent with its hash - it happens surprisingly often */
+                        if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan.SequenceEqual(currentStateSyncItem.Hash.Bytes))
+                        {
+                            AddNodeToPending(currentStateSyncItem, null, "missing", true);
+                            if (_logger.IsTrace) _logger.Trace($"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
+                            invalidNodes++;
+                            continue;
+                        }
+
+                        nonEmptyResponses++;
+                        NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
+                        if (nodeDataType == NodeDataType.Code)
+                        {
+                            SaveNode(currentStateSyncItem, currentResponseItem);
+                            continue;
+                        }
+
+                        HandleTrieNode(currentStateSyncItem, currentResponseItem, ref invalidNodes);
+                    }
+
+                    Interlocked.Add(ref _data.ConsumedNodesCount, nonEmptyResponses);
+                    StoreProgressInDb();
+
+                    if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({_pendingItems.Description}) nodes");
+
+                    /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
+                    bool isEmptish = (decimal)nonEmptyResponses / Math.Max(requestLength, 1) < 384m / 1024m * 0.75m;
+                    if (isEmptish)
+                    {
+                        Interlocked.Increment(ref _hintsToResetRoot);
+                        Interlocked.Increment(ref _data.EmptishCount);
+                    }
+                    else
+                    {
+                        Interlocked.Exchange(ref _hintsToResetRoot, 0);
+                    }
+
+                    /* here we are very forgiving for Geth nodes that send bad data fast */
+                    bool isBadQuality = nonEmptyResponses > 64 && (decimal)invalidNodes / Math.Max(requestLength, 1) > 0.50m;
+                    if (isBadQuality) Interlocked.Increment(ref _data.BadQualityCount);
+
+                    bool isEmpty = nonEmptyResponses == 0 && !isBadQuality;
+                    if (isEmpty)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
+                        return SyncResponseHandlingResult.NoProgress;
+                    }
+
+                    if (!isEmptish && !isBadQuality)
+                    {
+                        Interlocked.Increment(ref _data.OkCount);
+                    }
+
+                    SyncResponseHandlingResult result = isEmptish
+                        ? SyncResponseHandlingResult.Emptish
+                        : isBadQuality
+                            ? SyncResponseHandlingResult.LesserQuality
+                            : SyncResponseHandlingResult.OK;
+
+                    _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
+
+                    long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
+                    if (total != 0)
+                    {
+                        // calculate averages
+                        if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal)_handleWatch.ElapsedMilliseconds / total:P0})");
+                    }
+
+                    if (_handleWatch.ElapsedMilliseconds > 250)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Handle watch {_handleWatch.ElapsedMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)_handleWatch.ElapsedMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
+                    }
+
+                    _data.LastDbReads = _data.DbChecks;
+                    _data.AverageTimeInHandler = (_data.AverageTimeInHandler * (_data.ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / _data.ProcessedRequestsCount;
+                    Interlocked.Add(ref _data.HandledNodesCount, nonEmptyResponses);
+                    return result;
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error when handling state sync response", e);
+                return SyncResponseHandlingResult.InternalError;
+            }
+            finally
+            {
+                _handleWatch.Stop();
+            }
+        }
+
+        public void ResetStateRoot(long blockNumber, Keccak stateRoot)
+        {
+            if (CurrentState != SyncFeedState.Dormant)
+            {
+                throw new InvalidOperationException("Cannot reset state sync on an active feed");
+            }
+
+            Interlocked.Exchange(ref _hintsToResetRoot, 0);
+
+            if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
+            _currentSyncStart = DateTime.UtcNow;
+            _currentSyncStartSecondsInSync = _data.SecondsInSync;
+
+            _data.LastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
+            _data.LastSavedNodesCount = _data.SavedNodesCount;
+            _data.LastRequestedNodesCount = _data.RequestedNodesCount;
+            if (_rootNode != stateRoot)
+            {
+                _branchProgress = new BranchProgress(blockNumber, _logger);
+                _blockNumber = blockNumber;
+                _rootNode = stateRoot;
+                lock (_dependencies) _dependencies.Clear();
+                lock (_codesSameAsNodes) _codesSameAsNodes.Clear();
+
+                if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
+                _pendingItems.Clear();
+                Interlocked.Exchange(ref _rootSaved, 0);
+            }
+            else
+            {
+                foreach ((StateSyncBatch pendingRequest, _) in _pendingRequests)
+                {
+                    // re-add the pending request
+                    for (int i = 0; i < pendingRequest.RequestedNodes.Length; i++)
+                    {
+                        AddNodeToPending(pendingRequest.RequestedNodes[i], null, "pending request", true);
+                    }
+                }
+            }
+
+            _pendingRequests.Clear();
+
+            bool hasOnlyRootNode = false;
+
+            if (_rootNode != Keccak.EmptyTreeHash)
+            {
+                if (_pendingItems.Count == 1)
+                {
+                    // state root can only be located on state stream
+                    StateSyncItem? potentialRoot = _pendingItems.PeekState();
+                    if (potentialRoot?.Hash == _rootNode)
+                    {
+                        hasOnlyRootNode = true;
+                    }
+                }
+
+                if (!hasOnlyRootNode)
+                {
+                    AddNodeToPending(new StateSyncItem(_rootNode, NodeDataType.State), null, "initial");
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
@@ -198,12 +535,14 @@ namespace Nethermind.Synchronization.FastSync
                     foreach (DependentItem dependentItem in dependentItems)
                     {
                         dependentItem.Counter--;
-                        _dependencies.Remove(hash);
+
                         if (dependentItem.Counter == 0)
                         {
                             nodesToSave.Add(dependentItem);
                         }
                     }
+
+                    _dependencies.Remove(hash);
                 }
                 else
                 {
@@ -307,177 +646,6 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch)
-        {
-            if (batch == EmptyBatch)
-            {
-                if(_logger.IsError) _logger.Error("Received empty batch as a response");
-                return SyncResponseHandlingResult.InternalError;
-            }
-            
-            if (_logger.IsTrace) _logger.Trace($"Removing pending request {batch}");
-            if (!_pendingRequests.TryRemove(batch, out _))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Cannot remove pending request {batch}");
-                return SyncResponseHandlingResult.OK;
-            }
-
-            int requestLength = batch.RequestedNodes?.Length ?? 0;
-            int responseLength = batch.Responses?.Length ?? 0;
-
-            void AddAgainAllItems()
-            {
-                for (int i = 0; i < requestLength; i++)
-                {
-                    AddNodeToPending(batch.RequestedNodes![i], null, "missing", true);
-                }
-            }
-
-            try
-            {
-                lock (_handleWatch)
-                {
-                    if (DateTime.UtcNow - _lastReview > TimeSpan.FromSeconds(60))
-                    {
-                        _lastReview = DateTime.UtcNow;
-                        string reviewMessage = _pendingItems.RecalculatePriorities();
-                        if (_logger.IsDebug) _logger.Debug(reviewMessage);
-                    }
-
-                    _handleWatch.Restart();
-
-                    bool isMissingRequestData = batch.RequestedNodes == null;
-                    if (isMissingRequestData)
-                    {
-                        _hintsToResetRoot++;
-
-                        AddAgainAllItems();
-                        if (_logger.IsWarn) _logger.Warn("Batch response had invalid format");
-                        Interlocked.Increment(ref _data.InvalidFormatCount);
-                        return isMissingRequestData ? SyncResponseHandlingResult.InternalError : SyncResponseHandlingResult.NotAssigned;
-                    }
-                    
-                    if (batch.Responses == null)
-                    {
-                        AddAgainAllItems();
-                        if (_logger.IsTrace) _logger.Trace("Batch was not assigned to any peer.");
-                        Interlocked.Increment(ref _data.NotAssignedCount);
-                        return SyncResponseHandlingResult.NotAssigned;
-                    }
-
-                    if (_logger.IsTrace) _logger.Trace($"Received node data - {responseLength} items in response to {requestLength}");
-                    int nonEmptyResponses = 0;
-                    int invalidNodes = 0;
-                    for (int i = 0; i < batch.RequestedNodes!.Length; i++)
-                    {
-                        StateSyncItem currentStateSyncItem = batch.RequestedNodes[i];
-
-                        /* if the peer has limit on number of requests in a batch then the response will possibly be
-                           shorter than the request */
-                        if (batch.Responses.Length < i + 1)
-                        {
-                            AddNodeToPending(currentStateSyncItem, null, "missing", true);
-                            continue;
-                        }
-
-                        /* if the peer does not have details of this particular node */
-                        byte[] currentResponseItem = batch.Responses[i];
-                        if (currentResponseItem == null)
-                        {
-                            AddNodeToPending(batch.RequestedNodes[i], null, "missing", true);
-                            continue;
-                        }
-
-                        /* node sent data that is not consistent with its hash - it happens surprisingly often */
-                        if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan.SequenceEqual(currentStateSyncItem.Hash.Bytes))
-                        {
-                            AddNodeToPending(currentStateSyncItem, null, "missing", true);
-                            if (_logger.IsTrace) _logger.Trace($"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
-                            invalidNodes++;
-                            continue;
-                        }
-
-                        nonEmptyResponses++;
-                        NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
-                        if (nodeDataType == NodeDataType.Code)
-                        {
-                            SaveNode(currentStateSyncItem, currentResponseItem);
-                            continue;
-                        }
-
-                        HandleTrieNode(currentStateSyncItem, currentResponseItem, ref invalidNodes);
-                    }
-
-                    Interlocked.Add(ref _data.ConsumedNodesCount, nonEmptyResponses);
-                    StoreProgressInDb();
-
-                    if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({_pendingItems.Description}) nodes");
-
-                    /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
-                    bool isEmptish = (decimal) nonEmptyResponses / Math.Max(requestLength, 1) < 384m / 1024m * 0.75m;
-                    if (isEmptish)
-                    {
-                        Interlocked.Increment(ref _hintsToResetRoot);
-                        Interlocked.Increment(ref _data.EmptishCount);
-                    }
-                    else
-                    {
-                        Interlocked.Exchange(ref _hintsToResetRoot, 0);
-                    }
-
-                    /* here we are very forgiving for Geth nodes that send bad data fast */
-                    bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / Math.Max(requestLength, 1) > 0.50m;
-                    if (isBadQuality) Interlocked.Increment(ref _data.BadQualityCount);
-
-                    bool isEmpty = nonEmptyResponses == 0 && !isBadQuality;
-                    if (isEmpty)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Peer sent no data in response to a request of length {batch.RequestedNodes.Length}");
-                        return SyncResponseHandlingResult.NoProgress;
-                    }
-
-                    if (!isEmptish && !isBadQuality)
-                    {
-                        Interlocked.Increment(ref _data.OkCount);
-                    }
-
-                    SyncResponseHandlingResult result = isEmptish
-                        ? SyncResponseHandlingResult.Emptish
-                        : isBadQuality
-                            ? SyncResponseHandlingResult.LesserQuality
-                            : SyncResponseHandlingResult.OK;
-
-                    _data.DisplayProgressReport(_pendingRequests.Count, _branchProgress, _logger);
-
-                    long total = _handleWatch.ElapsedMilliseconds + _networkWatch.ElapsedMilliseconds;
-                    if (total != 0)
-                    {
-                        // calculate averages
-                        if (_logger.IsTrace) _logger.Trace($"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal) _networkWatch.ElapsedMilliseconds / total:P0}) - Handle {_handleWatch.ElapsedMilliseconds}ms ({(decimal) _handleWatch.ElapsedMilliseconds / total:P0})");
-                    }
-
-                    if (_handleWatch.ElapsedMilliseconds > 250)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Handle watch {_handleWatch.ElapsedMilliseconds}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal) _handleWatch.ElapsedMilliseconds / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
-                    }
-
-                    _data.LastDbReads = _data.DbChecks;
-                    _data.AverageTimeInHandler = (_data.AverageTimeInHandler * (_data.ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / _data.ProcessedRequestsCount;
-                    Interlocked.Add(ref _data.HandledNodesCount, nonEmptyResponses);
-                    return result;
-                }
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error when handling state sync response", e);
-                return SyncResponseHandlingResult.InternalError;
-            }
-            finally
-            {
-                _handleWatch.Stop();
-            }
-        }
-
         private void StoreProgressInDb()
         {
             byte[] serializedData = _data.Serialize();
@@ -489,10 +657,6 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
         }
-
-        public override bool IsMultiFeed => true;
-
-        public override AllocationContexts Contexts => AllocationContexts.State;
 
         private void HandleTrieNode(StateSyncItem currentStateSyncItem, byte[] currentResponseItem, ref int invalidNodes)
         {
@@ -665,100 +829,6 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public override async Task<StateSyncBatch?> PrepareRequest()
-        {
-            if (_rootSaved == 1)
-            {
-                VerifyPostSyncCleanUp();
-                FinishThisSyncRound();
-                return EmptyBatch!;
-            }
-            
-            if ((_syncModeSelector.Current & SyncMode.StateNodes) != SyncMode.StateNodes)
-            {
-                return EmptyBatch!;
-            }
-
-            try
-            {
-                if (_rootNode == Keccak.EmptyTreeHash)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Falling asleep - root is empty tree");
-                    FinishThisSyncRound();
-                    return EmptyBatch!;
-                }
-                
-                if (_hintsToResetRoot >= 32)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Falling asleep - many missing responses");
-                    FinishThisSyncRound();
-                    return EmptyBatch!;
-                }
-
-                bool rootNodeKeyExists;
-                lock (_stateDbLock)
-                {
-                    try
-                    {
-                        // it finished downloading
-                        rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        return EmptyBatch!;
-                    }
-                }
-
-                if (rootNodeKeyExists)
-                {
-                    try
-                    {
-                        VerifyPostSyncCleanUp();
-                        FinishThisSyncRound();
-                        return EmptyBatch!;
-                    }
-                    catch (ObjectDisposedException)
-                    {
-                        return EmptyBatch!;
-                    }
-                }
-
-                List<StateSyncItem> requestHashes = _pendingItems.TakeBatch(MaxRequestSize);
-                LogRequestInfo(requestHashes);
-                
-                long secondsInCurrentSync = (long)(DateTime.UtcNow - _currentSyncStart).TotalSeconds;
-
-                if (requestHashes.Count > 0)
-                {
-                    StateSyncItem[] requestedNodes = requestHashes.ToArray();
-                    StateSyncBatch result = new(requestedNodes);
-                    
-                    Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
-                    Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + secondsInCurrentSync);
-
-                    if (_logger.IsTrace) _logger.Trace($"After preparing a request of {requestHashes.Count} from ({_pendingItems.Description}) nodes | {_dependencies.Count}");
-                    if (_logger.IsTrace) _logger.Trace($"Adding pending request {result}");
-                    _pendingRequests.TryAdd(result, null);
-
-                    Interlocked.Increment(ref Metrics.StateSyncRequests);
-                    return await Task.FromResult(result);
-                }
-
-                if (requestHashes.Count == 0 && secondsInCurrentSync >= Timeouts.Eth.Seconds)
-                {
-                    // trying to reproduce past behaviour where we can recognize the transition time this way
-                    Interlocked.Increment(ref _hintsToResetRoot);
-                }
-
-                return await Task.FromResult(EmptyBatch);
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult(EmptyBatch);
-            }
-        }
-
         private void LogRequestInfo(List<StateSyncItem> requestHashes)
         {
             int requestSize = requestHashes.Count;
@@ -776,80 +846,12 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
         }
-        
-        public void ResetStateRoot(long blockNumber, Keccak stateRoot)
-        {
-            if (CurrentState != SyncFeedState.Dormant)
-            {
-                throw new InvalidOperationException("Cannot reset state sync on an active feed");
-            }
-            
-            Interlocked.Exchange(ref _hintsToResetRoot, 0);
-            
-            if (_logger.IsInfo) _logger.Info($"Setting state sync state root to {blockNumber} {stateRoot}");
-            _currentSyncStart = DateTime.UtcNow;
-            _currentSyncStartSecondsInSync = _data.SecondsInSync;
-
-            _data.LastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
-            _data.LastSavedNodesCount = _data.SavedNodesCount;
-            _data.LastRequestedNodesCount = _data.RequestedNodesCount;
-            if (_rootNode != stateRoot)
-            {
-                _branchProgress = new BranchProgress(blockNumber, _logger);
-                _blockNumber = blockNumber;
-                _rootNode = stateRoot;
-                lock (_dependencies) _dependencies.Clear();
-                lock (_codesSameAsNodes) _codesSameAsNodes.Clear();
-
-                if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
-                _pendingItems.Clear();
-                Interlocked.Exchange(ref _rootSaved, 0);
-            }
-            else
-            {
-                foreach ((StateSyncBatch pendingRequest, _) in _pendingRequests)
-                {
-                    // re-add the pending request
-                    for (int i = 0; i < pendingRequest.RequestedNodes.Length; i++)
-                    {
-                        AddNodeToPending(pendingRequest.RequestedNodes[i], null, "pending request", true);
-                    }
-                }
-            }
-
-            _pendingRequests.Clear();
-
-            bool hasOnlyRootNode = false;
-
-            if (_rootNode != Keccak.EmptyTreeHash)
-            {
-                if (_pendingItems.Count == 1)
-                {
-                    // state root can only be located on state stream
-                    StateSyncItem? potentialRoot = _pendingItems.PeekState();
-                    if (potentialRoot?.Hash == _rootNode)
-                    {
-                        hasOnlyRootNode = true;
-                    }
-                }
-
-                if (!hasOnlyRootNode)
-                {
-                    AddNodeToPending(new StateSyncItem(_rootNode, NodeDataType.State), null, "initial");
-                }
-            }
-        }
 
         private enum AddNodeResult
         {
             AlreadySaved,
             AlreadyRequested,
             Added
-        }
-
-        public void Dispose()
-        {
-            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }
     }
 }

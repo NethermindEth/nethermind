@@ -86,7 +86,7 @@ namespace Nethermind.Mev.Execution
         protected abstract TBlockTracer CreateBlockTracer(MevBundle mevBundle);
 
         protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
-            ResultWrapper<TResult>.Fail(result.Error ?? "", ErrorCodes.InvalidInput);
+            ResultWrapper<TResult>.Fail(result.Error ?? string.Empty, ErrorCodes.InvalidInput);
             
 
     }

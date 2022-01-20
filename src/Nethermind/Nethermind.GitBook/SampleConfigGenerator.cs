@@ -61,6 +61,20 @@ namespace Nethermind.GitBook
                 docBuilder.AppendLine("```");
                 _markdownGenerator.CloseTab(docBuilder);
             }
+
+            // Write sample docker-compose .env file
+            var env = "mainnet_env";
+            _markdownGenerator.CreateTab(docBuilder, env);
+            docBuilder.AppendLine("```yaml");
+            string[] envData = File.ReadAllLines($"./envs/{env}");
+                
+            foreach (string line in envData)
+            {
+                docBuilder.AppendLine(line);
+            }
+            docBuilder.AppendLine("```");
+            _markdownGenerator.CloseTab(docBuilder);
+            
             _markdownGenerator.CloseTabs(docBuilder);
             
             string path = string.Concat(docsDir, "/ethereum-client/configuration");
