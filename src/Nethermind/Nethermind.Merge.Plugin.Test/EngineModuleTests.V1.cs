@@ -695,7 +695,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             async Task CanPrepareBlock(BlockRequestResult block)
             {
-                UInt256 timestamp = block.Timestamp;
+                UInt256 timestamp = block.Timestamp + 1;
                 Keccak random = Keccak.Zero;
                 Address feeRecipient = Address.Zero;
                 BlockRequestResult? blockResult = await BuildAndGetPayloadResult(rpc, block.BlockHash, block.ParentHash,

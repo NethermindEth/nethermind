@@ -85,32 +85,40 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(false, poSSwitcher.IsTerminalBlock(blockWithPostMergeFlag.Header)); // block with post merge flag
         }
         
-        [Test]
-        public void GetBlockSwitchInfo_returning_expected_results()
+        [TestCase(5000000)]
+        [TestCase(4900000)]
+        public void GetBlockSwitchInfo_returning_expected_results(long terminalTotalDifficulty)
         {
             Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
-            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(5).TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(6).TestObject;
             TestSpecProvider specProvider = new(London.Instance);
-            specProvider.TerminalTotalDifficulty = 4000000;
+            specProvider.TerminalTotalDifficulty = (UInt256)terminalTotalDifficulty;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             BlockHeader? block3 = blockTree.FindHeader(3, BlockTreeLookupOptions.All);
+            BlockHeader? block4 = blockTree.FindHeader(4, BlockTreeLookupOptions.All);
+            BlockHeader? block5 = blockTree.FindHeader(5, BlockTreeLookupOptions.All);
+            Block blockWithPostMergeFlag = Build.A.Block.WithNumber(4).WithDifficulty(0).WithPostMergeFlag(true)
+                .WithParent(block3!).TestObject; 
             Assert.AreEqual((false, false), poSSwitcher.GetBlockSwitchInfo(block3!)); // PoWBlock
-            // Assert.AreEqual((true, false), poSSwitcher.GetBlockSwitchInfo(block2.Header)); // terminal block
-            // Assert.AreEqual((false, true), poSSwitcher.GetBlockSwitchInfo(block3.Header)); // first merge block
+            Assert.AreEqual((true, false), poSSwitcher.GetBlockSwitchInfo(block4!)); // terminal block
+            Assert.AreEqual((false, true), poSSwitcher.GetBlockSwitchInfo(block5!)); // incorrect PoW, TTD > TD and it is not terminal, so we should process it in the same way like post merge blocks
+            Assert.AreEqual((false, true), poSSwitcher.GetBlockSwitchInfo(blockWithPostMergeFlag.Header)); // block with post merge flag
         }
 
         [Test]
         public void Switch_when_TTD_is_reached()
         {
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            TestSpecProvider specProvider = new(Berlin.Instance);
-            specProvider.TerminalTotalDifficulty = 200;
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(4).TestObject;
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = 5000000;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());
-            Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(1).TestObject;
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block));
+            Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(4).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
+            blockTree.SuggestBlock(block);
+            blockTree.UpdateMainChain(block);
 
             Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalBlock());
         }
@@ -119,22 +127,22 @@ namespace Nethermind.Merge.Plugin.Test
         public void Can_load_parameters_after_the_restart()
         {
             using MemDb metadataDb = new();
-            
-            UInt256? configTerminalTotalDifficulty = 10L;
-            long terminalBlock = 15_773_000;
-            
-            IBlockTree? blockTree = Substitute.For<IBlockTree>();
-            TestSpecProvider specProvider = new(Berlin.Instance);
-            specProvider.TerminalTotalDifficulty = configTerminalTotalDifficulty;
+            var terminalBlock = 4;
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(4).TestObject;
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = 5000000;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
-            Block block = Build.A.Block.WithTotalDifficulty(300L).WithNumber(terminalBlock).TestObject;
-            block.Header.Hash = block.CalculateHash();
-            blockTree.NewHeadBlock += Raise.Event<EventHandler<BlockEventArgs>>(new BlockEventArgs(block));
+
+            Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());
+            Block block = Build.A.Block.WithTotalDifficulty(5000000L).WithNumber(terminalBlock).WithParent(blockTree.Head!).WithDifficulty(1000000L).TestObject;
+            blockTree.SuggestBlock(block);
+            blockTree.UpdateMainChain(block);
             Assert.AreEqual(terminalBlock + 1, specProvider.MergeBlockNumber);
             Assert.AreEqual(true, poSSwitcher.HasEverReachedTerminalBlock());
 
             TestSpecProvider newSpecProvider = new(London.Instance);
-            newSpecProvider.TerminalTotalDifficulty = configTerminalTotalDifficulty;
+            newSpecProvider.TerminalTotalDifficulty = 5000000L;
             // we're using the same MemDb for a new switcher
             PoSSwitcher newPoSSwitcher = CreatePosSwitcher(blockTree, metadataDb, newSpecProvider);
             
