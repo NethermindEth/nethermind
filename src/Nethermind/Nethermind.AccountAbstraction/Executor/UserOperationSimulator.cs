@@ -104,8 +104,7 @@ namespace Nethermind.AccountAbstraction.Executor
                     abiSignature,
                     userOperation.Abi, _signer.Address);
 
-                gasLimit = (long)userOperation.VerificationGas + (long)userOperation.CallGas +
-                           100000; // TODO WHAT CONSTANT
+                gasLimit = (long)userOperation.PreVerificationGas + (long)userOperation.VerificationGas + (long)userOperation.CallGas;
             }
             else
             {
@@ -117,7 +116,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
                 gasLimit = userOperationArray.Aggregate((long)0,
                     (sum, operation) =>
-                        sum + (long)operation.VerificationGas + (long)operation.CallGas + 100000); // TODO WHAT CONSTANT
+                        sum + (long)operation.PreVerificationGas + (long)operation.VerificationGas + (long)operation.CallGas);
             }
 
             Transaction transaction =
@@ -198,8 +197,12 @@ namespace Nethermind.AccountAbstraction.Executor
                 abiSignature,
                 userOperationAbi);
 
-            Transaction transaction = BuildTransaction((long)userOperation.VerificationGas, computedCallData,
-                Address.Zero, parent, spec, true);
+            Transaction transaction = BuildTransaction((long)userOperation.PreVerificationGas + (long)userOperation.VerificationGas, 
+                computedCallData,
+                Address.Zero, 
+                parent, 
+                spec, 
+                true);
 
             return transaction;
         }
