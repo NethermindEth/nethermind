@@ -169,6 +169,10 @@
     "Kinstugi": {
       "commandName": "Project",
       "commandLineArgs": "--config kintsugi.cfg  --Init.DiagnosticMode MemDb"
+    },
+    "Goerli ShadowFork": {
+      "commandName": "Project",
+      "commandLineArgs": "--config goerli_shadowfork.cfg  --Init.DiagnosticMode MemDb --Merge.Enabled true"
     }
   }
 }
