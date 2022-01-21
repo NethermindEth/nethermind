@@ -12,7 +12,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.State.SnapSync
+namespace Nethermind.State.Snap
 {
     public static class SnapProvider
     {
