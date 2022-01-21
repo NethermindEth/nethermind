@@ -24,7 +24,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.SnapSync;
+using Nethermind.State.Snap;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Core.Test.Builders

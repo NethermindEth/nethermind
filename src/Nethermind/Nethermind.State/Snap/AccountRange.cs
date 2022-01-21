@@ -5,7 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.State.SnapSync
+namespace Nethermind.State.Snap
 {
     public class AccountRange
     {

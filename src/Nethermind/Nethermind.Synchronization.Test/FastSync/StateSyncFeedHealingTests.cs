@@ -11,7 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.State.SnapSync;
+using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
