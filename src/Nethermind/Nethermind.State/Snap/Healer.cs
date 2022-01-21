@@ -8,7 +8,7 @@ using Nethermind.Db;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.State.SnapSync
+namespace Nethermind.State.Snap
 {
     internal class Healer
     {
