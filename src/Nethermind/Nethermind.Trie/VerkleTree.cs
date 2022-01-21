@@ -23,6 +23,7 @@ using Nethermind.Trie;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
 namespace Nethermind.State;
@@ -47,14 +48,12 @@ public class VerkleTree
     private readonly IntPtr _verkleTrieObj;
     private readonly ILogger _logger;
     
-    public static readonly UInt256 EmptyTreeHash = UInt256.Zero;
+    public static readonly Keccak EmptyTreeHash = new (UInt256.Zero.ToBigEndian());
     public TrieType TrieType { get; protected set; }
-        
-    private UInt256 _rootHash = UInt256.Zero;
-        
+    
     private readonly bool _allowCommits;
 
-    public UInt256 RootHash;
+    public Keccak RootHash;
     
     public VerkleTree()
         : this(EmptyTreeHash, true, NullLogManager.Instance)
@@ -66,7 +65,7 @@ public class VerkleTree
     }
 
     public VerkleTree(
-        UInt256 rootHash,
+        Keccak rootHash,
         bool allowCommits,
         ILogManager? logManager)
     {
@@ -261,5 +260,18 @@ public class VerkleTree
         }
 
         return chunks;
+    }
+    
+    public void UpdateRootHash()
+    {
+        // RootRef?.ResolveKey(TrieStore, true);
+        // SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
+    }
+    
+    public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions visitingOptions = VisitingOptions.ExpectAccounts)
+    {
+        if (visitor is null) throw new ArgumentNullException(nameof(visitor));
+        if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
+        throw new InvalidOperationException("No support for visiting a VerkleTree");
     }
 }

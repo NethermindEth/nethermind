@@ -24,6 +24,8 @@ namespace Nethermind.Core
         public static Account TotallyEmpty = new();
 
         private static UInt256 _accountStartNonce = UInt256.Zero;
+
+        public byte[]? Code;
         
         /// <summary>
         /// This is a special field that was used by some of the testnets (namely - Morden and Mordor).

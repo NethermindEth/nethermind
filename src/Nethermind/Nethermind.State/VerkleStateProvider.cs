@@ -27,6 +27,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using System.Runtime.CompilerServices;
 using Nethermind.State.Witnesses;
+using Nethermind.Trie;
 using Metrics = Nethermind.Db.Metrics;
 
 
@@ -47,7 +48,7 @@ namespace Nethermind.State
         public const int CodeHash = 3;
         public const int CodeSize = 4;
     }
-    public class VerkleStateProvider:  IJournal<int>, IAccountStateProvider
+    public class VerkleStateProvider:  IStateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
@@ -76,6 +77,20 @@ namespace Nethermind.State
         
         public void CommitCode()
         {
+        }
+        
+        public Keccak StateRoot
+        {
+            get
+            {
+                if (_needsStateRootUpdate)
+                {
+                    throw new InvalidOperationException();
+                }
+
+                return _tree.RootHash;
+            }
+            set => _tree.RootHash = value;
         }
 
         public Account GetAccount(Address address)
@@ -222,6 +237,7 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
+            account.Code = _codeDb[account.CodeHash.Bytes];
             _tree.Set(address, account);
         }
 
@@ -733,7 +749,7 @@ namespace Nethermind.State
             }
         }
 
-        public Keccak UpdateCode(Address address, ReadOnlyMemory<byte> code)
+        public Keccak UpdateCode(ReadOnlyMemory<byte> code)
         {
             _needsStateRootUpdate = true;
             if (code.Length == 0)
@@ -743,7 +759,6 @@ namespace Nethermind.State
 
             Keccak codeHash = Keccak.Compute(code.Span);
             _codeDb[codeHash.Bytes] = code.ToArray();
-            _tree.SetCode(address, code.ToArray());
 
             return codeHash;
         }
@@ -799,6 +814,29 @@ namespace Nethermind.State
         {
             if (_logger.IsTrace) _logger.Trace($"State snapshot {_currentPosition}");
             return _currentPosition;
+        }
+        
+        public void RecalculateStateRoot()
+        {
+            _tree.UpdateRootHash();
+            _needsStateRootUpdate = false;
+        }
+        
+        public void Accept(ITreeVisitor? visitor, Keccak? stateRoot)
+        {
+            if (visitor is null) throw new ArgumentNullException(nameof(visitor));
+            if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
+
+            _tree.Accept(visitor, stateRoot, visitor.GetSupportedOptions());
+        }
+        
+        public void UpdateStorageRoot(Address address, Keccak storageRoot)
+        {
+            _needsStateRootUpdate = true;
+        }
+        public Keccak GetStorageRoot(Address address)
+        {
+            throw new InvalidOperationException("No storage root in verkle trees");
         }
         
     }

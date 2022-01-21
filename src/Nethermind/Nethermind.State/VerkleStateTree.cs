@@ -120,6 +120,10 @@ namespace Nethermind.State
                 SetValue(TreeKeys[AccountTreeIndexes.Nonce], account.Nonce.ToBigEndian());
                 SetValue(TreeKeys[AccountTreeIndexes.CodeHash], account.CodeHash.Bytes);
                 SetValue(TreeKeys[AccountTreeIndexes.CodeSize], account.CodeSize.ToBigEndian());
+                if (account.Code != null)
+                {
+                    SetCode(address, account.Code.ToArray());
+                }
             }
             
         }
