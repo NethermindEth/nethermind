@@ -45,9 +45,9 @@ namespace Nethermind.Merge.Plugin
             throw new NotImplementedException();
         }
 
-        public (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent = null)
-        {
-            throw new NotImplementedException();
-        }
+        public (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent = null) =>
+            (false, false);
+
+        public bool IsPostMerge(BlockHeader header, BlockHeader? parent = null) => false;
     }
 }

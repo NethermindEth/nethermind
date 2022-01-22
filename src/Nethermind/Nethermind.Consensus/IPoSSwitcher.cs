@@ -16,7 +16,6 @@
 // 
 
 using System;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -42,5 +41,7 @@ namespace Nethermind.Consensus
         bool TryUpdateTerminalBlock(BlockHeader header, BlockHeader? parent = null);
 
         (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent = null);
+        
+        bool IsPostMerge(BlockHeader header, BlockHeader? parent = null);
     }
 }

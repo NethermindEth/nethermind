@@ -218,6 +218,9 @@ namespace Nethermind.Merge.Plugin
             return (isTerminal, isPostMerge);
         }
 
+        public bool IsPostMerge(BlockHeader header, BlockHeader? parent = null) =>
+            GetBlockSwitchInfo(header, parent).IsPostMerge;
+
         public bool HasEverReachedTerminalBlock() => _hasEverReachedTerminalDifficulty;
 
         public event EventHandler? TerminalBlockReached;

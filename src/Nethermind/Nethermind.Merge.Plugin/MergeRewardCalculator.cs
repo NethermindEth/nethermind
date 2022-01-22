@@ -16,7 +16,6 @@
 // 
 
 using System;
-using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -36,7 +35,7 @@ namespace Nethermind.Merge.Plugin
 
         public BlockReward[] CalculateRewards(Block block)
         {
-            if (_poSSwitcher.GetBlockSwitchInfo(block.Header).IsPostMerge)
+            if (_poSSwitcher.IsPostMerge(block.Header))
             {
                 return NoBlockRewards.Instance.CalculateRewards(block);
             }
