@@ -1629,7 +1629,7 @@ namespace Nethermind.Evm
                         stack.PushBytes(txCtx.Header.GasBeneficiary.Bytes);
                         break;
                     }
-                    case Instruction.RANDOM:
+                    case Instruction.DIFFICULTY:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
