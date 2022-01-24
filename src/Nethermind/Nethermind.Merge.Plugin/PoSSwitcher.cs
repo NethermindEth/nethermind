@@ -195,12 +195,12 @@ namespace Nethermind.Merge.Plugin
         {
             if (header.IsPostMerge)
                 return (false, true);
-            if (_specProvider.TerminalTotalDifficulty == null)
+            if (_terminalTotalDifficulty == null)
                 return (false, false);
 
             bool isTerminal = false, isPostMerge = false;
             // ToDo TTD nulls?
-            if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
+            if (header.TotalDifficulty < _terminalTotalDifficulty)
                 return (false, false);
 
             bool theMergeEnabled = header.Number >= _specProvider.MergeBlockNumber;
