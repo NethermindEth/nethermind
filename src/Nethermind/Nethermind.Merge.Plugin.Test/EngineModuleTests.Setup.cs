@@ -49,13 +49,10 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain(long? terminalTotalDifficulty = 0) 
-            => await new MergeTestBlockchain()
+        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null) 
+            => await new MergeTestBlockchain(mergeConfig)
                 .Build(
-                    new SingleReleaseSpecProvider(London.Instance, 1)
-                    {
-                        TerminalTotalDifficulty = terminalTotalDifficulty == null ? null : (UInt256?)terminalTotalDifficulty
-                    });
+                    new SingleReleaseSpecProvider(London.Instance, 1));
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, IPayloadService? mockedPayloadService = null)
         {

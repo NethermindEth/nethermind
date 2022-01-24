@@ -34,7 +34,7 @@ namespace Nethermind.Merge.Plugin
         [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "null")]
         public string? TerminalTotalDifficulty { get; set; }
         
-        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "0")]
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "null")]
         UInt256? TerminalTotalDifficultyParsed => string.IsNullOrWhiteSpace(TerminalTotalDifficulty) ? null : UInt256.Parse(TerminalTotalDifficulty);
         
         [ConfigItem(Description = "Terminal PoW block hash used for transition process.", DefaultValue = "0x0000000000000000000000000000000000000000000000000000000000000000")]

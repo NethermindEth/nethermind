@@ -55,7 +55,6 @@ namespace Nethermind.Merge.Plugin
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
-        private UInt256? _terminalTotalDifficulty;
         private Keccak? _terminalBlockHash;
         private BlockHeader? _firstPoSBlockHeader;
 
@@ -83,14 +82,13 @@ namespace Nethermind.Merge.Plugin
 
         private void Initialize()
         {
-            LoadTerminalTotalDifficulty();
             LoadTerminalBlock();
             LoadFinalizedBlockHash();
 
             if (_terminalBlockNumber != null)
                 _hasEverReachedTerminalDifficulty = true;
             
-            _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _terminalTotalDifficulty);
+            _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
 
             if (_terminalBlockNumber == null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
@@ -102,12 +100,6 @@ namespace Nethermind.Merge.Plugin
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e)
         {
             TryUpdateTerminalBlock(e.Block.Header);
-        }
-
-        private void LoadTerminalTotalDifficulty()
-        {
-            _terminalTotalDifficulty = _mergeConfig.TerminalTotalDifficultyParsed ??
-                                       _specProvider.TerminalTotalDifficulty;
         }
 
         private void LoadFinalizedBlockHash()
@@ -195,12 +187,12 @@ namespace Nethermind.Merge.Plugin
         {
             if (header.IsPostMerge)
                 return (false, true);
-            if (_terminalTotalDifficulty == null)
+            if (_specProvider.TerminalTotalDifficulty == null)
                 return (false, false);
 
             bool isTerminal = false, isPostMerge = false;
             // ToDo TTD nulls?
-            if (header.TotalDifficulty < _terminalTotalDifficulty)
+            if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
                 return (false, false);
 
             bool theMergeEnabled = header.Number >= _specProvider.MergeBlockNumber;
@@ -225,7 +217,7 @@ namespace Nethermind.Merge.Plugin
 
         public event EventHandler? TerminalBlockReached;
 
-        public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
+        public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         private void LoadTerminalBlock()
         {
