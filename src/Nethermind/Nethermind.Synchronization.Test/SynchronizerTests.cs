@@ -50,7 +50,6 @@ namespace Nethermind.Synchronization.Test
 {
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
-    [TestFixture(SynchronizerType.Eth2Merge)]
     [Parallelizable(ParallelScope.All)]
     public class SynchronizerTests
     {
