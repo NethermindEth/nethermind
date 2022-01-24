@@ -33,7 +33,6 @@ namespace Nethermind.Specs.Test
         {
             _spec = spec;
             IsEip3607Enabled = _spec.IsEip3607Enabled;
-            TheMergeEnabled = _spec.TheMergeEnabled;
         }
 
         public string Name => "OverridableReleaseSpec";
@@ -146,8 +145,6 @@ namespace Nethermind.Specs.Test
                 _overridenEip1559TransitionBlock = value;
             }
         }
-
-        public bool TheMergeEnabled { get; set; }
 
         public Address? Eip1559FeeCollector => _spec.Eip1559FeeCollector;
     }

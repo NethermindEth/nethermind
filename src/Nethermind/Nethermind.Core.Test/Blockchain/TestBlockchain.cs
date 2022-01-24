@@ -43,7 +43,6 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Merge.Plugin;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Specs.Test;
 using Nethermind.Trie;

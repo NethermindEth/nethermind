@@ -90,12 +90,7 @@ namespace Nethermind.Specs
                 return London.Instance;
             }
 
-            if (blockNumber < MergeBlockNumber)
-            {
-                return ArrowGlacier.Instance;
-            }
-            
-            return TheMerge.Instance;
+            return ArrowGlacier.Instance;
         }
 
         public const long HomesteadBlockNumber = 1_150_000;
@@ -110,26 +105,18 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 12_244_000;
         public const long LondonBlockNumber = 12_965_000;
         public const long ArrowGlacierBlockNumber = 13_773_000;
-        public const long ShanghaiBlockNumber = long.MaxValue -4;
-        public const long CancunBlockNumber = long.MaxValue -3;
-        public const long PragueBlockNumber = long.MaxValue -2;
-        public const long OsakaBlockNumber = long.MaxValue -1;
+        public const long ShanghaiBlockNumber = long.MaxValue - 4;
+        public const long CancunBlockNumber = long.MaxValue - 3;
+        public const long PragueBlockNumber = long.MaxValue - 2;
+        public const long OsakaBlockNumber = long.MaxValue - 1;
 
         public ulong ChainId => Core.ChainId.Mainnet;
 
         public long[] TransitionBlocks { get; } =
         {
-            HomesteadBlockNumber,
-            DaoBlockNumberConst,
-            TangerineWhistleBlockNumber,
-            SpuriousDragonBlockNumber,
-            ByzantiumBlockNumber,
-            ConstantinopleFixBlockNumber,
-            IstanbulBlockNumber,
-            MuirGlacierBlockNumber,
-            BerlinBlockNumber,
-            LondonBlockNumber,
-            ArrowGlacierBlockNumber
+            HomesteadBlockNumber, DaoBlockNumberConst, TangerineWhistleBlockNumber, SpuriousDragonBlockNumber,
+            ByzantiumBlockNumber, ConstantinopleFixBlockNumber, IstanbulBlockNumber, MuirGlacierBlockNumber,
+            BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber
         };
 
         private MainnetSpecProvider() { }

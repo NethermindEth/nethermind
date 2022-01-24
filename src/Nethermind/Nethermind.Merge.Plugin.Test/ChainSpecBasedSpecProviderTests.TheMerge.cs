@@ -41,8 +41,6 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.AreEqual(terminalBlockNumber + 1, provider.MergeBlockNumber);
         Assert.AreEqual(0, provider.TransitionBlocks.Length); // merge block number shouldn't affect transition blocks
-        Assert.False(provider.GetSpec(terminalBlockNumber).TheMergeEnabled);
-        Assert.True(provider.GetSpec(terminalBlockNumber + 1).TheMergeEnabled);
     }
 
     [Test]
@@ -73,8 +71,6 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.AreEqual(null, provider.MergeBlockNumber);
         Assert.AreEqual(0, provider.TransitionBlocks.Length);
-        Assert.False(provider.GetSpec(0).TheMergeEnabled);
-        Assert.False(provider.GetSpec(long.MaxValue).TheMergeEnabled);
     }
     
     [Test]
@@ -88,12 +84,8 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         Assert.AreEqual(expectedTerminalPoWBlock + 1, provider.MergeBlockNumber);
-        Assert.False(provider.GetSpec(expectedTerminalPoWBlock).TheMergeEnabled);
-        Assert.True(provider.GetSpec( expectedTerminalPoWBlock+ 1).TheMergeEnabled);
         
         provider.UpdateMergeTransitionInfo(newMergeBlock);
         Assert.AreEqual(newMergeBlock, provider.MergeBlockNumber);
-        Assert.False(provider.GetSpec( newMergeBlock - 1).TheMergeEnabled);
-        Assert.True(provider.GetSpec( newMergeBlock).TheMergeEnabled);
     }
 }

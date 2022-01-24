@@ -80,11 +80,7 @@ namespace Nethermind.Specs.Test
                     break;    
                 }
             }
-            
-            OverridableReleaseSpec overridableReleaseSpec = new(spec);
-            overridableReleaseSpec.TheMergeEnabled = blockNumber >= _theMergeBlock;
-            spec = overridableReleaseSpec;
-            
+
             return spec;
         }
 

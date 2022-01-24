@@ -203,7 +203,7 @@ namespace Nethermind.Merge.Plugin
             if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
                 return (false, false);
 
-            bool theMergeEnabled = _specProvider.GetSpec(header.Number).TheMergeEnabled;
+            bool theMergeEnabled = header.Number >= _specProvider.MergeBlockNumber;
             if (TransitionFinished && theMergeEnabled || _terminalBlockExplicitSpecified && theMergeEnabled)
             {
                 isPostMerge = true;

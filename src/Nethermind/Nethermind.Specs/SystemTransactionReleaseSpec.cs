@@ -128,7 +128,6 @@ namespace Nethermind.Specs
         }
 
         public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
-        public bool TheMergeEnabled => _spec.TheMergeEnabled;
 
         public Address Eip1559FeeCollector => _spec.Eip1559FeeCollector;
     }

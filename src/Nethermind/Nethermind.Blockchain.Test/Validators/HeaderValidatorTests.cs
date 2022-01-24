@@ -70,17 +70,6 @@ namespace Nethermind.Blockchain.Test.Validators
             _blockTree.SuggestBlock(_block);
         }
         
-        private void AssignValidPoSFields(Block block)
-        {
-            block.Header.Difficulty = 0;
-            block.Header.Nonce = 0ul;
-            //block.Header.ExtraData = Array.Empty<byte>();
-            block.Header.MixHash = Keccak.Zero;
-            block.Header.UnclesHash = Keccak.OfAnEmptySequenceRlp;
-            block.Header.SealEngineType = SealEngineType.None;
-            block.Header.Hash = _block.CalculateHash();
-        }
-        
         [Test]
         public void Valid_when_valid()
         {

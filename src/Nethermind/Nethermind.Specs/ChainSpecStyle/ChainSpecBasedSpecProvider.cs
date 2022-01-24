@@ -182,19 +182,12 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public IReleaseSpec GenesisSpec => _transitions.Length == 0 ? null : _transitions[0].Release;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            ReleaseSpec releaseSpec = _transitions.TryGetSearchedItem(blockNumber,
-                CompareTransitionOnBlock,
-                out (long BlockNumber, ReleaseSpec Release) transition)
-                ? transition.Release
-                : null;
-            
-            if (releaseSpec != null)
-                releaseSpec.TheMergeEnabled = blockNumber >= MergeBlockNumber;
-            
-            return releaseSpec;
-        }
+        public IReleaseSpec GetSpec(long blockNumber) =>
+                _transitions.TryGetSearchedItem(blockNumber,
+                    CompareTransitionOnBlock,
+                    out (long BlockNumber, ReleaseSpec Release) transition)
+                    ? transition.Release
+                    : null;
 
         private static int CompareTransitionOnBlock(long blockNumber, (long BlockNumber, ReleaseSpec Release) transition) => 
             blockNumber.CompareTo(transition.BlockNumber);

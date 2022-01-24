@@ -48,7 +48,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
-            if (_poSSwitcher.HasEverReachedTerminalBlock())
+            if (_poSSwitcher.IsPostMerge(block.Header))
             {
                 return Task.FromResult(block);
             }
