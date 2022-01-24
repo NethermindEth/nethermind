@@ -68,6 +68,15 @@ namespace Nethermind.Trie.Test
         private readonly byte[] value2 =  {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2
         };
+        
+        private readonly byte[] smallValueStart2 =  {
+            2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        };
+        
+        private readonly byte[] ValueStart2 =  {
+            0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+        };
+
 
         [Test]
         public void TestInsertGet()
@@ -85,6 +94,19 @@ namespace Nethermind.Trie.Test
 
             byte[] array = RustVerkleLib.VerkleTrieGet(trie, one);
             Assert.True(checkIfEqual(one32, array));
+        }
+        
+        [Test]
+        public void TestInsertGetValueNot32Byte()
+        {
+            byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+
+            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+
+            RustVerkleLib.VerkleTrieInsert(trie, one, smallValueStart2);
+            
+            byte[] array32 = RustVerkleLib.VerkleTrieGet(trie, one);
+            Assert.True(checkIfEqual(ValueStart2, array32));
         }
 
         [Test]

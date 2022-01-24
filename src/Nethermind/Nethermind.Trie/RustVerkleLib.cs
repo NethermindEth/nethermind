@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Trie
@@ -43,11 +45,24 @@ namespace Nethermind.Trie
         
         public static void VerkleTrieInsert(IntPtr verkleTrie, byte[] keys, byte[] value)
         {
-            if (value.Length != 32)
+            byte[] newValue;
+            int valueLength = value.Length;
+            if (valueLength > 32)
             {
                 throw new InvalidOperationException("Value length must be less than 32");
+            } else if (valueLength < 32)
+            {
+                newValue = new byte[32];
+                int lengthDiff = 32 - valueLength;
+                byte[] addressPadding = new byte[12] ;
+                Buffer.BlockCopy(value, 0, newValue, lengthDiff, valueLength);
             }
-            verkle_trie_insert(verkleTrie, keys, value);
+            else
+            {
+                newValue = value;
+            }
+
+            verkle_trie_insert(verkleTrie, keys, newValue);
         }
 
         public static byte[]? VerkleTrieGet(IntPtr verkleTrie, byte[] keys)

@@ -72,7 +72,7 @@ public class VerkleTree
         // TODO: do i need to pass roothash here to rust to use for initialization of the library?
         _verkleTrieObj = RustVerkleLib.VerkleTrieNew();
             
-        _logger = logManager?.GetClassLogger<VerkleTrie>() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<VerkleTree>() ?? throw new ArgumentNullException(nameof(logManager));
         _allowCommits = allowCommits;
         RootHash = rootHash;
         MainStorageOffsetBase.LeftShift(MainStorageOffsetExponent, out MainStorageOffset);
