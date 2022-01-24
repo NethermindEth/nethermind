@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Data;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,7 +46,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly IStateReader _stateReader;
         private readonly ILogManager _logManager;
         private IPruningContext? _currentPruning;
-        private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private CancellationTokenSource? _cancellationTokenSource;
         private int _waitingForBlockProcessed = 0;
         private int _waitingForStateReady = 0;
         private long _blockToWaitFor;
@@ -73,7 +74,7 @@ namespace Nethermind.Blockchain.FullPruning
         /// <summary>
         /// Is activated by pruning trigger, tries to start full pruning.
         /// </summary>
-        private void OnPrune(object? sender, PruningEventArgs e)
+        private void OnPrune(object? sender, PruningTriggerEventArgs e)
         {
             // Lets assume pruning is in progress
             e.Status = PruningStatus.InProgress;
@@ -99,12 +100,12 @@ namespace Nethermind.Blockchain.FullPruning
                 {
                     if (e.Block is not null)
                     {
-                        if (_fullPruningDb.TryStartPruning(out IPruningContext pruningContext))
+                        if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext pruningContext))
                         {
-                            SetCurrentPruning(pruningContext);
+                            Interlocked.Exchange(ref _currentPruning, pruningContext);
                             if (Interlocked.CompareExchange(ref _waitingForStateReady, 1, 0) == 0)
                             {
-                                _blockToWaitFor = e.Block.Number;
+                                _blockToWaitFor = e.Block.Number + 2;
                                 _stateToCopy = long.MaxValue;
                                 if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: waiting for state {e.Block.Number} to be ready.");
                             }
@@ -148,33 +149,42 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private void SetCurrentPruning(IPruningContext pruningContext)
-        {
-            IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
-            if (oldPruning is not null)
-            {
-                Task.Run(() => oldPruning.Dispose());
-            }
-        }
-        
         private bool CanRunPruning() => _fullPruningDb.CanStartPruning;
 
         protected virtual void RunPruning(IPruningContext pruning, Keccak statRoot)
         {
-            using (pruning)
+            try
             {
+                _cancellationTokenSource = new CancellationTokenSource();
                 pruning.MarkStart();
-                using (CopyTreeVisitor copyTreeVisitor = new(pruning, _cancellationTokenSource, _logManager))
-                {
-                    VisitingOptions visitingOptions = new() {MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism};
-                    _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
+                using CopyTreeVisitor copyTreeVisitor = new(pruning, _cancellationTokenSource, _logManager);
+                VisitingOptions visitingOptions = new() { MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism };
+                _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
 
-                    if (!_cancellationTokenSource.IsCancellationRequested)
+                if (!_cancellationTokenSource.IsCancellationRequested)
+                {
+                    copyTreeVisitor.Finish();
+
+                    void CommitOnNewBLock(object o, BlockEventArgs e)
                     {
-                        copyTreeVisitor.Finish();
+                        _blockTree.NewHeadBlock -= CommitOnNewBLock;
+                        // ReSharper disable AccessToDisposedClosure
                         pruning.Commit();
+                        pruning.Dispose();
+                        // ReSharper restore AccessToDisposedClosure
                     }
+
+                    _blockTree.NewHeadBlock += CommitOnNewBLock;
                 }
+                else
+                {
+                    pruning.Dispose();
+                }
+            }
+            catch (Exception)
+            {
+                pruning.Dispose();
+                throw;
             }
         }
 
@@ -183,7 +193,7 @@ namespace Nethermind.Blockchain.FullPruning
             _blockTree.NewHeadBlock -= OnNewHead;
             _pruningTrigger.Prune -= OnPrune;
             _currentPruning?.Dispose();
-            _cancellationTokenSource.Dispose();
+            _cancellationTokenSource?.Dispose();
         }
     }
 }

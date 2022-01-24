@@ -19,7 +19,7 @@ using System;
 
 namespace Nethermind.Blockchain.FullPruning;
 
-public class PruningEventArgs : EventArgs
+public class PruningTriggerEventArgs : EventArgs
 {
     /// <summary>
     /// Result of triggering Full Pruning

@@ -28,13 +28,14 @@ namespace Nethermind.Db.FullPruning
         /// Are we able to start full pruning.
         /// </summary>
         bool CanStartPruning { get; }
-        
+
         /// <summary>
         /// Try starting full pruning.
         /// </summary>
+        /// <param name="duplicateReads">If pruning should duplicate db reads.</param>
         /// <param name="context">Out, context of pruning.</param>
         /// <returns>true if pruning was started, false otherwise.</returns>
-        bool TryStartPruning(out IPruningContext context);
+        bool TryStartPruning(bool duplicateReads, out IPruningContext context);
         
         /// <summary>
         /// Gets the path to current DB using base path.
@@ -48,7 +49,7 @@ namespace Nethermind.Db.FullPruning
         /// </summary>
         string InnerDbName { get; }
         
-        event EventHandler PruningStarted;
-        event EventHandler PruningFinished;
+        event EventHandler<PruningEventArgs> PruningStarted;
+        event EventHandler<PruningEventArgs> PruningFinished;
     }
 }

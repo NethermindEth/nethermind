@@ -527,11 +527,12 @@ namespace Nethermind.Db.Rocks
         {
             // ReSharper disable once ConstantConditionalAccessQualifier
             // running in finalizer, potentially not fully constructed
-            _db?.Dispose();
             foreach (IBatch batch in _currentBatches)
             {
                 batch.Dispose();
             }
+            
+            _db?.Dispose();
         }
 
         private void Dispose(bool disposing)

@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             using (PruningTestBlockchain chain = await PruningTestBlockchain.Create())
             {
-                chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningEventArgs>>();
+                chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
                 await chain.AddBlock(true);
                 HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
                 bool pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));

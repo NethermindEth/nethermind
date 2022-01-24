@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.FullPruning;
 /// </summary>
 public class ManualPruningTrigger : IPruningTrigger
 {
-    public event EventHandler<PruningEventArgs>? Prune;
+    public event EventHandler<PruningTriggerEventArgs>? Prune;
         
     /// <summary>
     /// Triggers full pruning.
@@ -32,7 +32,7 @@ public class ManualPruningTrigger : IPruningTrigger
     /// <returns>Status of triggering full pruning.</returns>
     public PruningStatus Trigger()
     {
-        PruningEventArgs args = new PruningEventArgs();
+        PruningTriggerEventArgs args = new PruningTriggerEventArgs();
         Prune?.Invoke(this, args);
         return args.Status;
     }

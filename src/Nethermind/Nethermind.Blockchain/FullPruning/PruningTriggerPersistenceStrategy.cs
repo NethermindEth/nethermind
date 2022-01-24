@@ -34,26 +34,52 @@ namespace Nethermind.Blockchain.FullPruning;
 public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposable
 {
     private readonly IFullPruningDb _fullPruningDb;
+    private readonly IBlockTree _blockTree;
+    private readonly ILogger _logger;
     private int _inPruning = 0;
+    private long? _minPersistedBlock = null;
 
-    public PruningTriggerPersistenceStrategy(IFullPruningDb fullPruningDb)
+    public PruningTriggerPersistenceStrategy(IFullPruningDb fullPruningDb, IBlockTree blockTree, ILogManager logManager)
     {
         _fullPruningDb = fullPruningDb;
+        _blockTree = blockTree;
+        _logger = logManager.GetClassLogger();
         _fullPruningDb.PruningFinished += OnPruningFinished;
         _fullPruningDb.PruningStarted += OnPruningStarted;
-    }
-
-    private void OnPruningFinished(object? sender, EventArgs e)
-    {
-        Interlocked.CompareExchange(ref _inPruning, 0, 1);
     }
 
     private void OnPruningStarted(object? sender, EventArgs e)
     {
         Interlocked.CompareExchange(ref _inPruning, 1, 0);
+        _minPersistedBlock = null;
+        _logger.Info("In Pruning, persisting all state changes");
+    }
+    
+    private void OnPruningFinished(object? sender, EventArgs e)
+    {
+        _logger.Info("Out of Pruning, stop persisting all state changes");
+        Interlocked.CompareExchange(ref _inPruning, 0, 1);
+        _minPersistedBlock = null;
     }
 
-    public bool ShouldPersist(long blockNumber) => _inPruning != 0;
+    public bool ShouldPersist(long blockNumber)
+    {
+        bool inPruning = _inPruning != 0;
+        if (inPruning)
+        {
+            _minPersistedBlock ??= blockNumber;
+            if (blockNumber > _minPersistedBlock + Reorganization.MaxDepth)
+            {
+                _blockTree.BestPersistedState = blockNumber - Reorganization.MaxDepth;
+            }
+            else
+            {
+                _logger.Info($"Persisting state changes for {blockNumber}, from {_minPersistedBlock}");
+            }
+        }
+
+        return inPruning;
+    }
 
     /// <inheritdoc/>
     public void Dispose()
