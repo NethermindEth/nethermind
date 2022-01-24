@@ -119,7 +119,7 @@ namespace Nethermind.Config.Test
                 // there is a case when we have default value as [4, 8, 8] and we need to compare this string to int[] so removing brackets and whitespaces
                 string[] expectedItems = expectedValue
                     .Trim('[').Trim(']')
-                    .Replace(" ", "")
+                    .Replace(" ", string.Empty)
                     .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
 

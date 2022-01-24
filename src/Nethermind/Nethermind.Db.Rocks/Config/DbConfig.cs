@@ -73,9 +73,9 @@ namespace Nethermind.Db.Rocks.Config
         public ulong CanonicalHashTrieDbBlockCacheSize { get; set; } = (ulong) 8.MB();
         public bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; } = true;
         
-        public ulong MetadataDbWriteBufferSize { get; set; } = (ulong) 2.MB();
+        public ulong MetadataDbWriteBufferSize { get; set; } = (ulong) 1.KiB();
         public uint MetadataDbWriteBufferNumber { get; set; } = 4;
-        public ulong MetadataDbBlockCacheSize { get; set; } = (ulong) 8.MB();
+        public ulong MetadataDbBlockCacheSize { get; set; } = (ulong) 1.KiB();
         public bool MetadataDbCacheIndexAndFilterBlocks { get; set; } = true;
         
         public uint RecycleLogFileNum { get; set; } = 0;

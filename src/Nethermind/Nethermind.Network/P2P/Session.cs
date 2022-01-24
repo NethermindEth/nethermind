@@ -87,7 +87,7 @@ namespace Nethermind.Network.P2P
         public bool IsClosing => State > SessionState.Initialized;
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
-        public PublicKey RemoteNodeId { get; set; }
+        public PublicKey? RemoteNodeId { get; set; }
         public PublicKey ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
         public int RemotePort { get; set; }
@@ -309,7 +309,7 @@ namespace Nethermind.Network.P2P
             Initialized?.Invoke(this, EventArgs.Empty);
         }
 
-        public void Handshake(PublicKey handshakeRemoteNodeId)
+        public void Handshake(PublicKey? handshakeRemoteNodeId)
         {
             if (_logger.IsTrace) _logger.Trace($"{nameof(Handshake)} called on {this}");
             lock (_sessionStateLock)
@@ -340,7 +340,7 @@ namespace Nethermind.Network.P2P
                     _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId}, new: {handshakeRemoteNodeId}");
                 ObsoleteRemoteNodeId = RemoteNodeId;
                 RemoteNodeId = handshakeRemoteNodeId;
-                Node = new Node(RemoteNodeId, RemoteHost, RemotePort, _node.AddedToDiscovery);
+                Node = new Node(RemoteNodeId, RemoteHost, RemotePort);
             }
 
             Metrics.Handshakes++;
@@ -348,7 +348,7 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public void InitiateDisconnect(DisconnectReason disconnectReason, string details = null)
+        public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
         {
             bool ShouldDisconnectStaticNode()
             {
@@ -449,6 +449,11 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnecting;
             }
 
+            if (_isTracked)
+            {
+                _logger.Warn($"Tracked {this} -> disconnected {disconnectType} {disconnectReason} {details}");
+            }
+            
             _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost != null)
@@ -630,6 +635,13 @@ namespace Nethermind.Network.P2P
 
                 throw new InvalidOperationException($"Registered protocols do not support {protocol}.{messageCode}");
             }
+        }
+
+        private bool _isTracked = false;
+        
+        public void StartTrackingSession()
+        {
+            _isTracked = true;
         }
     }
 }

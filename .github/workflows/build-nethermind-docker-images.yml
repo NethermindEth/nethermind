@@ -11,6 +11,10 @@ on:
         description: 'Tag for the docker image'
         required: false
         default: ''
+      dockerfile:
+        description: 'Dockerfile to use'
+        required: false
+        default: 'Dockerfile'
 
 jobs:
   build-dockers:
@@ -28,6 +32,7 @@ jobs:
           echo ::set-output name=TAG_FROM_REPO::$(git describe --tags --always | cut -d- -f1)
           echo ::set-output name=docker_username::${{ secrets.DOCKER_USERNAME }}
           echo ::set-output name=docker_image::${{ github.event.inputs.repo }}
+          echo ::set-output name=dockerfile::${{ github.event.inputs.dockerfile }}
       - name: Setting up QEMU
         uses: docker/setup-qemu-action@v1
       - name: Setting up Docker Buildx
@@ -42,12 +47,12 @@ jobs:
       - name: Building & Pushing image to docker registry (major) / trigger DAppNode Build
         if: steps.settings.outputs.TAG == steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:latest" -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f ${{ steps.settings.outputs.dockerfile }} --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
           curl -s -X POST -u "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode", "client_payload": { "tag":"${{ steps.settings.outputs.TAG }}"}}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
       - name: Building & Pushing image to docker registry  (patch)
         if: steps.settings.outputs.TAG != steps.settings.outputs.TAG_FROM_REPO
         run: |
-          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f Dockerfile --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
+          docker buildx build --platform=linux/amd64,linux/arm64 -t "${{ steps.settings.outputs.docker_image }}:${{ steps.settings.outputs.TAG }}" -f ${{ steps.settings.outputs.dockerfile }} --build-arg GIT_COMMIT=$(git log -1 --format=%h) . --push
       - name: Clearing
         if: always()
         run: |

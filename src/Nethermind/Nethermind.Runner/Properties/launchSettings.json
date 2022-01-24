@@ -144,7 +144,7 @@
     },
     "Kintsugi": {
       "commandName": "Project",
-      "commandLineArgs": "--config kintsugi.cfg --Init.DiagnosticMode None"
+      "commandLineArgs": "--config kintsugi.cfg --Init.DiagnosticMode MemDb"
     },
     "xDai_testnet": {
       "commandName": "Project",

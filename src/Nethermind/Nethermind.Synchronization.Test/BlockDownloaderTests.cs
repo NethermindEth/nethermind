@@ -870,7 +870,7 @@ namespace Nethermind.Synchronization.Test
                 PeerPool = Substitute.For<ISyncPeerPool>();
                 Feed = Substitute.For<ISyncFeed<BlocksRequest>>();
 
-                MemDb stateDb = new MemDb();
+                MemDb stateDb = new();
                 
                 SyncConfig syncConfig = new();
                 SyncProgressResolver syncProgressResolver = new(

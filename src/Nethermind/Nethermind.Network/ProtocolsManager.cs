@@ -22,7 +22,6 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -57,7 +56,7 @@ namespace Nethermind.Network
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IMessageSerializationService _serializer;
-        private readonly IRlpxPeer _localPeer;
+        private readonly IRlpxHost _rlpxHost;
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
@@ -76,7 +75,7 @@ namespace Nethermind.Network
             IPooledTxsRequestor pooledTxsRequestor,
             IDiscoveryApp discoveryApp,
             IMessageSerializationService serializationService,
-            IRlpxPeer localPeer,
+            IRlpxHost rlpxHost,
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             INetworkStorage peerStorage,
@@ -90,7 +89,7 @@ namespace Nethermind.Network
             _pooledTxsRequestor = pooledTxsRequestor ?? throw new ArgumentNullException(nameof(pooledTxsRequestor));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _serializer = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
-            _localPeer = localPeer ?? throw new ArgumentNullException(nameof(localPeer));
+            _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
@@ -100,7 +99,7 @@ namespace Nethermind.Network
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _protocolFactories = GetProtocolFactories();
-            localPeer.SessionCreated += SessionCreated;
+            rlpxHost.SessionCreated += SessionCreated;
         }
 
         private void SessionCreated(object sender, SessionEventArgs e)
@@ -187,7 +186,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    P2PProtocolHandler handler = new(session, _localPeer.LocalNodeId, _stats, _serializer, _logManager);
+                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 
@@ -385,23 +384,11 @@ namespace Nethermind.Network
             if (session.Node.Port != eventArgs.ListenPort)
             {
                 if (_logger.IsDebug) _logger.Debug($"Updating listen port for {session:s} to: {eventArgs.ListenPort}");
-
-                if (session.Node.AddedToDiscovery)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Discovery node already initialized with wrong port {session} - listen port: {eventArgs.ListenPort}");
-                }
-
                 session.Node.Port = eventArgs.ListenPort;
             }
-
-            if (session.Node.AddedToDiscovery)
-            {
-                return;
-            }
-
+            
             //In case peer was initiated outside of discovery and discovery is enabled, we are adding it to discovery for future use (e.g. trusted peer)
             _discoveryApp.AddNodeToDiscovery(session.Node);
-            session.Node.AddedToDiscovery = true;
         }
 
         public void AddSupportedCapability(Capability capability)

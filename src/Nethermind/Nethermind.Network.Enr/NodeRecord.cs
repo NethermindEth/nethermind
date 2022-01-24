@@ -15,9 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Text;
+using DotNetty.Buffers;
+using DotNetty.Codecs.Base64;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Enr;
@@ -27,7 +31,7 @@ namespace Nethermind.Network.Enr;
 /// </summary>
 public class NodeRecord
 {
-    private int _enrSequence;
+    private long _enrSequence;
 
     private string? _enrString;
 
@@ -47,7 +51,7 @@ public class NodeRecord
     /// update to the node data. Setting sequence on this class wipes out <see cref="EnrString"/> and
     /// <see cref="ContentHash"/>.
     /// </summary>
-    public int EnrSequence
+    public long EnrSequence
     {
         get => _enrSequence;
         set
@@ -96,6 +100,8 @@ public class NodeRecord
     /// A signature resulting from a secp256k1 signing of the [seq, k, v, ...] content.
     /// </summary>
     public Signature? Signature { get; set; }
+
+    public bool Snap { get; set; }
 
     public NodeRecord()
     {
@@ -235,16 +241,29 @@ public class NodeRecord
     {
         RequireSignature();
 
+        const string prefix = "enr:";
         int rlpLength = GetRlpLengthWithSignature();
-        RlpStream rlpStream = new(rlpLength);
-        Encode(rlpStream);
-        byte[] rlpData = rlpStream.Data!;
-        
-        // https://tools.ietf.org/html/rfc4648#section-5
-        // Base64Url must be used, hence the replace calls.
-        // Convert.ToBase64String uses '+'. '/' signs and padding.
-        return string.Concat("enr:",
-            Convert.ToBase64String(rlpData).Replace("+", "-").Replace("/", "_").Replace("=", ""));
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(rlpLength);
+        try
+        {
+            NettyRlpStream rlpStream = new(buffer);
+            Encode(rlpStream);
+            IByteBuffer resultBuffer = Base64.Encode(buffer, Base64Dialect.URL_SAFE);
+            try
+            {
+                string base64String = resultBuffer.ReadString(resultBuffer.ReadableBytes, Encoding.UTF8);
+                int skipLast = base64String[^2] == '=' ? 2 : base64String[^1] == '=' ? 1 : 0; 
+                return string.Concat(prefix, base64String.AsSpan(0, base64String.Length - skipLast));
+            }
+            finally
+            {
+                resultBuffer.Release();
+            }
+        }
+        finally
+        {
+            buffer.Release();
+        }
     }
 
     private void RequireSignature()

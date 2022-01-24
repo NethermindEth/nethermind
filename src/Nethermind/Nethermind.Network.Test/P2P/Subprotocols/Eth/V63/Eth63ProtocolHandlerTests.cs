@@ -170,7 +170,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             public Context()
             {
                 Session = Substitute.For<ISession>();
-                Session.Node.Returns(new Node("127.0.0.1", 1000, true));
+                Session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 1000, true));
                 NetworkDiagTracer.IsEnabled = true;
             }
         }

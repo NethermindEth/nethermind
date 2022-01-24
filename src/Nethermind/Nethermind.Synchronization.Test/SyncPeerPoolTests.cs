@@ -164,7 +164,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Cannot_add_when_not_started()
         {
-            await using Context ctx = new Context(); 
+            await using Context ctx = new(); 
             for (int i = 0; i < 3; i++)
             {
                 Assert.AreEqual(0, ctx.Pool.PeerCount);
@@ -175,7 +175,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Will_disconnect_one_when_at_max()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var peers = await SetupPeers(ctx, 25);
             await WaitForPeersInitialization(ctx);
             ctx.Pool.DropUselessPeers(true);
@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Cannot_remove_when_stopped()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.Pool.Start();
             ISyncPeer[] syncPeers = new ISyncPeer[3];
             for (int i = 0; i < 3; i++)
@@ -206,7 +206,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Peer_count_is_valid_when_adding()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.Pool.Start();
             for (int i = 0; i < 3; i++)
             {
@@ -218,7 +218,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Does_not_crash_when_adding_twice_same_peer()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.Pool.Start();
             ctx.Pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             ctx.Pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Does_not_crash_when_removing_non_existing_peer()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.Pool.Start();
             ctx.Pool.RemovePeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
             Assert.AreEqual(0, ctx.Pool.PeerCount);
@@ -238,7 +238,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Peer_count_is_valid_when_removing()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.Pool.Start();
             ISyncPeer[] syncPeers = new ISyncPeer[3];
             for (int i = 0; i < 3; i++)
@@ -257,14 +257,14 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_start()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.Pool.Start();
         }
 
         [Test]
         public async Task Can_start_and_stop()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.Pool.Start();
             await ctx.Pool.StopAsync();
         }
@@ -272,7 +272,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public async Task Can_refresh()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             ctx.Pool.Start();
             var syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
@@ -286,8 +286,8 @@ namespace Nethermind.Synchronization.Test
         private void SetupSpeedStats(Context ctx, PublicKey publicKey, int transferSpeed)
         {
             
-            Node node = new Node(publicKey, "127.0.0.1", 30303);
-            NodeStatsLight stats = new NodeStatsLight(node);
+            Node node = new(publicKey, "127.0.0.1", 30303);
+            NodeStatsLight stats = new (node);
             stats.AddTransferSpeedCaptureEvent(TransferSpeedType.Headers, transferSpeed);
 
             ctx.Stats.GetOrAdd(Arg.Is<Node>(n => n.Id == publicKey)).Returns(stats);
@@ -296,7 +296,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_replace_peer_with_better()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             SetupSpeedStats(ctx, TestItem.PublicKeyA, 50);
             SetupSpeedStats(ctx, TestItem.PublicKeyB, 100);
 
@@ -315,7 +315,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Does_not_replace_with_a_worse_peer()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             SetupSpeedStats(ctx, TestItem.PublicKeyA, 200);
             SetupSpeedStats(ctx, TestItem.PublicKeyB, 100);
 
@@ -334,7 +334,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Does_not_replace_if_too_small_percentage_change()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             SetupSpeedStats(ctx, TestItem.PublicKeyA, 91);
             SetupSpeedStats(ctx, TestItem.PublicKeyB, 100);
 
@@ -353,7 +353,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public async Task Does_not_replace_on_small_difference_in_low_numbers()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             SetupSpeedStats(ctx, TestItem.PublicKeyA, 5);
             SetupSpeedStats(ctx, TestItem.PublicKeyB, 4);
 
@@ -372,7 +372,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_stay_when_current_is_best()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             SetupSpeedStats(ctx, TestItem.PublicKeyA, 100);
             SetupSpeedStats(ctx, TestItem.PublicKeyB, 100);
 
@@ -390,7 +390,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_list_all_peers()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             _ = await SetupPeers(ctx, 3);
             Assert.AreEqual(3, ctx.Pool.AllPeers.Count());
         }
@@ -398,7 +398,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_borrow_peer()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var peers = await SetupPeers(ctx, 1);
 
             var allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
@@ -409,7 +409,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_borrow_return_and_borrow_again()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var peers = await SetupPeers(ctx, 1);
 
             var allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
@@ -424,7 +424,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_borrow_many()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             await SetupPeers(ctx, 2);
 
             SyncPeerAllocation allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
@@ -448,7 +448,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Does_not_allocate_sleeping_peers()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             _ = await SetupPeers(ctx, 3);
             for (int i = 0; i < PeerInfo.SleepThreshold + 1; i++)
             {
@@ -467,7 +467,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_wake_up_all_sleeping_peers()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             _ = await SetupPeers(ctx, 3);
             ctx.Pool.ReportNoSyncProgress(ctx.Pool.InitializedPeers.First(), AllocationContexts.All);
             ctx.Pool.ReportNoSyncProgress(ctx.Pool.InitializedPeers.Last(), AllocationContexts.All);
@@ -486,7 +486,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Initialized_peers()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             _ = await SetupPeers(ctx, 3);
             Assert.AreEqual(3, ctx.Pool.InitializedPeers.Count());
         }
@@ -494,7 +494,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Report_invalid_invokes_disconnection()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var peers = await SetupPeers(ctx, 3);
             var peerInfo = ctx.Pool.InitializedPeers.First();
             ctx.Pool.ReportBreachOfProtocol(peerInfo, "issue details");
@@ -505,7 +505,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Will_not_allocate_same_peer_to_two_allocations()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var peers = await SetupPeers(ctx, 1);
 
             var allocation1 = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
@@ -518,7 +518,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_remove_borrowed_peer()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var peers = await SetupPeers(ctx, 1);
 
             var allocation = await ctx.Pool.Allocate(new BlocksSyncPeerAllocationStrategy(null));
@@ -530,7 +530,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Will_remove_peer_if_times_out_on_init()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
             peer.SetHeaderResponseTime(int.MaxValue);
             ctx.Pool.Start();
@@ -543,7 +543,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_remove_during_init()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
             peer.SetHeaderResponseTime(500);
             ctx.Pool.Start();
@@ -559,7 +559,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task It_is_fine_to_fail_init()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             var peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
             peer.SetHeaderFailure(true);
             ctx.Pool.Start();
@@ -576,7 +576,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_return()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             await SetupPeers(ctx, 1);
 
             var allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
@@ -586,7 +586,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Does_not_fail_when_receiving_a_new_block_and_allocation_has_no_peer()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             await SetupPeers(ctx, 1);
 
             var allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
@@ -598,7 +598,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Can_borrow_async_many()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             await SetupPeers(ctx, 2);
 
             var allocationTasks = new Task<SyncPeerAllocation>[3];
@@ -630,11 +630,11 @@ namespace Nethermind.Synchronization.Test
 
         private int _pendingRequests;
 
-        private Random _workRandomDelay = new Random(42);
+        private Random _workRandomDelay = new(42);
 
         private async Task DoWork(string desc, SyncPeerAllocation allocation)
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             if (allocation.HasPeer)
             {
                 int workTime = _workRandomDelay.Next(1000);
@@ -650,7 +650,7 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public async Task Try_to_break_multithreaded()
         {
-            await using Context ctx = new Context();
+            await using Context ctx = new();
             await SetupPeers(ctx, 25);
 
             int failures = 0;

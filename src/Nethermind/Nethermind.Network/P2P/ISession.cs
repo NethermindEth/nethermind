@@ -70,6 +70,8 @@ namespace Nethermind.Network.P2P
 
         void Handshake(PublicKey handshakeRemoteNodeId);
 
+        void StartTrackingSession();
+
         event EventHandler<DisconnectEventArgs> Disconnecting;
         event EventHandler<DisconnectEventArgs> Disconnected;
         event EventHandler<EventArgs> Initialized;

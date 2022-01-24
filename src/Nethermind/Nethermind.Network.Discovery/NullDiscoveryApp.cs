@@ -33,13 +33,25 @@ public class NullDiscoveryApp : IDiscoveryApp
     {
         return Task.CompletedTask;
     }
+    
+    public void AddNodeToDiscovery(Node node)
+    {
+    }
 
-    public event EventHandler<NodeEventArgs> NodeDiscovered {
+    public List<Node> LoadInitialList()
+    {
+        return new List<Node>();
+    }
+
+    public event EventHandler<NodeEventArgs>? NodeAdded
+    {
         add { }
         remove { }
     }
 
-    public void AddNodeToDiscovery(Node node)
+    public event EventHandler<NodeEventArgs>? NodeRemoved
     {
+        add { }
+        remove { }
     }
 }

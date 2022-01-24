@@ -187,7 +187,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         
         private static Peer SetUpPeerA()
         {
-            Node node = new("127.0.0.1", 30303, true);
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, true);
             node.ClientId = "Geth/v1.9.21-stable/linux-amd64/go1.15.2";
             
             Peer peer = new(node);
@@ -228,7 +228,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         
         private static Peer SetUpPeerB()
         {
-            Node node = new("95.217.106.25", 22222, true);
+            Node node = new(TestItem.PublicKeyB, "95.217.106.25", 22222, true);
             node.ClientId = "Geth/v1.9.26-unstable/linux-amd64/go1.15.6";
 
             Peer peer = new(node);
@@ -343,7 +343,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             IPeerManager peerManager = Substitute.For<IPeerManager>();
             peerManager.ActivePeers.Returns(new List<Peer>{});
-            peerManager.ConnectedPeers.Returns(new List<Peer> {new(new Node("111.1.1.1", 11111, true))});
+            peerManager.ConnectedPeers.Returns(new List<Peer> {new(new Node(TestItem.PublicKeyA, "111.1.1.1", 11111, true))});
             
             IParityRpcModule parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545), 
                 _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}), MainnetSpecProvider.Instance, peerManager);

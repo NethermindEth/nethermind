@@ -18,6 +18,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
+using Nethermind.Secp256k1;
 
 namespace Nethermind.Core.Crypto
 {
@@ -42,7 +43,12 @@ namespace Nethermind.Core.Crypto
             Bytes = bytes.Slice(bytes.Length - LengthInBytes, LengthInBytes).ToArray();
         }
 
-        public byte[] Bytes { get; }
+    public PublicKey Decompress()
+    {
+        return new PublicKey(Proxy.Decompress(Bytes));
+    }
+    
+    public byte[] Bytes { get; }
 
         public bool Equals(CompressedPublicKey? other)
         {

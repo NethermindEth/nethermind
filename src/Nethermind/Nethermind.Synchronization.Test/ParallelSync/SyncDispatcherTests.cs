@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
                 syncPeer.ClientId.Returns("Nethermind");
                 syncPeer.TotalDifficulty.Returns(UInt256.One);
-                SyncPeerAllocation allocation = new SyncPeerAllocation(new PeerInfo(syncPeer), contexts);
+                SyncPeerAllocation allocation = new(new PeerInfo(syncPeer), contexts);
                 allocation.AllocateBestPeer(
                     Substitute.For<IEnumerable<PeerInfo>>(),
                     Substitute.For<INodeStatsManager>(),
@@ -167,9 +167,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             private int _highestRequested;
 
-            public HashSet<int> _results = new HashSet<int>();
+            public HashSet<int> _results = new();
 
-            private ConcurrentQueue<TestBatch> _returned = new ConcurrentQueue<TestBatch>();
+            private ConcurrentQueue<TestBatch> _returned = new();
 
             public override SyncResponseHandlingResult HandleResponse(TestBatch response)
             {
@@ -242,8 +242,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         [Test, Timeout(3000)]
         public async Task Simple_test_sync()
         {
-            TestSyncFeed syncFeed = new TestSyncFeed();
-            TestDispatcher dispatcher = new TestDispatcher(syncFeed, new TestSyncPeerPool(), new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance));
+            TestSyncFeed syncFeed = new();
+            TestDispatcher dispatcher = new(syncFeed, new TestSyncPeerPool(), new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance));
             Task executorTask = dispatcher.Start(CancellationToken.None);
             syncFeed.Activate();
             await executorTask;

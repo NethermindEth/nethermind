@@ -424,8 +424,8 @@ namespace Nethermind.Runner.Test
             foreach (string filePath in filesPaths)
             {
                 string content = File.ReadAllText(filePath)
-                    .Replace("\n", "")
-                    .Replace(" ", "");
+                    .Replace("\n", string.Empty)
+                    .Replace(" ", string.Empty);
 
                 IEnumerable<int> commaIndexes = AllIndexesOf(content, ",");
 
@@ -484,7 +484,7 @@ namespace Nethermind.Runner.Test
             List<IEnumerable<string>> toIntersect = new List<IEnumerable<string>>();
             foreach (string singleWildcard in configWildcards)
             {
-                string singleWildcardBase = singleWildcard.Replace("^", "");
+                string singleWildcardBase = singleWildcard.Replace("^", string.Empty);
                 var result = groups.ContainsKey(singleWildcardBase)
                     ? groups[singleWildcardBase]
                     : Enumerable.Repeat(singleWildcardBase, 1);

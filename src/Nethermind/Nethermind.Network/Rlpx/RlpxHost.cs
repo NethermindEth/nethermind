@@ -39,7 +39,7 @@ using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class RlpxPeer : IRlpxPeer
+    public class RlpxHost : IRlpxHost
     {
         private IChannel? _bootstrapChannel;
         private IEventLoopGroup _bossGroup;
@@ -56,8 +56,7 @@ namespace Nethermind.Network.Rlpx
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
         private IEventExecutorGroup _group;
 
-        public RlpxPeer(
-            IMessageSerializationService serializationService,
+        public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
             int localPort,
             IHandshakeService handshakeService,
@@ -127,7 +126,7 @@ namespace Nethermind.Network.Rlpx
                         if (aggregateException?.InnerException is SocketException socketException
                             && socketException.ErrorCode == 10048)
                         {
-                            if(_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", "")}.{nameof(NetworkConfig.P2PPort)} 30303");    
+                            if(_logger.IsError) _logger.Error($"Port {LocalPort} is in use. You can change the port used by adding: --{nameof(NetworkConfig).Replace("Config", string.Empty)}.{nameof(NetworkConfig.P2PPort)} 30303");    
                         }
                         else
                         {

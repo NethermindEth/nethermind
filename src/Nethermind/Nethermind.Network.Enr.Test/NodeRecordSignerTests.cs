@@ -28,7 +28,7 @@ public class NodeRecordSignerTests
         // go back from Base64Url - also added the '=' padding at the end of the previous string
         // just to check how RLP should look (for debugging the test)
         string expectedEnrStringNonRfcBase64 = expectedEnrString
-            .Replace("enr:", "")
+            .Replace("enr:", string.Empty)
             .Replace('-', '+')
             .Replace('_', '/') + /*padding*/ "=";
 
@@ -65,7 +65,7 @@ public class NodeRecordSignerTests
         // go back from Base64Url - also added the '=' padding at the end of the previous string
         // just to check how RLP should look (for debugging the test)
         string expectedEnrStringNonRfcBase64 = expectedEnrString
-            .Replace("enr:", "")
+            .Replace("enr:", string.Empty)
             .Replace('-', '+')
             .Replace('_', '/') + /*padding*/ "=";
         byte[] expected = Convert.FromBase64String(expectedEnrStringNonRfcBase64);

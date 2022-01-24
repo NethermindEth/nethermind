@@ -34,15 +34,15 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public async Task Start_stop()
         {
-            RlpxPeer peer = new(
+            RlpxHost host = new(
                 Substitute.For<IMessageSerializationService>(),
                 TestItem.PublicKeyA, GegAvailableLocalPort(),
                 Substitute.For<IHandshakeService>(),
                 Substitute.For<ISessionMonitor>(),
                 NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
-            await peer.Init();
-            await peer.Shutdown();
+            await host.Init();
+            await host.Shutdown();
         }
 
         private static int GegAvailableLocalPort()
