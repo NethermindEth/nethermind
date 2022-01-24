@@ -604,7 +604,8 @@ namespace Nethermind.Trie
             Action<TrieNode> action,
             ITrieNodeResolver resolver,
             bool skipPersisted,
-            ILogger logger)
+            ILogger logger,
+            bool resolveStorageRoot = true)
         {
             if (skipPersisted && IsPersisted)
             {
@@ -627,10 +628,14 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            else if (TryResolveStorageRoot(resolver))
+            else
             {
-                if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
-                _storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
+                TrieNode? storageRoot = _storageRoot;
+                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, out storageRoot)))
+                {
+                    if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
+                    storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
+                }
             }
 
             action(this);
@@ -676,7 +681,7 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            else if (_storageRoot?.IsPersisted ?? false)
+            else if (_storageRoot?.IsPersisted == true)
             {
                 _storageRoot = null;
             }
@@ -691,18 +696,24 @@ namespace Nethermind.Trie
 
         #region private
 
-        private bool TryResolveStorageRoot(ITrieNodeResolver resolver)
+        private bool TryResolveStorageRoot(ITrieNodeResolver resolver, out TrieNode? storageRoot)
         {
             bool hasStorage = false;
+            storageRoot = _storageRoot;
+            
             if (IsLeaf)
             {
-                if (_storageRoot is null && (Value?.Length ?? 0) > 64) // if not a storage leaf
+                if (storageRoot is not null)
                 {
-                    Keccak storageRoot = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageRoot != Keccak.EmptyTreeHash)
+                    hasStorage = true;
+                }
+                else if (Value?.Length > 64) // if not a storage leaf
+                {
+                    Keccak storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    if (storageRootKey != Keccak.EmptyTreeHash)
                     {
                         hasStorage = true;
-                        _storageRoot = resolver.FindCachedOrUnknown(storageRoot);
+                        _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
                     }
                 }
             }
