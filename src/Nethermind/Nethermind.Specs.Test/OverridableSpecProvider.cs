@@ -23,7 +23,6 @@ namespace Nethermind.Specs.Test
 {
     public class OverridableSpecProvider : ISpecProvider
     {
-        private long? _theMergeBlock = null;
         private readonly ISpecProvider _specProvider;
         private readonly Func<IReleaseSpec, IReleaseSpec> _overrideAction;
 
@@ -33,12 +32,13 @@ namespace Nethermind.Specs.Test
             _overrideAction = overrideAction;
         }
         
-        public void UpdateMergeTransitionInfo(long blockNumber)
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            _theMergeBlock = blockNumber;
+            _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
-        
-        public long? MergeBlockNumber => _theMergeBlock;
+
+        public long? MergeBlockNumber => _specProvider.MergeBlockNumber;
+
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public IReleaseSpec GenesisSpec => _overrideAction(_specProvider.GenesisSpec);

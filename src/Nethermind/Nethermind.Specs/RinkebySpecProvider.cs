@@ -24,13 +24,16 @@ namespace Nethermind.Specs
     {
         private long? _theMergeBlock = null;
 
-        public void UpdateMergeTransitionInfo(long blockNumber)
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            _theMergeBlock = blockNumber;
+            if (blockNumber != null)
+                _theMergeBlock = blockNumber;
+            if (terminalTotalDifficulty != null)
+                TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
-        public UInt256? TerminalTotalDifficulty => null;
+        public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)

@@ -171,9 +171,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
-        public void UpdateMergeTransitionInfo(long blockNumber)
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            MergeBlockNumber = blockNumber;
+            if (blockNumber != null)
+                MergeBlockNumber = blockNumber;
+            if (terminalTotalDifficulty != null)
+                TerminalTotalDifficulty = terminalTotalDifficulty;
         }
 
         public long? MergeBlockNumber { get; private set; }

@@ -89,8 +89,8 @@ namespace Nethermind.Merge.Plugin
 
             if (_terminalBlockNumber != null)
                 _hasEverReachedTerminalDifficulty = true;
-            if (_firstPoSBlockNumber != null && _specProvider.MergeBlockNumber != _firstPoSBlockNumber)
-                _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber.Value);
+            
+            _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _terminalTotalDifficulty);
 
             if (_terminalBlockNumber == null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
@@ -106,7 +106,8 @@ namespace Nethermind.Merge.Plugin
 
         private void LoadTerminalTotalDifficulty()
         {
-            _terminalTotalDifficulty = _specProvider.TerminalTotalDifficulty;
+            _terminalTotalDifficulty = _mergeConfig.TerminalTotalDifficultyParsed ??
+                                       _specProvider.TerminalTotalDifficulty;
         }
 
         private void LoadFinalizedBlockHash()
@@ -153,8 +154,7 @@ namespace Nethermind.Merge.Plugin
                 _hasEverReachedTerminalDifficulty = true;
                 if (_logger.IsInfo) _logger.Info($"Reached terminal block {header}");
             }
-            else
-                if (_logger.IsInfo) _logger.Info($"Updated terminal block {header}");
+            else if (_logger.IsInfo) _logger.Info($"Updated terminal block {header}");
 
             return true;
         }
@@ -197,7 +197,7 @@ namespace Nethermind.Merge.Plugin
                 return (false, true);
             if (_specProvider.TerminalTotalDifficulty == null)
                 return (false, false);
-            
+
             bool isTerminal = false, isPostMerge = false;
             // ToDo TTD nulls?
             if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty)

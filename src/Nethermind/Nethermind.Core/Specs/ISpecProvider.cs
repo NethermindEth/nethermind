@@ -27,7 +27,7 @@ namespace Nethermind.Core.Specs
         /// The merge block number is different from the rest forks because we don't know the merge block before it happens.
         /// This function handles change of the merge block
         /// </summary>
-        void UpdateMergeTransitionInfo(long blockNumber);
+        void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null);
         
         /// <summary>
         /// We have two different block numbers for merge transition:

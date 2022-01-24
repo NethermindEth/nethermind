@@ -22,9 +22,9 @@ namespace Nethermind.Core.Test
 {
     public class FixedBlockChainHeadSpecProvider : IChainHeadSpecProvider
     {
-        public void UpdateMergeTransitionInfo(long blockNumber)
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            _specProvider.UpdateMergeTransitionInfo(blockNumber);
+            _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
 
         public long? MergeBlockNumber => _specProvider.MergeBlockNumber;

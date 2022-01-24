@@ -36,9 +36,9 @@ namespace Nethermind.Blockchain.Spec
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
         
-        public void UpdateMergeTransitionInfo(long blockNumber)
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
-            _specProvider.UpdateMergeTransitionInfo(blockNumber);
+            _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
         }
 
         public long? MergeBlockNumber => _specProvider.MergeBlockNumber;

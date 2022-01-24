@@ -85,6 +85,32 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(false, poSSwitcher.IsTerminalBlock(blockWithPostMergeFlag.Header)); // block with post merge flag
         }
         
+        [Test]
+        public void Override_TTD_and_number_from_merge_config()
+        {
+            UInt256 expectedTtd = 340;
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.UpdateMergeTransitionInfo(100, 20);
+            PoSSwitcher poSSwitcher = new(new MergeConfig() {TerminalTotalDifficulty = "340", TerminalBlockNumber = 2000}, new MemDb(), blockTree, specProvider, LimboLogs.Instance);
+
+            Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
+            Assert.AreEqual(2001, specProvider.MergeBlockNumber);
+        }
+        
+        [Test]
+        public void Can_update_merge_transition_info()
+        {
+            UInt256 expectedTtd = 340;
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.UpdateMergeTransitionInfo(2001, expectedTtd);
+            PoSSwitcher poSSwitcher = new(new MergeConfig() {}, new MemDb(), blockTree, specProvider, LimboLogs.Instance);
+
+            Assert.AreEqual(expectedTtd, poSSwitcher.TerminalTotalDifficulty);
+            Assert.AreEqual(2001, specProvider.MergeBlockNumber);
+        }
+        
         [TestCase(5000000)]
         [TestCase(4900000)]
         public void GetBlockSwitchInfo_returning_expected_results(long terminalTotalDifficulty)
