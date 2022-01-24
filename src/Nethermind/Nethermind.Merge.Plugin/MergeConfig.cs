@@ -16,7 +16,6 @@
 // 
 
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -31,7 +30,5 @@ namespace Nethermind.Merge.Plugin
         public Keccak TerminalBlockHash { get; set; } = Keccak.Zero;
         
         public long? TerminalBlockNumber { get; set; }
-        
-        public long? ForkNextValue { get; set; }
     }
 }
