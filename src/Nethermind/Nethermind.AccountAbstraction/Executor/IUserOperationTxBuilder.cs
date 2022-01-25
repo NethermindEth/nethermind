@@ -16,26 +16,28 @@
 // 
 
 using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Facade;
-using Nethermind.Int256;
-using Nethermind.JsonRpc;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
-    public interface IUserOperationSimulator
+    public interface IUserOperationTxBuilder
     {
-        ResultWrapper<Keccak> Simulate(UserOperation userOperation,
+        Transaction BuildTransaction(
+            long gaslimit, 
+            byte[] callData, 
+            Address sender, 
             BlockHeader parent,
-            UInt256? timestamp = null,
-            CancellationToken cancellationToken = default);
+            IReleaseSpec spec, 
+            bool systemTransaction);
 
-        BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx,
-            CancellationToken cancellationToken);
+        Transaction BuildTransactionFromUserOperations(
+            IEnumerable<UserOperation> userOperations,
+            BlockHeader parent, 
+            long gasLimit, 
+            IReleaseSpec spec);
+
+        FailedOp? DecodeEntryPointOutputError(byte[] output);
     }
 }

@@ -30,6 +30,7 @@ using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Contracts.Json;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -42,6 +43,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test.Modules;
@@ -52,6 +55,7 @@ using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 
@@ -72,6 +76,8 @@ namespace Nethermind.AccountAbstraction.Test
             public UserOperationPool UserOperationPool { get; private set; } = null!;
             public UserOperationSimulator UserOperationSimulator { get; private set; } = null!;
             public AbiDefinition EntryPointContractAbi { get; private set; } = null!;
+            public UserOperationTxBuilder UserOperationTxBuilder { get; private set; } = null!;
+            public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
 
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
@@ -101,9 +107,7 @@ namespace Nethermind.AccountAbstraction.Test
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
-
-                UserOperationTxSource userOperationTxSource = new(UserOperationPool, UserOperationSimulator, SpecProvider, LogManager.GetClassLogger());
-
+                
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
                     DbProvider,
                     BlockTree,
@@ -118,7 +122,9 @@ namespace Nethermind.AccountAbstraction.Test
                     miningConfig,
                     LogManager);
                 
-                Eth2TestBlockProducerFactory producerFactory = new Eth2TestBlockProducerFactory(GasLimitCalculator, userOperationTxSource);
+                UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, LogManager.GetClassLogger());
+
+                Eth2TestBlockProducerFactory producerFactory = new Eth2TestBlockProducerFactory(GasLimitCalculator, UserOperationTxSource);
                 Eth2BlockProducer blockProducer = producerFactory.Create(
                     blockProducerEnvFactory, 
                     BlockTree, 
@@ -153,20 +159,27 @@ namespace Nethermind.AccountAbstraction.Test
                 parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
                 var json = parser.LoadContract(typeof(EntryPoint));
                 EntryPointContractAbi = parser.Parse(json);
+
+                UserOperationTxBuilder = new UserOperationTxBuilder(
+                    EntryPointContractAbi, 
+                    Signer,
+                    entryPointContractAddress!, 
+                    SpecProvider, 
+                    State);
                 
                 UserOperationSimulator = new(
-                    State, 
+                    UserOperationTxBuilder,
+                    State,
+                    StateReader,
                     EntryPointContractAbi,
-                    Signer, 
-                    _accountAbstractionConfig, 
                     create2FactoryAddress!,
                     entryPointContractAddress!,
                     SpecProvider, 
                     BlockTree, 
                     DbProvider, 
                     ReadOnlyTrieStore, 
-                    LogManager, 
-                    BlockPreprocessorStep);
+                    Timestamper,
+                    LogManager);
                 
                 UserOperationPool = new UserOperationPool(
                     _accountAbstractionConfig, 

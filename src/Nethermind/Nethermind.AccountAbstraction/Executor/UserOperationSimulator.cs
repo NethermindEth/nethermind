@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -25,12 +26,14 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -42,87 +45,48 @@ namespace Nethermind.AccountAbstraction.Executor
     public class UserOperationSimulator : IUserOperationSimulator
     {
         private readonly IBlockTree _blockTree;
-        private readonly IAccountAbstractionConfig _config;
         private readonly Address _create2FactoryAddress;
         private readonly IReadOnlyDbProvider _dbProvider;
         private readonly AbiDefinition _entryPointContractAbi;
         private readonly ILogManager _logManager;
-        private readonly IBlockPreprocessorStep _recoveryStep;
-        private readonly ISigner _signer;
         private readonly Address _entryPointContractAddress;
         private readonly ISpecProvider _specProvider;
+        private readonly IUserOperationTxBuilder _userOperationTxBuilder;
         private readonly IStateProvider _stateProvider;
+        private readonly IStateReader _stateReader;
         private readonly IReadOnlyTrieStore _trieStore;
+        private readonly ITimestamper _timestamper;
 
         private readonly IAbiEncoder _abiEncoder;
 
         public UserOperationSimulator(
+            IUserOperationTxBuilder userOperationTxBuilder,
             IStateProvider stateProvider,
+            IStateReader stateReader,
             AbiDefinition entryPointContractAbi,
-            ISigner signer,
-            IAccountAbstractionConfig config,
             Address create2FactoryAddress,
             Address entryPointContractAddress,
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IDbProvider dbProvider,
             IReadOnlyTrieStore trieStore,
-            ILogManager logManager,
-            IBlockPreprocessorStep recoveryStep)
+            ITimestamper timestamper,
+            ILogManager logManager)
         {
+            _userOperationTxBuilder = userOperationTxBuilder;
             _stateProvider = stateProvider;
+            _stateReader = stateReader;
             _entryPointContractAbi = entryPointContractAbi;
-            _signer = signer;
-            _config = config;
             _create2FactoryAddress = create2FactoryAddress;
             _entryPointContractAddress = entryPointContractAddress;
             _specProvider = specProvider;
             _blockTree = blockTree;
             _dbProvider = dbProvider.AsReadOnly(false);
             _trieStore = trieStore;
+            _timestamper = timestamper;
             _logManager = logManager;
-            _recoveryStep = recoveryStep;
 
             _abiEncoder = new AbiEncoder();
-        }
-
-        public Transaction BuildTransactionFromUserOperations(IEnumerable<UserOperation> userOperations,
-            BlockHeader parent, IReleaseSpec spec)
-        {
-            byte[] computedCallData;
-            long gasLimit;
-
-            // use handleOp is only one op is used, handleOps if multiple
-            UserOperation[] userOperationArray = userOperations.ToArray();
-            if (userOperationArray.Length == 1)
-            {
-                UserOperation userOperation = userOperationArray[0];
-
-                AbiSignature abiSignature = _entryPointContractAbi.Functions["handleOp"].GetCallInfo().Signature;
-                computedCallData = _abiEncoder.Encode(
-                    AbiEncodingStyle.IncludeSignature,
-                    abiSignature,
-                    userOperation.Abi, _signer.Address);
-
-                gasLimit = (long)userOperation.PreVerificationGas + (long)userOperation.VerificationGas + (long)userOperation.CallGas;
-            }
-            else
-            {
-                AbiSignature abiSignature = _entryPointContractAbi.Functions["handleOps"].GetCallInfo().Signature;
-                computedCallData = _abiEncoder.Encode(
-                    AbiEncodingStyle.IncludeSignature,
-                    abiSignature,
-                    userOperationArray.Select(op => op.Abi).ToArray(), _signer.Address);
-
-                gasLimit = userOperationArray.Aggregate((long)0,
-                    (sum, operation) =>
-                        sum + (long)operation.PreVerificationGas + (long)operation.VerificationGas + (long)operation.CallGas);
-            }
-
-            Transaction transaction =
-                BuildTransaction(gasLimit, computedCallData, _signer.Address, parent, spec, false);
-
-            return transaction;
         }
 
         public ResultWrapper<Keccak> Simulate(UserOperation userOperation,
@@ -197,7 +161,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 abiSignature,
                 userOperationAbi);
 
-            Transaction transaction = BuildTransaction((long)userOperation.PreVerificationGas + (long)userOperation.VerificationGas, 
+            Transaction transaction = _userOperationTxBuilder.BuildTransaction((long)userOperation.PreVerificationGas + (long)userOperation.VerificationGas, 
                 computedCallData,
                 Address.Zero, 
                 parent, 
@@ -207,34 +171,108 @@ namespace Nethermind.AccountAbstraction.Executor
             return transaction;
         }
 
-        private Transaction BuildTransaction(long gaslimit, byte[] callData, Address sender, BlockHeader parent,
-            IReleaseSpec spec, bool systemTransaction)
-        {
-            Transaction transaction = systemTransaction ? new SystemTransaction() : new Transaction();
-
-            UInt256 fee = BaseFeeCalculator.Calculate(parent, spec);
-
-            transaction.GasPrice = fee;
-            transaction.GasLimit = gaslimit;
-            transaction.To = _entryPointContractAddress;
-            transaction.ChainId = _specProvider.ChainId;
-            transaction.Nonce = _stateProvider.GetNonce(_signer.Address);
-            transaction.Value = 0;
-            transaction.Data = callData;
-            transaction.Type = TxType.EIP1559;
-            transaction.DecodedMaxFeePerGas = fee;
-            transaction.SenderAddress = sender;
-
-            if (!systemTransaction) _signer.Sign(transaction);
-            transaction.Hash = transaction.CalculateHash();
-
-            return transaction;
-        }
-
         private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent, UserOperation userOperation)
         {
-            return new(parent.GasLimit, userOperation, _stateProvider, _entryPointContractAbi, _create2FactoryAddress,
+            return new(parent.GasLimit, userOperation, _stateProvider, _userOperationTxBuilder, _entryPointContractAbi, _create2FactoryAddress,
                 _entryPointContractAddress, _logManager.GetClassLogger());
+        }
+        
+        [Todo("Refactor once BlockchainBridge is separated")]
+        public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        {
+            ReadOnlyTxProcessingEnv txProcessingEnv =
+                new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
+            
+            EstimateGasTracer estimateGasTracer = new();
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(
+                transactionProcessor,
+                txProcessingEnv,
+                header,
+                UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
+                tx,
+                true,
+                estimateGasTracer.WithCancellation(cancellationToken));
+
+            GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider);
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
+
+            return new BlockchainBridge.CallOutput 
+            {
+                Error = tryCallResult.Success ? estimateGasTracer.Error : tryCallResult.Error, 
+                GasSpent = estimate, 
+                InputError = !tryCallResult.Success
+            };
+        }
+        
+        private (bool Success, string Error) TryCallAndRestore(
+            ITransactionProcessor transactionProcessor,
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            BlockHeader blockHeader,
+            in UInt256 timestamp,
+            Transaction transaction,
+            bool treatBlockHeaderAsParentBlock,
+            ITxTracer tracer)
+        {
+            try
+            {
+                CallAndRestore(transactionProcessor, readOnlyTxProcessingEnv, blockHeader, timestamp, transaction, treatBlockHeaderAsParentBlock, tracer);
+                return (true, string.Empty);
+            }
+            catch (InsufficientBalanceException ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        private void CallAndRestore(
+            ITransactionProcessor transactionProcessor,
+            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            BlockHeader blockHeader,
+            in UInt256 timestamp,
+            Transaction transaction,
+            bool treatBlockHeaderAsParentBlock,
+            ITxTracer tracer)
+        {
+            if (transaction.SenderAddress == null)
+            {
+                transaction.SenderAddress = Address.SystemUser;
+            }
+
+            _stateProvider.StateRoot = blockHeader.StateRoot!;
+            try
+            {
+                if (transaction.Nonce == 0)
+                {
+                    transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
+                }
+
+                BlockHeader callHeader = new(
+                    blockHeader.Hash!,
+                    Keccak.OfAnEmptySequenceRlp,
+                    Address.Zero,
+                    0,
+                    treatBlockHeaderAsParentBlock ? blockHeader.Number + 1 : blockHeader.Number,
+                    blockHeader.GasLimit,
+                    timestamp,
+                    Array.Empty<byte>());
+
+                callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
+                    ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
+                    : blockHeader.BaseFeePerGas;
+
+                transaction.Hash = transaction.CalculateHash();
+                transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
+            }
+            finally
+            {
+                readOnlyTxProcessingEnv.Reset();
+            }
+        }
+        
+        private UInt256 GetNonce(Keccak stateRoot, Address address)
+        {
+            return _stateReader.GetNonce(stateRoot, address);
         }
     }
 }

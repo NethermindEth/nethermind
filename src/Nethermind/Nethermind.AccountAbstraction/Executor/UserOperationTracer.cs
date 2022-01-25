@@ -39,16 +39,25 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly long _gasLimit;
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
+        private readonly IUserOperationTxBuilder _userOperationTxBuilder;
         private readonly UserOperation _userOperation;
 
         private UserOperationTxTracer? _tracer;
 
-        public UserOperationBlockTracer(long gasLimit, UserOperation userOperation, IStateProvider stateProvider,
-            AbiDefinition abi, Address create2FactoryAddress, Address entryPointAddress, ILogger logger)
+        public UserOperationBlockTracer(
+            long gasLimit, 
+            UserOperation userOperation, 
+            IStateProvider stateProvider,
+            IUserOperationTxBuilder userOperationTxBuilder,
+            AbiDefinition abi, 
+            Address create2FactoryAddress, 
+            Address entryPointAddress, 
+            ILogger logger)
         {
             _gasLimit = gasLimit;
             _userOperation = userOperation;
             _stateProvider = stateProvider;
+            _userOperationTxBuilder = userOperationTxBuilder;
             _abi = abi;
             _create2FactoryAddress = create2FactoryAddress;
             _entryPointAddress = entryPointAddress;
@@ -91,17 +100,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Output = _tracer.Output;
             Error = _tracer.Error;
 
-            try
-            {
-                // the failedOp error in the entrypoint provides useful error messages, use if possible
-                object[] decoded = _abiEncoder.Decode(AbiEncodingStyle.IncludeSignature,
-                    _abi.Errors["FailedOp"].GetCallInfo().Signature, Output);
-                FailedOp = new FailedOp((UInt256)decoded[0], (Address)decoded[1], (string)decoded[2]);
-            }
-            catch (Exception)
-            {
-                FailedOp = null;
-            }
+            FailedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(Output);
 
             if (!_tracer!.Success)
             {

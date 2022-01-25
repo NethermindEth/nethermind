@@ -41,6 +41,7 @@ namespace Nethermind.AccountAbstraction
         private Address _entryPointContractAddress = null!;
         private UserOperationPool? _userOperationPool;
         private UserOperationSimulator? _userOperationSimulator;
+        private UserOperationTxBuilder? _userOperationTxBuilder;
         private UserOperationTxSource? _userOperationTxSource;
         private IBundler? _bundler;
 
@@ -49,6 +50,26 @@ namespace Nethermind.AccountAbstraction
             .OfType<MevPlugin>()
             .Single();
 
+        private UserOperationTxBuilder UserOperationTxBuilder
+        {
+            get
+            {
+                if (_userOperationTxBuilder is null)
+                {
+                    var (getFromApi, _) = _nethermindApi!.ForProducer;
+
+                    _userOperationTxBuilder = new UserOperationTxBuilder(
+                        _entryPointContractAbi,
+                        getFromApi.EngineSigner!, 
+                        _entryPointContractAddress, 
+                        getFromApi.SpecProvider!,
+                        getFromApi.StateProvider!);
+                }
+
+                return _userOperationTxBuilder;
+            }
+        }
+        
         private UserOperationPool UserOperationPool
         {
             get
@@ -88,18 +109,18 @@ namespace Nethermind.AccountAbstraction
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
 
                     _userOperationSimulator = new UserOperationSimulator(
+                        UserOperationTxBuilder,
                         getFromApi.StateProvider!,
+                        getFromApi.StateReader!,
                         _entryPointContractAbi,
-                        getFromApi.EngineSigner!,
-                        _accountAbstractionConfig,
                         _create2FactoryAddress,
                         _entryPointContractAddress,
                         getFromApi.SpecProvider!,
                         getFromApi.BlockTree!,
                         getFromApi.DbProvider!,
                         getFromApi.ReadOnlyTrieStore!,
-                        getFromApi.LogManager,
-                        getFromApi.BlockPreprocessor);
+                        getFromApi.Timestamper!,
+                        getFromApi.LogManager);
                 }
 
                 return _userOperationSimulator;
@@ -116,6 +137,7 @@ namespace Nethermind.AccountAbstraction
 
                     _userOperationTxSource = new UserOperationTxSource
                     (
+                        UserOperationTxBuilder,
                         UserOperationPool,
                         UserOperationSimulator,
                         _nethermindApi.SpecProvider!,

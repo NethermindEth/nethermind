@@ -17,13 +17,17 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
+using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -34,15 +38,18 @@ namespace Nethermind.AccountAbstraction.Source
     {
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
+        private readonly IUserOperationTxBuilder _userOperationTxBuilder;
         private readonly IUserOperationPool _userOperationPool;
         private readonly IUserOperationSimulator _userOperationSimulator;
 
         public UserOperationTxSource(
+            IUserOperationTxBuilder userOperationTxBuilder,
             IUserOperationPool userOperationPool,
             IUserOperationSimulator userOperationSimulator,
             ISpecProvider specProvider,
             ILogger logger)
         {
+            _userOperationTxBuilder = userOperationTxBuilder;
             _userOperationPool = userOperationPool;
             _userOperationSimulator = userOperationSimulator;
             _specProvider = specProvider;
@@ -77,10 +84,14 @@ namespace Nethermind.AccountAbstraction.Source
                         // TODO: Remove logging, just for testing
                         _logger.Info($"UserOperation {userOperation.Hash} resimulation unsuccessful: {result.Result.Error}");
 
-                        // ToDo: RemoveUserOperation shouldn't be dependent of logger's state, like below. Commented it out for now
-                        // _logger.Debug(_userOperationPool.RemoveUserOperation(userOperation.Hash)
-                        //     ? $"Removed UserOperation {userOperation.Hash} from Pool"
-                        //     : $"Failed to remove UserOperation {userOperation} from Pool");
+                        bool removeResult = _userOperationPool.RemoveUserOperation(userOperation.Hash);
+                        if (_logger.IsDebug)
+                        {
+                            _logger.Debug(
+                                removeResult ? 
+                                "Removed UserOperation {userOperation.Hash} from Pool" 
+                                : "Failed to remove UserOperation {userOperation} from Pool");
+                        }
                     }
 
                     continue;
@@ -102,13 +113,31 @@ namespace Nethermind.AccountAbstraction.Source
             if (userOperationsToInclude.Count == 0) return new List<Transaction>();
 
             Transaction userOperationTransaction =
-                _userOperationSimulator.BuildTransactionFromUserOperations(userOperationsToInclude, parent,
+                _userOperationTxBuilder.BuildTransactionFromUserOperations(
+                    userOperationsToInclude, 
+                    parent, 
+                    100_000_000, // high gas to test
                     _specProvider.GetSpec(parent.Number + 1));
             if (_logger.IsDebug)
                 _logger.Debug($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
             // TODO: Remove logging, just for testing
             _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
-            return new List<Transaction> { userOperationTransaction };
+
+            BlockchainBridge.CallOutput callOutput = _userOperationSimulator.EstimateGas(parent, userOperationTransaction, CancellationToken.None);
+            FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(callOutput.OutputData);
+            if (failedOp is null)
+            {
+                // TODO punish paymaster
+            }
+            
+            Transaction updatedUserOperationTransaction =
+                _userOperationTxBuilder.BuildTransactionFromUserOperations(
+                    userOperationsToInclude, 
+                    parent, 
+                    callOutput.GasSpent,
+                    _specProvider.GetSpec(parent.Number + 1));
+
+            return new List<Transaction> { updatedUserOperationTransaction };
         }
 
         private UInt256 CalculateUserOperationPremiumGasPrice(UserOperation op, UInt256 baseFeePerGas)
