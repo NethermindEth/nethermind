@@ -210,7 +210,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore(("ToDo flaky - need to remove delay"))]
         public async Task getPayloadV1_should_return_error_if_there_was_no_corresponding_preparePayloadV1()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -254,6 +253,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        [Ignore(("ToDo flaky - need to remove delay"))]
         public async Task
             getPayloadBodiesV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_skip_unknown_hashes()
         {
