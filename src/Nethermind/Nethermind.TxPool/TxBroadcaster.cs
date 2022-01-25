@@ -142,17 +142,20 @@ namespace Nethermind.TxPool
 
         private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
         {
-            // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast, which
-            // will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to PeerNotificationThreshold
-            // multiplicated by number of transactions in persistent broadcast, rounded down and increased by 1.
-            int numberOfPersistentTxsToBroadcast =
-                _txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1;
-
-            foreach (Transaction tx in _persistentTxs.TryGetFirsts(numberOfPersistentTxsToBroadcast))
+            if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
-                yield return tx;
+                // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast,
+                // which will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to
+                // PeerNotificationThreshold multiplicated by number of transactions in persistent broadcast, rounded up.
+                int numberOfPersistentTxsToBroadcast =
+                    _txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1;
+
+                foreach (Transaction tx in _persistentTxs.TryGetFirsts(numberOfPersistentTxsToBroadcast))
+                {
+                    yield return tx;
+                }
             }
-            
+
             foreach (Transaction tx in txsToSend)
             {
                 if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
