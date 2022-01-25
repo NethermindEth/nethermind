@@ -210,6 +210,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        [Ignore(("ToDo flaky - need to remove delay"))]
         public async Task getPayloadV1_should_return_error_if_there_was_no_corresponding_preparePayloadV1()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
@@ -553,7 +554,6 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("ToDo - our test setup seems to wrong now. We can't add PoW block")]
         public async Task Can_transition_from_PoW_chain()
         {
             using MergeTestBlockchain chain =

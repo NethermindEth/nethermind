@@ -172,8 +172,6 @@ namespace Nethermind.Merge.Plugin.Test
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
-                await chain.BlockchainProcessor.StopAsync(true);
-                Suggester.Dispose();
                 return chain;
             }
 

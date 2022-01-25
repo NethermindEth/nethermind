@@ -164,7 +164,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Ignore("ToDo - need to rework")]
         public async Task Should_count_total_coinbase_payments()
         {
             var chain = await MevRpcModuleTests.CreateChain(1);
