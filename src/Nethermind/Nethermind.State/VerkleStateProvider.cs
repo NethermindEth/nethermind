@@ -237,7 +237,10 @@ namespace Nethermind.State
         {
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
-            account.Code = _codeDb[account.CodeHash.Bytes];
+            if (account is not null)
+            {
+                account.Code = _codeDb[account.CodeHash.Bytes];
+            }
             _tree.Set(address, account);
         }
 
