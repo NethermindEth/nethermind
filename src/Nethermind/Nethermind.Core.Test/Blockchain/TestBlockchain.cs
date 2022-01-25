@@ -118,7 +118,7 @@ namespace Nethermind.Core.Test.Blockchain
 
         public ManualTimestamper Timestamper { get; protected set; }
         
-        public ProducedBlockSuggester Suggester { get; private set; }
+        public ProducedBlockSuggester Suggester { get; protected set; }
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 

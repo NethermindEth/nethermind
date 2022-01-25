@@ -754,8 +754,9 @@ namespace Nethermind.Merge.Plugin.Test
             await CanPrepareOnAnyBlock(branch1, branch2, branch3, branch4);
         }
 
-        [TestCase(false)]
-        //  [TestCase(true)]  ToDo - need some refactoring
+        [TestCase(false)] 
+        [TestCase(true)]  
+        [Ignore(("ToDo need to refactor"))]
         public async Task executePayloadV1_processes_passed_transactions(bool moveHead)
         {
             using MergeTestBlockchain chain = await CreateBlockChain();

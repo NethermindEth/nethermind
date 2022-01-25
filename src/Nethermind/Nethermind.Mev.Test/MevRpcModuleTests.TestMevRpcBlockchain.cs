@@ -40,7 +40,6 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.Test;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
@@ -95,6 +94,7 @@ namespace Nethermind.Mev.Test
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
+                SpecProvider.UpdateMergeTransitionInfo(1, 0);
                 
                 BlockProducerEnvFactory blockProducerEnvFactory = new(
                     DbProvider, 
@@ -113,7 +113,7 @@ namespace Nethermind.Mev.Test
                     TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
                 };
 
-                Eth2BlockProducer CreateEth2BlockProducer(IBlockProductionTrigger blockProductionTrigger,
+                Eth2BlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
                     ITxSource? txSource = null)
                 {
                     Eth2BlockProductionContext? blockProductionContext = new Eth2BlockProductionContext();
@@ -147,7 +147,7 @@ namespace Nethermind.Mev.Test
                         trigger = new TriggerWithCondition(manualTrigger, BundleLimitTriggerCondition);
                     }
 
-                    IBlockProducer producer = CreateEth2BlockProducer(trigger, additionalTxSource);
+                    IBlockProducer producer = CreatePostMergeBlockProducer(trigger, additionalTxSource);
                     return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
                 }
 
@@ -176,7 +176,14 @@ namespace Nethermind.Mev.Test
                     blockProducers.Add(bundleProducer);
                 }
 
-                return new MevBlockProducer(BlockProductionTrigger, LogManager, blockProducers.ToArray());
+                var blockProducer = new MevBlockProducer(BlockProductionTrigger, LogManager, blockProducers.ToArray());
+                blockProducer.BlockProduced += OnBlockProduced;
+                return blockProducer;
+            }
+
+            private void OnBlockProduced(object? sender, BlockEventArgs e)
+            {
+                BlockTree.SuggestBlock(e.Block);
             }
 
             protected override BlockProcessor CreateBlockProcessor()
