@@ -146,6 +146,21 @@ namespace Nethermind.TxPool.Collections
         }
         
         /// <summary>
+        /// Returns specified number of elements from the start of supplied comparer order.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public IEnumerable<TValue> TryGetFirsts(int numberOfValues)
+        {
+            SortedSet<TValue> sortedValues = new(_sortedComparer);
+            foreach (KeyValuePair<TGroupKey, SortedSet<TValue>> bucket in _buckets)
+            {
+                sortedValues.AddRange(bucket.Value);
+            }
+
+            return sortedValues.Take(numberOfValues);
+        }
+        
+        /// <summary>
         /// Gets last element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]

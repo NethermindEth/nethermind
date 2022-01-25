@@ -124,15 +124,13 @@ namespace Nethermind.TxPool
         {
             void NotifyPeers()
             {
-                Transaction[] persistentTxs = _persistentTxs.GetSnapshot();
-
                 _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
             
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
 
                 foreach ((_, ITxPoolPeer peer) in _peers)
                 {
-                    Notify(peer, GetTxsToSend(peer, persistentTxs, _txsToSend));
+                    Notify(peer, GetTxsToSend(peer, _txsToSend));
                 }
 
                 _txsToSend.Clear();
@@ -142,16 +140,19 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
-        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs, IEnumerable<Transaction> txsToSend)
+        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
         {
-            for (int i = 0; i < persistentTxs.Count; i++)
-            {
-                if (_txPoolConfig.PeerNotificationThreshold >= Random.Value.Next(1, 100))
-                {
-                    yield return persistentTxs[i];
-                }
-            }
+            // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast, which
+            // will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to PeerNotificationThreshold
+            // multiplicated by number of transactions in persistent broadcast, rounded down and increased by 1.
+            int numberOfPersistentTxsToBroadcast =
+                _txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1;
 
+            foreach (Transaction tx in _persistentTxs.TryGetFirsts(numberOfPersistentTxsToBroadcast))
+            {
+                yield return tx;
+            }
+            
             foreach (Transaction tx in txsToSend)
             {
                 if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
