@@ -184,7 +184,7 @@ public class VerkleTree
         UInt256 treeIndex = chunkOffset / VerkleNodeWidth;
         
         UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
-        return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[0]);
+        return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[31]);
     }
 
     public byte[] GetTreeKeyForStorageSlot(Address address, UInt256 storageKey)
@@ -203,7 +203,7 @@ public class VerkleTree
         UInt256 treeIndex = pos / VerkleNodeWidth;
         
         UInt256.Mod(pos, VerkleNodeWidth, out UInt256 subIndex);
-        return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[0]);
+        return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[31]);
     }
         
     public void SetCode(Address address, byte[] code)
