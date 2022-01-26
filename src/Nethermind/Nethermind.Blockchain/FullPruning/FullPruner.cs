@@ -52,6 +52,8 @@ namespace Nethermind.Blockchain.FullPruning
         private long _blockToWaitFor;
         private long _stateToCopy;
         private readonly ILogger _logger;
+        private readonly TimeSpan _minimumPruningDelay;
+        private DateTime _lastPruning = DateTime.MinValue;
 
         public FullPruner(
             IFullPruningDb fullPruningDb, 
@@ -69,6 +71,7 @@ namespace Nethermind.Blockchain.FullPruning
             _logManager = logManager;
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
+            _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
         }
 
         /// <summary>
@@ -78,9 +81,13 @@ namespace Nethermind.Blockchain.FullPruning
         {
             // Lets assume pruning is in progress
             e.Status = PruningStatus.InProgress;
-            
+
+            if (DateTime.Now - _lastPruning < _minimumPruningDelay)
+            {
+                e.Status = PruningStatus.Delayed;
+            }
             // If we are already pruning, we don't need to do anything
-            if (CanRunPruning())
+            else if (CanRunPruning())
             {
                 // we mark that we are waiting for block (for thread safety)
                 if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
@@ -105,7 +112,7 @@ namespace Nethermind.Blockchain.FullPruning
                             Interlocked.Exchange(ref _currentPruning, pruningContext);
                             if (Interlocked.CompareExchange(ref _waitingForStateReady, 1, 0) == 0)
                             {
-                                _blockToWaitFor = e.Block.Number + 2;
+                                _blockToWaitFor = e.Block.Number;
                                 _stateToCopy = long.MaxValue;
                                 if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: waiting for state {e.Block.Number} to be ready.");
                             }
@@ -140,7 +147,7 @@ namespace Nethermind.Blockchain.FullPruning
                 }
                 else
                 {
-                    if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved state {_blockTree.BestPersistedState}, waiting for saved state {_blockToWaitFor} in order to not loose any cached state.");
+                    if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_blockTree.BestPersistedState}, waiting for state {_blockToWaitFor} in order to not loose any cached state.");
                 }
             }
             else
@@ -170,6 +177,7 @@ namespace Nethermind.Blockchain.FullPruning
                         _blockTree.NewHeadBlock -= CommitOnNewBLock;
                         // ReSharper disable AccessToDisposedClosure
                         pruning.Commit();
+                        _lastPruning = DateTime.Now;
                         pruning.Dispose();
                         // ReSharper restore AccessToDisposedClosure
                     }
