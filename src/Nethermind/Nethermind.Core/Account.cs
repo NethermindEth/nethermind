@@ -60,7 +60,7 @@ namespace Nethermind.Core
             Nonce = nonce;
             CodeHash = codeHash;
             StorageRoot = Keccak.EmptyTreeHash;
-            IsTotallyEmpty = Balance.IsZero;
+            IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
             CodeSize = codeSize;
             Version = version;
         }
@@ -71,7 +71,7 @@ namespace Nethermind.Core
             Nonce = nonce;
             CodeHash = codeHash;
             StorageRoot = Keccak.EmptyTreeHash;
-            IsTotallyEmpty = Balance.IsZero;
+            IsTotallyEmpty = Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
             CodeSize = 0;
             Version = UInt256.Zero;
         }
