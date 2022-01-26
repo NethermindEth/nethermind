@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.FullPruning
             e.Status = PruningStatus.InProgress;
             
             // If we are already pruning, we don't need to do anything
-            if (CanRunPruning())
+            if (CanStartNewPruning())
             {
                 // we mark that we are waiting for block (for thread safety)
                 if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         private void OnNewHead(object? sender, BlockEventArgs e)
         {
-            if (CanRunPruning())
+            if (CanStartNewPruning())
             {
                 if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 0, 1) == 1)
                 {
@@ -102,7 +102,7 @@ namespace Nethermind.Blockchain.FullPruning
                     {
                         if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext pruningContext))
                         {
-                            Interlocked.Exchange(ref _currentPruning, pruningContext);
+                            SetCurrentPruning(pruningContext);
                             if (Interlocked.CompareExchange(ref _waitingForStateReady, 1, 0) == 0)
                             {
                                 _blockToWaitFor = e.Block.Number + 2;
@@ -148,8 +148,17 @@ namespace Nethermind.Blockchain.FullPruning
                 _blockTree.NewHeadBlock -= OnNewHead;
             }
         }
+        
+        private void SetCurrentPruning(IPruningContext pruningContext)
+        {
+            IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
+            if (oldPruning is not null)
+            {
+                Task.Run(() => oldPruning.Dispose());
+            }
+        }
 
-        private bool CanRunPruning() => _fullPruningDb.CanStartPruning;
+        private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
 
         protected virtual void RunPruning(IPruningContext pruning, Keccak statRoot)
         {
