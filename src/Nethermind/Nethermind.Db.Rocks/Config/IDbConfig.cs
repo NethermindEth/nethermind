@@ -72,6 +72,11 @@ namespace Nethermind.Db.Rocks.Config
         uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
         ulong CanonicalHashTrieDbBlockCacheSize { get; set; }
         bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
+        
+        ulong MetadataDbWriteBufferSize { get; set; }
+        uint MetadataDbWriteBufferNumber { get; set; }
+        ulong MetadataDbBlockCacheSize { get; set; }
+        bool MetadataDbCacheIndexAndFilterBlocks { get; set; }
 
         /// <summary>
         /// Enables DB Statistics - https://github.com/facebook/rocksdb/wiki/Statistics
