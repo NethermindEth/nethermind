@@ -139,8 +139,8 @@ namespace Nethermind.Init.Steps
                     IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
                     fullPruningDb.PruningStarted += (sender, args) =>
                     {
-                        trieStore.PersistCache(args.Context);
                         cachedStateDb.PersistCache(args.Context);
+                        trieStore.PersistCache(args.Context);
                     };
                 }
             }

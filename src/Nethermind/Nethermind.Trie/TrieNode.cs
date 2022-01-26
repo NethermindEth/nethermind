@@ -446,7 +446,7 @@ namespace Nethermind.Trie
             }
 
             // pruning trick so we never store long persisted paths
-            if (child?.IsPersisted ?? false)
+            if (child?.IsPersisted == true)
             {
                 UnresolveChild(childIndex);
             }

@@ -37,8 +37,8 @@ public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposab
     private readonly IBlockTree _blockTree;
     private readonly ILogger _logger;
     private int _inPruning = 0;
-    private long? _minPersistedBlock = null;
-
+    private bool _peristed = false;
+    
     public PruningTriggerPersistenceStrategy(IFullPruningDb fullPruningDb, IBlockTree blockTree, ILogManager logManager)
     {
         _fullPruningDb = fullPruningDb;
@@ -51,34 +51,27 @@ public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposab
     private void OnPruningStarted(object? sender, EventArgs e)
     {
         Interlocked.CompareExchange(ref _inPruning, 1, 0);
-        _minPersistedBlock = null;
         _logger.Info("In Pruning, persisting all state changes");
+        _peristed = false;
     }
     
     private void OnPruningFinished(object? sender, EventArgs e)
     {
         _logger.Info("Out of Pruning, stop persisting all state changes");
         Interlocked.CompareExchange(ref _inPruning, 0, 1);
-        _minPersistedBlock = null;
+        _peristed = false;
     }
 
     public bool ShouldPersist(long blockNumber)
     {
-        bool inPruning = _inPruning != 0;
-        if (inPruning)
+        bool shouldPersist = _inPruning != 0 && !_peristed;
+        if (shouldPersist)
         {
-            _minPersistedBlock ??= blockNumber;
-            if (blockNumber > _minPersistedBlock + Reorganization.MaxDepth)
-            {
-                _blockTree.BestPersistedState = blockNumber - Reorganization.MaxDepth;
-            }
-            else
-            {
-                _logger.Info($"Persisting state changes for {blockNumber}, from {_minPersistedBlock}");
-            }
+            _peristed = true;
+            if (_logger.IsInfo) _logger.Info($"Full Pruning Persisting state changes for {blockNumber}.");
         }
 
-        return inPruning;
+        return shouldPersist;
     }
 
     /// <inheritdoc/>
