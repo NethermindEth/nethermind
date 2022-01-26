@@ -10,6 +10,7 @@
       <ProjectReference Include="..\Nethermind.Db.Rpc\Nethermind.Db.Rpc.csproj" />
       <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
       <ProjectReference Include="..\Nethermind.Network.Discovery\Nethermind.Network.Discovery.csproj" />
+      <ProjectReference Include="..\Nethermind.Network.Dns\Nethermind.Network.Dns.csproj" />
       <ProjectReference Include="..\Nethermind.Network.Enr\Nethermind.Network.Enr.csproj" />
       <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     </ItemGroup>

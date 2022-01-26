@@ -32,6 +32,7 @@ using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
+using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
@@ -252,6 +253,7 @@ namespace Nethermind.Init.Steps
             }
 
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
+            _api.PeerPool.Start();
             _api.PeerManager.Start();
             _api.SessionMonitor.Start();
             if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");
@@ -429,7 +431,7 @@ namespace Nethermind.Init.Steps
             
             _api.DisconnectsAnalyzer = new MetricsDisconnectsAnalyzer();
             _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
-            _api.RlpxPeer = new RlpxPeer(
+            _api.RlpxPeer = new RlpxHost(
                 _api.MessageSerializationService,
                 _api.NodeKey.PublicKey,
                 _networkConfig.P2PPort,
@@ -478,19 +480,33 @@ namespace Nethermind.Init.Steps
             {
                 await plugin.InitNetworkProtocol();
             }
-
-            PeerLoader peerLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.LogManager);
+            
+            NodesLoader nodesLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.RlpxPeer, _api.LogManager);
+            
+            // I do not use the key here -> API is broken - no sense to use the node signer here
+            NodeRecordSigner nodeRecordSigner = new(_api.EthereumEcdsa, new PrivateKeyGenerator().Generate());
+            EnrRecordParser enrRecordParser = new(nodeRecordSigner);
+            EnrDiscovery enrDiscovery = new(enrRecordParser, _api.LogManager); // initialize with a proper network
+            CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+            _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
             _api.PeerManager = new PeerManager(
                 _api.RlpxPeer,
-                _api.DiscoveryApp,
+                _api.PeerPool,
                 _api.NodeStatsManager,
-                peerStorage,
-                peerLoader,
                 _networkConfig,
-                _api.LogManager,
-                _api.StaticNodesManager);
-            
-            _api.PeerManager.Init();
+                _api.LogManager);
+
+            string chainName = ChainId.GetChainName(_api.ChainSpec!.ChainId).ToLowerInvariant();
+#pragma warning disable CS4014
+            enrDiscovery.SearchTree($"all.{chainName}.ethdisco.net").ContinueWith(t =>
+#pragma warning restore CS4014
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"ENR discovery failed: {t.Exception}");
+                    
+                }
+            });
         }
     }
 }

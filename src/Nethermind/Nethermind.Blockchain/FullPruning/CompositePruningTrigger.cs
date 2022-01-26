@@ -27,10 +27,10 @@ public class CompositePruningTrigger : IPruningTrigger
         trigger.Prune += OnPrune;
     }
 
-    private void OnPrune(object? sender, PruningEventArgs e)
+    private void OnPrune(object? sender, PruningTriggerEventArgs e)
     {
         Prune?.Invoke(sender, e);
     }
 
-    public event EventHandler<PruningEventArgs>? Prune;
+    public event EventHandler<PruningTriggerEventArgs>? Prune;
 }

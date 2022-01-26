@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,14 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-
-namespace Nethermind.Blockchain.FullPruning;
-
-public class PruningEventArgs : EventArgs
+namespace Nethermind.Db
 {
-    /// <summary>
-    /// Result of triggering Full Pruning
-    /// </summary>
-    public PruningStatus Status { get; set; }
+    public static class MetadataDbKeys
+    {
+        // we can use other types for keys, for example, strings, byte arrays
+        // In the merge, we're using the below keys:
+        public const int TerminalPoWHash = 1;
+        public const int TerminalPoWNumber = 2;
+        public const int FirstPoSHash = 3;
+        public const int FinalizedBlockHash = 3;
+        public const int SafeBlockHash = 4;
+    }
 }

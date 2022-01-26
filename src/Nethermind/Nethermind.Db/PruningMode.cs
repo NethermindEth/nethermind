@@ -43,6 +43,6 @@ namespace Nethermind.Db
         /// <summary>
         /// Both in memory and full pruning.
         /// </summary>
-        Both = Memory | Full
+        Hybrid = Memory | Full
     }
 }

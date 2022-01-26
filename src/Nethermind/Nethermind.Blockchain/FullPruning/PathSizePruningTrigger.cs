@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.FullPruning
             long size = GetDbSize();
             if (size >= _threshold)
             {
-                Prune?.Invoke(this, new PruningEventArgs());
+                Prune?.Invoke(this, new PruningTriggerEventArgs());
             }
         }
 
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.FullPruning
         }
 
         /// <inheritdoc />
-        public event EventHandler<PruningEventArgs>? Prune;
+        public event EventHandler<PruningTriggerEventArgs>? Prune;
         
         /// <inheritdoc />
         public void Dispose()

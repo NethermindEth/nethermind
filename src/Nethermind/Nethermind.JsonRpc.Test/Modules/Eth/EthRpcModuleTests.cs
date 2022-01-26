@@ -97,6 +97,14 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized = ctx._test.TestEthRpc("eth_getTransactionByHash", ctx._test.BlockTree.FindHeadBlock().Transactions.Last().Hash.ToString());
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":{\"hash\":\"0x7126cf20a0ad8bd51634837d9049615c34c1bff5e1a54e5663f7e23109bff48b\",\"nonce\":\"0x2\",\"blockHash\":\"0x29f141925d2d8e357ae5b6040c97aa12d7ac6dfcbe2b20e7b616d8907ac8e1f3\",\"blockNumber\":\"0x3\",\"transactionIndex\":\"0x1\",\"from\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gasPrice\":\"0x1\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"type\":\"0x0\",\"v\":\"0x25\",\"s\":\"0x575361bb330bf38b9a89dd8279d42a20d34edeaeede9739a7c2bdcbe3242d7bb\",\"r\":\"0xe7c5ff3cba254c4fe8f9f12c3f202150bb9a0aebeee349ff2f4acb23585f56bd\"},\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
         }
+        
+        [Test]
+        public async Task eth_maxPriorityFeePerGas_test()
+        {
+            using Context ctx = await Context.Create();
+            string serialized = ctx._test.TestEthRpc("eth_maxPriorityFeePerGas");
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x4190ab00\",\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+        }
 
         [Test]
         public async Task Eth_pending_transactions()
@@ -112,8 +120,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
             ctx._test.AddTransactions(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).WithType(TxType.EIP1559).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
+            const string addedTx = "\"hash\":\"0xc668c8940b7416fe06db0dac853210d6d64fb2e9528c439c135a53106517fca6\",\"nonce\":\"0x0\",\"blockHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x28fa6ae00\",\"maxPriorityFeePerGas\":\"0x165a0bc00\",\"maxFeePerGas\":\"0x28fa6ae00\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"v\":\"0x1\",\"s\":\"0x24e1404423c47d5c5fd9e0b6205811eaa3052f9acdb91a9c08821c2b7a0db1a4\",\"r\":\"0x408e34747109a32b924c61acb879d628505dbd0dcab15a3b1e3a4cfd589b65d2\",\"yParity\":\"0x1\"";
             string serialized = ctx._test.TestEthRpc("eth_pendingTransactions");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"hash\":\"0xc668c8940b7416fe06db0dac853210d6d64fb2e9528c439c135a53106517fca6\",\"nonce\":\"0x0\",\"blockHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x28fa6ae00\",\"maxPriorityFeePerGas\":\"0x165a0bc00\",\"maxFeePerGas\":\"0x28fa6ae00\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"chainId\":\"0x1\",\"type\":\"0x2\",\"v\":\"0x1\",\"s\":\"0x24e1404423c47d5c5fd9e0b6205811eaa3052f9acdb91a9c08821c2b7a0db1a4\",\"r\":\"0x408e34747109a32b924c61acb879d628505dbd0dcab15a3b1e3a4cfd589b65d2\",\"yParity\":\"0x1\"}],\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+            serialized.Contains(addedTx).Should().BeTrue();
         }
         
         [Test]
@@ -121,8 +130,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
             ctx._test.AddTransactions(Build.A.Transaction.WithMaxPriorityFeePerGas(6.GWei()).WithMaxFeePerGas(11.GWei()).WithType(TxType.AccessList).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
+            const string addedTx = "\"hash\":\"0xa296c4cf8ece2d7788e4a71125133dfd8025fc35cc5ffa3e283bc62b027cf512\",\"nonce\":\"0x0\",\"blockHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x165a0bc00\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"chainId\":\"0x1\",\"type\":\"0x1\",\"v\":\"0x0\",\"s\":\"0x2b4cbea82cc417cdf510fb5fb0613a2881f2b8a76cd6cce6a5f77872f5124b44\",\"r\":\"0x925ede2e48031b060e6c4a0c7184eb58e37a19b41a3ba15a2d9767c0c41f6d76\",\"yParity\":\"0x0\"";
             string serialized = ctx._test.TestEthRpc("eth_pendingTransactions");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":[{\"hash\":\"0xa296c4cf8ece2d7788e4a71125133dfd8025fc35cc5ffa3e283bc62b027cf512\",\"nonce\":\"0x0\",\"blockHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"blockNumber\":null,\"transactionIndex\":null,\"from\":\"0x76e68a8696537e4141926f3e528733af9e237d69\",\"to\":\"0x0000000000000000000000000000000000000000\",\"value\":\"0x1\",\"gasPrice\":\"0x165a0bc00\",\"gas\":\"0x5208\",\"data\":\"0x\",\"input\":\"0x\",\"chainId\":\"0x1\",\"type\":\"0x1\",\"v\":\"0x0\",\"s\":\"0x2b4cbea82cc417cdf510fb5fb0613a2881f2b8a76cd6cce6a5f77872f5124b44\",\"r\":\"0x925ede2e48031b060e6c4a0c7184eb58e37a19b41a3ba15a2d9767c0c41f6d76\",\"yParity\":\"0x0\"}],\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+            serialized.Contains(addedTx).Should().BeTrue();
         }
 
         [Test]

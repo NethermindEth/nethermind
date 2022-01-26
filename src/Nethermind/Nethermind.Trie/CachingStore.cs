@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 
@@ -23,7 +25,7 @@ namespace Nethermind.Trie
 {
     public static class KeyValueStoreWithBatchingExtensions
     {
-        public static IKeyValueStoreWithBatching Cached(this IKeyValueStoreWithBatching @this, int maxCapacity)
+        public static CachingStore Cached(this IKeyValueStoreWithBatching @this, int maxCapacity)
         {
             return new CachingStore(@this, maxCapacity);
         }
@@ -65,9 +67,20 @@ namespace Nethermind.Trie
             }
         }
 
-        public IBatch StartBatch()
+        public IBatch StartBatch() => _wrappedStore.StartBatch();
+
+        public void DropCache() => _cache.Clear();
+
+        public void PersistCache(IKeyValueStore pruningContext)
         {
-            return _wrappedStore.StartBatch();
+            IDictionary<byte[], byte[]> clone = _cache.Clone();
+            Task.Run(() =>
+            {
+                foreach (KeyValuePair<byte[], byte[]> kvp in clone)
+                {
+                    pruningContext[kvp.Key] = kvp.Value;
+                }
+            });
         }
     }
 }

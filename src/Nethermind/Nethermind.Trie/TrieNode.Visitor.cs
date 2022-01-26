@@ -171,10 +171,18 @@ namespace Nethermind.Trie
                         if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
                         {
                             trieVisitContext.IsStorage = true;
-                            TrieNode storageRoot = new(NodeType.Unknown, account.StorageRoot);
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
-                            storageRoot.Accept(visitor, nodeResolver, trieVisitContext);
+                            
+                            if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
+                            {
+                                storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
+                            }
+                            else
+                            {
+                                visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
+                            }
+
                             trieVisitContext.Level--;
                             trieVisitContext.IsStorage = false;
                         }

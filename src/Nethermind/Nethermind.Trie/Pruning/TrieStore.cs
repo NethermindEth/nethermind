@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -96,8 +97,7 @@ namespace Nethermind.Trie.Pruning
                 return trieNode;
             }
 
-            public bool 
-                IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash);
+            public bool IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash);
 
             public ConcurrentDictionary<Keccak, TrieNode> AllNodes => _objectsCache;
 
@@ -767,5 +767,37 @@ namespace Nethermind.Trie.Pruning
         }
 
         #endregion
+
+        public void PersistCache(IKeyValueStore store)
+        {
+            Task.Run(() =>
+            {
+                const int million = 1_000_000;
+                int persistedNodes = 0;
+                Stopwatch stopwatch = Stopwatch.StartNew();
+
+                void PersistNode(TrieNode n)
+                {
+                    Keccak? hash = n.Keccak;
+                    if (hash?.Bytes != null)
+                    {
+                        store[hash.Bytes] = n.FullRlp;
+                        persistedNodes++;
+                        if (_logger.IsInfo && persistedNodes % million == 0)
+                        {
+                            _logger.Info($"Full Pruning Persist Cache in progress: {stopwatch.Elapsed} {persistedNodes / (double) million :N} mln nodes persisted.");
+                        }
+                    }
+                }
+                
+                if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
+                foreach ((Keccak _, TrieNode node) in _dirtyNodes.AllNodes.ToArray())
+                {
+                    node.CallRecursively(PersistNode, this, false, _logger, false);
+                }
+
+                if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
+            });
+        }
     }
 }

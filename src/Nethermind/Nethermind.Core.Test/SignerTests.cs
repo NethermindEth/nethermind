@@ -25,7 +25,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test
 {
     [TestFixture]
-    public class EcdsaTEsts
+    public class EcdsaTests
     {
         [OneTimeSetUp]
         public void SetUp()
@@ -51,6 +51,17 @@ namespace Nethermind.Core.Test
             PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             Signature signature = ethereumEcdsa.Sign(privateKey, message);
             Assert.AreEqual(privateKey.Address, ethereumEcdsa.RecoverAddress(signature, message));
+        }
+        
+        [Test]
+        public void Decompress()
+        {
+            EthereumEcdsa ethereumEcdsa = new(ChainId.Olympic, LimboLogs.Instance);
+            PrivateKey privateKey = Build.A.PrivateKey.TestObject;
+            CompressedPublicKey compressedPublicKey = privateKey.CompressedPublicKey;
+            PublicKey expected = privateKey.PublicKey;
+            PublicKey actual = ethereumEcdsa.Decompress(compressedPublicKey);
+            Assert.AreEqual(expected, actual);
         }
     }
 }

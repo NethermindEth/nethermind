@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Clique
         {
             if (blockHeader.ExtraData == null)
             {
-                throw new Exception("");
+                throw new Exception(string.Empty);
             }
             
             Span<byte> signersData = blockHeader.ExtraData.AsSpan()

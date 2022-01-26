@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             if (_logger.IsWarn)
             {
-                _logger.Warn($"Full Pruning Failed: Missing node {nodeHash}.");
+                _logger.Warn($"Full Pruning Failed: Missing node {nodeHash} at level {trieVisitContext.Level}.");
             }
             
             // if nodes are missing then state trie is not valid and we need to stop copying it

@@ -66,6 +66,24 @@ namespace Nethermind.Trie
 
         internal TrieNode? RootRef;
 
+        /// <summary>
+        /// Only used in EthereumTests
+        /// </summary>
+        internal TrieNode? Root
+        {
+            get
+            {
+                RootRef?.ResolveNode(TrieStore);
+                return RootRef;
+            }
+        }
+
+        public Keccak RootHash
+        {
+            get => _rootHash;
+            set => SetRootHash(value, true);
+        }
+
         public PatriciaTree()
             : this(NullTrieStore.Instance, EmptyTreeHash, false, true, NullLogManager.Instance)
         {
@@ -117,24 +135,6 @@ namespace Nethermind.Trie
                 _currentCommit = new ConcurrentQueue<NodeCommitInfo>();
                 _commitExceptions = new ConcurrentQueue<Exception>();
             }
-        }
-
-        /// <summary>
-        /// Only used in EthereumTests
-        /// </summary>
-        internal TrieNode? Root
-        {
-            get
-            {
-                RootRef?.ResolveNode(TrieStore);
-                return RootRef;
-            }
-        }
-
-        public Keccak RootHash
-        {
-            get => _rootHash;
-            set => SetRootHash(value, true);
         }
 
         public void Commit(long blockNumber)
@@ -971,7 +971,7 @@ namespace Nethermind.Trie
 
             public override string ToString()
             {
-                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsRead ? "" : $" -> {UpdateValue}")}";
+                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsRead ? string.Empty : $" -> {UpdateValue}")}";
             }
         }
 

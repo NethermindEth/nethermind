@@ -16,7 +16,9 @@
 // 
 
 using System;
+using System.Threading;
 using Nethermind.Core;
+using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 
@@ -31,42 +33,58 @@ namespace Nethermind.Blockchain.FullPruning;
 /// </remarks>
 public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposable
 {
-    private readonly IPruningTrigger _pruningTrigger;
+    private readonly IFullPruningDb _fullPruningDb;
     private readonly IBlockTree _blockTree;
-    private long? _shouldPersistBlockNumber = null;
     private readonly ILogger _logger;
+    private int _inPruning = 0;
+    private long? _minPersistedBlock = null;
 
-    public PruningTriggerPersistenceStrategy(IPruningTrigger pruningTrigger, IBlockTree blockTree, ILogManager logManager)
+    public PruningTriggerPersistenceStrategy(IFullPruningDb fullPruningDb, IBlockTree blockTree, ILogManager logManager)
     {
-        _pruningTrigger = pruningTrigger;
+        _fullPruningDb = fullPruningDb;
         _blockTree = blockTree;
-        _pruningTrigger.Prune += OnPrune;
         _logger = logManager.GetClassLogger();
+        _fullPruningDb.PruningFinished += OnPruningFinished;
+        _fullPruningDb.PruningStarted += OnPruningStarted;
     }
 
-    private void OnPrune(object? sender, PruningEventArgs e)
+    private void OnPruningStarted(object? sender, EventArgs e)
     {
-        _shouldPersistBlockNumber = (_blockTree.Head?.Number ?? 0) + 1;
+        Interlocked.CompareExchange(ref _inPruning, 1, 0);
+        _minPersistedBlock = null;
+        _logger.Info("In Pruning, persisting all state changes");
+    }
+    
+    private void OnPruningFinished(object? sender, EventArgs e)
+    {
+        _logger.Info("Out of Pruning, stop persisting all state changes");
+        Interlocked.CompareExchange(ref _inPruning, 0, 1);
+        _minPersistedBlock = null;
     }
 
     public bool ShouldPersist(long blockNumber)
     {
-        bool shouldPersist = blockNumber > _shouldPersistBlockNumber;
-        if (shouldPersist)
+        bool inPruning = _inPruning != 0;
+        if (inPruning)
         {
-            if (_logger.IsInfo) _logger.Info($"Full Pruning Persisting state after block {_shouldPersistBlockNumber}.");
-            _shouldPersistBlockNumber = null;
+            _minPersistedBlock ??= blockNumber;
+            if (blockNumber > _minPersistedBlock + Reorganization.MaxDepth)
+            {
+                _blockTree.BestPersistedState = blockNumber - Reorganization.MaxDepth;
+            }
+            else
+            {
+                _logger.Info($"Persisting state changes for {blockNumber}, from {_minPersistedBlock}");
+            }
         }
-        else if (_shouldPersistBlockNumber is not null)
-        {
-            if (_logger.IsInfo) _logger.Info($"Full Pruning Scheduled persisting state after block {_shouldPersistBlockNumber}.");
-        }
-        return shouldPersist;
+
+        return inPruning;
     }
 
     /// <inheritdoc/>
     public void Dispose()
     {
-        _pruningTrigger.Prune -= OnPrune;
+        _fullPruningDb.PruningStarted -= OnPruningStarted;
+        _fullPruningDb.PruningFinished -= OnPruningFinished;
     }
 }
