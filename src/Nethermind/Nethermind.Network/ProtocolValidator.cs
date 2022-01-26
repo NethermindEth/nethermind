@@ -87,10 +87,10 @@ namespace Nethermind.Network
                         if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {DisconnectReason.BreachOfProtocol} (invalid genesis)");
                         return false;
                     }
-
+                    
                     break;
             }
-
+            
             return true;
         }
 

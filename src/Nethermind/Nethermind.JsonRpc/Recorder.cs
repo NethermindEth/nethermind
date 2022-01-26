@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc
                         CreateNewRecorderFile();
                     }
 
-                    string singleLineRequest = data.Replace(Environment.NewLine, "");
+                    string singleLineRequest = data.Replace(Environment.NewLine, string.Empty);
                     _fileSystem.File.AppendAllText(_currentRecorderFilePath, singleLineRequest + Environment.NewLine);
                 }
             }

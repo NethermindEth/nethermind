@@ -21,7 +21,6 @@ using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Monitoring;
 using Nethermind.Network;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
@@ -44,10 +43,11 @@ namespace Nethermind.Api
         IMonitoringService MonitoringService { get; set; }
         INodeStatsManager? NodeStatsManager { get; set; }
         IPeerManager? PeerManager { get; set; }
+        IPeerPool? PeerPool { get; set; }
         IProtocolsManager? ProtocolsManager { get; set; }
         IProtocolValidator? ProtocolValidator { get; set; }
         IList<IPublisher> Publishers { get; }
-        IRlpxPeer? RlpxPeer { get; set; }
+        IRlpxHost? RlpxPeer { get; set; }
         IRpcModuleProvider? RpcModuleProvider { get; set; }
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }

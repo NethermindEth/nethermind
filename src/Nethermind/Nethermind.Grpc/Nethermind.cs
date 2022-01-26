@@ -85,7 +85,7 @@ namespace Nethermind.Grpc {
 
     /// <summary>Field number for the "client" field.</summary>
     public const int ClientFieldNumber = 1;
-    private string client_ = "";
+    private string client_ = string.Empty;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Client {
       get { return client_; }
@@ -234,7 +234,7 @@ namespace Nethermind.Grpc {
 
     /// <summary>Field number for the "client" field.</summary>
     public const int ClientFieldNumber = 1;
-    private string client_ = "";
+    private string client_ = string.Empty;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Client {
       get { return client_; }
@@ -245,7 +245,7 @@ namespace Nethermind.Grpc {
 
     /// <summary>Field number for the "data" field.</summary>
     public const int DataFieldNumber = 2;
-    private string data_ = "";
+    private string data_ = string.Empty;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Data {
       get { return data_; }
@@ -391,7 +391,7 @@ namespace Nethermind.Grpc {
 
     /// <summary>Field number for the "client" field.</summary>
     public const int ClientFieldNumber = 1;
-    private string client_ = "";
+    private string client_ = string.Empty;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Client {
       get { return client_; }
@@ -540,7 +540,7 @@ namespace Nethermind.Grpc {
 
     /// <summary>Field number for the "client" field.</summary>
     public const int ClientFieldNumber = 1;
-    private string client_ = "";
+    private string client_ = string.Empty;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Client {
       get { return client_; }
@@ -551,7 +551,7 @@ namespace Nethermind.Grpc {
 
     /// <summary>Field number for the "data" field.</summary>
     public const int DataFieldNumber = 2;
-    private string data_ = "";
+    private string data_ = string.Empty;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     public string Data {
       get { return data_; }

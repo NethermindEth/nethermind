@@ -29,9 +29,9 @@ namespace Nethermind.Core
         static ClientVersion()
         {
             _date = DateTime.UtcNow.ToString("yyyyMMdd");
-            _gitTag = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "git-hash")) ? File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "git-hash")).Trim().Replace("g", "") : string.Empty;
+            _gitTag = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "git-hash")) ? File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory!, "git-hash")).Trim().Replace("g", string.Empty) : string.Empty;
 
-            Description = $"Nethermind/v{Version}/{RuntimeInformation.OSArchitecture}-{Platform.GetPlatformName()}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+            Description = $"Nethermind/v{Version}/{RuntimeInformation.OSArchitecture}-{Platform.GetPlatformName()}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", string.Empty).Replace(" ", string.Empty)}";
         }
 
         public static string Version => $"{_gitTag}-{_date}";

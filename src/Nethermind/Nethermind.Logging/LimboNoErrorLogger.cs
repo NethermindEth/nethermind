@@ -57,7 +57,7 @@ namespace Nethermind.Logging
         {
             Console.WriteLine(text);
             Console.WriteLine(ex);
-            throw new Exception(text);
+            throw new Exception(text, ex);
         }
 
         public bool IsInfo => true;

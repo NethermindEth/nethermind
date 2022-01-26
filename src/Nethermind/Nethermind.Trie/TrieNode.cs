@@ -39,39 +39,13 @@ namespace Nethermind.Trie
         public int Id = Interlocked.Increment(ref _idCounter);
 #endif
 
-        public TrieNode(NodeType nodeType)
-        {
-            NodeType = nodeType;
-            IsDirty = true;
-        }
-
-        public TrieNode(NodeType nodeType, Keccak keccak)
-        {
-            Keccak = keccak ?? throw new ArgumentNullException(nameof(keccak));
-            NodeType = nodeType;
-            if (nodeType == NodeType.Unknown)
-            {
-                IsPersisted = true;
-            }
-        }
-
-        public TrieNode(NodeType nodeType, byte[] rlp)
-        {
-            NodeType = nodeType;
-            FullRlp = rlp;
-
-            _rlpStream = rlp.AsRlpStream();
-        }
-        
-        public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp) 
-            :this(nodeType, rlp)
-        {
-            Keccak = keccak;
-            if (nodeType == NodeType.Unknown)
-            {
-                IsPersisted = true;
-            }
-        }
+        private TrieNode? _storageRoot;
+        private static object _nullNode = new();
+        private static TrieNodeDecoder _nodeDecoder = new();
+        private static AccountDecoder _accountDecoder = new();
+        private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
+        private RlpStream? _rlpStream;
+        private object?[]? _data;
 
         /// <summary>
         /// Ethereum Patricia Trie specification allows for branch values,
@@ -89,57 +63,19 @@ namespace Nethermind.Trie
 
         public bool IsPersisted { get; set; }
 
-        /// <summary>
-        /// Node will no longer be mutable
-        /// </summary>
-        public void Seal()
-        {
-            if (IsSealed)
-            {
-                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
-            }
-
-            IsDirty = false;
-        }
-
         public Keccak? Keccak { get; internal set; }
 
         public byte[]? FullRlp { get; private set; }
 
         public NodeType NodeType { get; private set; }
 
-        public bool IsValidWithOneNodeLess
-        {
-            get
-            {
-                int nonEmptyNodes = 0;
-                for (int i = 0; i < 16; i++)
-                {
-                    if (!IsChildNull(i))
-                    {
-                        nonEmptyNodes++;
-                    }
-
-                    if (nonEmptyNodes > 2)
-                    {
-                        return true;
-                    }
-                }
-
-                if (AllowBranchValues)
-                {
-                    nonEmptyNodes += (Value?.Length ?? 0) > 0 ? 1 : 0;
-                }
-
-                return nonEmptyNodes > 2;
-            }
-        }
-
         public bool IsDirty { get; private set; }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
+
+        public long? LastSeen { get; set; }
 
         public byte[]? Path => Key?.Path;
 
@@ -213,6 +149,91 @@ namespace Nethermind.Trie
 
                 _data![IsLeaf ? 1 : 16] = value;
             }
+        }
+
+        public bool IsValidWithOneNodeLess
+        {
+            get
+            {
+                int nonEmptyNodes = 0;
+                for (int i = 0; i < 16; i++)
+                {
+                    if (!IsChildNull(i))
+                    {
+                        nonEmptyNodes++;
+                    }
+
+                    if (nonEmptyNodes > 2)
+                    {
+                        return true;
+                    }
+                }
+
+                if (AllowBranchValues)
+                {
+                    nonEmptyNodes += (Value?.Length ?? 0) > 0 ? 1 : 0;
+                }
+
+                return nonEmptyNodes > 2;
+            }
+        }
+
+        public TrieNode(NodeType nodeType)
+        {
+            NodeType = nodeType;
+            IsDirty = true;
+        }
+
+        public TrieNode(NodeType nodeType, Keccak keccak)
+        {
+            Keccak = keccak ?? throw new ArgumentNullException(nameof(keccak));
+            NodeType = nodeType;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
+        public TrieNode(NodeType nodeType, byte[] rlp)
+        {
+            NodeType = nodeType;
+            FullRlp = rlp;
+
+            _rlpStream = rlp.AsRlpStream();
+        }
+        
+        public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp) 
+            :this(nodeType, rlp)
+        {
+            Keccak = keccak;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
+        public override string ToString()
+        {
+#if DEBUG
+            return
+                $"[{NodeType}({FullRlp?.Length}){(FullRlp is not null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
+                $"|{Id}|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+#else
+            return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+#endif
+        }
+
+        /// <summary>
+        /// Node will no longer be mutable
+        /// </summary>
+        public void Seal()
+        {
+            if (IsSealed)
+            {
+                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
+            }
+
+            IsDirty = false;
         }
 
         /// <summary>
@@ -362,8 +383,6 @@ namespace Nethermind.Trie
 
             return _data?[i] is null || ReferenceEquals(_data[i], _nullNode);
         }
-
-        public long? LastSeen { get; set; }
 
         public bool IsChildDirty(int i)
         {
@@ -520,17 +539,6 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public override string ToString()
-        {
-#if DEBUG
-            return
-                $"[{NodeType}({FullRlp?.Length}){(FullRlp is not null && FullRlp?.Length < 32 ? $"{FullRlp.ToHexString()}" : "")}" +
-                $"|{Id}|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
-#else
-            return $"[{NodeType}({FullRlp?.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
-#endif
-        }
-
         public TrieNode CloneWithChangedKey(HexPrefix key)
         {
             TrieNode trieNode = Clone();
@@ -573,8 +581,6 @@ namespace Nethermind.Trie
             trieNode.Value = changedValue;
             return trieNode;
         }
-
-        private TrieNode? _storageRoot;
 
         /// <summary>
         /// Imagine a branch like this:
@@ -703,18 +709,6 @@ namespace Nethermind.Trie
 
             return hasStorage;
         }
-
-        private static object _nullNode = new();
-
-        private static TrieNodeDecoder _nodeDecoder = new();
-
-        private static AccountDecoder _accountDecoder = new();
-
-        private static Action<TrieNode> _markPersisted => tn => tn.IsPersisted = true;
-
-        private RlpStream? _rlpStream;
-
-        private object?[]? _data;
 
         private void InitData()
         {

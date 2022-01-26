@@ -176,7 +176,12 @@ namespace Nethermind.Network.Discovery.Test
         {
             NeighborsMsg message =
                 new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
-                    new[] { new Node("192.168.1.2", 1), new Node("192.168.1.3", 2), new Node("192.168.1.4", 3) })
+                    new[]
+                    {
+                        new Node(TestItem.PublicKeyA, "192.168.1.2", 1),
+                        new Node(TestItem.PublicKeyB, "192.168.1.3", 2),
+                        new Node(TestItem.PublicKeyC, "192.168.1.4", 3)
+                    })
                 {
                     FarAddress = _farAddress
                 };

@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.P2P
         private P2PProtocolHandler CreateSession()
         {
             _session.LocalPort.Returns(ListenPort);
-            Node node = new("127.0.0.1", 30303, false);
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
             _session.Node.Returns(node);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             return new P2PProtocolHandler(

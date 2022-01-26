@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.Test
         public void Can_write_no_peers()
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.WriteShortReport();
             report.WriteFullReport();
         }
@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.Test
             var peers = new[] {syncPeer};
             syncPeerPool.PeerCount.Returns(peers.Length);
 
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.WriteShortReport();
             report.WriteFullReport();
         }
@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.Test
             
             syncPeerPool.PeerCount.Returns(peers.Length);
 
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.WriteShortReport();
             report.WriteFullReport();
         }
@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.Test
 
             syncPeerPool.AllPeers.Returns(peers);
 
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.WriteShortReport();
             report.WriteFullReport();
 
@@ -93,7 +93,7 @@ namespace Nethermind.Synchronization.Test
         private static PeerInfo BuildPeer(bool initialized)
         {
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-            PeerInfo peer = new PeerInfo(syncPeer);
+            PeerInfo peer = new(syncPeer);
             syncPeer.IsInitialized.Returns(initialized);
             return peer;
         }
@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.Test
 
             syncPeerPool.AllPeers.Returns(peers);
 
-            SyncPeersReport report = new SyncPeersReport(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
+            SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
             report.WriteShortReport();
             report.WriteFullReport();
 

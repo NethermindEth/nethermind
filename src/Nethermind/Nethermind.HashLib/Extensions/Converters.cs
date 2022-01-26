@@ -457,7 +457,7 @@ namespace Nethermind.HashLib.Extensions
 
         public static byte[] ConvertHexStringToBytes(string a_in)
         {
-            a_in = a_in.Replace("-", "");
+            a_in = a_in.Replace("-", string.Empty);
 
             Debug.Assert(a_in.Length % 2 == 0);
 
@@ -479,7 +479,7 @@ namespace Nethermind.HashLib.Extensions
 
                 string[] ar = BitConverter.ToString(a_in).ToUpper().Split(new char[] {'-'});
 
-                hex = "";
+                hex = string.Empty;
 
                 for (int i = 0; i < ar.Length / 4; i++)
                 {
@@ -489,7 +489,7 @@ namespace Nethermind.HashLib.Extensions
                 }
             }
             else
-                hex = hex.Replace("-", "");
+                hex = hex.Replace("-", string.Empty);
 
             return hex;
         }

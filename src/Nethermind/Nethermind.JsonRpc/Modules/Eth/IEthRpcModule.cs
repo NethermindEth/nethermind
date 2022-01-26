@@ -66,6 +66,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = false, Description = "Returns full state snapshot", IsSharable = true)]
         ResultWrapper<byte[]> eth_snapshot();
         
+        [JsonRpcMethod(IsImplemented = false, Description = "", IsSharable = true)]
+        ResultWrapper<UInt256?> eth_maxPriorityFeePerGas();
+        
         [JsonRpcMethod(IsImplemented = false, 
             Description = "Returns mining hashrate", 
             IsSharable = true, 

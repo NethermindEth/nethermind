@@ -8,6 +8,10 @@ on:
         required: false
         default: 'master'
 
+permissions:
+  deployments: write
+  packages: write
+
 jobs:
   build-nethermind:
     name: Building Nethermind Packages

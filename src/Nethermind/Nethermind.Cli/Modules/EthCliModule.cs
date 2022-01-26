@@ -244,6 +244,12 @@ namespace Nethermind.Cli.Modules
             return NodeManager.PostJint("eth_gasPrice").Result;
         }
         
+        [CliFunction("eth", "maxPriorityFeePerGas")]
+        public JsValue MaxPriorityFeePerGas()
+        {
+            return NodeManager.PostJint("eth_maxPriorityFeePerGas").Result;
+        }
+        
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {
         }
