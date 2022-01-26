@@ -41,6 +41,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
+        private readonly bool _needToWaitForHeaders;
         protected readonly ILogger _logger;
 
         private long PivotNumber;
@@ -61,12 +62,14 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncProgressResolver syncProgressResolver,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
-            ILogManager logManager)
+            ILogManager logManager,
+            bool needToWaitForHeaders = false)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
+            _needToWaitForHeaders = needToWaitForHeaders;
 
             if (syncConfig.FastSyncCatchUpHeightDelta <= FastSyncLag)
             {
@@ -293,6 +296,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
+            bool notNeedToWaitForHeaders = !_needToWaitForHeaders || FastBlocksHeadersFinished;
 
             bool result =
                 postPivotPeerAvailable &&
@@ -300,7 +304,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 // OR standard fast sync)
                 notInAStickyFullSync &&
                 heightDeltaGreaterThanLag &&
-                notHasJustStartedFullSync;
+                notHasJustStartedFullSync &&
+                notNeedToWaitForHeaders;
 
             if (_logger.IsTrace)
             {
@@ -308,7 +313,8 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(heightDeltaGreaterThanLag), heightDeltaGreaterThanLag),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
-                    (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync));
+                    (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync),
+                    (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
             }
 
             return result;
