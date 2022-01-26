@@ -53,9 +53,10 @@ namespace Nethermind.Merge.Plugin.Test
             => await new MergeTestBlockchain(mergeConfig)
                 .Build(
                     new SingleReleaseSpecProvider(London.Instance, 1));
+
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, IPayloadService? mockedPayloadService = null)
         {
-            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager, chain.MergeConfig);
+            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
             ISynchronizer synchronizer = Substitute.For<ISynchronizer>();
 
             return new EngineRpcModule(
@@ -81,9 +82,9 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
-                Signer = new Eth2Signer(MinerAddress);
                 BlockConfirmationManager = new BlockConfirmationManager();
                 MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
+                Signer = new Eth2Signer(MergeConfig.BlockAuthorAccount != "" ? new Address(MergeConfig.BlockAuthorAccount) : Address.Zero);
             }
             
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
