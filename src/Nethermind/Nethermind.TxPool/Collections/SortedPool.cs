@@ -154,7 +154,7 @@ namespace Nethermind.TxPool.Collections
             SortedSet<TValue> sortedValues = new(_sortedComparer);
             foreach (KeyValuePair<TGroupKey, SortedSet<TValue>> bucket in _buckets)
             {
-                sortedValues.AddRange(bucket.Value);
+                sortedValues.Add(bucket.Value.Max!);
             }
 
             return sortedValues.Take(numberOfValues);
