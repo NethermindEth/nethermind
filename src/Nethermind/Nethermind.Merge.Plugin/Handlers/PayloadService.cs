@@ -45,6 +45,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IInitConfig _initConfig;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
+        private readonly IMergeConfig _mergeConfig;
         private ulong _cleanupDelay = 12; // in seconds
 
         private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
@@ -57,8 +58,10 @@ namespace Nethermind.Merge.Plugin.Handlers
             Eth2BlockProductionContext idealBlockContext,
             IInitConfig initConfig,
             ISealer sealer,
-            ILogManager logManager)
+            ILogManager logManager,
+            IMergeConfig mergeConfig)
         {
+            _mergeConfig = mergeConfig;
             _idealBlockContext = idealBlockContext;
             _initConfig = initConfig;
             _sealer = sealer;
@@ -68,7 +71,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         public async Task<byte[]> StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             byte[] payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
-            payloadAttributes.SuggestedFeeRecipient = payloadAttributes.SuggestedFeeRecipient == Address.Zero ? _sealer.Address : payloadAttributes.SuggestedFeeRecipient;
+            payloadAttributes.SuggestedFeeRecipient = _mergeConfig.BlockAuthorAccount != "" ? new Address(_mergeConfig.BlockAuthorAccount) : payloadAttributes.SuggestedFeeRecipient;
             using CancellationTokenSource cts = new(_timeout);
             var blockProductionTask = PreparePayload(payloadId, parentHeader, payloadAttributes);
             _taskQueue.Enqueue(() => blockProductionTask);

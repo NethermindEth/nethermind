@@ -53,10 +53,9 @@ namespace Nethermind.Merge.Plugin.Test
             => await new MergeTestBlockchain(mergeConfig)
                 .Build(
                     new SingleReleaseSpecProvider(London.Instance, 1));
-
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, IPayloadService? mockedPayloadService = null)
         {
-            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
+            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager, chain.MergeConfig);
             ISynchronizer synchronizer = Substitute.For<ISynchronizer>();
 
             return new EngineRpcModule(
@@ -77,6 +76,7 @@ namespace Nethermind.Merge.Plugin.Test
             public Eth2BlockProductionContext IdealBlockProductionContext { get; set; } = new();
 
             public Eth2BlockProductionContext EmptyBlockProductionContext { get; set; } = new();
+
             public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
             {
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis

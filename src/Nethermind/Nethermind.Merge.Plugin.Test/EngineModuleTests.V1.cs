@@ -989,6 +989,46 @@ namespace Nethermind.Merge.Plugin.Test
             );
         }
 
+        [Test]
+        public async Task payloadV1_suggestedFeeRecipient_in_config()
+        {
+            using MergeTestBlockchain chain =
+                await CreateBlockChain(new MergeConfig()
+                {
+                    Enabled = true, BlockAuthorAccount = TestItem.AddressB.ToString(), TerminalTotalDifficulty = "0"
+                });
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = TestItem.AddressC;
+            string payloadId = rpc.engine_forkchoiceUpdatedV1(new(startingHead, Keccak.Zero, startingHead),
+                    new() {Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, Random = random}).Result.Data
+                .PayloadId;
+            (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!.FeeRecipient.Should()
+                .Be(TestItem.AddressB);
+        }
+
+        [Test]
+        public async Task payloadV1_no_suggestedFeeRecipient_in_config()
+        {
+            using MergeTestBlockchain chain =
+                await CreateBlockChain(new MergeConfig()
+                {
+                    Enabled = true, TerminalTotalDifficulty = "0"
+                });
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            UInt256 timestamp = Timestamper.UnixTime.Seconds;
+            Keccak random = Keccak.Zero;
+            Address feeRecipient = TestItem.AddressC;
+            string payloadId = rpc.engine_forkchoiceUpdatedV1(new(startingHead, Keccak.Zero, startingHead),
+                    new() {Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, Random = random}).Result.Data
+                .PayloadId;
+            (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!.FeeRecipient.Should()
+                .Be(TestItem.AddressC);
+        }
+
         private async Task<BlockRequestResult> SendNewBlockV1(IEngineRpcModule rpc, MergeTestBlockchain chain)
         {
             BlockRequestResult blockRequestResult = CreateBlockRequest(
