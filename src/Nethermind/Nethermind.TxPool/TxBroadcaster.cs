@@ -22,6 +22,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 
@@ -111,11 +112,22 @@ namespace Nethermind.TxPool
         {
             if (_persistentTxs.Count != 0)
             {
-                bool wasIncluded = _persistentTxs.TryRemove(txHash, out Transaction _);
-                if (wasIncluded)
+                bool hasBeenRemoved = _persistentTxs.TryRemove(txHash, out Transaction _);
+                if (hasBeenRemoved)
                 {
                     if (_logger.IsTrace) _logger.Trace(
-                        $"Transaction {txHash} removed from broadcaster after block inclusion");
+                        $"Transaction {txHash} removed from broadcaster");
+                }
+            }
+        }
+
+        public void EnsureStopBroadcast(Address address, UInt256 nonce)
+        {
+            if (_persistentTxs.Count != 0)
+            {
+                foreach (Transaction tx in _persistentTxs.TryGetStaleValues(address, t => t.Nonce <= nonce))
+                {
+                    StopBroadcast(tx.Hash!);
                 }
             }
         }

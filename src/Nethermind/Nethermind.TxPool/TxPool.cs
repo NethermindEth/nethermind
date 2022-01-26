@@ -221,6 +221,8 @@ namespace Nethermind.TxPool
                 {
                     eip1559Txs++;
                 }
+
+                _broadcaster.EnsureStopBroadcast(blockTransactions[i].SenderAddress!, blockTransactions[i].Nonce);
             }
 
             if (transactionsInBlock != 0)

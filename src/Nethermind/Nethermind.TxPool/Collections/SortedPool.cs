@@ -225,6 +225,24 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
 
+        public IEnumerable<TValue> TryGetStaleValues(TGroupKey groupKey, Predicate<TValue> where)
+        {
+            if (_buckets.TryGetValue(groupKey, out SortedSet<TValue>? bucket))
+            {
+                foreach (TValue value in bucket)
+                {
+                    if (where(value))
+                    {
+                        yield return value;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
         /// <summary>
         /// Tries to get element.
         /// </summary>
