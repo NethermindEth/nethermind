@@ -86,7 +86,7 @@ namespace Nethermind.Merge.Plugin.Test
             if (head == null) throw new NotSupportedException();
             return new BlockRequestResult()
             {
-                BlockNumber = 0, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptsRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit, Timestamp = (ulong)head.Timestamp
+                BlockNumber = head.Number, BlockHash = head.Hash!, StateRoot = head.StateRoot!, ReceiptsRoot = head.ReceiptsRoot!, GasLimit = head.GasLimit, Timestamp = (ulong)head.Timestamp
             };
         }
 

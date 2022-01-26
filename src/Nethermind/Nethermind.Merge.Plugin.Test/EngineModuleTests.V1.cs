@@ -559,8 +559,17 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain =
                 await CreateBlockChain(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "1000001" });
             IEngineRpcModule rpc = CreateEngineModule(chain);
+            
+            // adding PoW block
             await chain.AddBlock();
-            var head = chain.BlockTree.Head;
+            
+            // creating PoS block
+            Block? head = chain.BlockTree.Head;
+            BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
+            await rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(blockRequestResult.BlockHash, blockRequestResult.BlockHash,
+                    blockRequestResult.BlockHash), null);
+            Assert.AreEqual(2, chain.BlockTree.Head!.Number);
         }
 
         [TestCase(null)]
@@ -754,8 +763,8 @@ namespace Nethermind.Merge.Plugin.Test
             await CanPrepareOnAnyBlock(branch1, branch2, branch3, branch4);
         }
 
-        [TestCase(false)] 
-        [TestCase(true)]  
+        [TestCase(false)]
+        [TestCase(true)]
         [Ignore(("ToDo need to refactor"))]
         public async Task executePayloadV1_processes_passed_transactions(bool moveHead)
         {
