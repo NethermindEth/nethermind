@@ -16,6 +16,7 @@
 // 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -86,8 +87,9 @@ public class VerkleStorageProvider: IStorageProvider
         return GetCurrentValue(storageCell);
     }
 
-    public void Set(StorageCell storageCell, byte[] newValue)
+    public void Set(StorageCell storageCell, byte[] value)
     {
+        byte[] newValue = new BigInteger(value, false, true).ToBigEndianByteArray(32);
         PushUpdate(storageCell, newValue);
     }
     
