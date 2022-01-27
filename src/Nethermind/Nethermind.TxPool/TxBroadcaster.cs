@@ -174,7 +174,8 @@ namespace Nethermind.TxPool
                 // which will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to
                 // PeerNotificationThreshold multiplicated by number of transactions in persistent broadcast, rounded up.
                 int numberOfPersistentTxsToBroadcast =
-                    _txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1;
+                    Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
+                        _persistentTxs.Count);
 
                 foreach (Transaction tx in _persistentTxs.TryGetFirsts(numberOfPersistentTxsToBroadcast))
                 {
