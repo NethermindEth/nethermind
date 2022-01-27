@@ -556,7 +556,7 @@ namespace Nethermind.Abi.Test
             objects.Should().BeEquivalentTo(expectedObjects);
         }
         
-        public class UserOperationAbi
+        private class UserOperationAbi
         {
             public Address Target { get; set; }
             public UInt256 Nonce { get; set; }
