@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,14 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using System;
 using System.Collections.Generic;
-using Nethermind.Config;
+using Nethermind.Stats.Model;
 
-namespace Nethermind.Network
+namespace Nethermind.Network;
+
+public interface INodeSource
 {
-    public interface IPeerLoader
-    {
-        List<Peer> LoadPeers(IEnumerable<NetworkNode> staticNodes = null);
-    }
+    List<Node> LoadInitialList();
+    event EventHandler<NodeEventArgs> NodeAdded;
+    event EventHandler<NodeEventArgs> NodeRemoved;
 }

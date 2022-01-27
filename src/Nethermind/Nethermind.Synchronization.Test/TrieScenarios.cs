@@ -96,7 +96,7 @@ namespace Nethermind.Synchronization.Test
                 {
                     var code = Bytes.FromHexString("e3a120b10e2d527612073b26eecdfd717e6a320cf44b4afac2b0732d9fcbe2b7fa0cf601");
                     Keccak codeHash = Keccak.Compute(code);
-                    StorageTree remoteStorageTree = new StorageTree(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
+                    StorageTree remoteStorageTree = new(stateDb, Keccak.EmptyTreeHash, LimboLogs.Instance);
                     remoteStorageTree.Set((UInt256) 1, new byte[] {1});
                     remoteStorageTree.Commit(0);
                     remoteStorageTree.UpdateRootHash();
@@ -328,7 +328,7 @@ namespace Nethermind.Synchronization.Test
 
         private static StorageTree SetStorage(ITrieStore trieStore)
         {
-            StorageTree remoteStorageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree remoteStorageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
 
             remoteStorageTree.Set((UInt256) 1, new byte[] {1});
             remoteStorageTree.Set((UInt256) 2, new byte[] {2});

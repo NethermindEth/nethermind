@@ -72,12 +72,13 @@ namespace Nethermind.Runner.Ethereum
             Stop(() => _api.SessionMonitor?.Stop(), "Stopping session monitor");
             Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
             Task blockProducerTask = Stop(() => _api.BlockProducer?.StopAsync(), "Stopping block producer");
-            Task peerPoolTask = Stop(() => _api.SyncPeerPool?.StopAsync(), "Stopping sync peer pool");
+            Task syncPeerPoolTask = Stop(() => _api.SyncPeerPool?.StopAsync(), "Stopping sync peer pool");
+            Task peerPoolTask = Stop(() => _api.PeerPool?.StopAsync(), "Stopping peer pool");
             Task peerManagerTask = Stop(() => _api.PeerManager?.StopAsync(), "Stopping peer manager");
             Task synchronizerTask = Stop(() => _api.Synchronizer?.StopAsync(), "Stopping synchronizer");
             Task blockchainProcessorTask = Stop(() => _api.BlockchainProcessor?.StopAsync(), "Stopping blockchain processor");
             Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping rlpx peer");
-            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
+            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, syncPeerPoolTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
             foreach (INethermindPlugin plugin in _api.Plugins)
             {

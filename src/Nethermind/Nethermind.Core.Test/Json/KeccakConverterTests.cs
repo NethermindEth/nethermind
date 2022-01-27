@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test.Json
         public void Can_read_null()
         {
             KeccakConverter converter = new();
-            JsonReader reader = new JsonTextReader(new StringReader(""));
+            JsonReader reader = new JsonTextReader(new StringReader(string.Empty));
             reader.ReadAsString();
             Keccak result = converter.ReadJson(reader, typeof(Keccak), null, false, JsonSerializer.CreateDefault());
             Assert.AreEqual(null, result);

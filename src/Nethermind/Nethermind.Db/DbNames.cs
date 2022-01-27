@@ -28,5 +28,6 @@ namespace Nethermind.Db
         public const string Bloom = "bloom";
         public const string Witness = "witness";
         public const string CHT = "canonicalHashTrie";
+        public const string Metadata = "metadata";
     }
 }

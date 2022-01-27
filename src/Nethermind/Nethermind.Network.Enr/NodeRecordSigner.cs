@@ -25,7 +25,7 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-778
 /// </summary>
-public class NodeRecordSigner
+public class NodeRecordSigner : INodeRecordSigner
 {
     private readonly IEcdsa _ecdsa;
 
@@ -62,7 +62,7 @@ public class NodeRecordSigner
         Signature signature = new(sigBytes, 0);
 
         bool canVerify = true;
-        int enrSequence = rlpStream.DecodeInt();
+        long enrSequence = rlpStream.DecodeLong();
         while (rlpStream.Position < startPosition + recordRlpLength)
         {
             string key = rlpStream.DecodeString();
@@ -72,7 +72,7 @@ public class NodeRecordSigner
                     _ = rlpStream.ReadSequenceLength();
                     _ = rlpStream.ReadSequenceLength();
                     byte[] forkHash = rlpStream.DecodeByteArray();
-                    int nextBlock = rlpStream.DecodeInt();
+                    long nextBlock = rlpStream.DecodeLong();
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
                     break;
                 case EnrContentKey.Id:
@@ -94,13 +94,14 @@ public class NodeRecordSigner
                     break;
                 case EnrContentKey.Secp256K1:
                     ReadOnlySpan<byte> keyBytes = rlpStream.DecodeByteArraySpan();
-                    CompressedPublicKey? reportedKey = new(keyBytes);
+                    CompressedPublicKey reportedKey = new(keyBytes);
                     nodeRecord.SetEntry(new Secp256K1Entry(reportedKey));
                     break;
                 // snap
                 default:
                     canVerify = false;
                     rlpStream.SkipItem();
+                    nodeRecord.Snap = true;
                     break;
             }
         }

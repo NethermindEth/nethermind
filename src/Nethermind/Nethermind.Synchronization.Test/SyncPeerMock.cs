@@ -144,7 +144,7 @@ namespace Nethermind.Synchronization.Test
             return Task.FromResult(_remoteTree.Head?.Header);
         }
 
-        private BlockingCollection<Action> _sendQueue = new BlockingCollection<Action>();
+        private BlockingCollection<Action> _sendQueue = new();
         
         public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
         {

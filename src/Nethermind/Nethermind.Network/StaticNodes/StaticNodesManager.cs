@@ -43,8 +43,6 @@ namespace Nethermind.Network.StaticNodes
         }
 
         public IEnumerable<NetworkNode> Nodes => _nodes.Values;
-        public event EventHandler<NetworkNodeEventArgs> NodeAdded;
-        public event EventHandler<NetworkNodeEventArgs> NodeRemoved;
 
         public async Task InitAsync()
         {
@@ -64,14 +62,13 @@ namespace Nethermind.Network.StaticNodes
                 if (_logger.IsDebug) _logger.Debug($"Static nodes: {Environment.NewLine}{data}");
             }
 
-            IEnumerable<NetworkNode> networkNodes = new List<NetworkNode>();
-
-            foreach (var n in nodes)
+            List<NetworkNode> networkNodes = new();
+            foreach (string? n in nodes)
             {
                 try
                 {
                     NetworkNode networkNode = new(n);
-                    networkNodes = networkNodes.Append(networkNode);
+                    networkNodes.Add(networkNode);
                 }
                 catch (Exception exception) when (exception is ArgumentException or SocketException)
                 {
@@ -99,15 +96,16 @@ namespace Nethermind.Network.StaticNodes
 
         public async Task<bool> AddAsync(string enode, bool updateFile = true)
         {
-            NetworkNode node = new(enode);
-            if (!_nodes.TryAdd(node.NodeId, node))
+            NetworkNode networkNode = new(enode);
+            if (!_nodes.TryAdd(networkNode.NodeId, networkNode))
             {
                 if (_logger.IsInfo) _logger.Info($"Static node was already added: {enode}");
                 return false;
             }
 
             if (_logger.IsInfo) _logger.Info($"Static node added: {enode}");
-            NodeAdded?.Invoke(this, new NetworkNodeEventArgs(node));
+            Node node = new(networkNode);
+            NodeAdded?.Invoke(this, new NodeEventArgs(node));
             if (updateFile)
             {
                 await SaveFileAsync();
@@ -118,15 +116,16 @@ namespace Nethermind.Network.StaticNodes
 
         public async Task<bool> RemoveAsync(string enode, bool updateFile = true)
         {
-            NetworkNode node = new(enode);
-            if (!_nodes.TryRemove(node.NodeId, out _))
+            NetworkNode networkNode = new(enode);
+            if (!_nodes.TryRemove(networkNode.NodeId, out _))
             {
                 if (_logger.IsInfo) _logger.Info($"Static node was not found: {enode}");
                 return false;
             }
 
             if (_logger.IsInfo) _logger.Info($"Static node was removed: {enode}");
-            NodeRemoved?.Invoke(this, new NetworkNodeEventArgs(node));
+            Node node = new(networkNode);
+            NodeRemoved?.Invoke(this, new NodeEventArgs(node));
             if (updateFile)
             {
                 await SaveFileAsync();
@@ -145,5 +144,14 @@ namespace Nethermind.Network.StaticNodes
         private Task SaveFileAsync()
             => File.WriteAllTextAsync(_staticNodesPath,
                 JsonConvert.SerializeObject(_nodes.Select(n => n.Value.ToString()), Formatting.Indented));
+
+        public List<Node> LoadInitialList()
+        {
+            return _nodes.Values.Select(n => new Node(n)).ToList();
+        }
+
+        public event EventHandler<NodeEventArgs>? NodeAdded;
+        
+        public event EventHandler<NodeEventArgs>? NodeRemoved;
     }
 }

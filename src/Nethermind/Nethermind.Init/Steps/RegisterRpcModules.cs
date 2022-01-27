@@ -165,7 +165,7 @@ namespace Nethermind.Init.Steps
             AdminRpcModule adminRpcModule = new(
                 _api.BlockTree,
                 networkConfig,
-                _api.PeerManager,
+                _api.PeerPool,
                 _api.StaticNodesManager,
                 _api.Enode,
                 initConfig.BaseDbPath);

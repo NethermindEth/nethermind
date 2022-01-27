@@ -43,12 +43,12 @@ namespace Nethermind.Grpc {
     {
       public virtual global::System.Threading.Tasks.Task<global::Nethermind.Grpc.QueryResponse> Query(global::Nethermind.Grpc.QueryRequest request, grpc::ServerCallContext context)
       {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, string.Empty));
       }
 
       public virtual global::System.Threading.Tasks.Task Subscribe(global::Nethermind.Grpc.SubscriptionRequest request, grpc::IServerStreamWriter<global::Nethermind.Grpc.SubscriptionResponse> responseStream, grpc::ServerCallContext context)
       {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, string.Empty));
       }
 
     }
