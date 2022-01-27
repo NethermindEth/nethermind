@@ -142,6 +142,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IStateProvider _stateProvider;
 
         private bool _paymasterValidationMode;
+        private Address[] _excludedAddresses;
         
         public UserOperationTxTracer(
             Transaction? transaction,
@@ -162,6 +163,8 @@ namespace Nethermind.AccountAbstraction.Executor
             _entryPointAddress = entryPointAddress;
             _logger = logger;
             Output = Array.Empty<byte>();
+
+            _excludedAddresses = new[] {_create2FactoryAddress, Address.Zero, _entryPointAddress, _paymaster, _sender};
         }
 
         public Transaction? Transaction { get; }
@@ -351,9 +354,9 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             void AddToAccessedStorage(StorageCell storageCell)
             {
-                if (AccessedStorage.ContainsKey(storageCell.Address))
+                if (AccessedStorage.TryGetValue(storageCell.Address, out HashSet<UInt256>? values))
                 {
-                    AccessedStorage[storageCell.Address].Add(storageCell.Index);
+                    values.Add(storageCell.Index);
                     return;
                 }
 
@@ -363,7 +366,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Address walletAddress = _sender;
             Address? paymasterAddress = _paymaster == Address.Zero ? null : _paymaster;
             Address[] furtherAddresses = accessedAddresses
-                .Except(new[] {_create2FactoryAddress, Address.Zero, _entryPointAddress, _paymaster, _sender})
+                .Except(_excludedAddresses)
                 .ToArray();
 
             // spec: The call does not access mutable state of any contract except the wallet/paymaster itself

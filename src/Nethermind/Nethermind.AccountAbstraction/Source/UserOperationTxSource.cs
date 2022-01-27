@@ -125,7 +125,7 @@ namespace Nethermind.AccountAbstraction.Source
 
             BlockchainBridge.CallOutput callOutput = _userOperationSimulator.EstimateGas(parent, userOperationTransaction, CancellationToken.None);
             FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(callOutput.OutputData);
-            if (failedOp is null)
+            if (failedOp is not null)
             {
                 // TODO punish paymaster
             }

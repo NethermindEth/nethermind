@@ -36,8 +36,8 @@ namespace Nethermind.AccountAbstraction.Data
             IDictionary<Address, HashSet<UInt256>> accessList1, IDictionary<Address, HashSet<UInt256>> accessList2)
         {
             foreach (KeyValuePair<Address, HashSet<UInt256>> kv in accessList2)
-                if (accessList1.ContainsKey(kv.Key))
-                    accessList1[kv.Key].UnionWith(kv.Value);
+                if (accessList1.TryGetValue(kv.Key, out HashSet<UInt256>? value))
+                    value.UnionWith(kv.Value);
                 else
                     accessList1[kv.Key] = kv.Value;
 
@@ -47,9 +47,9 @@ namespace Nethermind.AccountAbstraction.Data
         public bool AccessListContains(IDictionary<Address, HashSet<UInt256>> accessList2)
         {
             foreach (KeyValuePair<Address, HashSet<UInt256>> kv in accessList2)
-                if (Data.ContainsKey(kv.Key))
+                if (Data.TryGetValue(kv.Key, out HashSet<UInt256>? value))
                 {
-                    if (!Data[kv.Key].IsSupersetOf(kv.Value)) return false;
+                    if (!value.IsSupersetOf(kv.Value)) return false;
                 }
                 else
                     return false;
@@ -60,8 +60,8 @@ namespace Nethermind.AccountAbstraction.Data
         public bool AccessListOverlaps(IDictionary<Address, HashSet<UInt256>> accessList2)
         {
             foreach (KeyValuePair<Address, HashSet<UInt256>> kv in Data)
-                if (accessList2.ContainsKey(kv.Key))
-                    if (accessList2[kv.Key].Overlaps(kv.Value))
+                if (accessList2.TryGetValue(kv.Key, out HashSet<UInt256>? value))
+                    if (value.Overlaps(kv.Value))
                         return true;
 
             return false;

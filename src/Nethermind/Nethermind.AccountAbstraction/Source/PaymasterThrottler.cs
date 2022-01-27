@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
@@ -37,9 +38,9 @@ namespace Nethermind.AccountAbstraction.Source
 
         public const uint BanSlack = 50;
 
-        private readonly IDictionary<Address, uint> _opsIncluded;
+        private readonly ConcurrentDictionary<Address, uint> _opsIncluded;
 
-        private readonly IDictionary<Address, uint> _opsSeen;
+        private readonly ConcurrentDictionary<Address, uint> _opsSeen;
 
         private readonly ITimer _timer = new TimerFactory()
             .CreateTimer(new TimeSpan(
@@ -52,10 +53,10 @@ namespace Nethermind.AccountAbstraction.Source
         public PaymasterThrottler() : this(true) { }
 
         public PaymasterThrottler(bool isMiner)
-            : this(isMiner, new Dictionary<Address, uint>(), new Dictionary<Address, uint>()) { }
+            : this(isMiner, new ConcurrentDictionary<Address, uint>(), new ConcurrentDictionary<Address, uint>()) { }
 
         public PaymasterThrottler(bool isMiner,
-                IDictionary<Address, uint> opsSeen, IDictionary<Address, uint> opsIncluded)
+            ConcurrentDictionary<Address, uint> opsSeen, ConcurrentDictionary<Address, uint> opsIncluded)
         {
             MinInclusionRateDenominator = isMiner ? (uint)10 : (uint)100;
 
@@ -67,24 +68,12 @@ namespace Nethermind.AccountAbstraction.Source
 
         public uint IncrementOpsSeen(Address paymaster)
         {
-            lock (_opsSeen)
-            {
-                if (!_opsSeen.ContainsKey(paymaster)) _opsSeen.Add(paymaster, 1);
-                else _opsSeen[paymaster]++;
-
-                return _opsSeen[paymaster];
-            }
+            return _opsSeen.AddOrUpdate(paymaster, _ => 1, (_, val) => val + 1);
         }
 
         public uint IncrementOpsIncluded(Address paymaster)
         {
-            lock (_opsIncluded)
-            {
-                if (!_opsIncluded.ContainsKey(paymaster)) _opsIncluded.Add(paymaster, 1);
-                else _opsIncluded[paymaster]++;
-
-                return _opsIncluded[paymaster];
-            }
+            return _opsIncluded.AddOrUpdate(paymaster, _ => 1, (_, val) => val + 1);
         }
 
         public PaymasterStatus GetPaymasterStatus(Address paymaster)
@@ -92,62 +81,44 @@ namespace Nethermind.AccountAbstraction.Source
             if (paymaster == Address.Zero) return PaymasterStatus.Ok;
 
             uint minExpectedIncluded;
-
-            lock (_opsSeen)
-            {
-                if (!_opsSeen.ContainsKey(paymaster)) return PaymasterStatus.Ok;
-                minExpectedIncluded = FloorDivision(_opsSeen[paymaster], MinInclusionRateDenominator);
-            }
-
-            lock (_opsIncluded)
-            {
-                if (_opsIncluded[paymaster] <= minExpectedIncluded + ThrottlingSlack) return PaymasterStatus.Ok;
-                if (_opsIncluded[paymaster] <= minExpectedIncluded + BanSlack) return PaymasterStatus.Throttled;
-            }
-
+            
+            if (!_opsSeen.ContainsKey(paymaster)) return PaymasterStatus.Ok;
+            minExpectedIncluded = FloorDivision(_opsSeen[paymaster], MinInclusionRateDenominator);
+            
+            if (_opsIncluded[paymaster] <= minExpectedIncluded + ThrottlingSlack) return PaymasterStatus.Ok;
+            if (_opsIncluded[paymaster] <= minExpectedIncluded + BanSlack) return PaymasterStatus.Throttled;
+            
             return PaymasterStatus.Banned;
         }
 
         public uint GetPaymasterOpsSeen(Address paymaster)
         {
-            lock (_opsSeen)
-            {
-                return _opsSeen.ContainsKey(paymaster) ? _opsSeen[paymaster] : 0;
-            }
+            return _opsSeen.ContainsKey(paymaster) ? _opsSeen[paymaster] : 0;
         }
 
         public uint GetPaymasterOpsIncluded(Address paymaster)
         {
-            lock (_opsIncluded)
-            {
-                return _opsIncluded.ContainsKey(paymaster) ? _opsIncluded[paymaster] : 0;
-            }
+            return _opsIncluded.ContainsKey(paymaster) ? _opsIncluded[paymaster] : 0;
         }
 
         protected void UpdateUserOperationMaps(object source, EventArgs args)
         {
-            lock (_opsSeen)
+            foreach (Address paymaster in _opsSeen.Keys)
             {
-                foreach (Address paymaster in _opsSeen.Keys)
-                {
-                    uint correction = FloorDivision(_opsSeen[paymaster], TimerHoursSpan);
+                uint correction = FloorDivision(_opsSeen[paymaster], TimerHoursSpan);
 
-                    _opsSeen[paymaster] = _opsSeen[paymaster] >= correction
-                        ? _opsSeen[paymaster] - correction
-                        : 0;
-                }
+                _opsSeen[paymaster] = _opsSeen[paymaster] >= correction
+                    ? _opsSeen[paymaster] - correction
+                    : 0;
             }
-
-            lock (_opsIncluded)
+            
+            foreach (Address paymaster in _opsIncluded.Keys)
             {
-                foreach (Address paymaster in _opsIncluded.Keys)
-                {
-                    uint correction = FloorDivision(_opsIncluded[paymaster], TimerHoursSpan);
+                uint correction = FloorDivision(_opsIncluded[paymaster], TimerHoursSpan);
 
-                    _opsIncluded[paymaster] = _opsIncluded[paymaster] >= correction
-                        ? _opsIncluded[paymaster] - correction
-                        : 0;
-                }
+                _opsIncluded[paymaster] = _opsIncluded[paymaster] >= correction
+                    ? _opsIncluded[paymaster] - correction
+                    : 0;
             }
         }
 
