@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
                 .AndGoodPeersAreKnown()
                 .WhenFastSyncWithFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.FastHeaders | SyncMode.FastSync);
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.FastHeaders | SyncMode.FastSync));
         }
 
         [Test]
@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThisNodeFinishedFastSyncButNotFastBlocks()
                 .AndGoodPeersAreKnown()
                 .WhenFastSyncWithFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastHeaders);
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.StateNodes | SyncMode.FastHeaders));
         }
 
         [Test]
@@ -196,7 +196,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThisNodeFinishedFastSyncButNotFastBlocks()
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastHeaders);
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.StateNodes | SyncMode.FastHeaders));
         }
 
         [TestCase(FastBlocksState.FinishedHeaders)]
@@ -220,7 +220,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeFinishedStateSyncButNotFastBlocks(fastBlocksState)
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
-                .TheSyncModeShouldBe(SyncMode.Full | fastBlocksState.GetSyncMode(true));
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetExpectationsIfNeedToWaitForHeaders(SyncMode.Full | fastBlocksState.GetSyncMode(true))));
         }
 
         [Test]
@@ -263,7 +263,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeJustStartedFullSyncProcessing(fastBlocksState)
                 .AndGoodPeersAreKnown()
                 .WhenFastSyncWithFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.Full | fastBlocksState.GetSyncMode(true));
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.Full | fastBlocksState.GetSyncMode(true)));
         }
 
         [Test]
@@ -394,7 +394,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeJustFinishedFastBlocksAndFastSync(FastBlocksState.FinishedHeaders)
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndPeersMovedSlightlyForward()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync);
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.StateNodes | SyncMode.FastSync));
         }
 
         [TestCase(FastBlocksState.None)]
@@ -405,7 +405,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeJustFinishedFastBlocksAndFastSync(fastBlocksState)
                 .AndPeersMovedSlightlyForward()
                 .WhenFastSyncWithFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.StateNodes | SyncMode.FastSync | fastBlocksState.GetSyncMode());
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.StateNodes | SyncMode.FastSync | fastBlocksState.GetSyncMode()));
         }
 
         [Test]
@@ -455,7 +455,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()
                 .AndPeersMovedSlightlyForwardWithFastSyncLag()
                 .WhenFastSyncWithFastBlocksIsConfigured()
-                .TheSyncModeShouldBe(SyncMode.Full | SyncMode.FastHeaders);
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.Full | SyncMode.FastHeaders));
         }
 
         [Test]
