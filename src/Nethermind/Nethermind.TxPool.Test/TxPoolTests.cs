@@ -707,7 +707,8 @@ namespace Nethermind.TxPool.Test
             _txPool = CreatePool();
 
             Transaction[] transactions = new Transaction[10];
-            
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
             for (int i = 0; i < 10; i++)
             {
                 transactions[i] = Build.A.Transaction
@@ -716,8 +717,6 @@ namespace Nethermind.TxPool.Test
                     .WithGasPrice(10.GWei())
                     .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                     .TestObject;
-                
-                EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
                 _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
             }
             _txPool.GetOwnPendingTransactions().Length.Should().Be(10);
