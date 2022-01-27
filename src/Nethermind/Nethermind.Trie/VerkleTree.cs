@@ -222,7 +222,7 @@ public class VerkleTree
         const int PUSH1 = PUSH_OFFSET + 1;
         const int PUSH32 = PUSH_OFFSET + 32;
             
-        // To ensure that the code can be split into chunks of 32 bytes
+        // To ensure that the code can be split into chunks of 31 bytes
         byte[] chunkifyableCode = new byte[code.Length + 31 - code.Length % 31];
         Buffer.BlockCopy(code, 0, chunkifyableCode, 0, code.Length);
 
@@ -241,7 +241,16 @@ public class VerkleTree
 
             for (int i = 0; i < pushLength; i++)
             {
-                bytesToExecData[pos + i] = pushLength - i;
+                try
+                {
+                    bytesToExecData[pos + i] = pushLength - i;
+                }
+                catch (IndexOutOfRangeException e)
+                {
+                    Console.WriteLine(e);
+                    break;
+                }
+                
             }
 
             pos += pushLength;
