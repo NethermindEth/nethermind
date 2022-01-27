@@ -702,6 +702,39 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_remove_stale_txs_from_persistent_transactions()
+        {
+            _txPool = CreatePool();
+
+            Transaction[] transactions = new Transaction[10];
+            
+            for (int i = 0; i < 10; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithNonce((UInt256)i)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .WithGasPrice(10.GWei())
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                    .TestObject;
+                
+                EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+                _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(10);
+
+            Block block = Build.A.Block.WithTransactions(transactions[7]).TestObject;
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            
+            ManualResetEvent manualResetEvent = new(false);
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            
+            // transactions[7] was included in the block and should be removed, as well as lower nonces. Only 8 and 9 should left.
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(2);
+        }
+
+        [Test]
         public async Task should_remove_transactions_concurrently()
         {
             var maxTryCount = 5;
