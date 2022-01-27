@@ -126,6 +126,7 @@ namespace Nethermind.TxPool
         {
             if (_persistentTxs.Count != 0)
             {
+                // it is needed to use .ToList() here to not remove tx from bucket during iterating through this bucket.
                 foreach (Transaction tx in _persistentTxs.TryGetStaleValues(address, t => t.Nonce <= nonce).ToList())
                 {
                     StopBroadcast(tx.Hash!);

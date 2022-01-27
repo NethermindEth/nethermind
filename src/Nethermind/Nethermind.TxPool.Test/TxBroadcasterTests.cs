@@ -75,7 +75,7 @@ public class TxBroadcasterTests
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
-        for (int i = 0; i < TestItem.PrivateKeys.Length; i++)
+        for (int i = 0; i < addedTxsCount; i++)
         {
             transactions[i] = Build.A.Transaction
                 .WithSenderAddress(TestItem.PrivateKeys[i].Address)
