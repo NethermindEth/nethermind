@@ -47,7 +47,7 @@ namespace Nethermind.Trie
         private static extern IntPtr get_verkle_proof(IntPtr verkleTrie, byte[] key);
 
         [DllImport("rust_verkle")]
-        private static extern bool verify_verkle_proof(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[] key, byte[] value);
+        private static extern byte verify_verkle_proof(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[] key, byte[] value);
 
         [DllImport("rust_verkle")]
         private static extern void verkle_trie_insert_multiple(IntPtr verkleTrie, byte[,] keys, byte[,] vals, int len);
@@ -56,7 +56,7 @@ namespace Nethermind.Trie
         private static extern IntPtr get_verkle_proof_multiple(IntPtr verkleTrie, byte[,] keys, int len);
 
         [DllImport("rust_verkle")]
-        private static extern bool verify_verkle_proof_multiple(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[,] key, byte[,] value, int len);
+        private static extern byte verify_verkle_proof_multiple(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[,] key, byte[,] value, int len);
 
         public static IntPtr VerkleTrieNew()
         {
@@ -109,7 +109,12 @@ namespace Nethermind.Trie
         }
 
         public static bool VerkleProofVerify(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[] key, byte[] value){
-            return verify_verkle_proof(verkleTrie, verkleProof, proof_len, key, value);
+            byte verification = verify_verkle_proof(verkleTrie, verkleProof, proof_len, key, value);
+            if (verification == 0)
+            {
+                return false;
+            }
+            return true;
         }
 
         public static void VerkleTrieInsertMultiple(IntPtr verkleTrie, byte[,] keys, byte[,] vals, int len){
@@ -125,7 +130,12 @@ namespace Nethermind.Trie
         }
 
         public static bool VerkleProofVerifyMultiple(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[,] keys, byte[,] vals, int len){
-            return verify_verkle_proof_multiple(verkleTrie, verkleProof, proof_len, keys, vals, len);
+            byte verification = verify_verkle_proof_multiple(verkleTrie, verkleProof, proof_len, keys, vals, len);
+            if (verification == 0)
+            {
+                return false;
+            }
+            return true;
         }
 
     }

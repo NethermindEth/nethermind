@@ -191,8 +191,9 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
 
             byte[] proof = RustVerkleLib.VerkleProofGet(trie, one32);
-            bool verification = RustVerkleLib.VerkleProofVerify(trie, proof, proof.Length, one32, one32);
-
+            bool verification = RustVerkleLib.VerkleProofVerify(trie, proof, proof.Length, one32, one);
+            Assert.IsTrue(verification);
+            verification = RustVerkleLib.VerkleProofVerify(trie, proof, proof.Length, one32, one32);
             Assert.IsTrue(!verification);
         }
 
