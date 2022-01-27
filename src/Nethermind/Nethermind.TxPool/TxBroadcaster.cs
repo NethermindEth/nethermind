@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -125,9 +126,22 @@ namespace Nethermind.TxPool
         {
             if (_persistentTxs.Count != 0)
             {
-                foreach (Transaction tx in _persistentTxs.TryGetStaleValues(address, t => t.Nonce <= nonce))
+                IEnumerable<Transaction> transactions =
+                    _persistentTxs.TryGetStaleValues(address, t => t.Nonce <= nonce);
+                
+                if (transactions.Any())
                 {
-                    StopBroadcast(tx.Hash!);
+                    List<Transaction> transactionsToRemoveFromPersistentTransactions = new List<Transaction>();
+                    
+                    foreach (Transaction tx in transactions)
+                    {
+                        transactionsToRemoveFromPersistentTransactions.Add(tx);
+                    }
+                    
+                    foreach (Transaction tx in transactionsToRemoveFromPersistentTransactions)
+                    {
+                        StopBroadcast(tx.Hash!);
+                    }
                 }
             }
         }
