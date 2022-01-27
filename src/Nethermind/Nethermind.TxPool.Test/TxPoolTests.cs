@@ -701,15 +701,22 @@ namespace Nethermind.TxPool.Test
             Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
         }
 
-        [Test]
-        public void should_remove_stale_txs_from_persistent_transactions()
+        [TestCase(1, 0)]
+        [TestCase(2, 0)]
+        [TestCase(2, 1)]
+        [TestCase(10, 0)]
+        [TestCase(10, 1)]
+        [TestCase(10, 5)]
+        [TestCase(10, 8)]
+        [TestCase(10, 9)]
+        public void should_remove_stale_txs_from_persistent_transactions(int numberOfTxs, int nonceIncludedInBlock)
         {
             _txPool = CreatePool();
 
-            Transaction[] transactions = new Transaction[10];
+            Transaction[] transactions = new Transaction[numberOfTxs];
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < numberOfTxs; i++)
             {
                 transactions[i] = Build.A.Transaction
                     .WithNonce((UInt256)i)
@@ -719,9 +726,9 @@ namespace Nethermind.TxPool.Test
                     .TestObject;
                 _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
             }
-            _txPool.GetOwnPendingTransactions().Length.Should().Be(10);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(numberOfTxs);
 
-            Block block = Build.A.Block.WithTransactions(transactions[7]).TestObject;
+            Block block = Build.A.Block.WithTransactions(transactions[nonceIncludedInBlock]).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
             
             ManualResetEvent manualResetEvent = new(false);
@@ -729,8 +736,8 @@ namespace Nethermind.TxPool.Test
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
             
-            // transactions[7] was included in the block and should be removed, as well as lower nonces. Only 8 and 9 should left.
-            _txPool.GetOwnPendingTransactions().Length.Should().Be(2);
+            // transactions[nonceIncludedInBlock] was included in the block and should be removed, as well as all lower nonces.
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(numberOfTxs - nonceIncludedInBlock - 1);
         }
 
         [Test]
