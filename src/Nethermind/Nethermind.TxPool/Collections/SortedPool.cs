@@ -225,6 +225,12 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
 
+        /// <summary>
+        /// Tries to get elements matching predicated criteria, iterating through SortedSet with break on first mismatch.
+        /// </summary>
+        /// <param name="groupKey">Given GroupKey, which elements are checked.</param>
+        /// <param name="where">Predicated criteria.</param>
+        /// <returns>Elements matching predicated criteria.</returns>
         public IEnumerable<TValue> TryGetStaleValues(TGroupKey groupKey, Predicate<TValue> where)
         {
             if (_buckets.TryGetValue(groupKey, out SortedSet<TValue>? bucket))
