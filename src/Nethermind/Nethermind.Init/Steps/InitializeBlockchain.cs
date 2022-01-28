@@ -139,6 +139,7 @@ namespace Nethermind.Init.Steps
                     IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
                     fullPruningDb.PruningStarted += (sender, args) =>
                     {
+                        // cachedStateDb.DropCache();
                         cachedStateDb.PersistCache(args.Context);
                         trieStore.PersistCache(args.Context);
                     };
@@ -176,9 +177,12 @@ namespace Nethermind.Init.Steps
 
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
-                _logger.Info("Collecting trie stats and verifying that no nodes are missing...");
-                TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
-                _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+                Task.Run(() =>
+                {
+                    _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+                    TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                    _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+                });
             }
 
             // Init state if we need system calls before actual processing starts
