@@ -81,27 +81,27 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             if (_syncConfig.FastSync && _blockTree.LowestInsertedBodyNumber != 0)
             {
-                return ReturnSyncing();
+                return Syncing();
             }
 
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
                 EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return ReturnSyncing();
+                return Syncing();
 
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) =
                 EnsureHeaderForConfirmation(forkchoiceState.SafeBlockHash);
             if (confirmationErrorMsg != null)
-                return ReturnSyncing();
+                return Syncing();
 
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) =
                 EnsureBlocksForSetHead(forkchoiceState.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return ReturnSyncing();
+                return Syncing();
 
             if (_ethSyncingInfo.IsSyncing() && synced == false)
             {
-                return ReturnSyncing();
+                return Syncing();
             }
             else if (synced == false)
             {
@@ -112,9 +112,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 newHeadBlock!.Header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
-                    $"Invalid total difficulty: {newHeadBlock!.Header.TotalDifficulty} for block header: {newHeadBlock!.Header}",
-                    MergeErrorCodes.InvalidTerminalBlock);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
+                    new ForkchoiceUpdatedV1Result() { Status = ForkchoiceStatus.InvalidTerminalBlock });
             }
 
             // this check is needed for correct behaviour. It will be defined in the new spec
@@ -169,7 +168,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result()
             {
-                PayloadId = payloadId?.ToHexString(true), Status = ForkchoiceStatus.Success
+                PayloadId = payloadId?.ToHexString(true), Status = ForkchoiceStatus.Valid
             });
         }
 
@@ -200,9 +199,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
         }
 
-        private ResultWrapper<ForkchoiceUpdatedV1Result> ReturnSyncing()
+        private ResultWrapper<ForkchoiceUpdatedV1Result> Syncing()
         {
-            // ToDo wait for final PostMerge sync
             return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
                 new ForkchoiceUpdatedV1Result() { Status = ForkchoiceStatus.Syncing });
         }

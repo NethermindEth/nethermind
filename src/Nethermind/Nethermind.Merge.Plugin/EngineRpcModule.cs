@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin
         }
 
 
-        public async Task<ResultWrapper<ExecutePayloadV1Result>> engine_executePayloadV1(
+        public async Task<ResultWrapper<ExecutePayloadV1Result>> engine_newPayloadV1(
             BlockRequestResult executionPayload)
         {
             if (await _locker.WaitAsync(Timeout))
@@ -86,8 +86,8 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_executePayloadV1)} timeout.");
-                return ResultWrapper<ExecutePayloadV1Result>.Fail($"{nameof(engine_executePayloadV1)} timeout.",
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newPayloadV1)} timeout.");
+                return ResultWrapper<ExecutePayloadV1Result>.Fail($"{nameof(engine_newPayloadV1)} timeout.",
                     ErrorCodes.Timeout);
             }
         }

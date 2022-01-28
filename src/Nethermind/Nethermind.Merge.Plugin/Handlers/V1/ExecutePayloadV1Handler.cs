@@ -122,7 +122,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (_poSSwitcher.TerminalTotalDifficulty == null || parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
-                return ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {parentHeader.TotalDifficulty} for block header: {parentHeader}", MergeErrorCodes.InvalidTerminalBlock);
+                executePayloadResult.Status = ExecutePayloadStatus.InvalidTerminalBlock;
+                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             
             (ValidationResult ValidationResult, string? Message) result = ValidateRequestAndProcess(request, out Block? processedBlock, parentHeader);

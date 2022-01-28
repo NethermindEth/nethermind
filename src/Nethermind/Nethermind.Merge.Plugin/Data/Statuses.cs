@@ -24,12 +24,22 @@ namespace Nethermind.Merge.Plugin.Data
         public const string Invalid = "INVALID";
 
         public const string Syncing = "SYNCING";
+        
+        public const string Accepted = "Accepted";
+        
+        public const string InvalidBlockHash = "INVALID_BLOCK_HASH";
+        
+        public const string InvalidTerminalBlock = "INVALID_TERMINAL_BLOCK";
     }
     
     public static class ForkchoiceStatus
     {
+        public const string Valid = "VALID";
+
+        public const string Invalid = "INVALID";
+
         public const string Syncing = "SYNCING";
-        
-        public const string Success = "SUCCESS";
+
+        public const string InvalidTerminalBlock = "INVALID_TERMINAL_BLOCK";
     }
 }
