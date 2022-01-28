@@ -168,7 +168,7 @@
     },
     "Kinstugi": {
       "commandName": "Project",
-      "commandLineArgs": "--config kintsugi.cfg  --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "--config kintsugi.cfg  --Init.DiagnosticMode None"
     },
     "Goerli ShadowFork": {
       "commandName": "Project",

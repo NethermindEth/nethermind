@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -29,6 +30,7 @@ namespace Nethermind.Merge.Plugin
     public sealed class PostMergeHeaderValidator : HeaderValidator
     {
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IBlockTree _blockTree;
 
         public PostMergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
@@ -39,12 +41,24 @@ namespace Nethermind.Merge.Plugin
             : base(blockTree, sealValidator, specProvider, logManager)
         {
             _poSSwitcher = poSSwitcher;
+            _blockTree = blockTree;
         }
-
+        
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
             bool theMergeValid = ValidateTheMergeChecks(header, parent);
             return base.Validate(header, parent, isUncle) && theMergeValid;
+        }
+
+        public override bool Validate(BlockHeader header, bool isUncle = false)
+        {
+            BlockHeader? parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
+            return Validate(header, parent, isUncle);
+        }
+
+        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
+        {
+            return _poSSwitcher.IsPostMerge(header, parent) || base.ValidateTotalDifficulty(parent, header);
         }
 
         private bool ValidateTheMergeChecks(BlockHeader header, BlockHeader? parent)
@@ -54,7 +68,6 @@ namespace Nethermind.Merge.Plugin
             bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, switchInfo.IsTerminal);
             if (switchInfo.IsPostMerge)
             {
-
                 validDifficulty =
                     ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
                 validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
@@ -75,7 +88,7 @@ namespace Nethermind.Merge.Plugin
         {
             if (header.TotalDifficulty == null || _poSSwitcher.TerminalTotalDifficulty == null)
                 return true;
-            
+
             bool isValid = true;
             bool isPostMerge = header.IsPostMerge;
             if (isPostMerge == false && isTerminal == false)
