@@ -96,9 +96,15 @@ namespace Nethermind.Db
         
         [Description("Number of Witness DB writes.")]
         public static long WitnessDbWrites { get; set; }
+        
+        [Description("Number of Metadata DB reads.")]
+        public static long MetadataDbReads { get; set; }
+        
+        [Description("Number of Metadata DB writes.")]
+        public static long MetadataDbWrites { get; set; }
 		
-        [Description("Indicator if StadeDb is being pruned.")]
-        public static int StateDbPruning { get; set; }		
+		[Description("Indicator if StadeDb is being pruned.")]
+        public static int StateDbPruning { get; set; }
 
         [Description("Metrics extracted from RocksDB Compacion Stats and DB Statistics")]
         public static IDictionary<string, long> DbStats { get; set; } = new ConcurrentDictionary<string, long>();

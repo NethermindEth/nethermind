@@ -67,16 +67,16 @@ namespace Nethermind.GitBook
             docBuilder.AppendLine();
             docBuilder.AppendLine($"{((ConfigCategoryAttribute)attribute)?.Description ?? ""}");
             docBuilder.AppendLine();
-            docBuilder.AppendLine("| Property | Description | Default |");
-            docBuilder.AppendLine("| :--- | :--- | :--- |");
-
+            docBuilder.AppendLine("| Property | Env Variable | Description | Default |");
+            docBuilder.AppendLine("| :--- | :--- | :--- | :--- |");
+            
             if (moduleProperties.Length == 0) return;
             
             foreach (PropertyInfo property in moduleProperties)
             {
                 Attribute attr = property.GetCustomAttribute(typeof(ConfigItemAttribute));
                 if(((ConfigItemAttribute)attr)?.HiddenFromDocs ?? false) continue;
-                docBuilder.AppendLine($"| {property.Name} | {((ConfigItemAttribute)attr)?.Description ?? ""} | {((ConfigItemAttribute)attr)?.DefaultValue ?? ""} |");
+                docBuilder.AppendLine($"| {property.Name} | NETHERMIND_{moduleName.ToUpper()}CONFIG_{property.Name.ToUpper()} | {((ConfigItemAttribute)attr)?.Description ?? ""} | {((ConfigItemAttribute)attr)?.DefaultValue ?? ""} |");
             }
 
             string path = string.Concat(docsDir, "/ethereum-client/configuration");
