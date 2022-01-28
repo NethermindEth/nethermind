@@ -91,6 +91,12 @@ namespace Nethermind.Merge.Plugin
         {
             if (_mergeConfig.Enabled)
             {
+                if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+                if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+                
+                _api.HeaderValidator = new PostMergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, Always.Valid, _api.LogManager);
+                _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
+                    _api.SpecProvider, _api.LogManager);
                 _api.HealthHintService =
                     new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
 
@@ -113,10 +119,6 @@ namespace Nethermind.Merge.Plugin
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-                
-                _api.HeaderValidator = new PostMergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, Always.Valid, _api.LogManager);
-                _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
-                    _api.SpecProvider, _api.LogManager);
                 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
