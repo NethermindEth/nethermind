@@ -650,15 +650,15 @@ namespace Nethermind.State
             _needsStateRootUpdate = false;
         }
 
-        // public void CommitTree(long blockNumber)
-        // {
-        //     if (_needsStateRootUpdate)
-        //     {
-        //         RecalculateStateRoot();
-        //     }
-        //
-        //     _tree.Commit(blockNumber);
-        // }
+        public void CommitTree(long blockNumber)
+        {
+            if (_needsStateRootUpdate)
+            {
+                RecalculateStateRoot();
+            }
+        
+            _tree.Commit(blockNumber);
+        }
         
         public bool AccountExists(Address address)
         {
@@ -679,11 +679,6 @@ namespace Nethermind.State
             }
             
             return account.IsEmpty;
-        }
-        
-        public void CommitTree(long blockNumber)
-        {
-            
         }
 
         public Keccak UpdateAccountCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec releaseSpec,

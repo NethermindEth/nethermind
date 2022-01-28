@@ -16,15 +16,18 @@
 // 
 using System;
 using System.Diagnostics;
+using System.Collections.Concurrent;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
@@ -55,6 +58,9 @@ public class VerkleTree
 
     public Keccak RootHash;
     
+    private readonly ConcurrentQueue<Exception>? _commitExceptions;
+    private readonly ConcurrentQueue<NodeCommitInfo>? _currentCommit;
+    
     public VerkleTree()
         : this(EmptyTreeHash, true, NullLogManager.Instance)
     {
@@ -76,6 +82,12 @@ public class VerkleTree
         _allowCommits = allowCommits;
         RootHash = rootHash;
         MainStorageOffsetBase.LeftShift(MainStorageOffsetExponent, out MainStorageOffset);
+        
+        if (_allowCommits)
+        {
+            _currentCommit = new ConcurrentQueue<NodeCommitInfo>();
+            _commitExceptions = new ConcurrentQueue<Exception>();
+        }
     }
     
     
@@ -283,4 +295,19 @@ public class VerkleTree
         if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
         throw new InvalidOperationException("No support for visiting a VerkleTree");
     }
+    
+    public void Commit(long blockNumber)
+    {
+        if (_currentCommit is null)
+        {
+            throw new InvalidAsynchronousStateException(
+                $"{nameof(_currentCommit)} is NULL when calling {nameof(Commit)}");
+        }
+            
+        if (!_allowCommits)
+        {
+            throw new TrieException("Commits are not allowed on this trie.");
+        }
+    }
+
 }
