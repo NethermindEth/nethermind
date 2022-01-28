@@ -62,13 +62,13 @@ namespace Nethermind.Merge.Plugin
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 Address address;
-                if (string.IsNullOrWhiteSpace(_mergeConfig.BlockAuthorAccount))
+                if (string.IsNullOrWhiteSpace(_mergeConfig.FeeRecipient))
                 {
                     address = Address.Zero;
                 }
                 else
                 {
-                    address = new Address(_mergeConfig.BlockAuthorAccount);
+                    address = new Address(_mergeConfig.FeeRecipient);
                 }
 
                 ISigner signer = new Eth2Signer(address);

@@ -995,7 +995,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain =
                 await CreateBlockChain(new MergeConfig()
                 {
-                    Enabled = true, BlockAuthorAccount = TestItem.AddressB.ToString(), TerminalTotalDifficulty = "0"
+                    Enabled = true, FeeRecipient = TestItem.AddressB.ToString(), TerminalTotalDifficulty = "0"
                 });
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
