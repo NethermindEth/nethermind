@@ -179,6 +179,56 @@ namespace Nethermind.Trie.Test
 
             return true;
         }
+
+        [Test]
+        public void TestProofVerify(){
+            byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+            byte[] one32 = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+
+            RustVerkleLib.VerkleTrieInsert(trie, one, one32);
+            RustVerkleLib.VerkleTrieInsert(trie, one32, one);
+
+            byte[] proof = RustVerkleLib.VerkleProofGet(trie, one32);
+            bool verification = RustVerkleLib.VerkleProofVerify(trie, proof, proof.Length, one32, one32);
+
+            Assert.IsTrue(!verification);
+        }
+
+        [Test]
+        public void MultipleValueOperations()
+        {
+            byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+            byte[] one32 = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+
+            byte[,] keys = new byte[,] {
+                                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, 
+                                            {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+                                       };
+            byte[,] vals = new byte[,] {
+                                            {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+                                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1} 
+                                       };
+            
+            RustVerkleLib.VerkleTrieInsertMultiple(trie, keys, vals, keys.GetLength(0)); 
+
+            byte[] array32 = RustVerkleLib.VerkleTrieGet(trie, one32);
+            Assert.True(checkIfEqual(one, array32));
+            
+            byte[] array = RustVerkleLib.VerkleTrieGet(trie, one);
+            Assert.True(checkIfEqual(array, one32));
+
+            byte[] proof = RustVerkleLib.VerkleProofGetMultiple(trie, keys, keys.GetLength(0));
+
+            bool verification = RustVerkleLib.VerkleProofVerifyMultiple(trie, proof, proof.Length, keys, vals, keys.GetLength(0));
+            Assert.IsTrue(verification);
+
+            // Console.WriteLine("Verifying first value");
+            // verification = RustVerkleLibTest.VerifyVerkleProof(trie, proof, )
+        }
         
     }
 }

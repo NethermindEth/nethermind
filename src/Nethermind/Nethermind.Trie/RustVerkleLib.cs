@@ -22,6 +22,11 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Trie
 {
+    [StructLayout(LayoutKind.Sequential)]
+    public class Proof{
+        public IntPtr ptr;
+        public int len;
+    }
     public static class RustVerkleLib {
         
         static RustVerkleLib()
@@ -33,17 +38,32 @@ namespace Nethermind.Trie
         private static extern IntPtr verkle_trie_new();
 
         [DllImport("rust_verkle")]
-        private static extern IntPtr verkle_trie_get(IntPtr verkleTrie, byte[] keys);
+        private static extern IntPtr verkle_trie_get(IntPtr verkleTrie, byte[] key);
         
         [DllImport("rust_verkle")]
-        private static extern IntPtr verkle_trie_insert(IntPtr verkleTrie, byte[] keys, byte[] value);
+        private static extern void verkle_trie_insert(IntPtr verkleTrie, byte[] key, byte[] value);
         
+        [DllImport("rust_verkle")]
+        private static extern IntPtr get_verkle_proof(IntPtr verkleTrie, byte[] key);
+
+        [DllImport("rust_verkle")]
+        private static extern bool verify_verkle_proof(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[] key, byte[] value);
+
+        [DllImport("rust_verkle")]
+        private static extern void verkle_trie_insert_multiple(IntPtr verkleTrie, byte[,] keys, byte[,] vals, int len);
+
+        [DllImport("rust_verkle")]
+        private static extern IntPtr get_verkle_proof_multiple(IntPtr verkleTrie, byte[,] keys, int len);
+
+        [DllImport("rust_verkle")]
+        private static extern bool verify_verkle_proof_multiple(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[,] key, byte[,] value, int len);
+
         public static IntPtr VerkleTrieNew()
         {
             return verkle_trie_new();
         }
         
-        public static void VerkleTrieInsert(IntPtr verkleTrie, byte[] keys, byte[] value)
+        public static void VerkleTrieInsert(IntPtr verkleTrie, byte[] key, byte[] value)
         {
             byte[] newValue;
             int valueLength = value.Length;
@@ -62,12 +82,12 @@ namespace Nethermind.Trie
                 newValue = value;
             }
 
-            verkle_trie_insert(verkleTrie, keys, newValue);
+            verkle_trie_insert(verkleTrie, key, newValue);
         }
 
-        public static byte[]? VerkleTrieGet(IntPtr verkleTrie, byte[] keys)
+        public static byte[]? VerkleTrieGet(IntPtr verkleTrie, byte[] key)
         {
-            IntPtr value = verkle_trie_get(verkleTrie, keys);
+            IntPtr value = verkle_trie_get(verkleTrie, key);
             if (value == IntPtr.Zero)
             {
                 return null;
@@ -78,6 +98,34 @@ namespace Nethermind.Trie
             byte[] managedValue = new byte[32];
             Marshal.Copy(value, managedValue, 0, 32);
             return managedValue;
+        }
+
+        public static byte[] VerkleProofGet(IntPtr verkleTrie, byte[] key){
+            IntPtr proof_box =  get_verkle_proof(verkleTrie, key);
+            Proof vp = (Proof)Marshal.PtrToStructure(proof_box, typeof(Proof));
+            byte[] proof_bytes = new byte[vp.len];
+            Marshal.Copy(vp.ptr, proof_bytes, 0, vp.len);
+            return proof_bytes;
+        }
+
+        public static bool VerkleProofVerify(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[] key, byte[] value){
+            return verify_verkle_proof(verkleTrie, verkleProof, proof_len, key, value);
+        }
+
+        public static void VerkleTrieInsertMultiple(IntPtr verkleTrie, byte[,] keys, byte[,] vals, int len){
+            verkle_trie_insert_multiple(verkleTrie, keys, vals, len);
+        }
+
+        public static byte[] VerkleProofGetMultiple(IntPtr verkleTrie, byte[,] keys, int len){
+            IntPtr proof_box =  get_verkle_proof_multiple(verkleTrie, keys, len);
+            Proof vp = (Proof)Marshal.PtrToStructure(proof_box, typeof(Proof));
+            byte[] proof_bytes = new byte[vp.len];
+            Marshal.Copy(vp.ptr, proof_bytes, 0, vp.len);
+            return proof_bytes;
+        }
+
+        public static bool VerkleProofVerifyMultiple(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[,] keys, byte[,] vals, int len){
+            return verify_verkle_proof_multiple(verkleTrie, verkleProof, proof_len, keys, vals, len);
         }
 
     }
