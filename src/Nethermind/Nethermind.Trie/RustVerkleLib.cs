@@ -41,6 +41,9 @@ namespace Nethermind.Trie
         private static extern IntPtr verkle_trie_get(IntPtr verkleTrie, byte[] key);
         
         [DllImport("rust_verkle")]
+        private static extern IntPtr get_root_hash(IntPtr verkleTrie);
+        
+        [DllImport("rust_verkle")]
         private static extern void verkle_trie_insert(IntPtr verkleTrie, byte[] key, byte[] value);
         
         [DllImport("rust_verkle")]
@@ -95,6 +98,14 @@ namespace Nethermind.Trie
             // Span<byte> bytes = new Span<byte>(x.ToPointer(), 32);
             // Console.WriteLine(bytes.ToArray());
             // return bytes.ToArray();
+            byte[] managedValue = new byte[32];
+            Marshal.Copy(value, managedValue, 0, 32);
+            return managedValue;
+        }
+        
+        public static byte[] VerkleTrieGetStateRoot(IntPtr verkleTrie)
+        {
+            IntPtr value = get_root_hash(verkleTrie);
             byte[] managedValue = new byte[32];
             Marshal.Copy(value, managedValue, 0, 32);
             return managedValue;

@@ -179,7 +179,28 @@ namespace Nethermind.Trie.Test
 
             return true;
         }
+        
+        [Test]
+        public void TestGetStateRoot()
+        {
+            byte[] expectedHash =
+            {
+                126, 78, 128, 195, 158, 198, 161, 181, 168, 62, 72, 164, 253, 156, 158, 75, 153, 239, 132, 63, 159,
+                5, 16, 15, 174, 208, 244, 102, 120, 109, 200, 11
+            };
+            byte[] zero = new byte[32];
+            byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+            byte[] one32 = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
+            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            byte[] stateRootNew = RustVerkleLib.VerkleTrieGetStateRoot(trie);
+            Assert.AreEqual(stateRootNew, zero);
+            RustVerkleLib.VerkleTrieInsert(trie, one, one);
+            RustVerkleLib.VerkleTrieInsert(trie, one32, one);
+            byte[] stateRootAfter = RustVerkleLib.VerkleTrieGetStateRoot(trie);
+            Assert.AreEqual(stateRootAfter, expectedHash);
+        }
+        
         [Test]
         public void TestProofVerify(){
             byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};

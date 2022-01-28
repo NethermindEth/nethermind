@@ -273,8 +273,8 @@ public class VerkleTree
     
     public void UpdateRootHash()
     {
-        // RootRef?.ResolveKey(TrieStore, true);
-        // SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
+        byte[] rootHash = RustVerkleLib.VerkleTrieGetStateRoot(_verkleTrieObj);
+        RootHash = new Keccak(rootHash);
     }
     
     public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions visitingOptions = VisitingOptions.ExpectAccounts)
