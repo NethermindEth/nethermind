@@ -159,7 +159,7 @@ namespace Nethermind.Merge.Plugin.Test
             string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             // ToDo wait for final PostMerge sync
             result.Should()
-                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"status\":\"SYNCING\"},\"id\":67}");
+                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"SYNCING\"}},\"id\":67}");
         }
 
         [Test]
@@ -378,7 +378,6 @@ namespace Nethermind.Merge.Plugin.Test
         {
             get
             {
-                yield return GetNewBlockRequestBadDataTestCase(r => r.BlockHash, TestItem.KeccakA);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.ReceiptsRoot, TestItem.KeccakD);
                 yield return GetNewBlockRequestBadDataTestCase(r => r.StateRoot, TestItem.KeccakD);
 
@@ -418,9 +417,8 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             BlockRequestResult getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
-            Keccak blockHash = getPayloadResult.BlockHash;
             breakerAction(getPayloadResult);
-            if (blockHash == getPayloadResult.BlockHash && TryCalculateHash(getPayloadResult, out Keccak? hash))
+            if (TryCalculateHash(getPayloadResult, out Keccak? hash))
             {
                 getPayloadResult.BlockHash = hash;
             }
@@ -429,6 +427,20 @@ namespace Nethermind.Merge.Plugin.Test
                 executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
         }
+        
+        [Test]
+        public async Task executePayloadV1_rejects_invalid_blockHash()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            BlockRequestResult getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
+            getPayloadResult.BlockHash = TestItem.KeccakC;
+
+            ResultWrapper<PayloadStatusV1>
+                executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
+            executePayloadResult.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
+        }
+
 
         [Test]
         public async Task executePayloadV1_accepts_already_known_block()
@@ -635,7 +647,7 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestResult.ParentHash = blockRequestResult.BlockHash;
             ResultWrapper<PayloadStatusV1> invalidBlockRequest =
                 await rpc.engine_newPayloadV1(blockRequestResult);
-            invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.Invalid);
+            invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
         }
 
         [TestCase(30)]
