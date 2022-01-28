@@ -81,27 +81,27 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             if (_syncConfig.FastSync && _blockTree.LowestInsertedBodyNumber != 0)
             {
-                return Syncing();
+                return ForkchoiceUpdatedV1Result.Syncing;
             }
 
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
                 EnsureHeaderForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
-                return Syncing();
+                return ForkchoiceUpdatedV1Result.Syncing;
 
             (BlockHeader? confirmedHeader, string? confirmationErrorMsg) =
                 EnsureHeaderForConfirmation(forkchoiceState.SafeBlockHash);
             if (confirmationErrorMsg != null)
-                return Syncing();
+                return ForkchoiceUpdatedV1Result.Syncing;
 
             (Block? newHeadBlock, Block[]? blocks, string? setHeadErrorMsg) =
                 EnsureBlocksForSetHead(forkchoiceState.HeadBlockHash);
             if (setHeadErrorMsg != null)
-                return Syncing();
+                return ForkchoiceUpdatedV1Result.Syncing;
 
             if (_ethSyncingInfo.IsSyncing() && synced == false)
             {
-                return Syncing();
+                return ForkchoiceUpdatedV1Result.Syncing;
             }
             else if (synced == false)
             {
@@ -112,8 +112,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 newHeadBlock!.Header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
-                    new ForkchoiceUpdatedV1Result() { Status = ForkchoiceStatus.InvalidTerminalBlock });
+                return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
 
             // this check is needed for correct behaviour. It will be defined in the new spec
@@ -168,7 +167,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result()
             {
-                PayloadId = payloadId?.ToHexString(true), Status = ForkchoiceStatus.Valid
+                PayloadId = payloadId?.ToHexString(true), PayloadStatus = new PayloadStatusV1() { Status = PayloadStatus.Valid }
             });
         }
 
@@ -198,13 +197,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
             }
         }
-
-        private ResultWrapper<ForkchoiceUpdatedV1Result> Syncing()
-        {
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(
-                new ForkchoiceUpdatedV1Result() { Status = ForkchoiceStatus.Syncing });
-        }
-
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)
         {
             string? errorMsg = null;

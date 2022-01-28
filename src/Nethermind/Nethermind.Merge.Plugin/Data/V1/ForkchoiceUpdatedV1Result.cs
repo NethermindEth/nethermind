@@ -15,12 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.Data.V1
 {
     public class ForkchoiceUpdatedV1Result
     {
+        private static readonly ForkchoiceUpdatedV1Result _invalidTerminalBlock = new()
+        {
+            PayloadId = null, PayloadStatus = PayloadStatusV1.InvalidTerminalBlock
+        };
+        
+        private static readonly ForkchoiceUpdatedV1Result _syncing = new()
+        {
+            PayloadId = null, PayloadStatus = PayloadStatusV1.Syncing
+        };
+        
+        public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> InvalidTerminalBlock = ResultWrapper<ForkchoiceUpdatedV1Result>.Success(_invalidTerminalBlock);
+        
+        public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> Syncing = ResultWrapper<ForkchoiceUpdatedV1Result>.Success(_syncing);
+
         public PayloadStatusV1 PayloadStatus { get; set; }
         
         public string PayloadId { get; set; }

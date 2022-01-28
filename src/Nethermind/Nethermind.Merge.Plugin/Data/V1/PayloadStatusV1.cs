@@ -21,12 +21,16 @@ namespace Nethermind.Merge.Plugin.Data.V1
 {
     public class PayloadStatusV1
     {
-        public static PayloadStatusV1 InvalidTerminalBlock = new PayloadStatusV1() {}
-        
+        public static PayloadStatusV1 InvalidBlockHash = new() { Status = PayloadStatus.InvalidTerminalBlock };
+
+        public static PayloadStatusV1 InvalidTerminalBlock = new() { Status = PayloadStatus.InvalidTerminalBlock };
+
+        public static PayloadStatusV1 Syncing = new() { Status = PayloadStatus.Syncing };
+
         public string Status { get; set; }
-        
+
         public Keccak? LatestValidHash { get; set; }
-        
+
         public string? ValidationError { get; set; }
     }
 }

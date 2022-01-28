@@ -17,7 +17,7 @@
 
 namespace Nethermind.Merge.Plugin.Data
 {
-    public static class ExecutePayloadStatus
+    public static class PayloadStatus
     {
         public const string Valid = "VALID";
 
@@ -29,17 +29,6 @@ namespace Nethermind.Merge.Plugin.Data
         
         public const string InvalidBlockHash = "INVALID_BLOCK_HASH";
         
-        public const string InvalidTerminalBlock = "INVALID_TERMINAL_BLOCK";
-    }
-    
-    public static class ForkchoiceStatus
-    {
-        public const string Valid = "VALID";
-
-        public const string Invalid = "INVALID";
-
-        public const string Syncing = "SYNCING";
-
         public const string InvalidTerminalBlock = "INVALID_TERMINAL_BLOCK";
     }
 }
