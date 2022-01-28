@@ -35,7 +35,7 @@ namespace Nethermind.Merge.Plugin
     public class EngineRpcModule : IEngineRpcModule
     {
         private readonly IAsyncHandler<byte[], BlockRequestResult?> _getPayloadHandlerV1;
-        private readonly IAsyncHandler<BlockRequestResult, ExecutePayloadV1Result> _executePayloadV1Handler;
+        private readonly IAsyncHandler<BlockRequestResult, PayloadStatusV1> _executePayloadV1Handler;
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
@@ -45,7 +45,7 @@ namespace Nethermind.Merge.Plugin
 
         public EngineRpcModule(
             IAsyncHandler<byte[], BlockRequestResult?> getPayloadHandlerV1,
-            IAsyncHandler<BlockRequestResult, ExecutePayloadV1Result> executePayloadV1Handler,
+            IAsyncHandler<BlockRequestResult, PayloadStatusV1> executePayloadV1Handler,
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
             IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> executionPayloadBodiesHandler,
@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin
         }
 
 
-        public async Task<ResultWrapper<ExecutePayloadV1Result>> engine_newPayloadV1(
+        public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(
             BlockRequestResult executionPayload)
         {
             if (await _locker.WaitAsync(Timeout))
@@ -87,7 +87,7 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newPayloadV1)} timeout.");
-                return ResultWrapper<ExecutePayloadV1Result>.Fail($"{nameof(engine_newPayloadV1)} timeout.",
+                return ResultWrapper<PayloadStatusV1>.Fail($"{nameof(engine_newPayloadV1)} timeout.",
                     ErrorCodes.Timeout);
             }
         }

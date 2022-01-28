@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin
                 "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<ExecutePayloadV1Result>> engine_newPayloadV1(BlockRequestResult executionPayload);
+        Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(BlockRequestResult executionPayload);
         
         [JsonRpcMethod(
             Description =

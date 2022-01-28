@@ -19,8 +19,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Data.V1
 {
-    public class ExecutePayloadV1Result
+    public class PayloadStatusV1
     {
+        public static PayloadStatusV1 InvalidTerminalBlock = new PayloadStatusV1() {}
+        
         public string Status { get; set; }
         
         public Keccak? LatestValidHash { get; set; }

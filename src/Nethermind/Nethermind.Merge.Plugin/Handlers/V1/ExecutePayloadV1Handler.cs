@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     /// Verifies the payload according to the execution environment rule set (EIP-3675)
     /// and returns the status of the verification and the hash of the last valid block
     /// </summary>
-    public class ExecutePayloadV1Handler : IAsyncHandler<BlockRequestResult, ExecutePayloadV1Result>
+    public class ExecutePayloadV1Handler : IAsyncHandler<BlockRequestResult, PayloadStatusV1>
     {
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
@@ -90,29 +90,29 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             };
         }
 
-        public async Task<ResultWrapper<ExecutePayloadV1Result>> HandleAsync(BlockRequestResult request)
+        public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(BlockRequestResult request)
         {
-            ExecutePayloadV1Result executePayloadResult = new();
+            PayloadStatusV1 payloadStatus = new();
 
             // ToDo wait for final PostMerge sync
             if (_syncConfig.FastSync && _blockTree.LowestInsertedBodyNumber != 0)
             {
-                executePayloadResult.Status = ExecutePayloadStatus.Syncing;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+                payloadStatus.Status = ExecutePayloadStatus.Syncing;
+                return ResultWrapper<PayloadStatusV1>.Success(payloadStatus);
             }
             Block? parent = _blockTree.FindBlock(request.ParentHash, BlockTreeLookupOptions.None);
             if (parent == null)
             {
                 // ToDo wait for final PostMerge sync
-                executePayloadResult.Status = ExecutePayloadStatus.Syncing;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+                payloadStatus.Status = ExecutePayloadStatus.Syncing;
+                return ResultWrapper<PayloadStatusV1>.Success(payloadStatus);
             }
             
             BlockHeader? parentHeader = parent.Header;
             if (_ethSyncingInfo.IsSyncing() && synced == false)
             {
-                executePayloadResult.Status = ExecutePayloadStatus.Syncing;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+                payloadStatus.Status = ExecutePayloadStatus.Syncing;
+                return ResultWrapper<PayloadStatusV1>.Success(payloadStatus);
             }
             else if (synced == false)
             {
@@ -122,28 +122,28 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (_poSSwitcher.TerminalTotalDifficulty == null || parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
-                executePayloadResult.Status = ExecutePayloadStatus.InvalidTerminalBlock;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+                payloadStatus.Status = ExecutePayloadStatus.InvalidTerminalBlock;
+                return ResultWrapper<PayloadStatusV1>.Success(payloadStatus);
             }
             
             (ValidationResult ValidationResult, string? Message) result = ValidateRequestAndProcess(request, out Block? processedBlock, parentHeader);
             if ((result.ValidationResult & ValidationResult.AlreadyKnown) != 0 || result.ValidationResult == ValidationResult.Invalid)
             {
                 bool isValid = (result.ValidationResult & ValidationResult.Valid) !=   0;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, isValid, parentHeader, result.Message));
+                return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, isValid, parentHeader, result.Message));
             }
 
             if (processedBlock == null)
             {
-                return ResultWrapper<ExecutePayloadV1Result>.Success(BuildExecutePayloadResult(request, false, parentHeader, $"Processed block is null, request {request}"));
+                return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, false, parentHeader, $"Processed block is null, request {request}"));
             }
 
             processedBlock.Header.IsPostMerge = true;
             _blockTree.SuggestBlock(processedBlock, true);
-            executePayloadResult.Status = ExecutePayloadStatus.Valid;
-            executePayloadResult.LatestValidHash = request.BlockHash;
+            payloadStatus.Status = ExecutePayloadStatus.Valid;
+            payloadStatus.LatestValidHash = request.BlockHash;
             _blockValidationSemaphore.Wait();
-            return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+            return ResultWrapper<PayloadStatusV1>.Success(payloadStatus);
         }
 
         private (ValidationResult ValidationResult, string? Message) ValidateRequestAndProcess(BlockRequestResult request, out Block? processedBlock, BlockHeader parent)
@@ -240,18 +240,18 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return options;
         }
 
-        private ExecutePayloadV1Result BuildExecutePayloadResult(BlockRequestResult request, bool isValid, BlockHeader? parent, string? validationMessage)
+        private PayloadStatusV1 BuildExecutePayloadResult(BlockRequestResult request, bool isValid, BlockHeader? parent, string? validationMessage)
         {
-            ExecutePayloadV1Result executePayloadResult = new();
+            PayloadStatusV1 payloadStatus = new();
             if (isValid)
             {
-                executePayloadResult.Status = ExecutePayloadStatus.Valid;
-                executePayloadResult.LatestValidHash = request.BlockHash;
+                payloadStatus.Status = ExecutePayloadStatus.Valid;
+                payloadStatus.LatestValidHash = request.BlockHash;
             }
             else
             {
-                executePayloadResult.ValidationError = validationMessage;
-                executePayloadResult.Status = ExecutePayloadStatus.Invalid;
+                payloadStatus.ValidationError = validationMessage;
+                payloadStatus.Status = ExecutePayloadStatus.Invalid;
                 if (_lastValidHashes.ContainsKey(request.ParentHash))
                 {
                     if (_lastValidHashes.TryRemove(request.ParentHash, out Keccak? lastValidHash))
@@ -259,24 +259,24 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         _lastValidHashes.TryAdd(request.BlockHash, lastValidHash);   
                     }
 
-                    executePayloadResult.LatestValidHash = lastValidHash;
+                    payloadStatus.LatestValidHash = lastValidHash;
                 }
                 else
                 {
                     if (parent != null)
                     {
                         _lastValidHashes.TryAdd(request.BlockHash, request.ParentHash);
-                        executePayloadResult.LatestValidHash = request.ParentHash;
+                        payloadStatus.LatestValidHash = request.ParentHash;
                     }
                     else
                     {
-                        executePayloadResult.LatestValidHash = _blockTree.HeadHash;
+                        payloadStatus.LatestValidHash = _blockTree.HeadHash;
                     }
                 }
 
             }
 
-            return executePayloadResult;
+            return payloadStatus;
         }
 
         [Flags]

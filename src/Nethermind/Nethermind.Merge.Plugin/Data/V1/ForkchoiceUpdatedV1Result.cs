@@ -15,11 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Merge.Plugin.Data.V1
 {
     public class ForkchoiceUpdatedV1Result
     {
-        public string Status { get; set; }
+        public PayloadStatusV1 PayloadStatus { get; set; }
         
         public string PayloadId { get; set; }
     }
