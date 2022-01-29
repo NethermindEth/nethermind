@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core.Crypto;
+using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data.V1
 {
@@ -29,8 +30,10 @@ namespace Nethermind.Merge.Plugin.Data.V1
 
         public string Status { get; set; }
 
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak? LatestValidHash { get; set; }
 
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string? ValidationError { get; set; }
     }
 }

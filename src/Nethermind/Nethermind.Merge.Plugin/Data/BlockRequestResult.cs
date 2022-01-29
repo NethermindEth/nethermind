@@ -88,9 +88,11 @@ namespace Nethermind.Merge.Plugin.Data
         public Address FeeRecipient { get; set; }
         public Keccak StateRoot { get; set; } = null!;
         public Keccak ReceiptsRoot { get; set; } = null!;
+        
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
         public Keccak Random { get; set; } = Keccak.Zero;
+        
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long BlockNumber { get; set; }
         public long GasLimit { get; set; }
@@ -98,6 +100,7 @@ namespace Nethermind.Merge.Plugin.Data
         public ulong Timestamp { get; set; }
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public UInt256 BaseFeePerGas { get; set; }
+        
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak BlockHash { get; set; } = null!;
         public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();

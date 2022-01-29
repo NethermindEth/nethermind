@@ -101,7 +101,7 @@ namespace Nethermind.Merge.Plugin.Test
             string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             result.Should()
                 .Be(
-                    $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\"}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
+                    $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":null,\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
             Keccak blockHash = new Keccak("0x2de2042d5ab1cf7c89d97f93b1572ddac3c6f77d84b6d44d1d9cec42f76505a7");
             var expectedPayload = new
@@ -129,7 +129,7 @@ namespace Nethermind.Merge.Plugin.Test
             result = RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV1", expectedPayloadString);
             result.Should()
                 .Be(
-                    $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{blockHash}\"}},\"id\":67}}");
+                    $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"status\":\"VALID\",\"latestValidHash\":\"{blockHash}\",\"validationError\":null}},\"id\":67}}");
 
             forkChoiceUpdatedParams = new
             {
@@ -141,7 +141,7 @@ namespace Nethermind.Merge.Plugin.Test
             // update the fork choice
             result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             result.Should()
-                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\"}},\"id\":67}");
+                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":null,\"validationError\":null},\"payloadId\":null},\"id\":67}");
         }
 
         [Test]
@@ -159,7 +159,7 @@ namespace Nethermind.Merge.Plugin.Test
             string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             // ToDo wait for final PostMerge sync
             result.Should()
-                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"SYNCING\"}},\"id\":67}");
+                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"SYNCING\",\"latestValidHash\":null,\"validationError\":null},\"payloadId\":null},\"id\":67}");
         }
 
         [Test]
@@ -540,7 +540,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak? startingHead = chain.BlockTree.HeadHash;
             BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
             Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
-            chain.BlockTree.SuggestBlock(block);
+            await chain.BlockTree.SuggestBlockAsync(block);
 
             ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =

@@ -114,13 +114,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
-
-            // this check is needed for correct behaviour. It will be defined in the new spec
+            
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
                 return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
                     $"Invalid payload attributes timestamp: {payloadAttributes.Timestamp} parent block header: {newHeadBlock!.Header}",
-                    ErrorCodes.InvalidInput);
+                    ErrorCodes.InvalidParams);
             }
 
             EnsureTerminalBlock(forkchoiceState, blocks);
@@ -155,7 +154,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             else if (headUpdated == false && shouldUpdateHead)
             {
-                // ToDo we should never have this case. Consult it with LR
                 if (_logger.IsWarn) _logger.Warn($"Block {forkchoiceState.FinalizedBlockHash} was not set as head.");
             }
 

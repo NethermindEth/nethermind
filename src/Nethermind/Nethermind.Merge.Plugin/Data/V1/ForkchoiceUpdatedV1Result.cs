@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.JsonRpc;
+using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data.V1
 {
@@ -37,6 +38,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
 
         public PayloadStatusV1 PayloadStatus { get; set; }
         
+        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string PayloadId { get; set; }
     }
 }
