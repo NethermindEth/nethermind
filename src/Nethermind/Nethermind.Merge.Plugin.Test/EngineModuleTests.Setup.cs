@@ -77,11 +77,11 @@ namespace Nethermind.Merge.Plugin.Test
             public Eth2BlockProductionContext IdealBlockProductionContext { get; set; } = new();
 
             public Eth2BlockProductionContext EmptyBlockProductionContext { get; set; } = new();
+
             public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
             {
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
-                Signer = new Eth2Signer(MinerAddress);
                 BlockConfirmationManager = new BlockConfirmationManager();
                 MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
             }
@@ -91,8 +91,6 @@ namespace Nethermind.Merge.Plugin.Test
             public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
             
             public IEthSyncingInfo EthSyncingInfo { get; private set; }
-
-            private ISigner Signer { get; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
@@ -155,7 +153,8 @@ namespace Nethermind.Merge.Plugin.Test
             private IBlockValidator CreateBlockValidator()
             {
                 PoSSwitcher = new PoSSwitcher(MergeConfig, new MemDb(), BlockTree, SpecProvider, LogManager);
-                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, Signer, LogManager);
+                Eth2Signer signer = new (!string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero);
+                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, signer, LogManager);
                 HeaderValidator = new PostMergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealEngine, LogManager);
                 
                 return new BlockValidator(

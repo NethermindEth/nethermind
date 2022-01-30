@@ -68,7 +68,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         public async Task<byte[]> StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
             byte[] payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
-            payloadAttributes.SuggestedFeeRecipient = payloadAttributes.SuggestedFeeRecipient == Address.Zero ? _sealer.Address : payloadAttributes.SuggestedFeeRecipient;
+            payloadAttributes.SuggestedFeeRecipient = _sealer.Address != Address.Zero ? _sealer.Address : payloadAttributes.SuggestedFeeRecipient;
             using CancellationTokenSource cts = new(_timeout);
             var blockProductionTask = PreparePayload(payloadId, parentHeader, payloadAttributes);
             _taskQueue.Enqueue(() => blockProductionTask);

@@ -23,7 +23,7 @@ namespace Nethermind.Merge.Plugin
     {
         public bool Enabled { get; set; }
 
-        public string BlockAuthorAccount { get; set; } = string.Empty;
+        public string FeeRecipient { get; set; } = string.Empty;
 
         public string? TerminalTotalDifficulty { get; set; }
         

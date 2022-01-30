@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin.Test
         [SetUp]
         public void Setup()
         {
-            _mergeConfig = new MergeConfig() {Enabled = true, BlockAuthorAccount = TestItem.AddressA.ToString()};
+            _mergeConfig = new MergeConfig() {Enabled = true, FeeRecipient = TestItem.AddressA.ToString()};
             MiningConfig? miningConfig = new() {Enabled = true};
             _context = Build.ContextWithMocks();
             _context.SealEngineType = SealEngineType.Clique;
