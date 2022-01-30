@@ -117,10 +117,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(
+                return ForkchoiceUpdatedV1Result.Error(
                     $"Invalid payload attributes timestamp: {payloadAttributes.Timestamp} parent block header: {newHeadBlock!.Header}",
                     ErrorCodes.InvalidParams);
             }
+
+            // if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash))
+            // {
+            //     return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            // }
 
             EnsureTerminalBlock(forkchoiceState, blocks);
 
@@ -162,11 +167,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 payloadId = await _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
             }
 
-
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result()
-            {
-                PayloadId = payloadId?.ToHexString(true), PayloadStatus = new PayloadStatusV1() { Status = PayloadStatus.Valid }
-            });
+            return ForkchoiceUpdatedV1Result.Valid(payloadId?.ToHexString(true), forkchoiceState.HeadBlockHash);
         }
 
         // This method will detect reorg in terminal PoW block

@@ -176,9 +176,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             else
             {
                 // during the fast sync we could find the header on canonical chain which means that this header is valid
-                BlockHeader? headerOnCanonicalChain =
-                    _blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.RequireCanonical);
-                if (headerOnCanonicalChain != null)
+                if (_blockTree.IsMainChain(block.Header))
                 {
                     return (ValidationResult.Valid | ValidationResult.AlreadyKnown, validationMessage);
                 }

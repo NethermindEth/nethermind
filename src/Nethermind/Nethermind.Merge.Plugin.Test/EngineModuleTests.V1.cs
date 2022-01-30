@@ -101,7 +101,7 @@ namespace Nethermind.Merge.Plugin.Test
             string result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             result.Should()
                 .Be(
-                    $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":null,\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
+                    $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"payloadStatus\":{{\"status\":\"VALID\",\"latestValidHash\":\"0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133\",\"validationError\":null}},\"payloadId\":\"{expectedPayloadId.ToHexString(true)}\"}},\"id\":67}}");
 
             Keccak blockHash = new Keccak("0x2de2042d5ab1cf7c89d97f93b1572ddac3c6f77d84b6d44d1d9cec42f76505a7");
             var expectedPayload = new
@@ -141,7 +141,7 @@ namespace Nethermind.Merge.Plugin.Test
             // update the fork choice
             result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
             result.Should()
-                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":null,\"validationError\":null},\"payloadId\":null},\"id\":67}");
+                .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"VALID\",\"latestValidHash\":\"0x2de2042d5ab1cf7c89d97f93b1572ddac3c6f77d84b6d44d1d9cec42f76505a7\",\"validationError\":null},\"payloadId\":null},\"id\":67}");
         }
 
         [Test]
@@ -157,7 +157,6 @@ namespace Nethermind.Merge.Plugin.Test
             };
             string[] parameters = new[] { JsonConvert.SerializeObject(forkChoiceUpdatedParams) };
             string? result = RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV1", parameters);
-            // ToDo wait for final PostMerge sync
             result.Should()
                 .Be("{\"jsonrpc\":\"2.0\",\"result\":{\"payloadStatus\":{\"status\":\"SYNCING\",\"latestValidHash\":null,\"validationError\":null},\"payloadId\":null},\"id\":67}");
         }

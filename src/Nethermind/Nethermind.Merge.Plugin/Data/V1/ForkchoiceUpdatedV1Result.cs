@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Newtonsoft.Json;
 
@@ -26,19 +27,49 @@ namespace Nethermind.Merge.Plugin.Data.V1
         {
             PayloadId = null, PayloadStatus = PayloadStatusV1.InvalidTerminalBlock
         };
-        
+
         private static readonly ForkchoiceUpdatedV1Result _syncing = new()
         {
             PayloadId = null, PayloadStatus = PayloadStatusV1.Syncing
         };
+
+        public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> InvalidTerminalBlock =
+            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(_invalidTerminalBlock);
+
+        public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> Syncing =
+            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(_syncing);
+
+        public static ResultWrapper<ForkchoiceUpdatedV1Result> Valid(string? payloadId, Keccak? latestValidHash)
+        {
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result()
+            {
+                PayloadId = payloadId,
+                PayloadStatus = new PayloadStatusV1()
+                {
+                    Status = Data.PayloadStatus.Valid, LatestValidHash = latestValidHash
+                }
+            });
+        }
         
-        public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> InvalidTerminalBlock = ResultWrapper<ForkchoiceUpdatedV1Result>.Success(_invalidTerminalBlock);
+        public static ResultWrapper<ForkchoiceUpdatedV1Result> Invalid(Keccak? latestValidHash, string? validationError)
+        {
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result()
+            {
+                PayloadStatus = new PayloadStatusV1()
+                {
+                    Status = Data.PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError
+                }
+            });
+        }
         
-        public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> Syncing = ResultWrapper<ForkchoiceUpdatedV1Result>.Success(_syncing);
+        public static ResultWrapper<ForkchoiceUpdatedV1Result> Error(string message, int errorCode)
+        {
+            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(message, errorCode);
+        }
 
         public PayloadStatusV1 PayloadStatus { get; set; }
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public string PayloadId { get; set; }
+        public string? PayloadId { get; set; }
     }
 }

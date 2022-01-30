@@ -35,7 +35,7 @@ namespace Nethermind.Merge.Plugin
     public class EngineRpcModule : IEngineRpcModule
     {
         private readonly IAsyncHandler<byte[], BlockRequestResult?> _getPayloadHandlerV1;
-        private readonly IAsyncHandler<BlockRequestResult, PayloadStatusV1> _executePayloadV1Handler;
+        private readonly IAsyncHandler<BlockRequestResult, PayloadStatusV1> _newPayloadV1Handler;
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
@@ -45,14 +45,14 @@ namespace Nethermind.Merge.Plugin
 
         public EngineRpcModule(
             IAsyncHandler<byte[], BlockRequestResult?> getPayloadHandlerV1,
-            IAsyncHandler<BlockRequestResult, PayloadStatusV1> executePayloadV1Handler,
+            IAsyncHandler<BlockRequestResult, PayloadStatusV1> newPayloadV1Handler,
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
             IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> executionPayloadBodiesHandler,
             ILogManager logManager)
         {
             _getPayloadHandlerV1 = getPayloadHandlerV1;
-            _executePayloadV1Handler = executePayloadV1Handler;
+            _newPayloadV1Handler = newPayloadV1Handler;
             _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
             _executionStatusHandler = executionStatusHandler;
             _executionPayloadBodiesHandler = executionPayloadBodiesHandler;
@@ -77,7 +77,7 @@ namespace Nethermind.Merge.Plugin
             {
                 try
                 {
-                    return await _executePayloadV1Handler.HandleAsync(executionPayload);
+                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
                 }
                 finally
                 {
