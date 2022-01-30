@@ -168,7 +168,7 @@
     },
     "Kinstugi": {
       "commandName": "Project",
-      "commandLineArgs": "--config kintsugi.cfg  --Init.DiagnosticMode None"
+      "commandLineArgs": "--config kintsugi.cfg  --Init.DiagnosticMode MemDb --Merge.FeeRecipient null"
     },
     "Goerli ShadowFork": {
       "commandName": "Project",
