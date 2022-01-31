@@ -87,7 +87,7 @@ namespace Nethermind.Merge.Plugin.Test
         
         [TestCase(5000000, true)]
         [TestCase(4900000, false)]
-        public void IsTerminalBlock_returning_expeced_result_for_genesis_block(long genesisDifficulty, bool expectedResult)
+        public void IsTerminalBlock_returning_expected_result_for_genesis_block(long genesisDifficulty, bool expectedResult)
         {
             Block genesisBlock = Build.A.Block.WithNumber(0).WithDifficulty((UInt256)genesisDifficulty)
                 .WithTotalDifficulty(genesisDifficulty).TestObject; 
