@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin
         bool Enabled { get; set; }
         
         [ConfigItem(Description = "Account to be used by the block author / coinbase.", DefaultValue = "")]
-        public string BlockAuthorAccount { get; set; }
+        public string FeeRecipient { get; set; }
         
         [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "null")]
         public string? TerminalTotalDifficulty { get; set; }

@@ -1014,6 +1014,67 @@ namespace Nethermind.Blockchain
             return levelInfo.BlockInfos[index.Value].WasProcessed;
         }
         
+        public void MarkChainAsProcessed(Block[] blocks)
+        {
+            if (blocks.Length == 0)
+            {
+                return;
+            }
+
+            bool ascendingOrder = true;
+            if (blocks.Length > 1)
+            {
+                if (blocks[^1].Number < blocks[0].Number)
+                {
+                    ascendingOrder = false;
+                }
+            }
+
+            long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
+            long previousHeadNumber = Head?.Number ?? 0L;
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+            if (previousHeadNumber > lastNumber)
+            {
+                for (long i = 0; i < previousHeadNumber - lastNumber; i++)
+                {
+                    long levelNumber = previousHeadNumber - i;
+
+                    ChainLevelInfo? level = LoadLevel(levelNumber);
+                    if (level is not null)
+                    {
+                        level.HasBlockOnMainChain = false;
+                        _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                    }
+                }
+            }
+
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                Block block = blocks[i];
+                if (ShouldCache(block.Number))
+                {
+                    _blockCache.Set(block.Hash, blocks[i]);
+                    _headerCache.Set(block.Hash, block.Header);
+                }
+                
+                ChainLevelInfo? level = LoadLevel(block.Number);
+                int? index = level is null ? null : FindIndex(block.Hash, level);
+                if (index is null)
+                {
+                    throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
+                }
+
+                BlockInfo info = level.BlockInfos[index.Value];
+                info.WasProcessed = true;
+                if (index.Value != 0)
+                {
+                    (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
+                }
+                
+                _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
+            }
+        }
+        
         public void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceUpdateHeadBlock = false)
         {
             if (blocks.Length == 0)
@@ -1115,6 +1176,8 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.FullHashAndNumber)} to main");
             }
 
+            
+            
             Keccak hashOfThePreviousMainBlock = level.MainChainBlock?.BlockHash;
 
             BlockInfo info = level.BlockInfos[index.Value];

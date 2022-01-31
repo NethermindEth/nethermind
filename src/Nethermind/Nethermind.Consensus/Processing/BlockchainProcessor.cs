@@ -300,12 +300,6 @@ namespace Nethermind.Consensus.Processing
                 return null;
             }
 
-            if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
-            {
-                _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
-                Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
-            }
-
             Block? lastProcessed = null;
             if (processedBlocks.Length > 0)
             {
@@ -316,6 +310,16 @@ namespace Nethermind.Consensus.Processing
             else
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
+            }
+            
+            if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0 && lastProcessed!.IsPostMerge == false)
+            {
+                _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
+                Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
+            }
+            else if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0 && lastProcessed!.IsPostMerge)
+            {
+                _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
             }
 
             if ((options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.None)
@@ -465,8 +469,9 @@ namespace Nethermind.Consensus.Processing
             BlockHeader branchingPoint = null;
             List<Block> blocksToBeAddedToMain = new();
 
-            bool notFoundTheBranchingPointYet;
-            bool notReachedTheReorgBoundary;
+            bool preMergeFinishBranchingCondition;
+            bool postMergeFinishBranchingCondition;
+            bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
             
             Block toBeProcessed = suggestedBlock;
             do
@@ -521,9 +526,12 @@ namespace Nethermind.Consensus.Processing
                 // then on restart we would find 14 as the branch head (since 14 is on the main chain)
                 // we need to dig deeper to go all the way to the false (reorg boundary) head
                 // otherwise some nodes would be missing
-                notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash);
-                notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-            } while (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
+                bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
+                bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
+                preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && !suggestedBlockIsPostMerge;
+                postMergeFinishBranchingCondition = suggestedBlockIsPostMerge &&
+                                                    _blockTree.WasProcessed(branchingPoint.Number, branchingPoint.Hash) == false;
+            } while (preMergeFinishBranchingCondition || postMergeFinishBranchingCondition);
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {

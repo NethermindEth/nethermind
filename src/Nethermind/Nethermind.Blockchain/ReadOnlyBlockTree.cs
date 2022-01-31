@@ -51,6 +51,8 @@ namespace Nethermind.Blockchain
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public Block Head => _wrapped.Head;
+        public void MarkChainAsProcessed(Block[] blocks) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
+
         public bool CanAcceptNewBlocks { get; } = false;
 
         public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)

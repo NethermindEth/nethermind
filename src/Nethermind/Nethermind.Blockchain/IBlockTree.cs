@@ -126,6 +126,8 @@ namespace Nethermind.Blockchain
         /// <param name="wereProcessed"></param>
         /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
         void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false);
+        
+        void MarkChainAsProcessed(Block[] blocks);
 
         bool CanAcceptNewBlocks { get; }
 
