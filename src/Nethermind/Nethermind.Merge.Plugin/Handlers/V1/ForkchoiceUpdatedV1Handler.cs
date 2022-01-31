@@ -114,7 +114,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
-            
+
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
                 return ForkchoiceUpdatedV1Result.Error(
@@ -122,10 +122,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     ErrorCodes.InvalidParams);
             }
 
-            // if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash))
-            // {
-            //     return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
-            // }
+            bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
+            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead)
+            {
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            }
 
             EnsureTerminalBlock(forkchoiceState, blocks);
 
@@ -144,7 +145,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             byte[]? payloadId = null;
 
             bool headUpdated = false;
-            bool shouldUpdateHead = blocks != null && _blockTree.Head != newHeadBlock;
+            bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
             if (shouldUpdateHead)
             {
                 _blockTree.UpdateMainChain(blocks!, true, true);
@@ -154,7 +155,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (headUpdated && shouldUpdateHead)
             {
                 _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header, forkchoiceState.FinalizedBlockHash);
-                //  _stateProvider.ResetStateTo(newHeadBlock.StateRoot!);
                 if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
             }
             else if (headUpdated == false && shouldUpdateHead)
@@ -188,7 +188,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     {
                         if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header, parent))
                         {
-                            if (_logger.IsInfo) _logger.Info($"Terminal block {blocks[i].Header} updated during the forkchoice");
+                            if (_logger.IsInfo)
+                                _logger.Info($"Terminal block {blocks[i].Header} updated during the forkchoice");
                         }
 
                         break;
@@ -196,6 +197,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
             }
         }
+
         private (BlockHeader? BlockHeader, string? ErrorMsg) EnsureHeaderForConfirmation(Keccak confirmedBlockHash)
         {
             string? errorMsg = null;

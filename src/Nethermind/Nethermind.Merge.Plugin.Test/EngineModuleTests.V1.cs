@@ -719,7 +719,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             await CanReorganizeToAnyBlock(chain, branch1, branch2, branch3, branch4);
         }
-
+        
         [Test]
         public async Task forkchoiceUpdatedV1_can_prepare_payload_on_any_block()
         {
@@ -772,6 +772,20 @@ namespace Nethermind.Merge.Plugin.Test
             branch3.Last().BlockNumber.Should().Be(1 + 7 + 4 + 3);
 
             await CanPrepareOnAnyBlock(branch1, branch2, branch3, branch4);
+        }
+        
+        [Test]
+        public async Task newPayloadV1_should_return_accepted_for_side_branch()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            BlockRequestResult blockRequestResult = CreateBlockRequest(
+                CreateParentBlockRequestOnHead(chain.BlockTree),
+                TestItem.AddressD);
+            ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(blockRequestResult);
+            resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+            new BlockRequestResult(chain.BlockTree.BestSuggestedBody).Should()
+                .BeEquivalentTo(blockRequestResult);
         }
 
         [TestCase(false)]
