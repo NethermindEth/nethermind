@@ -231,22 +231,31 @@ namespace Nethermind.TxPool.Collections
         /// <param name="groupKey">Given GroupKey, which elements are checked.</param>
         /// <param name="where">Predicated criteria.</param>
         /// <returns>Elements matching predicated criteria.</returns>
-        public IEnumerable<TValue> TryGetStaleValues(TGroupKey groupKey, Predicate<TValue> where)
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public IEnumerable<TValue> TryGetStaleValues(TGroupKey groupKey, Predicate<TValue?> where)
         {
             if (_buckets.TryGetValue(groupKey, out SortedSet<TValue>? bucket))
             {
-                foreach (TValue value in bucket)
+                if (!where(bucket.First()))
+                {
+                    return ArraySegment<TValue>.Empty;
+                }
+                
+                List<TValue> staleValues = new() { bucket.First() };
+                foreach (TValue value in bucket.Skip(1))
                 {
                     if (where(value))
                     {
-                        yield return value;
+                        staleValues.Add(value);
                     }
                     else
                     {
-                        break;
+                        return staleValues;
                     }
                 }
+                return staleValues;
             }
+            return ArraySegment<TValue>.Empty;
         }
 
         /// <summary>
