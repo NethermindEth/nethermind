@@ -741,23 +741,32 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void broadcaster_should_work_well_when_there_are_no_txs_in_persistent_txs()
+        public void broadcaster_should_work_well_when_there_are_no_txs_in_persistent_txs_from_sender_of_tx_included_in_block()
         {
             _txPool = CreatePool();
             
-            Transaction transaction = Build.A.Transaction
+            Transaction transactionA = Build.A.Transaction
                 .WithNonce(0)
                 .WithGasLimit(GasCostOf.Transaction)
                 .WithGasPrice(10.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
-            EnsureSenderBalance(transaction);
-            _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+            EnsureSenderBalance(transactionA);
+            _txPool.SubmitTx(transactionA, TxHandlingOptions.None);
+
+            Transaction transactionB = Build.A.Transaction
+                .WithNonce(0)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(10.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
+            EnsureSenderBalance(transactionB);
+            _txPool.SubmitTx(transactionB, TxHandlingOptions.PersistentBroadcast);
             
-            _txPool.GetPendingTransactions().Length.Should().Be(1);
-            _txPool.GetOwnPendingTransactions().Length.Should().Be(0);
+            _txPool.GetPendingTransactions().Length.Should().Be(2);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
             
-            Block block = Build.A.Block.WithTransactions(transaction).TestObject;
+            Block block = Build.A.Block.WithTransactions(transactionA).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
             
             ManualResetEvent manualResetEvent = new(false);
@@ -765,8 +774,8 @@ namespace Nethermind.TxPool.Test
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
             
-            _txPool.GetPendingTransactions().Length.Should().Be(0);
-            _txPool.GetOwnPendingTransactions().Length.Should().Be(0);
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
         }
 
         [Test]
