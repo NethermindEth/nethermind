@@ -232,7 +232,7 @@ namespace Nethermind.TxPool.Collections
         /// <param name="where">Predicated criteria.</param>
         /// <returns>Elements matching predicated criteria.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public IEnumerable<TValue> TryGetStaleValues(TGroupKey groupKey, Predicate<TValue?> where)
+        public IEnumerable<TValue> TryGetStaleValues(TGroupKey groupKey, Predicate<TValue> where)
         {
             if (_buckets.TryGetValue(groupKey, out SortedSet<TValue>? bucket))
             {
