@@ -741,6 +741,35 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void broadcaster_should_work_well_when_there_are_no_txs_in_persistent_txs()
+        {
+            _txPool = CreatePool();
+            
+            Transaction transaction = Build.A.Transaction
+                .WithNonce(0)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(10.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(transaction);
+            _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+            
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(0);
+            
+            Block block = Build.A.Block.WithTransactions(transaction).TestObject;
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            
+            ManualResetEvent manualResetEvent = new(false);
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(0);
+        }
+
+        [Test]
         public async Task should_remove_transactions_concurrently()
         {
             var maxTryCount = 5;
