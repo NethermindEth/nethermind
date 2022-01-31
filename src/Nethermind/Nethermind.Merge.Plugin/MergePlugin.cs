@@ -122,7 +122,8 @@ namespace Nethermind.Merge.Plugin
                 
                 IInitConfig? initConfig = _api.Config<IInitConfig>();
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
-                PayloadService payloadService = new (_idealBlockProductionContext, initConfig, _api.Sealer, _api.LogManager);
+                IMergeConfig? mergeConfig = _api.Config<IMergeConfig>();
+                PayloadService payloadService = new (_idealBlockProductionContext, initConfig, _api.Sealer, mergeConfig, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadService, _api.LogManager),

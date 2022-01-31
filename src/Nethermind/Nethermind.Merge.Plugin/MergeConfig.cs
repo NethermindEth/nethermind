@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin
@@ -23,12 +24,14 @@ namespace Nethermind.Merge.Plugin
     {
         public bool Enabled { get; set; }
 
-        public string FeeRecipient { get; set; } = string.Empty;
+        public string FeeRecipient { get; set; } = Address.Zero.ToString();
 
         public string? TerminalTotalDifficulty { get; set; }
         
         public Keccak TerminalBlockHash { get; set; } = Keccak.Zero;
         
         public long? TerminalBlockNumber { get; set; }
+        
+        public ulong SecondsPerSlot { get; set; } = 12;
     }
 }

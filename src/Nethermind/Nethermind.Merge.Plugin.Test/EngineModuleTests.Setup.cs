@@ -56,7 +56,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, IPayloadService? mockedPayloadService = null)
         {
-            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
+            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, new InitConfig(), chain.SealEngine, chain.MergeConfig, chain.LogManager);
             ISynchronizer synchronizer = Substitute.For<ISynchronizer>();
 
             return new EngineRpcModule(

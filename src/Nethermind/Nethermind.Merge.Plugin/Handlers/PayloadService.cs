@@ -45,9 +45,9 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly IInitConfig _initConfig;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
-        private ulong _cleanupDelay = 12; // in seconds
+        private ulong _secondsPerSlot = 12; // in seconds
 
-        private static readonly TimeSpan _timeout = TimeSpan.FromSeconds(12);
+        private readonly TimeSpan _timeout ;
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IdealBlockContext> _payloadStorage = new();
@@ -57,11 +57,15 @@ namespace Nethermind.Merge.Plugin.Handlers
             Eth2BlockProductionContext idealBlockContext,
             IInitConfig initConfig,
             ISealer sealer,
+            IMergeConfig mergeConfig,
             ILogManager logManager)
         {
             _idealBlockContext = idealBlockContext;
             _initConfig = initConfig;
             _sealer = sealer;
+            _secondsPerSlot = mergeConfig.SecondsPerSlot;
+            _timeout = TimeSpan.FromSeconds(_secondsPerSlot);
+            
             _logger = logManager.GetClassLogger();
         }
 
