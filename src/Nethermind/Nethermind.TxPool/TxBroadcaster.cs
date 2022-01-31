@@ -122,7 +122,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void EnsureStopBroadcast(Address address, UInt256 nonce)
+        public void EnsureStopBroadcastUpToNonce(Address address, UInt256 nonce)
         {
             if (_persistentTxs.Count != 0)
             {
@@ -165,7 +165,7 @@ namespace Nethermind.TxPool
                     Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
                         _persistentTxs.Count);
 
-                foreach (Transaction tx in _persistentTxs.TryGetFirsts(numberOfPersistentTxsToBroadcast))
+                foreach (Transaction tx in _persistentTxs.GetFirsts(numberOfPersistentTxsToBroadcast))
                 {
                     yield return tx;
                 }

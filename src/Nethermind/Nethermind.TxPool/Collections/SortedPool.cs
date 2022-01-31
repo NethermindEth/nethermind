@@ -149,7 +149,7 @@ namespace Nethermind.TxPool.Collections
         /// Returns specified number of elements from the start of supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public IEnumerable<TValue> TryGetFirsts(int numberOfValues)
+        public IEnumerable<TValue> GetFirsts(int numberOfValues)
         {
             SortedSet<TValue> sortedValues = new(_sortedComparer);
             foreach (KeyValuePair<TGroupKey, SortedSet<TValue>> bucket in _buckets)
