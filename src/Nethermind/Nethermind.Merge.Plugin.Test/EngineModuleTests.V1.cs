@@ -71,7 +71,7 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public async Task processing_block_should_serialize_valid_responses()
         {
-            using MergeTestBlockchain chain = await CreateBlockChain();
+            using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig() {Enabled = true, FeeRecipient = Address.Zero.ToString(), TerminalTotalDifficulty = "0"});
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             Keccak random = Keccak.Zero;

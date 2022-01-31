@@ -111,7 +111,11 @@ namespace Nethermind.Merge.Plugin
         public bool IsTerminalBlock(BlockHeader header, BlockHeader? parent = null)
         {
             bool isTerminalBlock = false;
-            if (header.TotalDifficulty >= TerminalTotalDifficulty && header.IsPostMerge == false)
+            bool ttdRequirement = header.TotalDifficulty >= TerminalTotalDifficulty;
+            if (ttdRequirement && header.IsGenesis)
+                return true;
+            
+            if (ttdRequirement && header.IsPostMerge == false)
             {
                 if (parent == null)
                 {

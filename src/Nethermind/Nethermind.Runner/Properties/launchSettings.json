@@ -132,7 +132,7 @@
     },
     "TheMerge_Kinstugi_TestVectors": {
       "commandName": "Project",
-      "commandLineArgs": "--config themerge_kintsugi_testvectors.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false"
+      "commandLineArgs": "--config themerge_kintsugi_testvectors.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false --Merge.FeeRecipient 0x0000000000000000000000000000000000000000"
     },
     "TheMerge_Kinstugi_M2": {
       "commandName": "Project",
@@ -168,7 +168,7 @@
     },
     "Kinstugi": {
       "commandName": "Project",
-      "commandLineArgs": "--config kintsugi.cfg  --Init.DiagnosticMode MemDb --Merge.FeeRecipient null"
+      "commandLineArgs": "--config kintsugi.cfg  --Init.DiagnosticMode MemDb --Merge.FeeRecipient 0x0000000000000000000000000000000000000000"
     },
     "Goerli ShadowFork": {
       "commandName": "Project",
