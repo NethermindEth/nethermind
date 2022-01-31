@@ -232,25 +232,25 @@ namespace Nethermind.TxPool.Collections
         /// <param name="where">Predicated criteria.</param>
         /// <returns>Elements matching predicated criteria.</returns>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public IEnumerable<TValue> TryGetStaleValues(TGroupKey groupKey, Predicate<TValue> where)
+        public IEnumerable<TValue> TakeWhile(TGroupKey groupKey, Predicate<TValue> where)
         {
             if (_buckets.TryGetValue(groupKey, out SortedSet<TValue>? bucket))
             {
-                using SortedSet<TValue>.Enumerator enumerator = bucket.GetEnumerator();
-                bool keepGoing = true;
+                using SortedSet<TValue>.Enumerator enumerator = bucket!.GetEnumerator();
                 List<TValue>? list = null;
 
-                while (keepGoing && enumerator.MoveNext())
+                while (enumerator.MoveNext())
                 {
-                    keepGoing = where(enumerator.Current);
-                    if (keepGoing)
+                    if (!where(enumerator.Current))
                     {
-                        list ??= new List<TValue>();
-                        list.Add(enumerator.Current);
+                        break;
                     }
-                    else return list ?? Enumerable.Empty<TValue>();
+
+                    list ??= new List<TValue>();
+                    list.Add(enumerator.Current);
                 }
-                return list!;
+                
+                return list ?? Enumerable.Empty<TValue>();
             }
             return Enumerable.Empty<TValue>();
         }

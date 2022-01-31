@@ -125,7 +125,7 @@ namespace Nethermind.TxPool
         {
             if (_persistentTxs.Count != 0)
             {
-                foreach (Transaction tx in _persistentTxs.TryGetStaleValues(address, t => t.Nonce <= nonce))
+                foreach (Transaction tx in _persistentTxs.TakeWhile(address, t => t.Nonce <= nonce))
                 {
                     StopBroadcast(tx.Hash!);
                 }
