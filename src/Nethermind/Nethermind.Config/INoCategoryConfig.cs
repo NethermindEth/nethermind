@@ -38,7 +38,7 @@ namespace Nethermind.Config
         [ConfigItem(Description = "Sets the external IP for the node.", EnvironmentVariable = "NETHERMIND_ENODE_IPADDRESS")]
         public string EnodeIpAddress { get; set; }
 
-        [ConfigItem(Description = "Enables Hive plugin used for executing Hive Ethereum Tests.", EnvironmentVariable = "NETHERMIND_HIVE_ENABLED")]
+        [ConfigItem(Description = "Enables Hive plugin used for executing Hive Ethereum Tests.", EnvironmentVariable = "NETHERMIND_HIVE_ENABLED", DefaultValue = "false")]
         public bool HiveEnabled { get; set; }
 
         [ConfigItem(Description = "Defines default URL for JSON RPC.", EnvironmentVariable = "NETHERMIND_URL")]
