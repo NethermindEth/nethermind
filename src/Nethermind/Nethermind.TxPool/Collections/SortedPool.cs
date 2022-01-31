@@ -236,26 +236,23 @@ namespace Nethermind.TxPool.Collections
         {
             if (_buckets.TryGetValue(groupKey, out SortedSet<TValue>? bucket))
             {
-                if (!where(bucket.First()))
+                using SortedSet<TValue>.Enumerator enumerator = bucket.GetEnumerator();
+                bool keepGoing = true;
+                List<TValue>? list = null;
+
+                while (keepGoing && enumerator.MoveNext())
                 {
-                    return ArraySegment<TValue>.Empty;
-                }
-                
-                List<TValue> staleValues = new() { bucket.First() };
-                foreach (TValue value in bucket.Skip(1))
-                {
-                    if (where(value))
+                    keepGoing = where(enumerator.Current);
+                    if (keepGoing)
                     {
-                        staleValues.Add(value);
+                        list ??= new List<TValue>();
+                        list.Add(enumerator.Current);
                     }
-                    else
-                    {
-                        return staleValues;
-                    }
+                    else return list ?? Enumerable.Empty<TValue>();
                 }
-                return staleValues;
+                return list!;
             }
-            return ArraySegment<TValue>.Empty;
+            return Enumerable.Empty<TValue>();
         }
 
         /// <summary>
