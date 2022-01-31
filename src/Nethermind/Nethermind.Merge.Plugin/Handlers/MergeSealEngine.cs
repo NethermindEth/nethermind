@@ -70,15 +70,22 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
-            return true;
-
-            // ToDo
+            if (_poSSwitcher.IsPostMerge(header, parent))
+            {
+                return true;
+            }
+            
             return _preMergeSealValidator.ValidateParams(parent, header);
         }
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
-            return true;
+            if (_poSSwitcher.IsPostMerge(header))
+            {
+                return true;
+            }
+            
+            return _preMergeSealValidator.ValidateSeal(header, force);
         }
     }
 }
