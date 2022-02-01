@@ -24,15 +24,16 @@ namespace Ethereum.VM.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
     // ReSharper disable once InconsistentNaming
-    public class VmTests : GeneralStateTestBase
+    public class PerformanceTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
+        [Retry(3)]
         public void Test(GeneralStateTest test)
         {    
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmTests");
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmPerformance");
             return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

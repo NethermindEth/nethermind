@@ -23,7 +23,7 @@ using NUnit.Framework;
 namespace Ethereum.VM.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class VmBitwiseLogicOperationTests : GeneralStateTestBase
+    public class ArithmeticTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
@@ -33,7 +33,7 @@ namespace Ethereum.VM.Test
         
         public static IEnumerable<GeneralStateTest> LoadTests() 
         { 
-            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmBitwiseLogicOperation");
+            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmArithmeticTest");
             return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
         }
     }

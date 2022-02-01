@@ -23,18 +23,15 @@ using NUnit.Framework;
 namespace Ethereum.VM.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class VmArithmeticTests : GeneralStateTestBase
+    public class LogTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
-        {
+        {    
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<GeneralStateTest> LoadTests() 
-        { 
-            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmArithmeticTest");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
-        }
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmLogTest");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

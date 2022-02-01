@@ -62,7 +62,6 @@ namespace Ethereum.VM.Test
 
         private static string ExpectedTypeName(string directory)
         {
-            string prefix = directory.StartsWith("vm") ? "Vm" : "";
             string expectedTypeName = directory.Remove(0, 2);
             if (!expectedTypeName.EndsWith("Tests"))
             {
@@ -76,7 +75,7 @@ namespace Ethereum.VM.Test
                 }
             }
 
-            return prefix + expectedTypeName;
+            return expectedTypeName;
         }
     }
 }
