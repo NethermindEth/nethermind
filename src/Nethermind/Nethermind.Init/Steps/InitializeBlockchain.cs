@@ -138,10 +138,10 @@ namespace Nethermind.Init.Steps
                 if (pruningConfig.Mode.IsFull())
                 {
                     IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-                    fullPruningDb.PruningStarted += (sender, args) =>
+                    fullPruningDb.PruningStarted += (_, args) =>
                     {
-                        trieStore.PersistCache(args.Context);
                         cachedStateDb.PersistCache(args.Context);
+                        trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
                     };
                 }
             }
@@ -177,9 +177,19 @@ namespace Nethermind.Init.Steps
 
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
-                _logger.Info("Collecting trie stats and verifying that no nodes are missing...");
-                TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
-                _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+                        TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                        _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger!.Error(ex.ToString());
+                    }
+                });
             }
 
             // Init state if we need system calls before actual processing starts

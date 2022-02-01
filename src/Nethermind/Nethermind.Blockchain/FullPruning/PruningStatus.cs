@@ -30,6 +30,11 @@ public enum PruningStatus
     /// Default - full pruning is disabled.
     /// </summary>
     Disabled,
+    
+    /// <summary>
+    /// Delayed - full pruning is temporary disabled. Too little time from previous successful pruning.
+    /// </summary>
+    Delayed,
         
     /// <summary>
     /// Full pruning is already in progress.

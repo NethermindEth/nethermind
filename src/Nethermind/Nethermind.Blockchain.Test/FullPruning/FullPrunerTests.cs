@@ -255,6 +255,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     _context.Dispose();
                     DisposeEvent.Set();
+                    CancellationTokenSource.Dispose();
                 }
 
                 public byte[] this[byte[] key]
@@ -276,6 +277,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 {
                     _context.MarkStart();
                 }
+
+                public CancellationTokenSource CancellationTokenSource { get; } = new();
             }
         }
     }

@@ -69,8 +69,6 @@ namespace Nethermind.Trie
 
         public IBatch StartBatch() => _wrappedStore.StartBatch();
 
-        public void DropCache() => _cache.Clear();
-
         public void PersistCache(IKeyValueStore pruningContext)
         {
             IDictionary<byte[], byte[]> clone = _cache.Clone();

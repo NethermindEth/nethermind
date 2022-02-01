@@ -52,12 +52,12 @@ public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposab
     {
         Interlocked.CompareExchange(ref _inPruning, 1, 0);
         _minPersistedBlock = null;
-        _logger.Info("In Pruning, persisting all state changes");
+        if (_logger.IsDebug) _logger.Debug("In Full Pruning, persisting all state changes");
     }
     
     private void OnPruningFinished(object? sender, EventArgs e)
     {
-        _logger.Info("Out of Pruning, stop persisting all state changes");
+        if (_logger.IsDebug) _logger.Debug("Out of Full Pruning, stop persisting all state changes");
         Interlocked.CompareExchange(ref _inPruning, 0, 1);
         _minPersistedBlock = null;
     }
@@ -74,7 +74,7 @@ public class PruningTriggerPersistenceStrategy : IPersistenceStrategy, IDisposab
             }
             else
             {
-                _logger.Info($"Persisting state changes for {blockNumber}, from {_minPersistedBlock}");
+                if (_logger.IsInfo) _logger.Info($"Persisting state changes for {blockNumber}, from {_minPersistedBlock}");
             }
         }
 

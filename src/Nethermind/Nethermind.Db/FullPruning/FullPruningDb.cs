@@ -187,7 +187,7 @@ namespace Nethermind.Db.FullPruning
             oldDb.Clear();
         }
 
-        private void CancelPruning(PruningContext pruningContext)
+        private void FinishPruning(PruningContext pruningContext)
         {
             PruningFinished?.Invoke(this, new PruningEventArgs(pruningContext));
             Interlocked.CompareExchange(ref _pruningContext, null, pruningContext);
@@ -228,18 +228,21 @@ namespace Nethermind.Db.FullPruning
                 Metrics.StateDbPruning = 1;
             }
 
+            public CancellationTokenSource CancellationTokenSource { get; } = new();
+
             /// <inheritdoc />
             public void Dispose()
             {
                 if (!_disposed)
                 {
-                    _db.CancelPruning(this);
+                    _db.FinishPruning(this);
                     if (!_committed)
                     {
                         // if the context was not committed, then pruning failed and we delete the cloned DB
                         CloningDb.Clear();
                     }
-
+                    
+                    CancellationTokenSource.Dispose();
                     Metrics.StateDbPruning = 0;
                     _disposed = true;
                 }

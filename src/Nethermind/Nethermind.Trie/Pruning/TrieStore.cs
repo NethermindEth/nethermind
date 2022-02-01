@@ -768,7 +768,7 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public void PersistCache(IKeyValueStore store)
+        public void PersistCache(IKeyValueStore store, CancellationToken cancellationToken)
         {
             Task.Run(() =>
             {
@@ -782,19 +782,23 @@ namespace Nethermind.Trie.Pruning
                     if (hash?.Bytes != null)
                     {
                         store[hash.Bytes] = n.FullRlp;
-                        persistedNodes++;
-                        if (_logger.IsInfo && persistedNodes % million == 0)
+                        int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
+                        if (_logger.IsInfo && persistedNodesCount % million == 0)
                         {
-                            _logger.Info($"Full Pruning Persist Cache in progress: {stopwatch.Elapsed} {persistedNodes / (double) million :N} mln nodes persisted.");
+                            _logger.Info($"Full Pruning Persist Cache in progress: {stopwatch.Elapsed} {persistedNodesCount / million:N} mln nodes persisted.");
                         }
                     }
                 }
                 
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
-                foreach ((Keccak _, TrieNode node) in _dirtyNodes.AllNodes.ToArray())
+                KeyValuePair<Keccak, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
+                Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
                 {
-                    node.CallRecursively(PersistNode, this, false, _logger, false);
-                }
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, false);
+                    }
+                });
 
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
             });

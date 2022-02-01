@@ -34,7 +34,6 @@ namespace Nethermind.Blockchain.FullPruning
     public class CopyTreeVisitor : ITreeVisitor, IDisposable
     {
         private readonly IPruningContext _pruningContext;
-        private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;
         private long _persistedNodes = 0;
@@ -43,13 +42,11 @@ namespace Nethermind.Blockchain.FullPruning
         private const int Million = 1_000_000;
 
         public CopyTreeVisitor(
-            IPruningContext pruningContext, 
-            CancellationTokenSource cancellationTokenSource,
+            IPruningContext pruningContext,
             ILogManager logManager)
         {
             _pruningContext = pruningContext;
-            _cancellationTokenSource = cancellationTokenSource;
-            _cancellationToken = cancellationTokenSource.Token;
+            _cancellationToken = pruningContext.CancellationTokenSource.Token;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
         }
@@ -70,7 +67,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
             
             // if nodes are missing then state trie is not valid and we need to stop copying it
-            _cancellationTokenSource.Cancel();
+            _pruningContext.CancellationTokenSource.Cancel();
         }
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(node);

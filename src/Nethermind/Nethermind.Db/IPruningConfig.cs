@@ -23,7 +23,7 @@ namespace Nethermind.Db
     [ConfigCategory(Description = "Configuration of the pruning parameters (pruning is the process of removing some of the intermediary state nodes - it saves some disk space but makes most of the historical state queries fail).")]
     public interface IPruningConfig : IConfig
     {
-        [ConfigItem(Description = "Enables in-memory pruning. Obsolete, use Mode instead.", DefaultValue = "false")]
+        [ConfigItem(Description = "Enables in-memory pruning. Obsolete, use Mode instead.", DefaultValue = "false", HiddenFromDocs = true)]
         [Obsolete]
         public bool Enabled { get; set; }
         
@@ -57,7 +57,8 @@ namespace Nethermind.Db
                           "If the node doesn't have to be responsive, has very fast I/O (like NVME) and the shortest pruning time is to be achieved, this can be set to 2-3x of the number of logical processors.",
             DefaultValue = "0")]
         int FullPruningMaxDegreeOfParallelism { get; set; }
-        
-        
+
+        [ConfigItem(Description = "In order to not exhaust disk writes, there is a minimum delay between allowed full pruning operations.", DefaultValue = "240")]
+        int FullPruningMinimumDelayHours { get; set; }
     }
 }
