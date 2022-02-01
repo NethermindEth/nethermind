@@ -15,14 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus;
-using Nethermind.Core;
+using System.Collections.Generic;
+using Nethermind.AccountAbstraction.Data;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 
-namespace Nethermind.Mev.Test
+namespace Nethermind.AccountAbstraction.Network
 {
-    public class ManualGasLimitCalculator : IGasLimitCalculator
+    public class UserOperationsMessage : P2PMessage
     {
-        public long GasLimit { get; set; }
-        public long GetGasLimit(BlockHeader parentHeader) => GasLimit;
+        public override int PacketType { get; } = AaMessageCode.UserOperations;
+        public override string Protocol { get; } = "aa";
+        
+        public IList<UserOperation> UserOperations { get; }
+
+        public UserOperationsMessage(IList<UserOperation> userOperations)
+        {
+            UserOperations = userOperations;
+        }
+
+        public override string ToString() => $"{nameof(UserOperationsMessage)}({UserOperations?.Count})";
     }
 }

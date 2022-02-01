@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Int256;
@@ -73,6 +74,7 @@ namespace Nethermind.Mev.Execution
             };
 
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header.Number));
+            header.Hash = header.CalculateHash();
 
             return new Block(header, bundle.Transactions, Array.Empty<BlockHeader>());
         }

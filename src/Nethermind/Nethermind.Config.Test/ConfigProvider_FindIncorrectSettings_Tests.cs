@@ -74,7 +74,7 @@ namespace Nethermind.Config.Test
                 { "datadir", "Data" },
                 { "ConfigsDirectory", "ConfDir" },
                 { "baseDbPath", "DB" },
-                { "logLevel", "info" },
+                { "log", "info" },
                 { "loggerConfigSource", "logSource" },
                 { "pluginsDirectory", "Plugins" },
                 { "Abc", "abc" }    // not existing, should get error
