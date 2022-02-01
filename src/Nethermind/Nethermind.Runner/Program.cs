@@ -101,7 +101,7 @@ namespace Nethermind.Runner
             _logger.Info("Nethermind starting initialization.");
 
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
-            
+
             GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
             CommandLineApplication app = new() { Name = "Nethermind.Runner" };
             _ = app.HelpOption("-?|-h|--help");
@@ -116,9 +116,9 @@ namespace Nethermind.Runner
             _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
 
             IFileSystem fileSystem = new FileSystem();
-            
+
             string pluginsDirectoryPath = LoadPluginsDirectory(args);
-            PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem, 
+            PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem,
                 typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin));
 
             // leaving here as an example of adding Debug plugin
@@ -126,55 +126,7 @@ namespace Nethermind.Runner
             // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
             pluginLoader.Load(SimpleConsoleLogManager.Instance);
 
-            Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
-                .Where(ct => ct.IsInterface);
-
-            foreach (Type configType in configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
-            {
-                if (configType == null)
-                {
-                    continue;
-                }
-
-                ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
-                
-                if (typeLevel!=null && (typeLevel?.DisabledForCli ?? true))
-                {
-                    continue;
-                }
-
-                foreach (PropertyInfo propertyInfo in configType
-                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                    .OrderBy(p => p.Name))
-                {
-                    ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (!(configItemAttribute?.DisabledForCli ?? false))
-                    {
-                        _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
-                        
-                    }
-                }
-            }
-
-            Type noCategoryConfig = configTypes.FirstOrDefault(ct => ct.IsAssignableTo(typeof(INoCategoryConfig)));
-
-            if (noCategoryConfig != null)
-            {
-                StringBuilder sb = new();
-                sb.AppendLine();
-                sb.AppendLine("Configurable Environment Variables:");
-                foreach (PropertyInfo propertyInfo in noCategoryConfig.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
-                {
-                    ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (configItemAttribute != null && !(string.IsNullOrEmpty(configItemAttribute?.EnvironmentVariable)))
-                    {
-                        sb.AppendLine($"{configItemAttribute.EnvironmentVariable} - {(string.IsNullOrEmpty(configItemAttribute.Description) ? "<missing documentation>" : configItemAttribute.Description)} (DEFAULT: {configItemAttribute.DefaultValue})");
-                    }
-                }
-
-                app.ExtendedHelpText = sb.ToString();
-            }
+            BuildOptionsFromConfigFiles(app);
 
             ManualResetEventSlim appClosed = new(true);
             app.OnExecute(async () =>
@@ -201,7 +153,7 @@ namespace Nethermind.Runner
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
 
                 ApiBuilder apiBuilder = new(configProvider, logManager);
-                
+
                 IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
                 foreach (Type pluginType in pluginLoader.PluginTypes)
                 {
@@ -214,13 +166,13 @@ namespace Nethermind.Runner
                     }
                     catch (Exception e)
                     {
-                        if(_logger.IsError) _logger.Error($"Failed to create plugin {pluginType.FullName}", e);
+                        if (_logger.IsError) _logger.Error($"Failed to create plugin {pluginType.FullName}", e);
                     }
                 }
-                
+
                 INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
                 ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
-                
+
                 EthereumRunner ethereumRunner = new(nethermindApi);
                 await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {
@@ -240,6 +192,59 @@ namespace Nethermind.Runner
 
             _ = app.Execute(args);
             appClosed.Wait();
+        }
+
+        private static void BuildOptionsFromConfigFiles(CommandLineApplication app)
+        {
+            Type configurationType = typeof(IConfig);
+            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
+                .Where(ct => ct.IsInterface);
+
+            foreach (Type configType in configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
+            {
+                if (configType == null)
+                {
+                    continue;
+                }
+
+                ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
+
+                if (typeLevel != null && (typeLevel?.DisabledForCli ?? true))
+                {
+                    continue;
+                }
+
+                foreach (PropertyInfo propertyInfo in configType
+                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .OrderBy(p => p.Name))
+                {
+                    ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
+                    if (!(configItemAttribute?.DisabledForCli ?? false))
+                    {
+                        _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
+
+                    }
+                }
+            }
+
+            // Create Help Text for environment variables
+            Type noCategoryConfig = configTypes.FirstOrDefault(ct => ct.IsAssignableTo(typeof(INoCategoryConfig)));
+            if (noCategoryConfig != null)
+            {
+                StringBuilder sb = new();
+                sb.AppendLine();
+                sb.AppendLine("Configurable Environment Variables:");
+                foreach (PropertyInfo propertyInfo in noCategoryConfig.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
+                {
+                    ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
+                    if (configItemAttribute != null && !(string.IsNullOrEmpty(configItemAttribute?.EnvironmentVariable)))
+                    {
+                        sb.AppendLine($"{configItemAttribute.EnvironmentVariable} - {(string.IsNullOrEmpty(configItemAttribute.Description) ? "<missing documentation>" : configItemAttribute.Description)} (DEFAULT: {configItemAttribute.DefaultValue})");
+                    }
+                }
+
+                app.ExtendedHelpText = sb.ToString();
+            }
         }
 
         private static string LoadPluginsDirectory(string[] args)
