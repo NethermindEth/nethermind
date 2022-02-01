@@ -99,15 +99,16 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (setHeadErrorMsg != null)
                 return ReturnSyncing();
 
-            if (_ethSyncingInfo.IsSyncing() && synced == false)
-            {
-                return ReturnSyncing();
-            }
-            else if (synced == false)
-            {
-                await _synchronizer.StopAsync();
-                synced = true;
-            }
+            await _synchronizer.StopAsync();
+            // if (_ethSyncingInfo.IsSyncing() && synced == false)
+            // {
+            //     return ReturnSyncing();
+            // }
+            // else if (synced == false)
+            // {
+            //     await _synchronizer.StopAsync();
+            //     synced = true;
+            // }
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 newHeadBlock!.Header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)

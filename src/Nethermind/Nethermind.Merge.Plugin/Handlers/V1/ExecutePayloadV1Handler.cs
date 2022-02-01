@@ -108,18 +108,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
             }
             
-            BlockHeader? parentHeader = parent.Header;
-            if (_ethSyncingInfo.IsSyncing() && synced == false)
-            {
-                executePayloadResult.Status = ExecutePayloadStatus.Syncing;
-                return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
-            }
-            else if (synced == false)
-            {
-                await _synchronizer.StopAsync();
-                synced = true;
-            }
+            await _synchronizer.StopAsync();
             
+            BlockHeader? parentHeader = parent.Header;
+            // if (_ethSyncingInfo.IsSyncing() && synced == false)
+            // {
+            //     executePayloadResult.Status = ExecutePayloadStatus.Syncing;
+            //     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
+            // }
+            // else if (synced == false)
+            // {
+            //     await _synchronizer.StopAsync();
+            //     synced = true;
+            // }
+            //
             if (_poSSwitcher.TerminalTotalDifficulty == null || parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
                 return ResultWrapper<ExecutePayloadV1Result>.Fail($"Invalid total difficulty: {parentHeader.TotalDifficulty} for block header: {parentHeader}", MergeErrorCodes.InvalidTerminalBlock);
