@@ -121,6 +121,11 @@ public class TxBroadcasterTests
 
         const int currentBaseFeeInGwei = 250;
         _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
+        Block headBlock = Build.A.Block
+            .WithNumber(RopstenSpecProvider.LondonBlockNumber)
+            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
+            .TestObject;
+        _blockTree.Head.Returns(headBlock);
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
