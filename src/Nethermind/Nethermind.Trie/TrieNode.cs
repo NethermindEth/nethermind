@@ -203,7 +203,7 @@ namespace Nethermind.Trie
         }
         
         public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp) 
-            :this(nodeType, rlp)
+            : this(nodeType, rlp)
         {
             Keccak = keccak;
             if (nodeType == NodeType.Unknown)
@@ -780,20 +780,24 @@ namespace Nethermind.Trie
                     {
                         case 0:
                         case 128:
+                        {
                             _data![i] = childOrRef = _nullNode;
                             break;
+                        }
                         case 160:
+                        {
                             _rlpStream.Position--;
                             Keccak keccak = _rlpStream.DecodeKeccak();
-                            TrieNode cachedOrUnknown = tree.FindCachedOrUnknown(keccak);
-                            _data![i] = childOrRef = cachedOrUnknown;
+                            TrieNode child = tree.FindCachedOrUnknown(keccak);
+                            _data![i] = childOrRef = child;
 
-                            if (IsPersisted && !cachedOrUnknown.IsPersisted)
+                            if (IsPersisted && !child.IsPersisted)
                             {
-                                cachedOrUnknown.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
                             }
 
                             break;
+                        }
                         default:
                         {
                             _rlpStream.Position--;
