@@ -122,8 +122,6 @@ namespace Nethermind.Db.Rocks
 
         public bool KeyExists(byte[] key) => _rocksDb.Get(key, _columnFamily) != null;
 
-        public IDb Innermost => _mainDb.Innermost;
-
         public void Flush()
         {
             _mainDb.Flush();

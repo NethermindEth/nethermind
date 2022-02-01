@@ -121,7 +121,7 @@ namespace Nethermind.Core.Test.Blockchain
             SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
             EthereumEcdsa = new EthereumEcdsa(ChainId.Mainnet, LogManager);
             DbProvider = await CreateDbProvider();
-            TrieStore = new TrieStore(StateDb.Innermost, LogManager);
+            TrieStore = new TrieStore(StateDb, LogManager);
             State = new StateProvider(TrieStore, DbProvider.CodeDb, LogManager);
             State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
             State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
@@ -138,7 +138,7 @@ namespace Nethermind.Core.Test.Blockchain
             State.Commit(SpecProvider.GenesisSpec);
             State.CommitTree(0);
             
-            ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb.Innermost);
+            ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
             StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
             
             IDb blockDb = new MemDb();

@@ -348,18 +348,15 @@ namespace Nethermind.Synchronization
             byte[]?[] values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
             {
-                IDb stateDb = _stateDb.Innermost;
-                IDb codeDb = _codeDb.Innermost;
-
                 values[i] = null;
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
-                    values[i] = stateDb.Get(keys[i]);
+                    values[i] = _stateDb.Get(keys[i]);
                 }
 
                 if (values[i] == null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
-                    values[i] = codeDb.Get(keys[i]);
+                    values[i] = _codeDb.Get(keys[i]);
                 }
             }
 

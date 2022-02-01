@@ -46,6 +46,7 @@ namespace Nethermind.Db.Test
             IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Mem, "mem");
             Type receiptsType = GetReceiptsType(useReceipts, typeof(MemColumnsDb<ReceiptsColumns>));
             AssertStandardDbs(dbProvider, typeof(MemDb), receiptsType);
+            dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
         }
 
         [TestCase(false)]
@@ -55,6 +56,7 @@ namespace Nethermind.Db.Test
             IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Persisted, $"rocks_{useReceipts}");
             Type receiptsType = GetReceiptsType(useReceipts);
             AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
+            dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
         }
 
         [TestCase(false)]
@@ -66,6 +68,8 @@ namespace Nethermind.Db.Test
             Type receiptsType = GetReceiptsType(useReceipts);
             AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
             AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), GetReceiptsType(false));
+            dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
+            ((IDbProvider)readonlyDbProvider).StateDb.Should().BeOfType(typeof(ReadOnlyDb));
         }
         
         [Test]
@@ -95,7 +99,6 @@ namespace Nethermind.Db.Test
             dbProvider.HeadersDb.Should().BeOfType(dbType);
             dbProvider.ReceiptsDb.Should().BeOfType(receiptsDb);
             dbProvider.CodeDb.Should().BeOfType(dbType);
-            dbProvider.StateDb.Should().BeOfType(dbType);
         }
 
         [OneTimeTearDown]

@@ -16,6 +16,7 @@
 
 using System.IO.Abstractions;
 using FluentAssertions;
+using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
@@ -36,7 +37,6 @@ namespace Nethermind.Db.Test.Rpc
                 foreach (IDb db in dbs)
                 {
                     db.Should().BeAssignableTo<T>(db.Name);
-                    db.Innermost.Should().BeAssignableTo<RpcDb>(db.Name);
                 }
             }
             
@@ -56,8 +56,10 @@ namespace Nethermind.Db.Test.Rpc
                 memDbProvider.BlockInfosDb);
 
             ValidateDb<ReadOnlyDb>(
-                memDbProvider.StateDb,
                 memDbProvider.CodeDb);
+            
+            ValidateDb<FullPruningDb>(
+                memDbProvider.StateDb);
         }
     }
 }
