@@ -784,8 +784,11 @@ namespace Nethermind.Merge.Plugin.Test
                 TestItem.AddressD);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(blockRequestResult);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-            new BlockRequestResult(chain.BlockTree.BestSuggestedBody).Should()
-                .BeEquivalentTo(blockRequestResult);
+            ForkchoiceStateV1 forkChoiceUpdatedRequest = new(blockRequestResult.BlockHash,
+                blockRequestResult.BlockHash, blockRequestResult.BlockHash);
+            var fcu1 = (await rpc.engine_forkchoiceUpdatedV1(forkChoiceUpdatedRequest, new PayloadAttributes() 
+                { Random = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero, Timestamp = blockRequestResult.Timestamp + 1}));
+            await rpc.engine_getPayloadV1(Bytes.FromHexString(fcu1.Data.PayloadId!));
         }
 
         [TestCase(false)]
