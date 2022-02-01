@@ -34,6 +34,7 @@ namespace Nethermind.TxPool
     internal class TxBroadcaster : IDisposable
     {
         private readonly ITxPoolConfig _txPoolConfig;
+        private readonly IChainHeadInfoProvider _headInfo;
 
         /// <summary>
         /// Notification threshold randomizer seed
@@ -76,9 +77,11 @@ namespace Nethermind.TxPool
         public TxBroadcaster(IComparer<Transaction> comparer,
             ITimerFactory timerFactory,
             ITxPoolConfig txPoolConfig,
+            IChainHeadInfoProvider chainHeadInfoProvider,
             ILogManager? logManager)
         {
             _txPoolConfig = txPoolConfig;
+            _headInfo = chainHeadInfoProvider;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _accumulatedTemporaryTxs = new ConcurrentBag<Transaction>();
@@ -163,9 +166,13 @@ namespace Nethermind.TxPool
                     Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
                         _persistentTxs.Count);
 
-                foreach (Transaction tx in _persistentTxs.GetFirsts(numberOfPersistentTxsToBroadcast))
+                foreach (Transaction tx in _persistentTxs.GetFirsts())
                 {
-                    yield return tx;
+                    if (numberOfPersistentTxsToBroadcast > 0 && tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
+                    {
+                        numberOfPersistentTxsToBroadcast--;
+                        yield return tx;
+                    }
                 }
             }
 
