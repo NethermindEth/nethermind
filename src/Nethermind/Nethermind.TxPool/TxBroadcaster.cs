@@ -168,10 +168,17 @@ namespace Nethermind.TxPool
 
                 foreach (Transaction tx in _persistentTxs.GetFirsts())
                 {
-                    if (numberOfPersistentTxsToBroadcast > 0 && tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
+                    if (numberOfPersistentTxsToBroadcast > 0)
                     {
-                        numberOfPersistentTxsToBroadcast--;
-                        yield return tx;
+                        if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
+                        {
+                            numberOfPersistentTxsToBroadcast--;
+                            yield return tx;
+                        }
+                    }
+                    else
+                    {
+                        break;
                     }
                 }
             }
