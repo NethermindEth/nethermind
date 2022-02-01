@@ -128,8 +128,11 @@ namespace Nethermind.Evm.Test
             TestState.CommitTree(0);
             
             Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
-            storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
-
+            if (TestState is StateProvider)
+            {
+                storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
+            }
+            
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
             Keccak createCodeHash = TestState.UpdateCode(createCode);
