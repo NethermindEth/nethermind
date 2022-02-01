@@ -74,9 +74,9 @@ namespace Nethermind.Evm.Test
 
             IDb codeDb = new MemDb();
             _stateDb = new MemDb();
-            ITrieStore trieStore = new TrieStore(_stateDb, logManager);
-            TestState = new StateProvider(trieStore, codeDb, logManager);
-            Storage = new StorageProvider(trieStore, TestState, logManager);
+            VerkleStateProvider stateProvider = new (logManager, codeDb);
+            TestState = stateProvider;
+            Storage = new VerkleStorageProvider(stateProvider, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
@@ -231,13 +231,13 @@ namespace Nethermind.Evm.Test
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
-            byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();  
+            byte[] expected = expectedValue.ToBigEndianByteArray(32);
             Assert.AreEqual(expected, actualValue, "storage");
         }
         
         protected void AssertStorage(UInt256 address, UInt256 expectedValue)
         {
-            byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
+            byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray(32);
 
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
             Assert.AreEqual(bytes, actualValue, "storage");
@@ -250,12 +250,12 @@ namespace Nethermind.Evm.Test
             _callIndex++;
             if (!TestState.AccountExists(storageCell.Address))
             {
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), new byte[] {0}, $"storage {storageCell}, call {_callIndex}");
+                Assert.AreEqual(expectedValue.ToBigEndian(), new BigInteger(0).ToBigEndianByteArray(32), $"storage {storageCell}, call {_callIndex}");
             }
             else
             {
                 byte[] actualValue = Storage.Get(storageCell);
-                Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");    
+                Assert.AreEqual(expectedValue.ToBigEndian(), actualValue, $"storage {storageCell}, call {_callIndex}");    
             }
         }
 

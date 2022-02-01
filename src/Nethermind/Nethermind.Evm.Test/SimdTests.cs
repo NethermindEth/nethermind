@@ -25,7 +25,7 @@ namespace Nethermind.Evm.Test
 {
     [TestFixture(true)]
     [TestFixture(false)]
-    [Parallelizable(ParallelScope.Self)]
+    // [Parallelizable(ParallelScope.Self)]
     public class SimdTests : VirtualMachineTestsBase
     {
         private readonly bool _simdDisabled;
