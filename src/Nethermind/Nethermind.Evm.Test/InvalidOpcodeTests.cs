@@ -25,7 +25,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.Self)]
+    // [Parallelizable(ParallelScope.Self)]
     public class InvalidOpcodeTests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;

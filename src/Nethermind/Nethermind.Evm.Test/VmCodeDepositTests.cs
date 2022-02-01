@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -25,7 +26,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.Self)]
+    // [Parallelizable(ParallelScope.Self)]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
         private long _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
@@ -72,11 +73,11 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new byte[] {0}, result, "storage reverted");
+            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), result, "storage reverted");
             Assert.AreEqual(98777, receipt.GasSpent, "no refund");
             
             byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.AreEqual(new byte[1], returnData, "address returned");
+            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), returnData, "address returned");
         }
         
         [Test(Description = "Deposit OutOfGas before EIP-2")]
@@ -113,11 +114,11 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new byte[] {0}, result, "storage reverted");
+            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), result, "storage reverted");
             Assert.AreEqual(83199, receipt.GasSpent, "with refund");
             
             byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.AreEqual(deployed.Bytes, returnData, "address returned");
+            Assert.AreEqual(new BigInteger(deployed.Bytes, true, true).ToBigEndianByteArray(32), returnData, "address returned");
         }
     }
 }
