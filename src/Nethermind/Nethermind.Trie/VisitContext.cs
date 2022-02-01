@@ -22,7 +22,7 @@ namespace Nethermind.Trie
     public class TrieVisitContext : IDisposable
     {
         private SemaphoreSlim? _semaphore;
-        private readonly int _maxDegreeOfParallelism;
+        private readonly int _maxDegreeOfParallelism = 1;
 
         public int Level { get; internal set; }
         public bool IsStorage { get; internal set; }
