@@ -87,9 +87,7 @@ namespace Nethermind.JsonRpc.Modules
             Proof, 
             Net,
             Parity,
-            Health,
-            Debug,
-            Admin
+            Health
         };
     }
 }
