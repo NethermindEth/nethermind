@@ -194,7 +194,12 @@ namespace Nethermind.Merge.Plugin
                 return (false, false);
 
             bool isTerminal = false, isPostMerge = false;
-            // ToDo TTD nulls?
+
+            if (header.TotalDifficulty == null)
+            {
+                return (false, header.Difficulty == 0);
+            }
+            
             if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
                 return (false, false);
 
