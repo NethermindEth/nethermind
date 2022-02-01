@@ -158,7 +158,7 @@ namespace Nethermind.TxPool
             {
                 // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast,
                 // which will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to
-                // PeerNotificationThreshold multiplicated by number of transactions in persistent broadcast, rounded up.
+                // PeerNotificationThreshold multiplication by number of transactions in persistent broadcast, rounded up.
                 int numberOfPersistentTxsToBroadcast =
                     Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
                         _persistentTxs.Count);

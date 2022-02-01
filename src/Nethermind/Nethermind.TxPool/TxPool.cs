@@ -212,7 +212,7 @@ namespace Nethermind.TxPool
                     discoveredForHashCache++;
                 }
 
-                if (!RemoveTransaction(txHash))
+                if (!RemoveIncludedTransaction(blockTransactions[i]))
                 {
                     discoveredForPendingTxs++;
                 }
@@ -221,8 +221,6 @@ namespace Nethermind.TxPool
                 {
                     eip1559Txs++;
                 }
-
-                _broadcaster.EnsureStopBroadcastUpToNonce(blockTransactions[i].SenderAddress!, blockTransactions[i].Nonce);
             }
 
             if (transactionsInBlock != 0)
@@ -231,6 +229,13 @@ namespace Nethermind.TxPool
                 Metrics.DarkPoolRatioLevel2 = (float)discoveredForPendingTxs / transactionsInBlock;
                 Metrics.Eip1559TransactionsRatio = (float)eip1559Txs / transactionsInBlock;
             }
+        }
+
+        private bool RemoveIncludedTransaction(Transaction tx)
+        {
+            bool removed = RemoveTransaction(tx.Hash);
+            _broadcaster.EnsureStopBroadcastUpToNonce(tx.SenderAddress!, tx.Nonce);
+            return removed;
         }
 
         public void AddPeer(ITxPoolPeer peer)
