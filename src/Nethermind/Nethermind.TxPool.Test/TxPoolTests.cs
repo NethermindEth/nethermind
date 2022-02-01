@@ -49,14 +49,14 @@ namespace Nethermind.TxPool.Test
     [TestFixture]
     public class TxPoolTests
     {
-        private ILogManager _logManager;
-        private IEthereumEcdsa _ethereumEcdsa;
-        private ISpecProvider _specProvider;
-        private TxPool _txPool;
-        private IStateProvider _stateProvider;
-        private IBlockTree _blockTree;
+        protected ILogManager _logManager;
+        protected IEthereumEcdsa _ethereumEcdsa;
+        protected ISpecProvider _specProvider;
+        protected TxPool _txPool;
+        protected IStateProvider _stateProvider;
+        protected IBlockTree _blockTree;
         
-        private int _txGasLimit = 1_000_000;
+        protected int _txGasLimit = 1_000_000;
 
         [SetUp]
         public void Setup()

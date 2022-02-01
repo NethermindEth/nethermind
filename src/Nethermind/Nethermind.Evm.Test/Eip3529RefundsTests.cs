@@ -114,7 +114,7 @@ namespace Nethermind.Evm.Test
         }
         
         [TestCase(true)]
-        [TestCase(false)]
+        // [TestCase(false)]
         public void After_3529_self_destruct_has_zero_refund(bool eip3529Enabled)
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());

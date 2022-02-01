@@ -25,7 +25,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.Self)]
+    // [Parallelizable(ParallelScope.Self)]
     public class GethLikeTxTracerTests : VirtualMachineTestsBase
     {
         [Test]
