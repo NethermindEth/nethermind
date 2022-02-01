@@ -267,10 +267,10 @@ jobs:
         dotnet test -c Release src/Nethermind/Ethereum.KeyAddress.Test
     - name: Ethereum.PoW.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Rlp.Test
+        dotnet test -c Release src/Nethermind/Ethereum.PoW.Test
     - name: Ethereum.Rlp.Test
       run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
+        dotnet test -c Release src/Nethermind/Ethereum.Rlp.Test
     - name: Ethereum.Transaction.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Transaction.Test
@@ -280,3 +280,6 @@ jobs:
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
+    - name: Ethereum.VM.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.VM.Test
