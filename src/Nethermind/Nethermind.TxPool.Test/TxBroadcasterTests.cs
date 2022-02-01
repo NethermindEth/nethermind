@@ -47,6 +47,7 @@ public class TxBroadcasterTests
     private TxBroadcaster _broadcaster;
     private EthereumEcdsa _ethereumEcdsa;
     private TxPoolConfig _txPoolConfig;
+    private IChainHeadInfoProvider _headInfo;
 
     [SetUp]
     public void Setup()
@@ -57,6 +58,7 @@ public class TxBroadcasterTests
         _blockTree = Substitute.For<IBlockTree>();
         _comparer = new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer();
         _txPoolConfig = new TxPoolConfig();
+        _headInfo = Substitute.For<IChainHeadInfoProvider>();
     }
     
     [TestCase(0)]
@@ -70,7 +72,8 @@ public class TxBroadcasterTests
     public void should_pick_best_persistent_txs_to_broadcast(int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
-        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _logManager);
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee.Returns(0.GWei());
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
@@ -78,7 +81,6 @@ public class TxBroadcasterTests
         for (int i = 0; i < addedTxsCount; i++)
         {
             transactions[i] = Build.A.Transaction
-                .WithSenderAddress(TestItem.PrivateKeys[i].Address)
                 .WithGasPrice(i.GWei())
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
@@ -102,5 +104,105 @@ public class TxBroadcasterTests
         }
 
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
+    }
+    
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(99)]
+    [TestCase(100)]
+    [TestCase(101)]
+    [TestCase(1000)]
+    [TestCase(-10)]
+    public void should_not_pick_txs_with_GasPrice_lower_than_CurrentBaseFee(int threshold)
+    {
+        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        const int currentBaseFeeInGwei = 250;
+        _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
+
+        int addedTxsCount = TestItem.PrivateKeys.Length;
+        Transaction[] transactions = new Transaction[addedTxsCount];
+
+        for (int i = 0; i < addedTxsCount; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithGasPrice(i.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
+                .TestObject;
+                
+            _broadcaster.StartBroadcast(transactions[i]);
+        }
+        
+        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+
+        ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+        List<Transaction> pickedTxs = _broadcaster.GetTxsToSend(txPoolPeer, ArraySegment<Transaction>.Empty).ToList();
+
+        int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
+        pickedTxs.Count.Should().Be(expectedCount);
+
+        List<Transaction> expectedTxs = new();
+
+        for (int i = 1; i <= expectedCount; i++)
+        {
+            expectedTxs.Add(transactions[addedTxsCount - i]);
+        }
+
+        expectedTxs.Should().BeEquivalentTo(pickedTxs);
+    }
+    
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(99)]
+    [TestCase(100)]
+    [TestCase(101)]
+    [TestCase(1000)]
+    [TestCase(-10)]
+    public void should_not_pick_1559_txs_with_MaxFeePerGas_lower_than_CurrentBaseFee(int threshold)
+    {
+        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+
+        const int currentBaseFeeInGwei = 250;
+        _headInfo.CurrentBaseFee.Returns(currentBaseFeeInGwei.GWei());
+        Block headBlock = Build.A.Block
+            .WithNumber(RopstenSpecProvider.LondonBlockNumber)
+            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
+            .TestObject;
+        _blockTree.Head.Returns(headBlock);
+
+        int addedTxsCount = TestItem.PrivateKeys.Length;
+        Transaction[] transactions = new Transaction[addedTxsCount];
+
+        for (int i = 0; i < addedTxsCount; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(i.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
+                .TestObject;
+                
+            _broadcaster.StartBroadcast(transactions[i]);
+        }
+        
+        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+
+        ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
+        List<Transaction> pickedTxs = _broadcaster.GetTxsToSend(txPoolPeer, ArraySegment<Transaction>.Empty).ToList();
+
+        int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
+        pickedTxs.Count.Should().Be(expectedCount);
+
+        List<Transaction> expectedTxs = new();
+
+        for (int i = 1; i <= expectedCount; i++)
+        {
+            expectedTxs.Add(transactions[addedTxsCount - i]);
+        }
+
+        expectedTxs.Should().BeEquivalentTo(pickedTxs, o => o.Excluding(transaction => transaction.MaxFeePerGas));
     }
 }
