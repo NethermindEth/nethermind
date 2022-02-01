@@ -52,8 +52,7 @@ namespace Nethermind.Evm.Test
 
         private IEthereumEcdsa _ethereumEcdsa;
         protected ITransactionProcessor _processor;
-        private IDb _stateDb;
-
+        
         protected VirtualMachine Machine { get; private set; }
         protected IStateProvider TestState { get; private set; }
         protected IStorageProvider Storage { get; private set; }
@@ -81,28 +80,28 @@ namespace Nethermind.Evm.Test
             _stateProvider = stateProvider;
         }
         
-        // TODO: Remove
-        public VirtualMachineTestsBase() {}
+        public VirtualMachineTestsBase() :this(VirtualMachineTestsStateProvider.MerkleTrie) { }
         
         [SetUp]
         public virtual void Setup()
         {
             ILogManager logManager = GetLogManager();
+            IDb codeDb = new MemDb();
 
             if (_stateProvider == VirtualMachineTestsStateProvider.MerkleTrie)
             {
-                
+                MemDb stateDb = new();
+                ITrieStore trieStore = new TrieStore(stateDb, logManager);
+                TestState = new StateProvider(trieStore, codeDb, logManager);
+                Storage = new StorageProvider(trieStore, TestState, logManager);
             }
             else
             {
-                
+                VerkleStateProvider stateProvider = new (logManager, codeDb);
+                TestState = stateProvider;
+                Storage = new VerkleStorageProvider(stateProvider, logManager);
             }
 
-            IDb codeDb = new MemDb();
-            _stateDb = new MemDb();
-            VerkleStateProvider stateProvider = new (logManager, codeDb);
-            TestState = stateProvider;
-            Storage = new VerkleStorageProvider(stateProvider, logManager);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
             IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
             Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
