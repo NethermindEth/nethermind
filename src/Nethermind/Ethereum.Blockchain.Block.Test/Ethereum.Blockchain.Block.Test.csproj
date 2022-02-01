@@ -24,10 +24,6 @@
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\..\tests\BlockchainTests\ValidBlocks\VMTests\vm*\*.*">
-      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
 <!--    <Content Include="..\..\tests\BlockchainTests\InvalidBlocks\bc*\*.*">-->
 <!--      <Link>InvalidBlocks\%(RecursiveDir)%(FileName)%(Extension)</Link>-->
 <!--      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>-->
