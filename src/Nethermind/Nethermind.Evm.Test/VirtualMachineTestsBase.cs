@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -37,6 +38,14 @@ namespace Nethermind.Evm.Test
 {
     public class VirtualMachineTestsBase
     {
+        private readonly VirtualMachineTestsStateProvider _stateProvider;
+
+        public enum VirtualMachineTestsStateProvider
+        {
+            MerkleTrie,
+            VerkleTrie
+        }
+        
         protected const string SampleHexData1 = "a01234";
         protected const string SampleHexData2 = "b15678";
         protected const string HexZero = "00";
@@ -64,13 +73,30 @@ namespace Nethermind.Evm.Test
 
         protected virtual ILogManager GetLogManager()
         {
-            return LimboLogs.Instance;
+            return new NUnitLogManager();
         }
+
+        public VirtualMachineTestsBase(VirtualMachineTestsStateProvider stateProvider)
+        {
+            _stateProvider = stateProvider;
+        }
+        
+        // TODO: Remove
+        public VirtualMachineTestsBase() {}
         
         [SetUp]
         public virtual void Setup()
         {
             ILogManager logManager = GetLogManager();
+
+            if (_stateProvider == VirtualMachineTestsStateProvider.MerkleTrie)
+            {
+                
+            }
+            else
+            {
+                
+            }
 
             IDb codeDb = new MemDb();
             _stateDb = new MemDb();

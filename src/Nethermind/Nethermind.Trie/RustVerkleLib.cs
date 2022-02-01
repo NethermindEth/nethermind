@@ -23,10 +23,12 @@ using System.Runtime.InteropServices;
 namespace Nethermind.Trie
 {
     [StructLayout(LayoutKind.Sequential)]
-    public class Proof{
+    public class Proof
+    {
         public IntPtr ptr;
         public int len;
     }
+    
     public static class RustVerkleLib {
         
         static RustVerkleLib()
@@ -73,12 +75,12 @@ namespace Nethermind.Trie
             if (valueLength > 32)
             {
                 throw new InvalidOperationException("Value length must be less than 32");
-            } else if (valueLength < 32)
+            } 
+            else if (valueLength < 32)
             {
                 newValue = new byte[32];
                 int lengthDiff = 32 - valueLength;
-                byte[] addressPadding = new byte[12] ;
-                Buffer.BlockCopy(value, 0, newValue, lengthDiff, valueLength);
+                Array.Copy(value, 0, newValue, lengthDiff, valueLength);
             }
             else
             {
@@ -101,6 +103,12 @@ namespace Nethermind.Trie
             byte[] managedValue = new byte[32];
             Marshal.Copy(value, managedValue, 0, 32);
             return managedValue;
+        }
+        
+        public static unsafe Span<byte> VerkleTrieGetSpan(IntPtr verkleTrie, byte[] key)
+        {
+            IntPtr value = verkle_trie_get(verkleTrie, key);
+            return value == IntPtr.Zero ? Span<byte>.Empty : new Span<byte>(value.ToPointer(), 32);
         }
         
         public static byte[] VerkleTrieGetStateRoot(IntPtr verkleTrie)
