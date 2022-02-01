@@ -116,17 +116,18 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Syncing;
             }
 
+            await _synchronizer.StopAsync();
             BlockHeader? parentHeader = parent.Header;
-            if (_ethSyncingInfo.IsSyncing() && synced == false)
-            {
-                return NewPayloadV1Result.Syncing;
-            }
-            else if (synced == false)
-            {
-                await _synchronizer.StopAsync();
-                synced = true;
-            }
-
+            // if (_ethSyncingInfo.IsSyncing() && synced == false)
+            // {
+            //      return NewPayloadV1Result.Syncing;
+            // }
+            // else if (synced == false)
+            // {
+            //     await _synchronizer.StopAsync();
+            //     synced = true;
+            // }
+            //
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {

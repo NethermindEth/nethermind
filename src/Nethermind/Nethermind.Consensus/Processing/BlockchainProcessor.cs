@@ -319,6 +319,7 @@ namespace Nethermind.Consensus.Processing
             }
             else if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0 && lastProcessed!.IsPostMerge)
             {
+                _logger.Info($"Marked chain as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
             }
 
@@ -531,6 +532,7 @@ namespace Nethermind.Consensus.Processing
                 preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && !suggestedBlockIsPostMerge;
                 postMergeFinishBranchingCondition = suggestedBlockIsPostMerge &&
                                                     _blockTree.WasProcessed(branchingPoint.Number, branchingPoint.Hash) == false;
+                _logger.Info($"Conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}, postMergeFinishBranchingCondition: {postMergeFinishBranchingCondition}");
             } while (preMergeFinishBranchingCondition || postMergeFinishBranchingCondition);
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
