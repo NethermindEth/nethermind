@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Numerics;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -695,10 +696,10 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
             Assert.True(trace.StateChanges.ContainsKey(TestItem.AddressC), "address c");
             Assert.AreEqual(2, trace.StateChanges[Recipient].Storage.Count, "recipient storage count");
-            Assert.AreEqual(new byte[] {0}, trace.StateChanges[Recipient].Storage[2].Before, "recipient storage[2]");
-            Assert.AreEqual(Bytes.FromHexString(SampleHexData1), trace.StateChanges[Recipient].Storage[2].After, "recipient storage[2] after");
-            Assert.AreEqual(new byte[] {0}, trace.StateChanges[Recipient].Storage[3].Before, "recipient storage[3]");
-            Assert.AreEqual(Bytes.FromHexString(SampleHexData2), trace.StateChanges[Recipient].Storage[3].After, "recipient storage[3] after");
+            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), trace.StateChanges[Recipient].Storage[2].Before, "recipient storage[2]");
+            Assert.AreEqual(new BigInteger(Bytes.FromHexString(SampleHexData1), true, true).ToBigEndianByteArray(32), trace.StateChanges[Recipient].Storage[2].After, "recipient storage[2] after");
+            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), trace.StateChanges[Recipient].Storage[3].Before, "recipient storage[3]");
+            Assert.AreEqual(new BigInteger(Bytes.FromHexString(SampleHexData2), true, true).ToBigEndianByteArray(32), trace.StateChanges[Recipient].Storage[3].After, "recipient storage[3] after");
         }
 
         [Test]
