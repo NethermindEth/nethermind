@@ -20,18 +20,21 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.VM.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class VmLogTests : GeneralStateTestBase
+    public class VmBitwiseLogicOperationTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GeneralStateTest test)
-        {    
+        {
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmLogTest");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        { 
+            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmBitwiseLogicOperation");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
+        }
     }
 }

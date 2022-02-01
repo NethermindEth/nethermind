@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -20,20 +20,22 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.VM.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
     // ReSharper disable once InconsistentNaming
-    public class VmPerformanceTests : GeneralStateTestBase
+    public class VmIOAndFlowOperationsTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        [Retry(3)]
         public void Test(GeneralStateTest test)
-        {    
+        {
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmPerformance");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        { 
+            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmIOAndFlowOperations");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
+        }
     }
 }
