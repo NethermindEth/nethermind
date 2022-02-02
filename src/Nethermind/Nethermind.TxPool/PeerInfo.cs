@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -37,21 +38,24 @@ namespace Nethermind.TxPool
 
         public void SendNewTransaction(Transaction tx)
         {
-            if (NotifiedTransactions.Set(tx.Hash))
-            {
-                Peer.SendNewTransaction(tx);
-            }
+            Peer.SendNewTransaction(tx);
         }
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs)
+        public void SendNewTransactions(IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
         {
             Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs));
         }
 
-        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs)
+        public void SendNewTransactions(IEnumerable<Transaction> txs) => SendNewTransactions(txs.Select(t => (t, false)));
+
+        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
         {
-            foreach (Transaction tx in txs)
+            foreach ((Transaction tx, bool isPersistent) in txs)
             {
+                if (isPersistent)
+                {
+                    yield return tx;
+                }
                 if (NotifiedTransactions.Set(tx.Hash))
                 {
                     yield return tx;
