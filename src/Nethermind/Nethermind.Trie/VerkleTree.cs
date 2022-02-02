@@ -112,14 +112,28 @@ public class VerkleTree
         // TODO; error handling here? or at least a way to check if the operation was successful
         RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey.ToArray(), value);
     }
+    
+    [DebuggerStepThrough]
+    public void SetValue(Span<byte> keyPrefix, byte subIndex, byte[] value)
+    {
+        if (_logger.IsTrace)
+            _logger.Trace($"{(value.Length == 0 ? $"Deleting {keyPrefix.ToHexString() + subIndex}" : $"Setting {keyPrefix.ToHexString() + + subIndex} = {value.ToHexString()}")}");
+        // TODO; error handling here? or at least a way to check if the operation was successful
+        keyPrefix[31] = subIndex;
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, keyPrefix.ToArray(), value);
+    }
 
     public byte[] GetTreeKeyPrefix(Address address, UInt256 treeIndex)
     {
-         // is it guaranteed that the its a 12 length byte array initialized with zeros?
          byte[] keyPrefix = new byte[64];
          Array.Copy(address.Bytes, 0, keyPrefix, 12, 20);
          treeIndex.ToBigEndian(keyPrefix.AsSpan(32));
          return Sha2.Compute(keyPrefix);
+    }
+    
+    public byte[] GetTreeKeyPrefixAccount(Address address)
+    {
+        return GetTreeKeyPrefix(address, 0);
     }
     
     public byte[]? GetValue(byte[] keyPrefix, byte subIndex)
@@ -142,32 +156,32 @@ public class VerkleTree
         return treeKeyPrefix;
     }
 
-    public byte[][] GetTreeKeysForAccount(Address address)
-    {
-        byte[] treeKeyPrefix = GetTreeKeyPrefix(address, 0);
-
-        byte[] treeKeyVersion = new byte[32];
-        Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyVersion, 0, 31);
-        treeKeyVersion[31] = VersionLeafKey;
-
-        byte[] treeKeyBalance = new byte[32];
-        Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyBalance, 0, 31);
-        treeKeyBalance[31] = BalanceLeafKey;
-
-        byte[] treeKeyNounce = new byte[32];
-        Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyNounce, 0, 31);
-        treeKeyNounce[31] = NonceLeafKey;
-
-        byte[] treeKeyCodeKeccak = new byte[32];
-        Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeKeccak, 0, 31);
-        treeKeyCodeKeccak[31] = CodeKeccakLeafKey;
-
-        byte[] treeKeyCodeSize = new byte[32];
-        Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeSize, 0, 31);
-        treeKeyCodeSize[31] = CodeSizeLeafKey;
-
-        return new[] { treeKeyVersion, treeKeyBalance, treeKeyNounce, treeKeyCodeKeccak, treeKeyCodeSize };
-    }
+    // public byte[][] GetTreeKeysForAccount(Address address)
+    // {
+    //     byte[] treeKeyPrefix = GetTreeKeyPrefix(address, 0);
+    //
+    //     byte[] treeKeyVersion = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyVersion, 0, 31);
+    //     treeKeyVersion[31] = VersionLeafKey;
+    //
+    //     byte[] treeKeyBalance = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyBalance, 0, 31);
+    //     treeKeyBalance[31] = BalanceLeafKey;
+    //
+    //     byte[] treeKeyNounce = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyNounce, 0, 31);
+    //     treeKeyNounce[31] = NonceLeafKey;
+    //
+    //     byte[] treeKeyCodeKeccak = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeKeccak, 0, 31);
+    //     treeKeyCodeKeccak[31] = CodeKeccakLeafKey;
+    //
+    //     byte[] treeKeyCodeSize = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeSize, 0, 31);
+    //     treeKeyCodeSize[31] = CodeSizeLeafKey;
+    //
+    //     return new[] { treeKeyVersion, treeKeyBalance, treeKeyNounce, treeKeyCodeKeccak, treeKeyCodeSize };
+    // }
 
     // private byte[] GetTreeKeyForAccountLeaf(Address address, byte leaf)
     // {

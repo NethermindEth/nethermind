@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
+
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -72,40 +74,57 @@ public class VerkleTreeTests
         Trie.Metrics.TreeNodeRlpEncodings = 0;
     }
     
+    // [Test]
+    // public void Get_Account_Keys()
+    // {
+    //     VerkleStateTree tree = new(LimboLogs.Instance);
+    //     byte[][] treeKeys = tree.GetTreeKeysForAccount(TestItem.AddressA);
+    //     Assert.AreEqual(treeKeys.Length, 5);
+    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.Version], treeKeyVersion);
+    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.Balance], treeKeyBalance);
+    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.Nonce], treeKeyNonce);
+    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.CodeHash], treeKeyCodeKeccak);
+    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.CodeSize], treeKeyCodeSize);
+    // }
+    
     [Test]
     public void Get_Account_Keys()
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[][] treeKeys = tree.GetTreeKeysForAccount(TestItem.AddressA);
-        Assert.AreEqual(treeKeys.Length, 5);
-        Assert.AreEqual(treeKeys[AccountTreeIndexes.Version], treeKeyVersion);
-        Assert.AreEqual(treeKeys[AccountTreeIndexes.Balance], treeKeyBalance);
-        Assert.AreEqual(treeKeys[AccountTreeIndexes.Nonce], treeKeyNonce);
-        Assert.AreEqual(treeKeys[AccountTreeIndexes.CodeHash], treeKeyCodeKeccak);
-        Assert.AreEqual(treeKeys[AccountTreeIndexes.CodeSize], treeKeyCodeSize);
+        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
+        keyPrefix[31] = AccountTreeIndexes.Version;
+        Assert.AreEqual(keyPrefix, treeKeyVersion);
+        keyPrefix[31] = AccountTreeIndexes.Balance;
+        Assert.AreEqual(keyPrefix, treeKeyBalance);
+        keyPrefix[31] = AccountTreeIndexes.Nonce;
+        Assert.AreEqual(keyPrefix, treeKeyNonce);
+        keyPrefix[31] = AccountTreeIndexes.CodeHash;
+        Assert.AreEqual(keyPrefix, treeKeyCodeKeccak);
+        keyPrefix[31] = AccountTreeIndexes.CodeSize;
+        Assert.AreEqual(keyPrefix, treeKeyCodeSize);
     }
     
     [Test]
     public void Set_Get_Keys()
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[][] treeKeys = tree.GetTreeKeysForAccount(TestItem.AddressA);
+        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
         
         byte[] value =  {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
         };
         
-        tree.SetValue(treeKeys[AccountTreeIndexes.Version], value);
-        tree.SetValue(treeKeys[AccountTreeIndexes.Balance], value);
-        tree.SetValue(treeKeys[AccountTreeIndexes.Nonce], value);
-        tree.SetValue(treeKeys[AccountTreeIndexes.CodeHash], value);
-        tree.SetValue(treeKeys[AccountTreeIndexes.CodeSize], value);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Version, value);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Balance, value);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Nonce, value);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.CodeHash, value);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.CodeSize, value);
 
-        tree.GetValue(treeKeys[AccountTreeIndexes.Version]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.Balance]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.Nonce]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.CodeHash]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.CodeSize]);
+        tree.GetValue(keyPrefix, AccountTreeIndexes.Version).Should().BeEquivalentTo(value);
+        tree.GetValue(keyPrefix, AccountTreeIndexes.Balance).Should().BeEquivalentTo(value);
+        tree.GetValue(keyPrefix, AccountTreeIndexes.Nonce).Should().BeEquivalentTo(value);
+        tree.GetValue(keyPrefix, AccountTreeIndexes.CodeHash).Should().BeEquivalentTo(value);
+        tree.GetValue(keyPrefix, AccountTreeIndexes.CodeSize).Should().BeEquivalentTo(value);
 
     }
     
@@ -113,7 +132,7 @@ public class VerkleTreeTests
     public void Set_Account_Value_Keys()
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[][] treeKeys = tree.GetTreeKeysForAccount(TestItem.AddressA);
+        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
         byte[] version = {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
         };
@@ -131,17 +150,17 @@ public class VerkleTreeTests
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
         };
         
-        tree.SetValue(treeKeys[AccountTreeIndexes.Version], version);
-        tree.SetValue(treeKeys[AccountTreeIndexes.Balance], balance);
-        tree.SetValue(treeKeys[AccountTreeIndexes.Nonce], nonce);
-        tree.SetValue(treeKeys[AccountTreeIndexes.CodeHash], codeHash);
-        tree.SetValue(treeKeys[AccountTreeIndexes.CodeSize], codeSize);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Version, version);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Balance, balance);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Nonce, nonce);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.CodeHash, codeHash);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.CodeSize, codeSize);
 
-        tree.GetValue(treeKeys[AccountTreeIndexes.Version]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.Balance]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.Nonce]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.CodeHash]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.CodeSize]);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.Version).Should().BeEquivalentTo(version);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.Balance).Should().BeEquivalentTo(balance);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.Nonce).Should().BeEquivalentTo(nonce);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.CodeHash).Should().BeEquivalentTo(codeHash);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.CodeSize).Should().BeEquivalentTo(codeSize);
         
     }
     
@@ -149,24 +168,24 @@ public class VerkleTreeTests
     public void Set_Account_Data_Type_Keys()
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[][] treeKeys = tree.GetTreeKeysForAccount(TestItem.AddressA);
+        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
         UInt256 version = UInt256.Zero;
         UInt256 balance = new (2);
         UInt256 nonce = UInt256.Zero;
         Keccak codeHash = Keccak.OfAnEmptyString;
         UInt256 codeSize = UInt256.Zero;
         
-        tree.SetValue(treeKeys[AccountTreeIndexes.Version], version.ToBigEndian());
-        tree.SetValue(treeKeys[AccountTreeIndexes.Balance], balance.ToBigEndian());
-        tree.SetValue(treeKeys[AccountTreeIndexes.Nonce], nonce.ToBigEndian());
-        tree.SetValue(treeKeys[AccountTreeIndexes.CodeHash], codeHash.Bytes);
-        tree.SetValue(treeKeys[AccountTreeIndexes.CodeSize], codeSize.ToBigEndian());
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Version, version.ToBigEndian());
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Balance, balance.ToBigEndian());
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Nonce, nonce.ToBigEndian());
+        tree.SetValue(keyPrefix,AccountTreeIndexes.CodeHash, codeHash.Bytes);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.CodeSize, codeSize.ToBigEndian());
 
-        tree.GetValue(treeKeys[AccountTreeIndexes.Version]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.Balance]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.Nonce]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.CodeHash]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.CodeSize]);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.Version).Should().BeEquivalentTo(version.ToBigEndian());
+        tree.GetValue(keyPrefix,AccountTreeIndexes.Balance).Should().BeEquivalentTo(balance.ToBigEndian());
+        tree.GetValue(keyPrefix,AccountTreeIndexes.Nonce).Should().BeEquivalentTo(nonce.ToBigEndian());
+        tree.GetValue(keyPrefix,AccountTreeIndexes.CodeHash).Should().BeEquivalentTo(codeHash.Bytes);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.CodeSize).Should().BeEquivalentTo(codeSize.ToBigEndian());
         
     }
     
@@ -174,24 +193,24 @@ public class VerkleTreeTests
     public void Set_Account_Keys()
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[][] treeKeys = tree.GetTreeKeysForAccount(TestItem.AddressA);
+        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
         byte[] version = _account2.Version.ToBigEndian();
         byte[] balance = _account2.Balance.ToBigEndian();
         byte[] nonce = _account2.Nonce.ToBigEndian();
         byte[] codeHash = _account2.CodeHash.Bytes;
         byte[] codeSize = _account2.CodeSize.ToBigEndian();
         
-        tree.SetValue(treeKeys[AccountTreeIndexes.Version], version);
-        tree.SetValue(treeKeys[AccountTreeIndexes.Balance], balance);
-        tree.SetValue(treeKeys[AccountTreeIndexes.Nonce], nonce);
-        tree.SetValue(treeKeys[AccountTreeIndexes.CodeHash], codeHash);
-        tree.SetValue(treeKeys[AccountTreeIndexes.CodeSize], codeSize);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Version, version);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Balance, balance);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.Nonce, nonce);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.CodeHash, codeHash);
+        tree.SetValue(keyPrefix,AccountTreeIndexes.CodeSize, codeSize);
         
-        tree.GetValue(treeKeys[AccountTreeIndexes.Version]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.Balance]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.Nonce]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.CodeHash]);
-        tree.GetValue(treeKeys[AccountTreeIndexes.CodeSize]);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.Version).Should().BeEquivalentTo(version);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.Balance).Should().BeEquivalentTo(balance);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.Nonce).Should().BeEquivalentTo(nonce);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.CodeHash).Should().BeEquivalentTo(codeHash);
+        tree.GetValue(keyPrefix,AccountTreeIndexes.CodeSize).Should().BeEquivalentTo(codeSize);
         
     }
     
