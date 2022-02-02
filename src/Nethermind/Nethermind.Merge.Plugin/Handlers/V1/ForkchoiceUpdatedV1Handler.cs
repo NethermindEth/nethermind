@@ -101,7 +101,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             (Block[]? blocks, string? setHeadErrorMsg) =
                 EnsureNewHeadHeader(newHeadBlock);
             if (setHeadErrorMsg != null)
-                return ForkchoiceUpdatedV1Result.Syncing;
+                return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
 
             // if (_ethSyncingInfo.IsSyncing() && synced == false)
             // {
@@ -131,7 +131,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
             if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead)
             {
-                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+                return ForkchoiceUpdatedV1Result.Valid(null, _blockTree.HeadHash);
             }
 
             EnsureTerminalBlock(forkchoiceState, blocks);

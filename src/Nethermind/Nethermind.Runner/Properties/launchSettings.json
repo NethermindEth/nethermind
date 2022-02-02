@@ -162,6 +162,10 @@
       "commandName": "Project",
       "commandLineArgs": "--config kintsugi_fastsync.cfg  --Init.DiagnosticMode MemDb"
     },
+    "themerge_hivetests": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_hivetests.cfg  --Init.DiagnosticMode MemDb"
+    },
     "xDai_themerge": {
       "commandName": "Project",
       "commandLineArgs": "--config xdai_themerge.cfg  --Init.DiagnosticMode MemDb"
