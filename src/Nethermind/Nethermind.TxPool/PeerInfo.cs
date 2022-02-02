@@ -45,9 +45,7 @@ namespace Nethermind.TxPool
         {
             Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs));
         }
-
-        public void SendNewTransactions(IEnumerable<Transaction> txs) => SendNewTransactions(txs.Select(t => (t, false)));
-
+        
         private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
         {
             foreach ((Transaction tx, bool isPersistent) in txs)
