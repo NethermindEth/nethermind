@@ -37,10 +37,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
         [Test]
         public void copies_state_between_dbs()
         {
-            MemDb trieDb = new MemDb();
-            MemDb clonedDb = new MemDb();
-            
-            CopyDb(trieDb, clonedDb);
+            MemDb trieDb = new();
+            MemDb clonedDb = new();
+            CopyDb(StartPruning(trieDb, clonedDb), trieDb, clonedDb);
 
             clonedDb.Count.Should().Be(132);
             clonedDb.Keys.Should().BeEquivalentTo(trieDb.Keys);
@@ -52,8 +51,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             MemDb trieDb = new();
             MemDb clonedDb = new();
-            IPruningContext? pruningContext = null;
-            Task task = Task.Run(() => pruningContext = CopyDb(trieDb, clonedDb));
+            IPruningContext pruningContext = StartPruning(trieDb, clonedDb);
+            Task task = Task.Run(() => CopyDb(pruningContext, trieDb, clonedDb));
             
             pruningContext?.CancellationTokenSource.Cancel();
             
@@ -62,20 +61,24 @@ namespace Nethermind.Blockchain.Test.FullPruning
             clonedDb.Count.Should().BeLessThan(trieDb.Count);
         }
 
-        private static IPruningContext CopyDb(MemDb trieDb, MemDb clonedDb)
+        private static IPruningContext CopyDb(IPruningContext pruningContext, MemDb trieDb, MemDb clonedDb)
         {
-            IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
-            rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(trieDb, clonedDb);
-
-            FullPruningDb fullPruningDb = new(new RocksDbSettings("Test", "Test"), rocksDbFactory);
-            fullPruningDb.TryStartPruning(out IPruningContext pruningContext);
-
             LimboLogs logManager = LimboLogs.Instance;
             PatriciaTree trie = Build.A.Trie(trieDb).WithAccountsByIndex(0, 100).TestObject;
             IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
 
             using CopyTreeVisitor copyTreeVisitor = new(pruningContext, logManager);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash);
+            return pruningContext;
+        }
+
+        private static IPruningContext StartPruning(MemDb trieDb, MemDb clonedDb)
+        {
+            IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
+            rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(trieDb, clonedDb);
+
+            FullPruningDb fullPruningDb = new(new RocksDbSettings("Test", "Test"), rocksDbFactory);
+            fullPruningDb.TryStartPruning(out IPruningContext pruningContext);
             return pruningContext;
         }
     }

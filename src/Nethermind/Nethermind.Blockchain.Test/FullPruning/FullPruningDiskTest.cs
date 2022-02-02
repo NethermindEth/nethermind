@@ -54,6 +54,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public TempPath TempDirectory { get; }
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
             public FullTestPruner FullPruner { get; private set; }
+            public IPruningConfig PruningConfig { get; set; } = new PruningConfig();
 
             public PruningTestBlockchain()
             {
@@ -64,7 +65,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
-                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, new PruningConfig(), BlockTree, StateReader, LogManager);
+                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, LogManager);
                 return chain;
             }
 
@@ -85,9 +86,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-            public static async Task<PruningTestBlockchain> Create()
+            public static async Task<PruningTestBlockchain> Create(IPruningConfig pruningConfig = null)
             {
-                PruningTestBlockchain chain = new();
+                PruningTestBlockchain chain = new() { PruningConfig = pruningConfig ?? new PruningConfig() };
                 await chain.Build();
                 return chain;
             }
@@ -113,24 +114,49 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     WaitHandle.Set();
                 }
             }
-            
         }
             
         [Test]
-        public async Task prune_on_disk()
+        public async Task prune_on_disk_multiple_times()
         {
-            using (PruningTestBlockchain chain = await PruningTestBlockchain.Create())
+            using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 });
+            for (int i = 0; i < 3; i++)
             {
-                chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
+                await RunPruning(chain, i, false);
+            }
+        }
+        
+        [Test]
+        public async Task prune_on_disk_only_once()
+        {
+            using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 10 });
+            for (int i = 0; i < 3; i++)
+            {
+                await RunPruning(chain, i, true);
+            }
+        }
+
+        private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
+        {
+            chain.FullPruner.WaitHandle.Reset();
+            chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
+            for (int i = 0; i < Reorganization.MaxDepth + 2; i++)
+            {
                 await chain.AddBlock(true);
-                HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-                bool pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));
-                
+            }
+
+            HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
+            bool pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));
+            
+            await chain.AddBlock(true);
+
+            if (!onlyFirstRuns || time == 0)
+            {
                 pruningFinished.Should().BeTrue();
 
                 await WriteFileStructure(chain);
 
-                chain.PruningDb.InnerDbName.Should().Be("State1");
+                chain.PruningDb.InnerDbName.Should().Be($"State{time + 1}");
 
                 HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
                 currentItems.IsSubsetOf(allItems).Should().BeTrue();

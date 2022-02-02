@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.FullPruning
                 e.Status = PruningStatus.Delayed;
             }
             // If we are already pruning, we don't need to do anything
-            if (CanStartNewPruning())
+            else if (CanStartNewPruning())
             {
                 // we mark that we are waiting for block (for thread safety)
                 if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
@@ -177,8 +177,6 @@ namespace Nethermind.Blockchain.FullPruning
 
                 if (!pruning.CancellationTokenSource.IsCancellationRequested)
                 {
-                    copyTreeVisitor.Finish();
-
                     void CommitOnNewBLock(object o, BlockEventArgs e)
                     {
                         _blockTree.NewHeadBlock -= CommitOnNewBLock;
@@ -190,6 +188,7 @@ namespace Nethermind.Blockchain.FullPruning
                     }
 
                     _blockTree.NewHeadBlock += CommitOnNewBLock;
+                    copyTreeVisitor.Finish();
                 }
                 else
                 {

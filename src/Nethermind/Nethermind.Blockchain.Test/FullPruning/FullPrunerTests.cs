@@ -89,13 +89,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             TestContext test = CreateTest();
             test.FullPruningDb.CanStartPruning.Should().BeTrue();
-            
-            test.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
-            test.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+
+            var pruningContext = test.WaitForPruningStart();
             test.FullPruningDb.CanStartPruning.Should().BeFalse();
-            test.FullPruningDb.Context.WaitForFinish.Set();
-            await test.FullPruningDb.Context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(10), CancellationToken.None);
-            
+            await test.WaitForPruningEnd(pruningContext);
+
             test.FullPruningDb.CanStartPruning.Should().BeTrue();
         }
 
@@ -144,6 +142,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             private readonly bool _clearPrunedDb;
             private readonly Keccak _stateRoot;
+            private long _head = 0;
             public TestFullPruningDb FullPruningDb { get; }
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
@@ -154,6 +153,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             public TestContext(bool successfulPruning, bool clearPrunedDb = false)
             {
+                BlockTree.NewHeadBlock += (_, e) => _head = e.Block.Number; 
                 _clearPrunedDb = clearPrunedDb;
                 TrieDb = new MemDb();
                 CopyDb = new MemDb();
@@ -180,24 +180,32 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 return result;
             }
 
-            public Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
+            public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
             {
-                return context is not null
-                    ? context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(10), CancellationToken.None)
-                    : Task.FromResult(false);
+                await context.WaitForFinish.WaitOneAsync(TimeSpan.FromMilliseconds(10), CancellationToken.None);
+                AddBlocks(1);
+                return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(10), CancellationToken.None);
             }
 
             public TestFullPruningDb.TestPruningContext WaitForPruningStart()
             {
                 PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
-                BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.WithStateRoot(_stateRoot).TestObject));
+                AddBlocks(Reorganization.MaxDepth + 2);
                 TestFullPruningDb.TestPruningContext context = FullPruningDb.Context;
-                if (context is not null)
-                {
-                    context.WaitForFinish.Set();
-                }
-
                 return context;
+            }
+
+            public void AddBlocks(long count)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    long number = _head + 1;
+                    BlockTree.BestPersistedState.Returns(_head);
+                    Block head = Build.A.Block.WithStateRoot(_stateRoot).WithNumber(number).TestObject;
+                    BlockTree.Head.Returns(head);
+                    BlockTree.FindHeader(number).Returns(head.Header);
+                    BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(head));
+                }
             }
         }
         
@@ -226,9 +234,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 }
             }
 
-            public override bool TryStartPruning(bool isMemory, out IPruningContext context)
+            public override bool TryStartPruning(bool duplicateReads, out IPruningContext context)
             {
-                if (base.TryStartPruning(out context))
+                if (base.TryStartPruning(duplicateReads, out context))
                 {
                     context = Context = new TestPruningContext(context, _successfulPruning);
                     PruningStarted++;
@@ -266,7 +274,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
                 public void Commit()
                 {
-                    WaitForFinish.WaitOne();
+                    WaitForFinish.Set();
                     if (_successfulPruning)
                     {
                         _context.Commit();
