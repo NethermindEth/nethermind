@@ -22,7 +22,8 @@ using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     // ReSharper disable once InconsistentNaming
     public class IOAndFlowOperationsTests : GeneralStateTestBase
     {

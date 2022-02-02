@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -22,7 +22,8 @@ using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     // ReSharper disable once InconsistentNaming
     public class PerformanceTests : GeneralStateTestBase
     {

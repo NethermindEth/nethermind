@@ -22,7 +22,8 @@ using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class LogTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
