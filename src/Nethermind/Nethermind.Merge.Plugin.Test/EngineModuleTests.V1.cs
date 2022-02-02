@@ -524,8 +524,8 @@ namespace Nethermind.Merge.Plugin.Test
             ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, TestItem.KeccakF);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-            forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-                .Be(nameof(PayloadStatus.Syncing).ToUpper());
+            forkchoiceUpdatedResult.ErrorCode.Should()
+                .Be(ErrorCodes.InvalidParams);
 
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(newHeadHash);
