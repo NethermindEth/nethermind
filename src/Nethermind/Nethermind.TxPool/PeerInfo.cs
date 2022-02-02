@@ -52,11 +52,7 @@ namespace Nethermind.TxPool
         {
             foreach ((Transaction tx, bool isPersistent) in txs)
             {
-                if (isPersistent)
-                {
-                    yield return tx;
-                }
-                if (NotifiedTransactions.Set(tx.Hash))
+                if (isPersistent || NotifiedTransactions.Set(tx.Hash))
                 {
                     yield return tx;
                 }
