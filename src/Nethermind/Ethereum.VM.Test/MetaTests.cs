@@ -1,5 +1,5 @@
 ﻿/*
- * Copyright (c) 2021 Demerzel Solutions Limited
+ * Copyright (c) 2022 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,9 +22,10 @@ using System.IO;
 using System.Linq;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Block.Test
+namespace Ethereum.VM.Test
 {
-    [TestFixture][Parallelizable(ParallelScope.All)]
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class MetaTests
     {
         [Test]
@@ -33,7 +34,7 @@ namespace Ethereum.Blockchain.Block.Test
             string[] directories =
                 Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
                 .Select(Path.GetFileName)
-                .Where(d =>d.StartsWith("bc"))
+                .Where(d =>d.StartsWith("vm"))
                 .ToArray();
             
             Type[] types = GetType().Assembly.GetTypes();
@@ -62,7 +63,6 @@ namespace Ethereum.Blockchain.Block.Test
 
         private static string ExpectedTypeName(string directory)
         {
-            string prefix = directory.StartsWith("vm") ? "Vm" : "";
             string expectedTypeName = directory.Remove(0, 2);
             if (!expectedTypeName.EndsWith("Tests"))
             {
@@ -76,7 +76,7 @@ namespace Ethereum.Blockchain.Block.Test
                 }
             }
 
-            return prefix + expectedTypeName;
+            return expectedTypeName;
         }
     }
 }

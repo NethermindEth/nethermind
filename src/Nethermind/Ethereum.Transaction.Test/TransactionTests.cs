@@ -55,12 +55,6 @@ namespace Ethereum.Transaction.Test
                 IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
                 foreach (string testFile in testFiles)
                 {
-                    // am I sure?
-                    if (testFile.Contains("_gnv") || testFile.Contains("TransactionWithRvaluePrefixed00"))
-                    {
-                        continue;
-                    }
-
                     string json = File.ReadAllText(testFile);
                     Dictionary<string, TransactionTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, TransactionTestJson>>(json);
                     foreach (KeyValuePair<string, TransactionTestJson> namedTest in testsInFile)
@@ -105,70 +99,71 @@ namespace Ethereum.Transaction.Test
             return tests;
         }
         
-        [TestCaseSource(nameof(LoadTests), new object[] { "Constantinople" })]
-        public void Test_constantinople(TransactionTest test)
-        {
-            RunTest(test, Byzantium.Instance);
-        }
-
-        [TestCaseSource(nameof(LoadTests), new object[] { "Eip155VitaliksEip158" })]
-        public void Test_eip155VitaliksEip158(TransactionTest test)
-        {
-            RunTest(test, SpuriousDragon.Instance);
-        }
-
-        [TestCaseSource(nameof(LoadTests), new object[] { "Eip155VitaliksHomesead" })]
-        public void Test_eip155VitaliksHomesead(TransactionTest test)
-        {
-            RunTest(test, Homestead.Instance);
-        }
-
-        [TestCaseSource(nameof(LoadTests), new object[] { "Eip158" })]
-        public void Test_eip158(TransactionTest test)
-        {
-            RunTest(test, SpuriousDragon.Instance);
-        }
-
-        [TestCaseSource(nameof(LoadTests), new object[] { "Frontier" })]
-        public void Test_frontier(TransactionTest test)
+        [TestCaseSource(nameof(LoadTests), new object[] { "Address" })]
+        public void Test_Address(TransactionTest test)
         {
             RunTest(test, Frontier.Instance);
         }
 
-        [TestCaseSource(nameof(LoadTests), new object[] { "Homestead" })]
-        public void Test_homestead(TransactionTest test)
-        {
-            RunTest(test, Homestead.Instance);
-        }
-
-        [TestCaseSource(nameof(LoadTests), new object[] { "SpecConstantinople" })]
-        public void Test_spec_constantinople(TransactionTest test)
-        {
-            RunTest(test, Byzantium.Instance);
-        }
-
-        [TestCaseSource(nameof(LoadTests), new object[] { "VRuleEip158" })]
-        public void Test_v_rule_eip158(TransactionTest test)
-        {
-            RunTest(test, SpuriousDragon.Instance);
-        }
-
-        [TestCaseSource(nameof(LoadTests), new object[] { "WrongRLPFrontier" })]
-        public void Test_wrong_rlp_frontier(TransactionTest test)
+        [TestCaseSource(nameof(LoadTests), new object[] { "Data" })]
+        public void Test_Data(TransactionTest test)
         {
             RunTest(test, Frontier.Instance);
         }
 
-        [TestCaseSource(nameof(LoadTests), new object[] { "WrongRLPHomestead" })]
-        public void Test_wrong_rlp_homestead(TransactionTest test)
+        [TestCaseSource(nameof(LoadTests), new object[] { "EIP2028" })]
+        public void Test_EIP2028(TransactionTest test)
         {
-            RunTest(test, Homestead.Instance);
+            RunTest(test, Frontier.Instance);
         }
 
-        [TestCaseSource(nameof(LoadTests), new object[] { "ZeroSigConstantinople" })]
-        public void Test_zero_sig_constantinople(TransactionTest test)
+        [TestCaseSource(nameof(LoadTests), new object[] { "GasLimit" })]
+        public void Test_GasLimit(TransactionTest test)
         {
-            RunTest(test, Byzantium.Instance);
+            RunTest(test, Frontier.Instance);
+        }
+
+        [TestCaseSource(nameof(LoadTests), new object[] { "GasPrice" })]
+        public void Test_GasPrice(TransactionTest test)
+        {
+            RunTest(test, Frontier.Instance);
+        }
+
+        [TestCaseSource(nameof(LoadTests), new object[] { "Nonce" })]
+        public void Test_Nonce(TransactionTest test)
+        {
+            RunTest(test, Frontier.Instance);
+        }
+
+        [TestCaseSource(nameof(LoadTests), new object[] { "RSValue" })]
+        public void Test_RSValue(TransactionTest test)
+        {
+            RunTest(test, Frontier.Instance);
+        }
+
+        [TestCaseSource(nameof(LoadTests), new object[] { "Signature" })]
+        public void Test_Signature(TransactionTest test)
+        {
+            RunTest(test, Frontier.Instance);
+        }
+
+        [TestCaseSource(nameof(LoadTests), new object[] { "Value" })]
+        public void Test_Value(TransactionTest test)
+        {
+            RunTest(test, Frontier.Instance);
+        }
+
+        // ToDo: this tests are not starting because of TargetInvocationException
+        // [TestCaseSource(nameof(LoadTests), new object[] { "VValue" })]
+        // public void Test_VValue(TransactionTest test)
+        // {
+        //     RunTest(test, Frontier.Instance);
+        // }
+
+        [TestCaseSource(nameof(LoadTests), new object[] { "WrongRLP" })]
+        public void Test_WrongRLP(TransactionTest test)
+        {
+            RunTest(test, Frontier.Instance);
         }
 
         private void RunTest(TransactionTest test, IReleaseSpec spec)

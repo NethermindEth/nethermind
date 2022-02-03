@@ -17,26 +17,26 @@
  */
 
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Block.Test
+namespace Ethereum.VM.Test
 {
     [TestFixture]
     [Parallelizable(ParallelScope.All)]
-    public class VmSystemOperationsTests : BlockchainTestBase
+    // ReSharper disable once InconsistentNaming
+    public class IOAndFlowOperationsTests : GeneralStateTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(BlockchainTest test)
+        public void Test(GeneralStateTest test)
         {
-            await RunTest(test);
+            Assert.True(RunTest(test).Pass);
         }
-
-        public static IEnumerable<BlockchainTest> LoadTests()
-        {
-            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "vmSystemOperations");
-        return (IEnumerable<BlockchainTest>)loader.LoadTests();      
+        
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        { 
+            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmIOAndFlowOperations");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
         }
     }
 }
