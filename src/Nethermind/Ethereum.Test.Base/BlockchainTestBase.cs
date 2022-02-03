@@ -119,6 +119,9 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
+            bool isNetworkAfterTransitionLondon = test.NetworkAfterTransition == London.Instance;
+            HeaderDecoder.Eip1559TransitionBlock = isNetworkAfterTransitionLondon ? test.TransitionBlockNumber : long.MaxValue;
+
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 

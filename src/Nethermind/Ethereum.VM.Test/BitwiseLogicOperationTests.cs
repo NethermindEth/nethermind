@@ -16,24 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Linq;
+using System.Collections.Generic;
+using Ethereum.Test.Base;
 using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    public class BlockInfoTests : VMTestBase
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    public class BitwiseLogicOperationTests : GeneralStateTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] {"BlockInfoTest"})]
-        public void Test(VirtualMachineTest test)
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(GeneralStateTest test)
         {
-            // TODO: check why the tests are incorrect here
-            string[] incorrectTests = {"blockhash258Block", "blockhashMyBlock", "blockhashNotExistingBlock"};
-            if (incorrectTests.Contains(test.Name))
-            {
-                return;
-            }
-
-            RunTest(test);
+            Assert.True(RunTest(test).Pass);
+        }
+        
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        { 
+            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmBitwiseLogicOperation");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
         }
     }
 }

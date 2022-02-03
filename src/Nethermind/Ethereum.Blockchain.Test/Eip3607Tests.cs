@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2021 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,26 +17,21 @@
  */
 
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Block.Test
+namespace Ethereum.Blockchain.Test
 {
-    [TestFixture]
-    [Parallelizable(ParallelScope.All)]
-    public class VmPerformanceTests : BlockchainTestBase
+    [TestFixture][Parallelizable(ParallelScope.All)]
+    public class Eip3607Tests : GeneralStateTestBase
     {
-        [TestCaseSource(nameof(LoadTests)), Retry(3)]
-        public async Task Test(BlockchainTest test)
-        {
-            await RunTest(test);
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(GeneralStateTest test)
+        {    
+            Assert.True(RunTest(test).Pass);
         }
-
-        public static IEnumerable<BlockchainTest> LoadTests()
-        {
-            var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "VmPerformance");
-        return (IEnumerable<BlockchainTest>)loader.LoadTests();      
-        }
+        
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "stEIP3607");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }
