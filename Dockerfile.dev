@@ -9,12 +9,10 @@ COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ] ; \
     then git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
-    dotnet tool install JetBrains.dotTrace.GlobalTools --version 2021.3.2 --tool-path /tmp/ && \
-    dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-x64 --version 2021.3.2 --package-directory /tmp/ && \
+    dotnet tool install --global dotnet-dump && \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
     else git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
-    dotnet tool install JetBrains.dotTrace.GlobalTools --version 2021.3.2 --tool-path /tmp/ && \
-    dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-$TARGETARCH --version 2021.3.2 --package-directory /tmp/ && \
+    dotnet tool install --global dotnet-dump && \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
     fi
 
@@ -24,9 +22,6 @@ RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 procps
 WORKDIR /nethermind
 
 COPY --from=build /out .
-COPY --from=build /tmp/jetbrains.dotmemory.console.* ../tools
-COPY --from=build /tmp/dottrace ../tools
-COPY --from=build /tmp/.store ../tools/.store
 
 ARG GIT_COMMIT=unspecified
 LABEL git_commit=$GIT_COMMIT
