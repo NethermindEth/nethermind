@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Abi;
@@ -38,10 +39,10 @@ namespace Nethermind.AccountAbstraction
         private ILogger _logger = null!;
 
         private INethermindApi _nethermindApi = null!;
-        private Address _entryPointContractAddress = null!;
-        private UserOperationPool? _userOperationPool;
-        private UserOperationSimulator? _userOperationSimulator;
-        private UserOperationTxBuilder? _userOperationTxBuilder;
+        private IEnumerable<Address> _entryPointContractAddresses = new List<Address>();
+        private IDictionary<Address, UserOperationPool> _userOperationPools = new Dictionary<Address, UserOperationPool>(); // EntryPoint Address -> Pool
+        private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
+        private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
         private UserOperationTxSource? _userOperationTxSource;
         private IBundler? _bundler;
 
@@ -50,26 +51,25 @@ namespace Nethermind.AccountAbstraction
             .OfType<MevPlugin>()
             .Single();
 
-        private UserOperationTxBuilder UserOperationTxBuilder
+        private UserOperationTxBuilder UserOperationTxBuilder(Address entryPoint)
         {
-            get
+            if (_userOperationTxBuilders.TryGetValue(entryPoint, out UserOperationTxBuilder? userOperationTxBuilder))
             {
-                if (_userOperationTxBuilder is null)
-                {
-                    var (getFromApi, _) = _nethermindApi!.ForProducer;
-
-                    _userOperationTxBuilder = new UserOperationTxBuilder(
-                        _entryPointContractAbi,
-                        getFromApi.EngineSigner!, 
-                        _entryPointContractAddress, 
-                        getFromApi.SpecProvider!,
-                        getFromApi.StateProvider!);
-                }
-
-                return _userOperationTxBuilder;
+                return userOperationTxBuilder;
             }
+            
+            var (getFromApi, _) = _nethermindApi!.ForProducer;
+
+            _userOperationTxBuilders[entryPoint] = new UserOperationTxBuilder(
+                _entryPointContractAbi,
+                getFromApi.EngineSigner!, 
+                entryPoint, 
+                getFromApi.SpecProvider!,
+                getFromApi.StateProvider!);
+
+            return _userOperationTxBuilders[entryPoint];
         }
-        
+
         private UserOperationPool UserOperationPool
         {
             get
