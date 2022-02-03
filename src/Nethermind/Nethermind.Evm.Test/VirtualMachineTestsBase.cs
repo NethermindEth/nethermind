@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test
 {
     public class VirtualMachineTestsBase
     {
-        private readonly VirtualMachineTestsStateProvider _stateProvider;
+        protected readonly VirtualMachineTestsStateProvider _stateProvider;
 
         public enum VirtualMachineTestsStateProvider
         {
@@ -72,15 +72,13 @@ namespace Nethermind.Evm.Test
 
         protected virtual ILogManager GetLogManager()
         {
-            return new NUnitLogManager();
+            return LimboLogs.Instance;
         }
 
         public VirtualMachineTestsBase(VirtualMachineTestsStateProvider stateProvider)
         {
             _stateProvider = stateProvider;
         }
-        
-        public VirtualMachineTestsBase() :this(VirtualMachineTestsStateProvider.MerkleTrie) { }
         
         [SetUp]
         public virtual void Setup()
@@ -254,13 +252,21 @@ namespace Nethermind.Evm.Test
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
-            byte[] expected = expectedValue.ToBigEndianByteArray(32);
+            byte[] expected;
+            if (expectedValue < 0)
+            {
+                expected = expectedValue.ToBigEndianByteArray(32);
+            }
+            else
+            {
+                expected = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            }
             Assert.AreEqual(expected, actualValue, "storage");
         }
         
         protected void AssertStorage(UInt256 address, UInt256 expectedValue)
         {
-            byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray(32);
+            byte[] bytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? ((BigInteger)expectedValue).ToBigEndianByteArray() : ((BigInteger)expectedValue).ToBigEndianByteArray(32);
 
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
             Assert.AreEqual(bytes, actualValue, "storage");
@@ -270,15 +276,17 @@ namespace Nethermind.Evm.Test
         
         protected void AssertStorage(StorageCell storageCell, UInt256 expectedValue)
         {
+            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray() : expectedValue.ToBigEndian();
             _callIndex++;
             if (!TestState.AccountExists(storageCell.Address))
             {
-                Assert.AreEqual(expectedValue.ToBigEndian(), new BigInteger(0).ToBigEndianByteArray(32), $"storage {storageCell}, call {_callIndex}");
+                byte[] bytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? new BigInteger(0).ToBigEndianByteArray() : new BigInteger(0).ToBigEndianByteArray(32);
+                Assert.AreEqual(expectedValueBytes, bytes, $"storage {storageCell}, call {_callIndex}");
             }
             else
             {
                 byte[] actualValue = Storage.Get(storageCell);
-                Assert.AreEqual(expectedValue.ToBigEndian(), actualValue, $"storage {storageCell}, call {_callIndex}");    
+                Assert.AreEqual(expectedValueBytes, actualValue, $"storage {storageCell}, call {_callIndex}");    
             }
         }
 

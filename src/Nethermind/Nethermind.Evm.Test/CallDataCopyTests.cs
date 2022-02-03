@@ -19,8 +19,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class CallDataCopyTests : VirtualMachineTestsBase
     {
+        public CallDataCopyTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         [Test]
         public void Ranges()
         {

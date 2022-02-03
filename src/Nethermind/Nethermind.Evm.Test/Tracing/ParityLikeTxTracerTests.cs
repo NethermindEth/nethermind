@@ -30,7 +30,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     {
         [Test]
@@ -696,10 +697,18 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
             Assert.True(trace.StateChanges.ContainsKey(TestItem.AddressC), "address c");
             Assert.AreEqual(2, trace.StateChanges[Recipient].Storage.Count, "recipient storage count");
-            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), trace.StateChanges[Recipient].Storage[2].Before, "recipient storage[2]");
-            Assert.AreEqual(new BigInteger(Bytes.FromHexString(SampleHexData1), true, true).ToBigEndianByteArray(32), trace.StateChanges[Recipient].Storage[2].After, "recipient storage[2] after");
-            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), trace.StateChanges[Recipient].Storage[3].Before, "recipient storage[3]");
-            Assert.AreEqual(new BigInteger(Bytes.FromHexString(SampleHexData2), true, true).ToBigEndianByteArray(32), trace.StateChanges[Recipient].Storage[3].After, "recipient storage[3] after");
+            BigInteger expectedValue = new BigInteger(0);
+            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            Assert.AreEqual(expectedValueBytes, trace.StateChanges[Recipient].Storage[2].Before, "recipient storage[2]");
+            expectedValue = new BigInteger(Bytes.FromHexString(SampleHexData1), true, true);
+            expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            Assert.AreEqual(expectedValueBytes, trace.StateChanges[Recipient].Storage[2].After, "recipient storage[2] after");
+            expectedValue = new BigInteger(0);
+            expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            Assert.AreEqual(expectedValueBytes, trace.StateChanges[Recipient].Storage[3].Before, "recipient storage[3]");
+            expectedValue = new BigInteger(Bytes.FromHexString(SampleHexData2), true, true);
+            expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            Assert.AreEqual(expectedValueBytes, trace.StateChanges[Recipient].Storage[3].After, "recipient storage[3] after");
         }
 
         [Test]
@@ -833,6 +842,10 @@ namespace Nethermind.Evm.Test.Tracing
             ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
+        }
+
+        public ParityLikeTxTracerTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
         }
     }
 }

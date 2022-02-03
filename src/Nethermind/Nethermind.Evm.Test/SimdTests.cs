@@ -23,11 +23,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
+    [TestFixture(true, VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(false, VirtualMachineTestsStateProvider.VerkleTrie)]
     // [Parallelizable(ParallelScope.Self)]
     public class SimdTests : VirtualMachineTestsBase
     {
+        public SimdTests(bool simdDisabled, VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+            _simdDisabled = simdDisabled;
+        }
         private readonly bool _simdDisabled;
         protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
@@ -36,11 +40,6 @@ namespace Nethermind.Evm.Test
             AssertCodeHash(address, Keccak.Compute(code));
         }
 
-        public SimdTests(bool simdDisabled)
-        {
-            _simdDisabled = simdDisabled;
-        }
-        
         [Test]
         public void And()
         {

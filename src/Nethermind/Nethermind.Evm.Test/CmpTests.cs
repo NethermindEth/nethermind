@@ -23,7 +23,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture(true, VirtualMachineTestsStateProvider.MerkleTrie)]
-    [TestFixture(true, VirtualMachineTestsBase.VirtualMachineTestsStateProvider.VerkleTrie)]
+    [TestFixture(true, VirtualMachineTestsStateProvider.VerkleTrie)]
     [TestFixture(false, VirtualMachineTestsStateProvider.MerkleTrie)]
     [TestFixture(false, VirtualMachineTestsStateProvider.VerkleTrie)]
     // [Parallelizable(ParallelScope.Self)]
