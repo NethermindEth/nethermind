@@ -66,7 +66,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _logManager = logManager;
 
-            _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, logManager);
+            _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, beaconPivot, logManager);
         }
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)

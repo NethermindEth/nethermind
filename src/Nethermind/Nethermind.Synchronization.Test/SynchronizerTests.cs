@@ -309,6 +309,7 @@ namespace Nethermind.Synchronization.Test
                     _logManager);
                 MultiSyncModeSelector syncModeSelector = new MultiSyncModeSelector(syncProgressResolver, SyncPeerPool,
                     syncConfig, No.BeaconSync, _logManager);
+                Pivot pivot = new Pivot(syncConfig);
                 BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(MainnetSpecProvider.Instance,
                     BlockTree,
                     NullReceiptStorage.Instance,
@@ -318,6 +319,7 @@ namespace Nethermind.Synchronization.Test
                     stats,
                     syncModeSelector,
                     syncConfig,
+                    pivot,
                     _logManager);
                 Synchronizer = new Synchronizer(
                     dbProvider,
@@ -329,6 +331,7 @@ namespace Nethermind.Synchronization.Test
                     syncModeSelector,
                     syncConfig,
                     blockDownloaderFactory,
+                    pivot,
                     _logManager);
 
                 SyncServer = new SyncServer(

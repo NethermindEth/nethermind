@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         FastBlocks = 4,
         /// <summary>
-        /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the picot for fast blocks is 0 so the fast blocks finish immediately. 
+        /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the pivot for fast blocks is 0 so the fast blocks finish immediately. 
         /// </summary>
         FastSync = 8,
         /// <summary>

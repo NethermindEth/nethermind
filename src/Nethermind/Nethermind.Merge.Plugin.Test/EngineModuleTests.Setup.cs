@@ -18,6 +18,7 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -56,7 +57,7 @@ namespace Nethermind.Merge.Plugin.Test
             PayloadStorage? payloadStorage = new(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.LogManager);
             IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, chain.EmptyBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            IBeaconPivot beaconPivot = new BeaconPivot(chain.BlockTree, chain.LogManager);
+            IBeaconPivot beaconPivot = new BeaconPivot(new SyncConfig(), new MemDb(), chain.BlockTree, chain.LogManager);
             BeaconSync beaconSync = new(beaconPivot, chain.BlockTree, syncProgressResolver);
 
             return new EngineRpcModule(

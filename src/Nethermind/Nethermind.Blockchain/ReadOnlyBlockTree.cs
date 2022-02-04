@@ -47,6 +47,8 @@ namespace Nethermind.Blockchain
           get => _wrapped.LowestInsertedBodyNumber;
           set => _wrapped.LowestInsertedBodyNumber = value;
         }
+
+        public BlockHeader? LowestInsertedBeaconHeader => _wrapped.LowestInsertedBeaconHeader;
         
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
@@ -106,7 +108,9 @@ namespace Nethermind.Blockchain
         public bool IsKnownBlock(long number, Keccak blockHash) => _wrapped.IsKnownBlock(number, blockHash);
 
         public bool WasProcessed(long number, Keccak blockHash) => _wrapped.WasProcessed(number, blockHash);
-
+        
+        public void LoadLowestInsertedBeaconHeader() =>_wrapped.LoadLowestInsertedBeaconHeader();
+        
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock
         {
             add { }

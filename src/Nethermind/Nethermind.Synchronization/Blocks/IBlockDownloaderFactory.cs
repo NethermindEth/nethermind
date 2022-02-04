@@ -52,6 +52,7 @@ namespace Nethermind.Synchronization.Blocks
             INodeStatsManager nodeStatsManager,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
+            IPivot pivot,
             ILogManager logManager)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -62,7 +63,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _logManager = logManager;
 
-            _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, logManager);
+            _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, pivot, logManager);
         }
         
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)

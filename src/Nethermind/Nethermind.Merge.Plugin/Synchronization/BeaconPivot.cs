@@ -15,49 +15,80 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization
 {
     public class BeaconPivot : IBeaconPivot
     {
+        private readonly ISyncConfig _syncConfig;
+        private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private BlockHeader? _currentBeaconPivot;
+        private BlockHeader? _previousBeaconPivot;
         private BlockHeader? _pivotParent;
         private bool _pivotParentProcessed;
 
         public BeaconPivot(
+            ISyncConfig syncConfig,
+            IDb metadataDb,
             IBlockTree blockTree,
             ILogManager logManager)
         {
+            _syncConfig = syncConfig;
+            _metadataDb = metadataDb;
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
+            // TODO: beaconsync assume the sync is exclusive of destination header and inclusive if destination is genesis?
+            PivotDestinationNumber = 0;
         }
 
-        public long PivotNumber => _currentBeaconPivot?.Number ?? 0;
+        public long PivotNumber => _currentBeaconPivot?.Number ?? _syncConfig.PivotNumberParsed;
 
-        public Keccak? PivotHash => _currentBeaconPivot?.Hash;
+        public Keccak PivotHash => _currentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed;
 
-        public UInt256? PivotTotalDifficulty => _currentBeaconPivot?.TotalDifficulty;
+        public UInt256? PivotTotalDifficulty => _currentBeaconPivot?.TotalDifficulty ?? _syncConfig.PivotTotalDifficultyParsed;
+        
+        public long PivotDestinationNumber { get; private set; }
 
         public void EnsurePivot(BlockHeader? blockHeader)
         {
-            bool beaconPivotNotExists = !BeaconPivotExists();
-            if (beaconPivotNotExists && blockHeader != null)
+            bool beaconPivotExists = BeaconPivotExists();
+            if (beaconPivotExists && blockHeader != null)
+            {
+                PivotDestinationNumber = CalculatePivotDestinationNumber(_currentBeaconPivot, blockHeader);
+            }
+            
+            if (!beaconPivotExists && blockHeader != null)
+            {
                 _currentBeaconPivot = blockHeader;
+                PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? 0 : _syncConfig.PivotNumberParsed;
+                _metadataDb.Set(MetadataDbKeys.BeaconSyncDestinationNumber, Rlp.Encode(PivotDestinationNumber).Bytes);
+                _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(_currentBeaconPivot.Number).Bytes);
+            }
+        }
+
+        public void ResetPivot()
+        {
+            _currentBeaconPivot = null;
+            PivotDestinationNumber = 0;
         }
 
         public bool BeaconPivotExists() => _currentBeaconPivot != null;
 
-        public bool IsPivotParentParentProcessed()
+        public bool IsPivotParentProcessed()
         {
             EnsurePivotParentProcessed();
             return _pivotParentProcessed;
@@ -71,18 +102,30 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_pivotParent == null)
                 _pivotParent = _blockTree.FindParentHeader(_currentBeaconPivot!,
                     BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-
+            
             if (_pivotParent != null)
                 _pivotParentProcessed = _blockTree.WasProcessed(_pivotParent.Number,
                     _pivotParent.Hash ?? _pivotParent.CalculateHash());
+        }
+
+        private long CalculatePivotDestinationNumber(BlockHeader oldPivotHeader, BlockHeader newPivotHeader)
+        {
+            if (newPivotHeader.Number > oldPivotHeader.Number)
+            {
+                return Math.Max(PivotDestinationNumber, oldPivotHeader.Number + 1);
+            }
+
+            return PivotDestinationNumber;
         }
     }
 
     public interface IBeaconPivot : IPivot
     {
-        bool IsPivotParentParentProcessed();
+        bool  IsPivotParentProcessed();
 
-        void EnsurePivot(BlockHeader? blockHeader);
+        void  EnsurePivot(BlockHeader? blockHeader);
+
+        void ResetPivot();
 
         bool BeaconPivotExists();
     }

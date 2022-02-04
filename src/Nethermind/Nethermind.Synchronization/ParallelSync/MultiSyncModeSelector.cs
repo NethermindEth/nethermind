@@ -142,7 +142,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         Snapshot best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value);
                         if (_beaconSyncStrategy.ShouldBeInBeaconHeaders())
                         {
-                            newModes = SyncMode.FastHeaders; // ToDo change to BeaconHeaders
+                            newModes = SyncMode.BeaconHeaders;
                         }
                         else if (!FastSyncEnabled)
                         {
@@ -172,18 +172,19 @@ namespace Nethermind.Synchronization.ParallelSync
                                 CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
                                 CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                                 CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
-                                if (IsTheModeSwitchWorthMentioning(newModes))
-                                {
-                                    string stateString = BuildStateString(best);
-                                    if (_logger.IsInfo)
-                                        _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
-                                }
                             }
                             catch (InvalidAsynchronousStateException)
                             {
                                 newModes = SyncMode.Disconnected;
                                 reason = "Snapshot Misalignment";
                             }
+                        }
+                        
+                        if (IsTheModeSwitchWorthMentioning(newModes))
+                        {
+                            string stateString = BuildStateString(best);
+                            if (_logger.IsInfo)
+                                _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
                         }
 
                         if ((newModes & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None
@@ -606,8 +607,8 @@ namespace Nethermind.Synchronization.ParallelSync
                 PeerBlock = peerBlock;
                 PeerDifficulty = peerDifficulty;
 
-                IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts =
-                    IsInFastBodies = IsInFastHeaders = IsInFastSync = IsInFullSync = IsInStateSync = false;
+                IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts = IsInFastBodies = IsInFastHeaders 
+                    = IsInFastSync = IsInFullSync = IsInStateSync = IsInBeaconHeaders = false;
             }
 
             public bool IsInFastHeaders { get; set; }
@@ -618,6 +619,7 @@ namespace Nethermind.Synchronization.ParallelSync
             public bool IsInFullSync { get; set; }
             public bool IsInDisconnected { get; set; }
             public bool IsInWaitingForBlock { get; set; }
+            public bool IsInBeaconHeaders { get; set; }
 
             /// <summary>
             /// Best block that has been processed

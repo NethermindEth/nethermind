@@ -50,7 +50,6 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
@@ -183,6 +182,7 @@ namespace Nethermind.Api
         
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
         public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
+        public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }

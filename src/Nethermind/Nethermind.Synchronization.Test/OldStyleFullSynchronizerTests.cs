@@ -73,10 +73,12 @@ namespace Nethermind.Synchronization.Test
                 syncConfig,
                 LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, No.BeaconSync, LimboLogs.Instance);
+            Pivot pivot = new Pivot(syncConfig);
             BlockDownloaderFactory blockDownloaderFactory = new(MainnetSpecProvider.Instance, _blockTree,
-                _receiptStorage, Always.Valid, Always.Valid, _pool, stats, syncModeSelector, syncConfig,
+                _receiptStorage, Always.Valid, Always.Valid, _pool, stats, syncModeSelector, syncConfig, pivot,
                 LimboLogs.Instance);
-            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, _pool, stats, syncModeSelector, syncConfig, blockDownloaderFactory, LimboLogs.Instance);
+            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage,
+                _pool, stats, syncModeSelector, syncConfig, blockDownloaderFactory, pivot, LimboLogs.Instance);
             _syncServer = new SyncServer(
                 _stateDb,
                 _codeDb,

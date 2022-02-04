@@ -356,6 +356,7 @@ namespace Nethermind.Synchronization.Test
             SyncProgressResolver resolver = new(
                 tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, syncConfig, logManager);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, logManager);
+            Pivot pivot = new(syncConfig);
             BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(MainnetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
@@ -365,6 +366,7 @@ namespace Nethermind.Synchronization.Test
                 nodeStatsManager,
                 StaticSelector.Full,
                 syncConfig,
+                pivot,
                 logManager);
             Synchronizer synchronizer = new(
                 dbProvider,
@@ -376,6 +378,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 syncConfig,
                 blockDownloaderFactory,
+                pivot,
                 logManager);
             SyncServer syncServer = new(
                 stateDb,

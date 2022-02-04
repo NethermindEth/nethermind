@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -29,6 +30,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
@@ -100,17 +102,20 @@ namespace Nethermind.Merge.Plugin.Handlers
             // ToDo wait for final PostMerge sync
             if (request.TryGetBlock(out Block? block) && block != null)
             {
-                _beaconPivot.EnsurePivot(block.Header);
-                bool pivotParentProcessed = _beaconPivot.IsPivotParentParentProcessed();
-                _logger.Info($"Adding {block} to blockTree, pivotParentProcessed: {pivotParentProcessed}");
-                if (pivotParentProcessed)
+                bool blockParentProcessed = _beaconPivot.IsPivotParentProcessed();
+                _logger.Info($"Adding {block} to blockTree, blockParentProcessed: {blockParentProcessed}");
+                if (!blockParentProcessed)
+                {
                     _blockTree.SuggestBlock(block);
+                    _beaconPivot.EnsurePivot(block.Header);
+                }
                 else
                 {
+                    
                     _blockTree.Insert(block, true);
                 }
 
-                if (pivotParentProcessed == false)
+                if (blockParentProcessed == false)
                 {
                     executePayloadResult.EnumStatus = VerificationStatus.Syncing;
                     return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
@@ -124,12 +129,13 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
             else if (synced == false)
             { 
-                bool pivotParentProcessed = _beaconPivot.IsPivotParentParentProcessed();
+                bool pivotParentProcessed = _beaconPivot.IsPivotParentProcessed();
                 if (pivotParentProcessed)
                 {
                     _mergeSyncController.SwitchToBeaconModeControl();
                     if (_logger.IsInfo) _logger.Info("ExecutePayloadHandler switched to BeaconModeControl");
                     synced = true;
+                    _beaconPivot.ResetPivot();
                 }
             }
             
@@ -296,6 +302,18 @@ namespace Nethermind.Merge.Plugin.Handlers
             }
 
             return executePayloadResult;
+        }
+
+        private bool IsParentProcessed(BlockHeader blockHeader)
+        {
+            BlockHeader? parent =
+                _blockTree.FindParentHeader(blockHeader, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (parent != null)
+            {
+                return _blockTree.WasProcessed(parent.Number, parent.Hash ?? parent.CalculateHash());
+            }
+
+            return false;
         }
 
         [Flags]

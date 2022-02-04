@@ -13,19 +13,34 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Synchronization;
+
+public class Pivot : IPivot
 {
-    public interface ISyncModeSelector : IDisposable
+    private readonly ISyncConfig _syncconfig;
+    
+    public Pivot(ISyncConfig syncConfig)
     {
-        SyncMode Current { get; }
-        
-        event EventHandler<SyncModeChangedEventArgs> Preparing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changed;
+        _syncconfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+
+        PivotNumber = _syncconfig.PivotNumberParsed;
+        PivotHash = _syncconfig.PivotHashParsed;
+        PivotTotalDifficulty = _syncconfig.PivotTotalDifficultyParsed;
+        PivotDestinationNumber = 0L;
     }
+    
+    public long PivotNumber { get; }
+
+    public Keccak? PivotHash { get; }
+
+    public UInt256? PivotTotalDifficulty { get; }
+        
+    public long PivotDestinationNumber { get; }
 }

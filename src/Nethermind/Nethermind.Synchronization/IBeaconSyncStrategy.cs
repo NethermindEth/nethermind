@@ -26,6 +26,8 @@ namespace Nethermind.Synchronization
         public bool ShouldBeInBeaconHeaders() => false;
 
         public bool ShouldBeInBeaconModeControl() => false;
+
+        public bool IsBeaconSyncHeadersFinished() => true;
     }
     
     public interface IBeaconSyncStrategy
@@ -33,5 +35,7 @@ namespace Nethermind.Synchronization
         bool ShouldBeInBeaconHeaders();
 
         bool ShouldBeInBeaconModeControl();
+
+        bool IsBeaconSyncHeadersFinished();
     }
 }

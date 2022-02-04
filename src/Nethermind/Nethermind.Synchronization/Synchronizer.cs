@@ -39,24 +39,27 @@ namespace Nethermind.Synchronization
 {
     public class Synchronizer : ISynchronizer
     {
-        private readonly ILogger _logger;
+        
         private readonly ISpecProvider _specProvider;
-        private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
-        private readonly ISyncConfig _syncConfig;
         private readonly IBlockDownloaderFactory _blockDownloaderFactory;
-        private readonly ISyncPeerPool _syncPeerPool;
         private readonly INodeStatsManager _nodeStatsManager;
-        private readonly ILogManager _logManager;
-        private readonly ISyncReport _syncReport;
+        
+        protected readonly ILogger _logger;
+        protected readonly IBlockTree _blockTree;
+        protected readonly ISyncConfig _syncConfig;
+        protected readonly ISyncPeerPool _syncPeerPool;
+        protected readonly ILogManager _logManager;
+        protected readonly ISyncReport _syncReport;
+        protected readonly IPivot _pivot;
 
-        private readonly CancellationTokenSource _syncCancellation = new();
+        protected readonly CancellationTokenSource _syncCancellation = new();
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
         private readonly IDbProvider _dbProvider;
-        private readonly ISyncModeSelector _syncMode;
+        protected readonly ISyncModeSelector _syncMode;
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
@@ -75,6 +78,7 @@ namespace Nethermind.Synchronization
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             IBlockDownloaderFactory blockDownloaderFactory,
+            IPivot pivot,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -85,14 +89,15 @@ namespace Nethermind.Synchronization
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _blockDownloaderFactory = blockDownloaderFactory ?? throw new ArgumentNullException(nameof(blockDownloaderFactory));
+            _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _logManager = logManager;
 
-            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, _syncMode, syncConfig, logManager);
+            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, _syncMode, syncConfig, pivot, logManager);
         }
 
-        public void Start()
+        public virtual void Start()
         {
             if (!_syncConfig.SynchronizationEnabled)
             {
@@ -157,7 +162,7 @@ namespace Nethermind.Synchronization
         {
             FastBlocksPeerAllocationStrategyFactory fastFactory = new();
 
-            _headersFeed = new HeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
+            _headersFeed = new HeadersSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
             HeadersSyncDispatcher headersDispatcher = new(_headersFeed!, _syncPeerPool, fastFactory, _logManager);
             Task headersTask = headersDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {

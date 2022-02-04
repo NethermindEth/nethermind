@@ -24,7 +24,9 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -40,6 +42,7 @@ namespace Nethermind.Merge.Plugin
         private INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
+        private ISyncConfig _syncConfig = null!;
         private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
@@ -54,6 +57,7 @@ namespace Nethermind.Merge.Plugin
         {
             _api = nethermindApi;
             _mergeConfig = nethermindApi.Config<IMergeConfig>();
+            _syncConfig = nethermindApi.Config<ISyncConfig>();
             _logger = _api.LogManager.GetClassLogger();
 
             if (_mergeConfig.Enabled)
@@ -62,7 +66,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
 
-                _beaconPivot = new BeaconPivot(_api.BlockTree, _api.LogManager);
+                _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
                 _poSSwitcher = new PoSSwitcher(_mergeConfig,
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
@@ -168,15 +172,13 @@ namespace Nethermind.Merge.Plugin
         {
             if (_mergeConfig.Enabled)
             {
-                if (_api.SyncModeSelector is null) throw new ArgumentNullException(nameof(_api.SyncModeSelector));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.SyncPeerPool is null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
+                if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_api.SyncProgressResolver is null)
                     throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
-
-                ISyncConfig syncConfig = _api.Config<ISyncConfig>();
                 _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _api.SyncProgressResolver);
 
                 // ToDo strange place for validators initialization
@@ -184,10 +186,11 @@ namespace Nethermind.Merge.Plugin
                     Always.Valid, _api.LogManager);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
                     _api.SpecProvider, _api.LogManager);
-
+                
                 _api.SyncModeSelector = new MultiSyncModeSelector(_api.SyncProgressResolver, _api.SyncPeerPool,
-                    syncConfig,
+                    _syncConfig,
                     _beaconSync, _api.LogManager);
+                _api.Pivot = _beaconPivot;
                 _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(_beaconPivot, _api.SpecProvider,
                     _api.BlockTree,
                     _api.ReceiptStorage!,
@@ -196,7 +199,19 @@ namespace Nethermind.Merge.Plugin
                     _api.SyncPeerPool,
                     _api.NodeStatsManager!,
                     _api.SyncModeSelector!,
-                    syncConfig,
+                    _syncConfig,
+                    _api.LogManager);
+                _api.Synchronizer = new MergeSynchronizer(
+                    _api.DbProvider, 
+                    _api.SpecProvider!,
+                    _api.BlockTree!,
+                    _api.ReceiptStorage!,
+                    _api.SyncPeerPool,
+                    _api.NodeStatsManager!,
+                    _api.SyncModeSelector,
+                    _syncConfig,
+                    _api.BlockDownloaderFactory,
+                    _api.Pivot,
                     _api.LogManager);
             }
 

@@ -124,10 +124,18 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
             
             _api.SyncProgressResolver = syncProgressResolver;
-            MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
-            _api.SyncModeSelector = syncModeSelector;
-            _api.DisposeStack.Push(syncModeSelector);
-            _api.BlockDownloaderFactory = new BlockDownloaderFactory(_api.SpecProvider!,
+
+            IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
+            foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
+            {
+                await plugin.InitSynchronization();
+            }
+            
+            _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);;
+            _api.DisposeStack.Push(_api.SyncModeSelector);
+
+            _api.Pivot ??= new Pivot(_syncConfig);
+            _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(_api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.BlockValidator!,
@@ -136,15 +144,9 @@ namespace Nethermind.Init.Steps
                 _api.NodeStatsManager!,
                 _api.SyncModeSelector!,
                 _syncConfig,
+                _api.Pivot,
                 _api.LogManager);
-
-            IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
-            foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
-            {
-                await plugin.InitSynchronization();
-            }
-
-            _api.Synchronizer = new Synchronizer(
+            _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
                 _api.SpecProvider!,
                 _api.BlockTree!,
@@ -154,9 +156,10 @@ namespace Nethermind.Init.Steps
                 _api.SyncModeSelector,
                 _syncConfig,
                 _api.BlockDownloaderFactory,
+                _api.Pivot,
                 _api.LogManager);
             _api.DisposeStack.Push(_api.Synchronizer);
-
+            
             _api.SyncServer = new SyncServer(
                 _api.DbProvider.StateDb,
                 _api.DbProvider.CodeDb,
@@ -173,7 +176,8 @@ namespace Nethermind.Init.Steps
                 cht);
 
             _ = _api.SyncServer.BuildCHT();
-
+            
+            
             _api.DisposeStack.Push(_api.SyncServer);
 
             InitDiscovery();

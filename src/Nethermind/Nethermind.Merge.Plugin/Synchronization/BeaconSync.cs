@@ -27,7 +27,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ISyncProgressResolver _syncProgressResolver;
         private bool _isInBeaconModeControl = false;
-        private long? beaconHeadersDestinationBlock = null;
 
         public BeaconSync(
             IBeaconPivot beaconPivot,
@@ -51,15 +50,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool ShouldBeInBeaconHeaders()
         {
-            // ToDo restarts
-            if (beaconHeadersDestinationBlock == null)
-            {
-                beaconHeadersDestinationBlock = _blockTree.BestSuggestedHeader!.Number + 1;
-            }
-            
             bool beaconPivotExists =  _beaconPivot.BeaconPivotExists();
             bool notInBeaconModeControl = !_isInBeaconModeControl;
-            bool notFinishedBeaconHeaderSync = _blockTree.FindHeader(beaconHeadersDestinationBlock.Value) == null;
+            bool notFinishedBeaconHeaderSync = !IsBeaconSyncHeadersFinished();
 
             return beaconPivotExists &&
                    notInBeaconModeControl &&
@@ -67,6 +60,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
         }
 
         public bool ShouldBeInBeaconModeControl() => _isInBeaconModeControl;
+        
+        public bool IsBeaconSyncHeadersFinished() => (_blockTree.LowestInsertedBeaconHeader?.Number ??
+            _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber;
     }
 
     public interface IMergeSyncController

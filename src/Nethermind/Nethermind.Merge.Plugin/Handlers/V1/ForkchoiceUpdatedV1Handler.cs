@@ -113,17 +113,18 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             else if (synced == false)
             {
-                var shouldProcess = false;
-                var pivotParent = _blockTree.FindBlock(
+                bool wasProcessed = false;
+                // TODO: beaconsync set pivot parent
+                Block? pivotParent = _blockTree.FindBlock(
                     new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"),
                     BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (pivotParent != null)
                 {
-                    shouldProcess = _blockTree.WasProcessed(7051,
+                    wasProcessed = _blockTree.WasProcessed(7051,
                         new Keccak("0xf0c72c6a8cb2922ea44ec74b8714d6aaf79b97892c5148a2c0d14842ea6ec9b6"));
                 }
 
-                if (shouldProcess == false)
+                if (wasProcessed == false)
                 {
                     return ReturnSyncing();
                 }

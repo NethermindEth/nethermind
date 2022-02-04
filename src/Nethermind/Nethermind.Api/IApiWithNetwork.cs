@@ -56,6 +56,7 @@ namespace Nethermind.Api
         IStaticNodesManager? StaticNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; set; }
         IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
+        IPivot? Pivot { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }

@@ -48,14 +48,19 @@ namespace Nethermind.Blockchain
         Block BestSuggestedBody { get; }
 
         /// <summary>
-        /// Lowest header added in reverse insert
+        /// Lowest header added in reverse fast sync insert
         /// </summary>
         BlockHeader? LowestInsertedHeader { get; }
 
         /// <summary>
-        /// Lowest body added in reverse insert
+        /// Lowest body added in reverse fast sync insert
         /// </summary>
         long? LowestInsertedBodyNumber { get; set; }
+        
+        /// <summary>
+        /// Lowest header number added in reverse beacon sync insert
+        /// </summary>
+        BlockHeader? LowestInsertedBeaconHeader { get; }
 
         /// <summary>
         /// Best downloaded block number (highest number of chain level on the chain)
@@ -135,6 +140,8 @@ namespace Nethermind.Blockchain
             long maxSearchDepth);
 
         void DeleteInvalidBlock(Block invalidBlock);
+
+        void LoadLowestInsertedBeaconHeader();
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
