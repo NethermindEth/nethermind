@@ -45,4 +45,10 @@ namespace Nethermind.Db
         /// </summary>
         Hybrid = Memory | Full
     }
+    
+    public static class PruningModeExtensions
+    {
+        public static bool IsMemory(this PruningMode mode) => (mode & PruningMode.Memory) == PruningMode.Memory;
+        public static bool IsFull(this PruningMode mode) => (mode & PruningMode.Full) == PruningMode.Full;
+    }
 }

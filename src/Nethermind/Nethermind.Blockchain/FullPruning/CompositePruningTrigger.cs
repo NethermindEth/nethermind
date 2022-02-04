@@ -20,8 +20,15 @@ using System.Collections.Generic;
 
 namespace Nethermind.Blockchain.FullPruning;
 
+/// <summary>
+/// Allows to have multiple <see cref="IPruningTrigger"/>s.
+/// </summary>
 public class CompositePruningTrigger : IPruningTrigger
 {
+    /// <summary>
+    /// Adds new <see cref="IPruningTrigger"/> to the be watched."/>
+    /// </summary>
+    /// <param name="trigger">trigger to be watched</param>
     public void Add(IPruningTrigger trigger)
     {
         trigger.Prune += OnPrune;
@@ -32,5 +39,6 @@ public class CompositePruningTrigger : IPruningTrigger
         Prune?.Invoke(sender, e);
     }
 
+    /// <inheridoc /> 
     public event EventHandler<PruningTriggerEventArgs>? Prune;
 }

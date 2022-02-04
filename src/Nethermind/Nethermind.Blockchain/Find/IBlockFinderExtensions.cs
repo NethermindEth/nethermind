@@ -94,11 +94,5 @@ namespace Nethermind.Blockchain.Find
             Keccak? headHash = finder.Head?.Hash;
             return headHash is null ? null : finder.FindBlock(headHash, BlockTreeLookupOptions.None);
         }
-        
-        public static bool IsSyncing(this IBlockFinder blockFinder)
-        {
-            long bestSuggestedNumber = blockFinder.FindBestSuggestedHeader().Number;
-            return bestSuggestedNumber > blockFinder.Head?.Number + 8;
-        }
     }
 }

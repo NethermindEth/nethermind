@@ -102,8 +102,8 @@ namespace Nethermind.Db
         
         [Description("Number of Metadata DB writes.")]
         public static long MetadataDbWrites { get; set; }
-		
-		[Description("Indicator if StadeDb is being pruned.")]
+        
+        [Description("Indicator if StadeDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
         [Description("Metrics extracted from RocksDB Compacion Stats and DB Statistics")]

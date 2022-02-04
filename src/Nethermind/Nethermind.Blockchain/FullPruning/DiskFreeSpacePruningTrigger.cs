@@ -23,6 +23,7 @@ namespace Nethermind.Blockchain.FullPruning
 {
     public class DiskFreeSpacePruningTrigger : IPruningTrigger, IDisposable
     {
+        private static readonly TimeSpan _defaultCheckInterval = TimeSpan.FromMinutes(5);
         private readonly string _path;
         private readonly long _threshold;
         private readonly IFileSystem _fileSystem;
@@ -33,7 +34,7 @@ namespace Nethermind.Blockchain.FullPruning
             _path = path;
             _threshold = threshold;
             _fileSystem = fileSystem;
-            _timer = timerFactory.CreateTimer(TimeSpan.FromMinutes(5));
+            _timer = timerFactory.CreateTimer(_defaultCheckInterval);
             _timer.Elapsed += OnTick;
             _timer.Start();
         }
