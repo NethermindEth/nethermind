@@ -156,7 +156,7 @@ namespace Nethermind.Consensus.Validators
                 gasLimitInRange &&
                 sealParamsCorrect &&
                 // gasLimitAboveAbsoluteMinimum && // described in the YellowPaper but not followed
-                timestampMoreThanAtParent &&  
+                timestampMoreThanAtParent &&
                 numberIsParentPlusOne &&
                 hashAsExpected &&
                 extraDataValid &&
