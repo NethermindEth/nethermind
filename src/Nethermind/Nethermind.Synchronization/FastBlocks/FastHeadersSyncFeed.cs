@@ -79,7 +79,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual MeasuredProgress HeadersSyncProgressReport => _syncReport.FastBlocksHeaders;
         
-        private bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == HeadersDestinationBlockNumber;
+        private bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 
+                                             (HeadersDestinationBlockNumber == 0 ? 1 : HeadersDestinationBlockNumber);
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader != null;
 
         private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response?.Length ?? 0);
@@ -138,10 +139,13 @@ namespace Nethermind.Synchronization.FastBlocks
         private bool ShouldBuildANewBatch()
         {
             bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
+
+            bool destinationHeaderRequested = _lowestRequestedHeaderNumber == HeadersDestinationBlockNumber;
             
             bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
             bool noBatchesLeft = AllHeadersDownloaded
+                                 || destinationHeaderRequested
                                  || genesisHeaderRequested
                                  || MemoryInQueue >= MemoryAllowance.FastBlocksMemory
                                  || isImmediateSync && AnyHeaderDownloaded;
@@ -213,7 +217,7 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncBatch batch = new();
             batch.MinNumber = _lowestRequestedHeaderNumber - 1;
             batch.StartNumber = Math.Max(HeadersDestinationBlockNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
-            batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationBlockNumber - 1, _headersRequestSize);
+            batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationBlockNumber, _headersRequestSize);
             _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }

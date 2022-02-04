@@ -104,15 +104,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             {
                 bool blockParentProcessed = _beaconPivot.IsPivotParentProcessed();
                 _logger.Info($"Adding {block} to blockTree, blockParentProcessed: {blockParentProcessed}");
-                if (!blockParentProcessed)
+                if (blockParentProcessed)
                 {
                     _blockTree.SuggestBlock(block);
-                    _beaconPivot.EnsurePivot(block.Header);
                 }
                 else
                 {
-                    
-                    _blockTree.Insert(block, true);
+                    _beaconPivot.EnsurePivot(block.Header);
+                    _blockTree.Insert(block);
                 }
 
                 if (blockParentProcessed == false)

@@ -60,7 +60,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         }
 
         public bool ShouldBeInBeaconModeControl() => _isInBeaconModeControl;
-        
+        // TODO: beaconsync use parent hash to check if finished
         public bool IsBeaconSyncHeadersFinished() => (_blockTree.LowestInsertedBeaconHeader?.Number ??
             _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber;
     }

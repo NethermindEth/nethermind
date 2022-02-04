@@ -37,7 +37,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private BlockHeader? _currentBeaconPivot;
-        private BlockHeader? _previousBeaconPivot;
         private BlockHeader? _pivotParent;
         private bool _pivotParentProcessed;
 
@@ -51,7 +50,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
-            // TODO: beaconsync assume the sync is exclusive of destination header and inclusive if destination is genesis?
             PivotDestinationNumber = 0;
         }
 
@@ -68,13 +66,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
             bool beaconPivotExists = BeaconPivotExists();
             if (beaconPivotExists && blockHeader != null)
             {
+                // TODO: beaconsync multiple beacon pivots
+                _currentBeaconPivot = blockHeader;
                 PivotDestinationNumber = CalculatePivotDestinationNumber(_currentBeaconPivot, blockHeader);
             }
             
             if (!beaconPivotExists && blockHeader != null)
             {
                 _currentBeaconPivot = blockHeader;
-                PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? 0 : _syncConfig.PivotNumberParsed;
+                // exclusive of fast sync pivot
+                PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? 0 : _syncConfig.PivotNumberParsed + 1;
                 _metadataDb.Set(MetadataDbKeys.BeaconSyncDestinationNumber, Rlp.Encode(PivotDestinationNumber).Bytes);
                 _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(_currentBeaconPivot.Number).Bytes);
             }
