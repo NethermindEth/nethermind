@@ -113,7 +113,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (parent == null)
             {
                 // ToDo wait for final PostMerge sync
-                return NewPayloadV1Result.Syncing;
+                return NewPayloadV1Result.Accepted;
             }
 
             await _synchronizer.StopAsync();
