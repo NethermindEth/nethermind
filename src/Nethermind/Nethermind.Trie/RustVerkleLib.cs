@@ -70,24 +70,13 @@ namespace Nethermind.Trie
         
         public static void VerkleTrieInsert(IntPtr verkleTrie, byte[] key, byte[] value)
         {
-            byte[] newValue;
             int valueLength = value.Length;
             if (valueLength > 32)
             {
                 throw new InvalidOperationException("Value length must be less than 32");
-            } 
-            else if (valueLength < 32)
-            {
-                newValue = new byte[32];
-                int lengthDiff = 32 - valueLength;
-                Array.Copy(value, 0, newValue, lengthDiff, valueLength);
-            }
-            else
-            {
-                newValue = value;
             }
 
-            verkle_trie_insert(verkleTrie, key, newValue);
+            verkle_trie_insert(verkleTrie, key, value);
         }
 
         public static byte[]? VerkleTrieGet(IntPtr verkleTrie, byte[] key)
