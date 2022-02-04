@@ -22,7 +22,7 @@ RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 procps &&
 WORKDIR /nethermind
 
 COPY --from=build /out .
-COPY --from=tools-install /dotnetcore-tools /opt/dotnetcore-tools
+COPY --from=build /dotnetcore-tools /opt/dotnetcore-tools
 ENV PATH="/opt/dotnetcore-tools:${PATH}"
 
 ARG GIT_COMMIT=unspecified
