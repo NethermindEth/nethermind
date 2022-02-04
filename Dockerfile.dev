@@ -9,20 +9,18 @@ COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ] ; \
     then git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
-    dotnet tool install dotnet-dump --tool-path /tmp/ && \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
     else git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
-    dotnet tool install dotnet-dump --tool-path /tmp/ && \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
     fi
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0
-RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 procps
+RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 procps && \
+    dotnet tool install --global dotnet-dump
 
 WORKDIR /nethermind
 
 COPY --from=build /out .
-COPY --from=build /tmp/.dotnet ../tools/.dotnet
 
 ARG GIT_COMMIT=unspecified
 LABEL git_commit=$GIT_COMMIT
