@@ -208,7 +208,7 @@ namespace Nethermind.Init.Steps
             setApi.HeaderValidator = CreateHeaderValidator();
 
             IHeaderValidator? headerValidator = setApi.HeaderValidator;
-            UnclesValidator unclesValidator = new(
+            IUnclesValidator unclesValidator = setApi.UnclesValidator = new UnclesValidator(
                 getApi.BlockTree,
                 headerValidator,
                 getApi.LogManager);

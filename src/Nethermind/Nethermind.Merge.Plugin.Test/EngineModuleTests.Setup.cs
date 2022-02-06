@@ -56,7 +56,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, IPayloadService? mockedPayloadService = null)
         {
-            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, new InitConfig(), chain.SealEngine, chain.LogManager);
+            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, chain.SealEngine, chain.LogManager);
             ISynchronizer synchronizer = Substitute.For<ISynchronizer>();
 
             return new EngineRpcModule(
@@ -153,8 +153,8 @@ namespace Nethermind.Merge.Plugin.Test
             private IBlockValidator CreateBlockValidator()
             {
                 PoSSwitcher = new PoSSwitcher(MergeConfig, new MemDb(), BlockTree, SpecProvider, LogManager);
-                Eth2Signer signer = new (!string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero);
-                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, signer, LogManager);
+                Address feeRecipient = !string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero;
+                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, feeRecipient, LogManager);
                 HeaderValidator = new PostMergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealEngine, LogManager);
                 
                 return new BlockValidator(

@@ -21,11 +21,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Mev.Test
 {
-    public class Eth2Signer : ISigner
+    public class TestMevSigner : ISigner
     {
-        public Eth2Signer(Address blockAuthorAddress)
+        public TestMevSigner(Address blockAuthorAddress)
         {
             Address = blockAuthorAddress;
         }
