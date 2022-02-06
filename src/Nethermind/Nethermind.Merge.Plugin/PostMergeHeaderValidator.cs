@@ -71,8 +71,6 @@ namespace Nethermind.Merge.Plugin
                 validDifficulty =
                     ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
                 validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
-                // validExtraData needed in previous version of EIP-3675 specification
-                //bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
                 validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
                     nameof(header.UnclesHash));
             }
@@ -80,7 +78,6 @@ namespace Nethermind.Merge.Plugin
             return terminalTotalDifficultyChecks
                    && validDifficulty
                    && validNonce
-                   //&& validExtraData
                    && validUncles;
         }
 
