@@ -19,6 +19,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
@@ -96,5 +97,7 @@ namespace Nethermind.Api
         IGasPriceOracle? GasPriceOracle { get; set; }
         
         IEthSyncingInfo? EthSyncingInfo { get; set; }
+
+        CompositePruningTrigger PruningTrigger { get; }
     }
 }

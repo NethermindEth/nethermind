@@ -72,9 +72,9 @@ namespace Nethermind.State
             return _codeDb[codeHash.Bytes];
         }
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash)
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak rootHash, VisitingOptions? visitingOptions = null)
         {
-            _state.Accept(treeVisitor, rootHash, treeVisitor.GetSupportedOptions());
+            _state.Accept(treeVisitor, rootHash, visitingOptions);
         }
 
         public byte[] GetCode(Keccak stateRoot, Address address)

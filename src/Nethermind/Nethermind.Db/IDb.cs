@@ -29,11 +29,6 @@ namespace Nethermind.Db
         void Remove(byte[] key);
         bool KeyExists(byte[] key);
 
-        /// <summary>
-        /// For nested DB structures returns the innermost one
-        /// </summary>
-        public IDb Innermost { get; }
-
         void Flush();
         
         void Clear();

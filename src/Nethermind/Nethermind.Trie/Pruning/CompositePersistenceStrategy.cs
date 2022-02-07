@@ -15,12 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Blockchain.Synchronization
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nethermind.Trie.Pruning;
+
+public class CompositePersistenceStrategy : IPersistenceStrategy
 {
-    public class PruningConfig : IPruningConfig
+    private readonly List<IPersistenceStrategy> _strategies = new();
+
+    public CompositePersistenceStrategy(params IPersistenceStrategy[] strategies)
     {
-        public bool Enabled { get; set; }
-        public long CacheMb { get; set; } = 512;
-        public long PersistenceInterval { get; set; } = 8192;    
+        _strategies.AddRange(strategies);
     }
+
+    public IPersistenceStrategy AddStrategy(IPersistenceStrategy strategy)
+    {
+        _strategies.Add(strategy);
+        return this;
+    }
+
+    public bool ShouldPersist(long blockNumber) => _strategies.Any(strategy => strategy.ShouldPersist(blockNumber));
 }

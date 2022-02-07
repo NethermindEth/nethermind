@@ -29,8 +29,6 @@ namespace Nethermind.Trie
 
         private readonly ILogger _logger;
 
-        public bool SupportsParallelVisits { get; set; } = true;
-
         public TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
@@ -56,6 +54,8 @@ namespace Nethermind.Trie
             {
                 Interlocked.Increment(ref Stats._missingState);
             }
+            
+            IncrementLevel(trieVisitContext);
         }
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext)
@@ -70,6 +70,8 @@ namespace Nethermind.Trie
                 Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._stateBranchCount);
             }
+            
+            IncrementLevel(trieVisitContext);
         }
 
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
@@ -84,11 +86,13 @@ namespace Nethermind.Trie
                 Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._stateExtensionCount);
             }
+            
+            IncrementLevel(trieVisitContext);
         }
 
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
         {
-            if (Stats.NodesCount - _lastAccountNodeCount > 100000)
+            if (Stats.NodesCount - _lastAccountNodeCount > 1_000_000)
             {
                 _lastAccountNodeCount = Stats.NodesCount;
                 _logger.Warn($"Collected info from {Stats.NodesCount} nodes. Missing CODE {Stats.MissingCode} STATE {Stats.MissingState} STORAGE {Stats.MissingStorage}");
@@ -104,6 +108,8 @@ namespace Nethermind.Trie
                 Interlocked.Add(ref Stats._stateSize, node.FullRlp?.Length ?? 0);
                 Interlocked.Increment(ref Stats._accountCount);
             }
+            
+            IncrementLevel(trieVisitContext);
         }
 
         public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
@@ -118,6 +124,19 @@ namespace Nethermind.Trie
             {
                 Interlocked.Increment(ref Stats._missingCode);
             }
+            
+            IncrementLevel(trieVisitContext, Stats._codeLevels);
+        }
+        
+        private void IncrementLevel(TrieVisitContext trieVisitContext)
+        {
+            int[] levels = trieVisitContext.IsStorage ? Stats._storageLevels : Stats._stateLevels;
+            IncrementLevel(trieVisitContext, levels);
+        }
+
+        private static void IncrementLevel(TrieVisitContext trieVisitContext, int[] levels)
+        {
+            Interlocked.Increment(ref levels[trieVisitContext.Level]);
         }
     }
 }
