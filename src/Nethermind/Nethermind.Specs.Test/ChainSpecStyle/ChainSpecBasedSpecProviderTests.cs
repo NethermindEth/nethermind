@@ -53,6 +53,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             
             CompareSpecProviders(sepolia, provider, blockNumbersToTest);
             Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
+            Assert.AreEqual(true, provider.GenesisSpec.DifficultyBombDisabled);
         }
         
         [Test]
@@ -82,6 +83,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             
             CompareSpecProviders(rinkeby, provider, blockNumbersToTest);
             Assert.AreEqual(RinkebySpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
+            Assert.AreEqual(false, provider.GenesisSpec.DifficultyBombDisabled);
         }
 
         [Test]
@@ -166,6 +168,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(9_700_000, provider.GetSpec(13_772_999).DifficultyBombDelay);
             Assert.AreEqual(10_700_000, provider.GetSpec(13_773_000).DifficultyBombDelay);
             Assert.AreEqual(10_700_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
+            Assert.AreEqual(false, provider.GenesisSpec.DifficultyBombDisabled);
         }
 
         private static void CompareSpecProviders(
@@ -196,6 +199,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
                 .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
                 .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+                .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDisabled))
                 .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(oldSpec), propertyInfo.GetValue(newSpec),
@@ -237,6 +241,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             CompareSpecProviders(ropsten, provider, blockNumbersToTest, true);
             Assert.AreEqual(RopstenSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
+            Assert.AreEqual(false, provider.GenesisSpec.DifficultyBombDisabled);
         }
 
         [Test]

@@ -50,8 +50,6 @@ namespace Nethermind.Specs.Test
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
         public long DifficultyBoundDivisor => _spec.DifficultyBoundDivisor;
-
-        public bool DifficultyBombDisabled => _spec.DifficultyBombDisabled;
         
         public long? FixedDifficulty => _spec.FixedDifficulty;
 
@@ -146,6 +144,19 @@ namespace Nethermind.Specs.Test
             set
             {
                 _overridenEip1559TransitionBlock = value;
+            }
+        }
+        
+        private bool? _overridenDifficultyBombDisabled;
+        public bool DifficultyBombDisabled
+        {
+            get
+            {
+                return _overridenDifficultyBombDisabled ?? _spec.DifficultyBombDisabled;
+            }
+            set
+            {
+                _overridenDifficultyBombDisabled = value;
             }
         }
 
