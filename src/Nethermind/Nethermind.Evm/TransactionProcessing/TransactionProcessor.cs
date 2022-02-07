@@ -138,6 +138,25 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
+        private bool ShouldSkipGasPricing(IReleaseSpec spec, Transaction transaction)
+        {
+            if (spec.IsEip1559Enabled)
+            {
+                if (transaction.IsEip1559)
+                {
+                    return transaction.MaxFeePerGas.IsZero && transaction.MaxPriorityFeePerGas.IsZero;
+                }
+                else
+                {
+                    return transaction.GasPrice.IsZero;
+                }
+            }
+            else
+            {
+                return transaction.GasPrice.IsZero;
+            }
+        }
+
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
             ExecutionOptions executionOptions)
         {
@@ -152,12 +171,15 @@ namespace Nethermind.Evm.TransactionProcessing
             //we commit only after all block is constructed 
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
+            bool noBaseFee = txTracer.NoBaseFee;
 
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
             {
                 spec = new SystemTransactionReleaseSpec(spec);
             }
+
+            bool skipGasPricing = ShouldSkipGasPricing(spec, transaction);
 
             UInt256 value = transaction.Value;
 
@@ -249,24 +271,27 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (notSystemTransaction)
             {
-                UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
-                                      senderReservedGasPayment + value > senderBalance))
+                if (!noBaseFee || !skipGasPricing)
                 {
-                    TraceLogInvalidTx(transaction,
-                        $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
-                    return;
-                }
+                    UInt256 senderBalance = _stateProvider.GetBalance(caller);
+                    if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
+                                          senderReservedGasPayment + value > senderBalance))
+                    {
+                        TraceLogInvalidTx(transaction,
+                            $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
+                        QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
+                        return;
+                    }
 
-                if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
-                    senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
-                {
-                    TraceLogInvalidTx(transaction,
-                        $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled,
-                        "insufficient MaxFeePerGas for sender balance");
-                    return;
+                    if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
+                        senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
+                    {
+                        TraceLogInvalidTx(transaction,
+                            $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
+                        QuickFail(transaction, block, txTracer, eip658NotEnabled,
+                            "insufficient MaxFeePerGas for sender balance");
+                        return;
+                    }
                 }
 
                 if (transaction.Nonce != _stateProvider.GetNonce(caller))

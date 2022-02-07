@@ -165,9 +165,10 @@ namespace Nethermind.Facade
             public AccessList? AccessList { get; set; }
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool noBaseFee = false)
         {
             CallOutputTracer callOutputTracer = new();
+            callOutputTracer.NoBaseFee = noBaseFee;
             (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Timestamp, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken));
             return new CallOutput

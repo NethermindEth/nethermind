@@ -65,10 +65,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
-                return ExecuteTx(header, tx, cancellationTokenSource.Token);
+                return ExecuteTx(header, tx, cancellationTokenSource.Token, _rpcConfig.NoBaseFee);
             }
 
-            protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
+            protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token, bool noBaseFee = false);
 
             protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) => 
                 ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
@@ -81,9 +81,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
             }
 
-            protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token, bool noBaseFee = false)
             {
-                BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token);
+                // Call path
+                BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token, noBaseFee);
             
                 if (result.Error is null)
                 {
@@ -103,7 +104,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
             }
             
-            protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token, bool noBaseFee = false)
             {
                 BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(header, tx, token);
             
@@ -128,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _optimize = optimize;
             }
             
-            protected override ResultWrapper<AccessListForRpc> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
+            protected override ResultWrapper<AccessListForRpc> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token, bool noBaseFee = false)
             {
                 BlockchainBridge.CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, _optimize);
             

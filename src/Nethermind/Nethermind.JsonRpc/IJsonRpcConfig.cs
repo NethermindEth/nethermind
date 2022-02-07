@@ -36,6 +36,11 @@ namespace Nethermind.JsonRpc
             Description = "JSON RPC' timeout value given in milliseconds.",
             DefaultValue = "20000")] 
         int Timeout { get; set; }
+        
+        [ConfigItem(
+            Description = "No base fee.",
+            DefaultValue = "false")] 
+        bool NoBaseFee { get; set; }
 
         [ConfigItem(
             Description = "Base file path for diagnostic JSON RPC recorder.",
