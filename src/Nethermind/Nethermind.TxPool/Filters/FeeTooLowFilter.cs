@@ -49,10 +49,12 @@ namespace Nethermind.TxPool.Filters
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
             UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
+            bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != TxHandlingOptions.PersistentBroadcast;
             
             if (_txs.IsFull()
                 && _txs.TryGetLast(out Transaction? lastTx)
-                && affordableGasPrice <= lastTx?.GasBottleneck)
+                && affordableGasPrice <= lastTx?.GasBottleneck
+                && isNotLocal)
             {
                 Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace)
