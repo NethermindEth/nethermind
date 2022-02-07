@@ -12,9 +12,6 @@
         },
         "homesteadTransition": "0x0",
         "eip100bTransition": "0x0",
-        "difficultyBombDelays": {
-          "0xFFFFFFFF": "0x3D0900"
-        }
       }
     }
   },

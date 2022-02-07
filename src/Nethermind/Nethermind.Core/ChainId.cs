@@ -59,6 +59,7 @@ namespace Nethermind.Core
         public const int xDai = 100;
         public const int PoaCore = 99;
         public const int Volta = 73799;
+        public const int Sepolia = 11155111;
 
         public static string GetChainName(ulong chainId)
         {
@@ -80,6 +81,7 @@ namespace Nethermind.Core
                 xDai => "xDai",
                 PoaCore => "PoaCore",
                 Volta => "Volta",
+                Sepolia => "Sepolia",
                 _ => chainId.ToString()
             };
         }

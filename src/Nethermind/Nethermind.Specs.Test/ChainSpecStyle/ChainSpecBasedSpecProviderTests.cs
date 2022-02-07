@@ -36,6 +36,26 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
     public class ChainSpecBasedSpecProviderTests
     {
         [Test]
+        public void Sepolia_loads_properly()
+        {
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/sepolia.json");
+            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+            chainSpec.Parameters.Eip2537Transition.Should().BeNull();
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+            SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
+
+            List<long> blockNumbersToTest = new()
+            {
+                120_000_000, // far in the future
+            };
+            
+            CompareSpecProviders(sepolia, provider, blockNumbersToTest);
+            Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
+        }
+        
+        [Test]
         public void Rinkeby_loads_properly()
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());

@@ -50,6 +50,8 @@ namespace Nethermind.Specs.Test
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
 
         public long DifficultyBoundDivisor => _spec.DifficultyBoundDivisor;
+
+        public bool DifficultyBombDisabled => _spec.DifficultyBombDisabled;
         
         public long? FixedDifficulty => _spec.FixedDifficulty;
 

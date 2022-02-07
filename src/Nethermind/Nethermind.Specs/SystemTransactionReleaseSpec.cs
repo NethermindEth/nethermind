@@ -42,6 +42,7 @@ namespace Nethermind.Specs
         public UInt256 BlockReward => _spec.BlockReward;
 
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;
+        public bool DifficultyBombDisabled => _spec.DifficultyBombDisabled;
 
         public long DifficultyBoundDivisor => _spec.DifficultyBoundDivisor;
         

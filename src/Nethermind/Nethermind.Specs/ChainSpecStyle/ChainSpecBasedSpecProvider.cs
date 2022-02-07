@@ -154,7 +154,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                             releaseSpec.BlockReward = blockReward.Value;
                         }
                     }
-                        
+
+                    releaseSpec.DifficultyBombDisabled = !_chainSpec.Ethash.DifficultyBombDelays?.Any() ?? false;
                     foreach (KeyValuePair<long,long> bombDelay in _chainSpec.Ethash.DifficultyBombDelays ?? Enumerable.Empty<KeyValuePair<long, long>>())
                     {
                         if (bombDelay.Key <= releaseStartBlock)
