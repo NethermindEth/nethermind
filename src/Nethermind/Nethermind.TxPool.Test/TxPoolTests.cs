@@ -380,7 +380,7 @@ namespace Nethermind.TxPool.Test
             tx.Value = (UInt256)(value * tx.GasLimit);
             EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
             _txPool.GetPendingTransactions().Length.Should().Be(30);
-            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             result.ToString().Should().Contain(expected);
         }
         
@@ -419,9 +419,39 @@ namespace Nethermind.TxPool.Test
             tx.Value = (UInt256)(value * tx.GasLimit);
             EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
             _txPool.GetPendingTransactions().Length.Should().Be(30);
-            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _txPool.GetPendingTransactions().Length.Should().Be(30);
             result.ToString().Should().Contain(expected);
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void should_add_underpaid_txs_to_full_TxPool_only_if_local(bool isLocal)
+        {
+            TxHandlingOptions txHandlingOptions = isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None;
+            
+            _txPool = CreatePool(new TxPoolConfig() {Size = 30});
+            Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
+            
+            foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
+            {
+                EnsureSenderBalance(address, UInt256.MaxValue);
+            }
+            
+            foreach (Transaction transaction in transactions)
+            {
+                transaction.GasPrice = 10;
+                _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+            }
+            
+            Transaction tx = Build.A.Transaction
+                .WithGasPrice(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
+            _txPool.GetPendingTransactions().Length.Should().Be(30);
+            AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
+            _txPool.GetPendingTransactions().Length.Should().Be(30);
+            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.Accepted) : nameof(AcceptTxResult.FeeTooLow));
         }
 
         [TestCase(0)]
