@@ -293,7 +293,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? Array.Empty<Address>(),
                     Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L,
                     FixedDifficulty = chainSpecJson.Engine.Ethash.FixedDifficulty,
-                    BlockRewards = chainSpecJson.Engine.Ethash.BlockReward
+                    BlockRewards = chainSpecJson.Engine.Ethash.BlockReward,
+                    DifficultyBombDisabled = chainSpecJson.Engine.Ethash.DifficultyBombDisabled
                 };
 
                 chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>();

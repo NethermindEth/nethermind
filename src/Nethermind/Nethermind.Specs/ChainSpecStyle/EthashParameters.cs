@@ -50,5 +50,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public IDictionary<long, UInt256> BlockRewards { get; set; }
 
         public IDictionary<long, long> DifficultyBombDelays { get; set; }
+        
+        public bool? DifficultyBombDisabled { get; set; }
     }
 }

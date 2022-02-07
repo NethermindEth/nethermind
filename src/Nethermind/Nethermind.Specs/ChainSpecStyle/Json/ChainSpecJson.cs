@@ -50,6 +50,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public UInt256? MinimumDifficulty => Params?.MinimumDifficulty;
             public IDictionary<long, UInt256> BlockReward => Params?.BlockReward;
             public IDictionary<string, long> DifficultyBombDelays => Params?.DifficultyBombDelays;
+            public bool? DifficultyBombDisabled => Params?.DifficultyBombDisabled;
             public EthashEngineParamsJson Params { get; set; }
         }
         
@@ -66,6 +67,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public long? FixedDifficulty { get; set; }
             public BlockRewardJson BlockReward { get; set; }
             public Dictionary<string, long> DifficultyBombDelays { get; set; }
+            
+            public bool? DifficultyBombDisabled { get; set; }
         }
     
         internal class CliqueEngineJson
