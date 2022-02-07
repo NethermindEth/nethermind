@@ -75,17 +75,7 @@ namespace Nethermind.Consensus.Validators
             bool hashAsExpected = ValidateHash(header);
 
             IReleaseSpec spec = _specProvider.GetSpec(header.Number);
-            bool extraDataValid = header.ExtraData.Length <= spec.MaximumExtraDataSize
-                                  && (isUncle
-                                      || _daoBlockNumber == null
-                                      || header.Number < _daoBlockNumber
-                                      || header.Number >= _daoBlockNumber + 10
-                                      || Bytes.AreEqual(header.ExtraData, DaoExtraData));
-            if (!extraDataValid)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
-            }
-
+            bool extraDataValid = ValidateExtraData(header, parent, spec, isUncle);
             if (parent == null)
             {
                 if (header.Number == 0)
@@ -161,6 +151,20 @@ namespace Nethermind.Consensus.Validators
                 hashAsExpected &&
                 extraDataValid &&
                 eip1559Valid;
+        }
+        protected virtual bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
+        {
+            bool extraDataValid =  header.ExtraData.Length <= spec.MaximumExtraDataSize
+                                   && (isUncle
+                                       || _daoBlockNumber == null
+                                       || header.Number < _daoBlockNumber
+                                       || header.Number >= _daoBlockNumber + 10
+                                       || Bytes.AreEqual(header.ExtraData, DaoExtraData));
+            if (!extraDataValid)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
+            }
+            return extraDataValid;
         }
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec)
