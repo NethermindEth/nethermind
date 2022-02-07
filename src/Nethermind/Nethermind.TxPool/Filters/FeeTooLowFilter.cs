@@ -26,7 +26,7 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions where gas fee properties were set too low or where the sender has not enough balance.
     /// </summary>
-    internal class FeeToLowFilter : IIncomingTxFilter
+    internal class FeeTooLowFilter : IIncomingTxFilter
     {
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IChainHeadInfoProvider _headInfo;
@@ -34,7 +34,7 @@ namespace Nethermind.TxPool.Filters
         private readonly TxDistinctSortedPool _txs;
         private readonly ILogger _logger;
 
-        public FeeToLowFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
+        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;
