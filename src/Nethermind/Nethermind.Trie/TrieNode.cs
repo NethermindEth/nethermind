@@ -115,20 +115,20 @@ namespace Nethermind.Trie
                     return Array.Empty<byte>();
                 }
 
-                if (_data![16] is null)
+                if (_data![BranchesCount] is null)
                 {
                     if (_rlpStream is null)
                     {
-                        _data[16] = Array.Empty<byte>();
+                        _data[BranchesCount] = Array.Empty<byte>();
                     }
                     else
                     {
-                        SeekChild(16);
-                        _data![16] = _rlpStream!.DecodeByteArray();
+                        SeekChild(BranchesCount);
+                        _data![BranchesCount] = _rlpStream!.DecodeByteArray();
                     }
                 }
 
-                return (byte[])_data[16];
+                return (byte[])_data[BranchesCount];
             }
 
             set
@@ -147,7 +147,7 @@ namespace Nethermind.Trie
                     throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
                 }
 
-                _data![IsLeaf ? 1 : 16] = value;
+                _data![IsLeaf ? 1 : BranchesCount] = value;
             }
         }
 
@@ -156,7 +156,7 @@ namespace Nethermind.Trie
             get
             {
                 int nonEmptyNodes = 0;
-                for (int i = 0; i < 16; i++)
+                for (int i = 0; i < BranchesCount; i++)
                 {
                     if (!IsChildNull(i))
                     {
@@ -203,7 +203,7 @@ namespace Nethermind.Trie
         }
         
         public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp) 
-            :this(nodeType, rlp)
+            : this(nodeType, rlp)
         {
             Keccak = keccak;
             if (nodeType == NodeType.Unknown)
@@ -446,7 +446,7 @@ namespace Nethermind.Trie
             }
 
             // pruning trick so we never store long persisted paths
-            if (child?.IsPersisted ?? false)
+            if (child?.IsPersisted == true)
             {
                 UnresolveChild(childIndex);
             }
@@ -604,7 +604,8 @@ namespace Nethermind.Trie
             Action<TrieNode> action,
             ITrieNodeResolver resolver,
             bool skipPersisted,
-            ILogger logger)
+            ILogger logger,
+            bool resolveStorageRoot = true)
         {
             if (skipPersisted && IsPersisted)
             {
@@ -627,10 +628,14 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            else if (TryResolveStorageRoot(resolver))
+            else
             {
-                if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
-                _storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
+                TrieNode? storageRoot = _storageRoot;
+                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, out storageRoot)))
+                {
+                    if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
+                    storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
+                }
             }
 
             action(this);
@@ -676,7 +681,7 @@ namespace Nethermind.Trie
                     }
                 }
             }
-            else if (_storageRoot?.IsPersisted ?? false)
+            else if (_storageRoot?.IsPersisted == true)
             {
                 _storageRoot = null;
             }
@@ -691,18 +696,24 @@ namespace Nethermind.Trie
 
         #region private
 
-        private bool TryResolveStorageRoot(ITrieNodeResolver resolver)
+        private bool TryResolveStorageRoot(ITrieNodeResolver resolver, out TrieNode? storageRoot)
         {
             bool hasStorage = false;
+            storageRoot = _storageRoot;
+            
             if (IsLeaf)
             {
-                if (_storageRoot is null && (Value?.Length ?? 0) > 64) // if not a storage leaf
+                if (storageRoot is not null)
                 {
-                    Keccak storageRoot = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageRoot != Keccak.EmptyTreeHash)
+                    hasStorage = true;
+                }
+                else if (Value?.Length > 64) // if not a storage leaf
+                {
+                    Keccak storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    if (storageRootKey != Keccak.EmptyTreeHash)
                     {
                         hasStorage = true;
-                        _storageRoot = resolver.FindCachedOrUnknown(storageRoot);
+                        _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
                     }
                 }
             }
@@ -720,7 +731,7 @@ namespace Nethermind.Trie
                         throw new InvalidOperationException(
                             $"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
                     case NodeType.Branch:
-                        _data = new object[AllowBranchValues ? 17 : 16];
+                        _data = new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount];
                         break;
                     default:
                         _data = new object[2];
@@ -769,20 +780,24 @@ namespace Nethermind.Trie
                     {
                         case 0:
                         case 128:
+                        {
                             _data![i] = childOrRef = _nullNode;
                             break;
+                        }
                         case 160:
+                        {
                             _rlpStream.Position--;
                             Keccak keccak = _rlpStream.DecodeKeccak();
-                            TrieNode cachedOrUnknown = tree.FindCachedOrUnknown(keccak);
-                            _data![i] = childOrRef = cachedOrUnknown;
+                            TrieNode child = tree.FindCachedOrUnknown(keccak);
+                            _data![i] = childOrRef = child;
 
-                            if (IsPersisted && !cachedOrUnknown.IsPersisted)
+                            if (IsPersisted && !child.IsPersisted)
                             {
-                                cachedOrUnknown.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
                             }
 
                             break;
+                        }
                         default:
                         {
                             _rlpStream.Position--;

@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,13 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Trie
+using System;
+using System.Threading;
+using Nethermind.Core;
+
+namespace Nethermind.Db.FullPruning
 {
-    public static class VisitingOptionsExtensions
+    /// <summary>
+    /// Context of Full pruning.
+    /// </summary>
+    public interface IPruningContext : IKeyValueStore, IDisposable
     {
-        public static VisitingOptions GetSupportedOptions(this ITreeVisitor treeVisitor) => 
-            treeVisitor.SupportsParallelVisits 
-                ? VisitingOptions.Default | VisitingOptions.Parallel 
-                : VisitingOptions.Default;
+        /// <summary>
+        /// Commits pruning, marking the end of cloning state to new DB.
+        /// </summary>
+        void Commit();
+        
+        /// <summary>
+        /// Marks that pruning is starting.
+        /// </summary>
+        void MarkStart();
+        
+        /// <summary>
+        /// Allows cancelling pruning
+        /// </summary>
+        CancellationTokenSource CancellationTokenSource { get; }
     }
 }

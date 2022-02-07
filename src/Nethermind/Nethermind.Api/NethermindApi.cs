@@ -23,6 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
@@ -90,8 +91,7 @@ namespace Nethermind.Api
                 LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
-            ISyncConfig syncConfig = ConfigProvider.GetConfig<ISyncConfig>();
-
+            
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
                 TxPool,
@@ -201,5 +201,6 @@ namespace Nethermind.Api
         public DisposableStack DisposeStack { get; } = new();
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
+        public CompositePruningTrigger PruningTrigger { get; } = new();
     }
 }

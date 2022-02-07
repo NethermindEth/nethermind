@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
 
                 RemoteStateTree = new StateTree(RemoteTrieStore, logManager);
-                LocalStateTree = new StateTree(new TrieStore(LocalStateDb.Innermost, logManager), logManager);
+                LocalStateTree = new StateTree(new TrieStore(LocalStateDb, logManager), logManager);
             }
 
             public IDb RemoteCodeDb { get; }
@@ -320,7 +320,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             testCase.SetupTree(dbContext.RemoteStateTree, dbContext.RemoteTrieStore, dbContext.RemoteCodeDb);
 
             SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            mock.SetFilter(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Take(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Count - 4).Select(k => new Keccak(k)).ToArray());
+            mock.SetFilter(((MemDb) dbContext.RemoteStateDb).Keys.Take(((MemDb) dbContext.RemoteStateDb).Keys.Count - 4).Select(k => new Keccak(k)).ToArray());
 
             dbContext.CompareTrees("BEFORE FIRST SYNC", true);
 
@@ -496,7 +496,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             
 
             SyncPeerMock mock = new(dbContext.RemoteStateDb, dbContext.RemoteCodeDb);
-            mock.SetFilter(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Take(((MemDb) dbContext.RemoteStateDb.Innermost).Keys.Count - 1).Select(k => new Keccak(k)).ToArray());
+            mock.SetFilter(((MemDb) dbContext.RemoteStateDb).Keys.Take(((MemDb) dbContext.RemoteStateDb).Keys.Count - 1).Select(k => new Keccak(k)).ToArray());
 
             dbContext.CompareTrees("BEFORE FIRST SYNC");
 

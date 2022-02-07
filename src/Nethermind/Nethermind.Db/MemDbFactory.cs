@@ -18,14 +18,8 @@ namespace Nethermind.Db
 {
     public class MemDbFactory : IMemDbFactory
     {
-        public IColumnsDb<T> CreateColumnsDb<T>(string dbName)
-        {
-            return new MemColumnsDb<T>(dbName);
-        }
+        public IColumnsDb<T> CreateColumnsDb<T>(string dbName) => new MemColumnsDb<T>(dbName);
 
-        public IDb CreateDb(string dbName)
-        {
-            return new MemDb(dbName);
-        }
+        public IDb CreateDb(string dbName) => new MemDb(dbName);
     }
 }

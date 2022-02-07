@@ -48,6 +48,7 @@ namespace Nethermind.Init.Steps
             IDbConfig dbConfig = _api.Config<IDbConfig>();
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
+            IPruningConfig pruningConfig = _api.Config<IPruningConfig>();
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
@@ -58,7 +59,7 @@ namespace Nethermind.Init.Steps
             {
                 bool useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
-                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory);
+                StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.RocksDbFactory, _api.MemDbFactory, _api.FileSystem, pruningConfig.Mode.IsFull());
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb);
             }
             catch(TypeInitializationException e)

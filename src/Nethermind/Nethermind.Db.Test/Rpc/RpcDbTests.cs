@@ -44,12 +44,6 @@ namespace Nethermind.Db.Test.Rpc
         }
 
         [Test]
-        public void innermost_is_self()
-        {
-            _rpcDb.Innermost.Should().Be(_rpcDb);
-        }
-
-        [Test]
         public void gets_through_rpc()
         {
             string result = "0x0123";
