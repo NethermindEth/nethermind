@@ -97,6 +97,12 @@ namespace Nethermind.JsonRpc.Modules
             if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result))
                 return ModuleResolution.Unknown;
 
+            var attributes = result.MethodInfo.GetCustomAttributes(true).OfType<JsonRpcMethodAttribute>().FirstOrDefault();
+            if (attributes != null && attributes.ShouldBeAuthenticated && !context.Authenticated)
+            {
+                return ModuleResolution.NotAuthenticated;
+            }
+
             if ((result.Availability & context.RpcEndpoint) == RpcEndpoint.None)
                 return ModuleResolution.EndpointDisabled;
 

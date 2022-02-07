@@ -34,5 +34,7 @@ namespace Nethermind.JsonRpc.Modules
         public string? ResponseDescription { get; set; }
         
         public string? ExampleResponse { get; set; }
+
+        public bool ShouldBeAuthenticated { get; set; } = false;
     }
 }

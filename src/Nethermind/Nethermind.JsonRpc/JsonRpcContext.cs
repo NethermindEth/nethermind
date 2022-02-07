@@ -24,15 +24,17 @@ namespace Nethermind.JsonRpc
         public static JsonRpcContext Http(JsonRpcUrl url) => new(RpcEndpoint.Http, url: url);
         public static JsonRpcContext WebSocket(JsonRpcUrl url) => new(RpcEndpoint.Ws, url: url);
 
-        public JsonRpcContext(RpcEndpoint rpcEndpoint, IJsonRpcDuplexClient? duplexClient = null, JsonRpcUrl? url = null)
+        public JsonRpcContext(RpcEndpoint rpcEndpoint, IJsonRpcDuplexClient? duplexClient = null, JsonRpcUrl? url = null, bool authenticated = false)
         {
             RpcEndpoint = rpcEndpoint;
             DuplexClient = duplexClient;
             Url = url;
+            Authenticated = authenticated;
         }
 
         public RpcEndpoint RpcEndpoint { get; }
         public IJsonRpcDuplexClient? DuplexClient { get; }
         public JsonRpcUrl? Url { get; }
+        public bool Authenticated { get; }
     }
 }

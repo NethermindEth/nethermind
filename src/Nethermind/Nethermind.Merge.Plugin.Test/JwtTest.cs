@@ -17,7 +17,10 @@
 
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
+using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -79,5 +82,63 @@ public class JwtTest
         JwtProcessor processor = new("1234");
         JsonRpcRequest? actual = processor.AuthenticateAndDecode(token);
         Assert.AreEqual(null, actual);
+    }
+
+    [Test]
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task method_have_to_be_authenticated(bool authenticated)
+    {
+        var api = Build.ContextWithMocks();
+        RpcModuleProvider rpcProvider = new(api.FileSystem, new JsonRpcConfig(), api.LogManager);
+        TestRpcModule testModule = new ();
+        rpcProvider.Register(new SingletonModulePool<ITestRpcModule>(testModule));
+        JsonRpcUrl url = new("http", "localhost", 8550, RpcEndpoint.Http, new string[] { });
+        JsonRpcContext context = new (RpcEndpoint.Http, url: url, authenticated: authenticated);
+        ModuleResolution expected = authenticated ? ModuleResolution.Disabled : ModuleResolution.NotAuthenticated;
+        Assert.AreEqual(expected, rpcProvider.Check("method_authenticated", context));
+    }
+
+    [Test]
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task method_have_not_to_be_authenticated(bool authenticated)
+    {
+        var api = Build.ContextWithMocks();
+        RpcModuleProvider rpcProvider = new(api.FileSystem, new JsonRpcConfig(), api.LogManager);
+        TestRpcModule testModule = new ();
+        rpcProvider.Register(new SingletonModulePool<ITestRpcModule>(testModule));
+        JsonRpcUrl url = new("http", "localhost", 8550, RpcEndpoint.Http, new string[] { });
+        JsonRpcContext context = new (RpcEndpoint.Http, url: url, authenticated: authenticated);
+        ModuleResolution expected = ModuleResolution.Disabled;
+        Assert.AreEqual(expected, rpcProvider.Check("method_notAuthenticated", context));
+    }
+
+    [RpcModule("Test")]
+    private interface ITestRpcModule : IRpcModule
+    {
+        [JsonRpcMethod(
+            IsSharable = true,
+            IsImplemented = true,
+            ShouldBeAuthenticated = true)]
+        ResultWrapper<ExecutionStatusResult> method_authenticated();
+
+        [JsonRpcMethod(
+            IsSharable = true,
+            IsImplemented = true,
+            ShouldBeAuthenticated = false)]
+        ResultWrapper<ExecutionStatusResult> method_notAuthenticated();
+    }
+
+    private class TestRpcModule : ITestRpcModule
+    {
+        public ResultWrapper<ExecutionStatusResult> method_authenticated()
+        {
+            return ResultWrapper<ExecutionStatusResult>.Fail("");
+        }
+        public ResultWrapper<ExecutionStatusResult> method_notAuthenticated()
+        {
+            return ResultWrapper<ExecutionStatusResult>.Fail("");
+        }
     }
 }
