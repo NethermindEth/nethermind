@@ -151,9 +151,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             processedBlock.Header.IsPostMerge = true;
-            _blockTree.SuggestBlock(processedBlock, true);
-            _blockValidationSemaphore.Wait();
-            return NewPayloadV1Result.Valid(block.Hash!);
+            var addResult = _blockTree.SuggestBlock(processedBlock, false);
+            _logger.Info($"{processedBlock} add result {addResult}");
+            return NewPayloadV1Result.Valid(request.BlockHash);
         }
 
         private (ValidationResult ValidationResult, string? Message) ValidateBlockAndProcess(Block block,

@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
 
-        EthereumMerge = ReadOnlyChain | ForceProcessing | DoNotUpdateHead | IgnoreParentNotOnMainChain
+        EthereumMerge = ForceProcessing | DoNotUpdateHead
     }
 
     public static class ProcessingOptionsExtensions
