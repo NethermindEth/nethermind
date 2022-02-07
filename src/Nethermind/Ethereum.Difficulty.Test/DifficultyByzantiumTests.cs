@@ -30,10 +30,11 @@ namespace Ethereum.Difficulty.Test
             return LoadHex("difficultyByzantium.json");
         }
 
-        [TestCaseSource(nameof(LoadFrontierTests))]
-        public void Test(DifficultyTests test)
-        {
-            RunTest(test, new SingleReleaseSpecProvider(Byzantium.Instance, 1));
-        }    
+        // ToDo: fix loader
+        // [TestCaseSource(nameof(LoadFrontierTests))]
+        // public void Test(DifficultyTests test)
+        // {
+        //     RunTest(test, new SingleReleaseSpecProvider(Byzantium.Instance, 1));
+        // }    
     }
 }

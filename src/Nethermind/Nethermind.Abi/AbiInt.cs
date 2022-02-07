@@ -17,6 +17,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Int256;
 
 namespace Nethermind.Abi
 {
@@ -24,7 +25,7 @@ namespace Nethermind.Abi
     {
         private const int MaxSize = 256;
         private const int MinSize = 0;
-
+        
         public static new readonly AbiInt Int8 = new(8);
         public static new readonly AbiInt Int16 = new(16);
         public static new readonly AbiInt Int32 = new(32);

@@ -21,6 +21,7 @@ namespace Nethermind.Abi
     public abstract partial class AbiType
     {
         public static AbiDynamicBytes DynamicBytes => AbiDynamicBytes.Instance;
+        public static AbiBytes Bytes32 => AbiBytes.Bytes32;
         public static AbiAddress Address => AbiAddress.Instance;
         public static AbiFunction Function => AbiFunction.Instance;
         public static AbiBool Bool => AbiBool.Instance;
@@ -37,9 +38,7 @@ namespace Nethermind.Abi
         public static AbiUInt UInt96 => AbiUInt.UInt96;
         public static AbiUInt UInt256 => AbiUInt.UInt256;
         public static AbiString String => AbiString.Instance;
-
         public static AbiFixed Fixed { get; } = new(128, 18);
-
         public static AbiUFixed UFixed { get; } = new(128, 18);
 
         public virtual bool IsDynamic => false;

@@ -73,6 +73,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             rewardTrace.Action.TraceAddress = new int[] { };
             rewardTrace.Action.Type = "reward";
             rewardTrace.Action.Result = null;
+            
+            
         }
 
         public override void StartNewBlockTrace(Block block)

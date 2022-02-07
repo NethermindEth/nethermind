@@ -33,7 +33,7 @@ namespace Ethereum.Transition.Test
             await RunTest(test);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcFrontierToHomestead");
+        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcFrontierToHomestead");
         return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
     }
 }
