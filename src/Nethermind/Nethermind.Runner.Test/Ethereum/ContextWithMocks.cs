@@ -128,7 +128,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
                 EthSyncingInfo = Substitute.For<IEthSyncingInfo>(),
                 HealthHintService = Substitute.For<IHealthHintService>(),
-                TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId)
+                TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId),
+                UnclesValidator = Substitute.For<IUnclesValidator>()
             };
     }
 }

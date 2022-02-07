@@ -140,10 +140,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             processedBlock.Header.IsPostMerge = true;
-            _blockTree.SuggestBlock(processedBlock, true);
+            var addResult = _blockTree.SuggestBlock(processedBlock, false);
+            _logger.Info($"{processedBlock} add result {addResult}");
             executePayloadResult.Status = ExecutePayloadStatus.Valid;
             executePayloadResult.LatestValidHash = request.BlockHash;
-            _blockValidationSemaphore.Wait();
+       //     _blockValidationSemaphore.Wait();
             return ResultWrapper<ExecutePayloadV1Result>.Success(executePayloadResult);
         }
 
