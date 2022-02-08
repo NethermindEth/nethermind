@@ -441,7 +441,7 @@ namespace Nethermind.TxPool.Test
             foreach (Transaction transaction in transactions)
             {
                 transaction.GasPrice = 10;
-                _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+                _txPool.SubmitTx(transaction, TxHandlingOptions.None);
             }
             
             Transaction tx = Build.A.Transaction
@@ -450,8 +450,10 @@ namespace Nethermind.TxPool.Test
                 .TestObject;
             EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
             _txPool.GetPendingTransactions().Length.Should().Be(30);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(0);
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
             _txPool.GetPendingTransactions().Length.Should().Be(30);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(isLocal ? 1 : 0);
             result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.Accepted) : nameof(AcceptTxResult.FeeTooLow));
         }
 
