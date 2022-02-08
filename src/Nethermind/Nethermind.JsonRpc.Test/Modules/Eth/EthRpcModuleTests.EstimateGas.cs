@@ -36,13 +36,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
     public partial class EthRpcModuleTests
     {
         [Test]
-        public async Task Eth_estimateGas_web3_should_return_insufficient_balance_error()
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x0\", ")]
+        public async Task Eth_estimateGas_web3_should_return_insufficient_balance_error(string type)
         {
             using Context ctx = await Context.Create();
             Address someAccount = new("0x0001020304050607080910111213141516171819");
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
+                "{"+type+"\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
             string serialized =
                 ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual(
@@ -50,43 +53,74 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 serialized);
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         }
-
-
+        
         [Test]
-        public async Task Eth_estimateGas_web3_sample_not_enough_gas_system_account()
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x0\", ")]
+        public async Task Eth_estimateGas_web3_without_gas_pricing_and_value(string type)
+        {
+            using Context ctx = await Context.Create();
+            Address someAccount = new("0x0001020304050607080910111213141516171819");
+            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{" + type + "\"from\":\"0x0001020304050607080910111213141516171819\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            string serialized =
+                ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual(
+                "{\"jsonrpc\":\"2.0\",\"result\":\"0x53b8\",\"id\":67}",
+                serialized);
+            ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
+        }
+
+
+        //Not working properly yet
+        [Test]
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x0\", ")]
+        public async Task Eth_estimateGas_web3_sample_not_enough_gas_system_account(string type)
         {
             using Context ctx = await Context.Create();
             ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
-            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>("{"+type+
+                "\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized =
                 ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x53b8\",\"id\":67}", serialized);
             ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
         }
 
+        //Not working properly
         [Test]
-        public async Task Eth_estimateGas_web3_sample_not_enough_gas_other_account()
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x0\", ")]
+        public async Task Eth_estimateGas_web3_sample_not_enough_gas_other_account(string type)
         {
             using Context ctx = await Context.Create();
             Address someAccount = new("0x0001020304050607080910111213141516171819");
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            "{" + type + "\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized =
                 ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x53b8\",\"id\":67}", serialized);
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         }
 
+        //Not working properly?
         [Test]
-        public async Task Eth_estimateGas_web3_above_block_gas_limit()
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x0\", ")]
+        public async Task Eth_estimateGas_web3_above_block_gas_limit(string type)
         {
             using Context ctx = await Context.Create();
             Address someAccount = new("0x0001020304050607080910111213141516171819");
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+                "{"+type+"\"from\":\"0x0001020304050607080910111213141516171819\",\"gas\":\"0x100000000\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized =
                 ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x53b8\",\"id\":67}", serialized);
@@ -173,52 +207,65 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         }
         
         [Test]
-        public async Task Estimate_gas_without_gas_pricing()
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x0\", ")]
+        public async Task Estimate_gas_without_gas_pricing(string type)
         {
             using Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+                "{" + type + "\"from\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}", serialized);
         }
 
+        //Not working properly?
         [Test]
-        public async Task Estimate_gas_with_gas_pricing()
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x0\", ")]
+        public async Task Estimate_gas_with_gas_pricing(string type)
         {
             using Context ctx = await Context.Create();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
+                "{" + type + "\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}", serialized);
         }
 
+        //Not working properly?
         [Test]
-        public async Task Estimate_gas_without_gas_pricing_after_1559_legacy()
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x2\", ")]
+        public async Task Estimate_gas_without_gas_pricing_after_1559_legacy(string type)
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
+                "{" + type + "\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}", serialized);
         }
-
+        
         [Test]
-        public async Task Estimate_gas_without_gas_pricing_after_1559_new_type_of_transaction()
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x2\", ")]
+        public async Task Estimate_gas_without_gas_pricing_after_1559_new_type_of_transaction(string type)
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\"}");
+                "{" + type + "\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\"}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}", serialized);
-            byte[] code = Prepare.EvmCode
-                .Op(Instruction.BASEFEE)
-                .PushData(0)
-                .Op(Instruction.SSTORE)
-                .Done;
         }
 
         [Test]
-        public async Task Estimate_gas_with_base_fee_opcode()
+        [TestCase("")]
+        [TestCase("\"type\":null, ")]
+        [TestCase("\"type\":\"0x0\", ")]
+        [TestCase("\"type\":\"0x2\", ")]
+        public async Task Estimate_gas_with_base_fee_opcode(string type)
         {
             using Context ctx = await Context.CreateWithLondonEnabled();
 
@@ -233,7 +280,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
             string dataStr = code.ToHexString();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
+                $"{{{type}\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
             string serialized = ctx._test.TestEthRpc("eth_estimateGas", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual(
                 "{\"jsonrpc\":\"2.0\",\"result\":\"0xe891\",\"id\":67}",

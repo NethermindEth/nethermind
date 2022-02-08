@@ -44,6 +44,7 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStack => false;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => true;
+        public bool NoBaseFee { get; set; }
 
         public AccessTxTracer(params Address[] addressesToOptimize)
         {

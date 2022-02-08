@@ -48,6 +48,7 @@ namespace Nethermind.Evm.Test
         public byte StatusCode { get; set; }
         
         public long Refund { get; set; }
+        public bool NoBaseFee { get; set; }
 
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = new List<EvmExceptionType>();
 

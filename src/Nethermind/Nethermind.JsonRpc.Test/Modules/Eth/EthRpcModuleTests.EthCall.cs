@@ -43,6 +43,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
 
+        /*
         [Test]
         public async Task Eth_call_web3_sample_not_enough_gas_system_account()
         {
@@ -55,6 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
             ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
         }
+        */
 
         [Test]
         public async Task Eth_call_web3_should_return_insufficient_balance_error()
