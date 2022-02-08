@@ -91,9 +91,6 @@ namespace Nethermind.Consensus.Ethash
 
         private BigInteger TimeBomb(IReleaseSpec spec, long blockNumber)
         {
-            if (spec.DifficultyBombDelay > blockNumber)
-                return BigInteger.Zero;
-            
             blockNumber = blockNumber - spec.DifficultyBombDelay;
             
             return blockNumber < InitialDifficultyBombBlock ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
