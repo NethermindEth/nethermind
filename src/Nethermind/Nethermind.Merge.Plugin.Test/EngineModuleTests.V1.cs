@@ -407,7 +407,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             ResultWrapper<PayloadStatusV1>
                 executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
-            executePayloadResult.Data.Status.Should().Be(PayloadStatus.Syncing);
+            executePayloadResult.Data.Status.Should().Be(PayloadStatus.Accepted);
         }
 
         [TestCaseSource(nameof(WrongInputTestsV1))]
