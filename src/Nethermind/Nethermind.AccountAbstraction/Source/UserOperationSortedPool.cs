@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,22 +27,42 @@ namespace Nethermind.AccountAbstraction.Source
 {
     public class UserOperationSortedPool : DistinctValueSortedPool<Keccak, UserOperation, Address>
     {
-        public UserOperationSortedPool(int capacity, IComparer<UserOperation> comparer, ILogManager logManager) :
-            base(capacity, comparer, EqualityComparer<UserOperation>.Default, logManager)
+        private readonly IAccountAbstractionConfig _config;
+
+        public UserOperationSortedPool(int capacity, IComparer<UserOperation> comparer, ILogManager logManager, IAccountAbstractionConfig config) :
+            base(capacity, comparer, CompetingUserOperationEqualityComparer.Instance, logManager)
         {
+            _config = config;
         }
 
         protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer) => 
-            comparer.ThenBy(CompareUserOperationsByHash.Default);
+            comparer.ThenBy(CompareUserOperationsByHash.Instance);
 
         protected override IComparer<UserOperation> GetGroupComparer(IComparer<UserOperation> comparer) =>
-            comparer.ThenBy(CompareUserOperationsByHash.Default);
+            CompareUserOperationByNonce.Instance.ThenBy(CompareUserOperationsByHash.Instance.ThenBy(comparer));
 
         protected override IComparer<UserOperation> GetReplacementComparer(IComparer<UserOperation> comparer) =>
-            comparer.ThenBy(CompareUserOperationsByDecreasingGasPrice.Default);
+            CompareReplacedUserOperationByFee.Instance.ThenBy(comparer);
 
         protected override Address MapToGroup(UserOperation value) => value.Sender;
         
         protected override Keccak GetKey(UserOperation value) => value.Hash!;
+
+        protected override bool AllowSameKeyReplacement => true;
+
+        // each sender can only hold MaximumUserOperationPerSender (default 10) ops, however even if they
+        // hold the maximum we still want to allow fee replacement
+        public bool UserOperationWouldOverflowSenderBucket(UserOperation op)
+        {
+            if (GetBucketSnapshot().TryGetValue(op.Sender, out UserOperation[]? opsForSender))
+            {
+                // if bucket is not full then we can add it
+                if (opsForSender.Length < _config.MaximumUserOperationPerSender) return false;
+
+                return !CanInsert(op.Hash, op);
+            }
+
+            return false;
+        }
     }
 }

@@ -262,13 +262,18 @@ namespace Nethermind.AccountAbstraction.Source
                     }
             }
 
+            if (_userOperationSortedPool.UserOperationWouldOverflowSenderBucket(userOperation))
+            {
+                return ResultWrapper<Keccak>.Fail($"the pool already contains the maximum {_accountAbstractionConfig.MaximumUserOperationPerSender} user operations from the {userOperation.Sender} sender");
+            }
+
             if (userOperation.MaxFeePerGas < _accountAbstractionConfig.MinimumGasPrice)
-                return ResultWrapper<Keccak>.Fail("maxFeePerGas below minimum gas price");
+                return ResultWrapper<Keccak>.Fail($"maxFeePerGas below minimum gas price {_accountAbstractionConfig.MinimumGasPrice} wei");
 
             if (userOperation.CallGas < Transaction.BaseTxGasCost)
                 return ResultWrapper<Keccak>.Fail($"callGas too low, must be at least {Transaction.BaseTxGasCost}");
 
-            // make sure target account exists
+            // make sure target account exists or is going to be created
             if (
                 userOperation.Sender == Address.Zero
                 || !(_stateProvider.AccountExists(userOperation.Sender) || userOperation.InitCode != Bytes.Empty))

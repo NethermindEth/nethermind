@@ -80,7 +80,8 @@ namespace Nethermind.AccountAbstraction
                     UserOperationSortedPool userOperationSortedPool = new(
                         _accountAbstractionConfig.UserOperationPoolSize,
                         CompareUserOperationsByDecreasingGasPrice.Default,
-                        getFromApi.LogManager);
+                        getFromApi.LogManager,
+                        _accountAbstractionConfig);
 
                     _userOperationPool = new UserOperationPool(
                         _accountAbstractionConfig,
