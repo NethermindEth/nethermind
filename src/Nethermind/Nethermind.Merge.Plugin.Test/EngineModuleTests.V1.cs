@@ -50,7 +50,6 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task getPayload_correctlyEncodeTransactions()
         {
             byte[] payload = new byte[0];
-            using MergeTestBlockchain chain = await CreateBlockChain();
             IPayloadService payloadService = Substitute.For<IPayloadService>();
             Block block = Build.A.Block.WithTransactions(
                 new[]
@@ -61,7 +60,9 @@ namespace Nethermind.Merge.Plugin.Test
                         .SignedAndResolved(TestItem.PrivateKeyA).TestObject
                 }).TestObject;
             payloadService.GetPayload(Arg.Any<byte[]>()).Returns(block);
-            IEngineRpcModule rpc = CreateEngineModule(chain, payloadService);
+            using MergeTestBlockchain chain = await CreateBlockChain(null, payloadService);
+
+            IEngineRpcModule rpc = CreateEngineModule(chain);
 
             string result = RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV1", payload.ToHexString(true));
             Assert.AreEqual(result,
