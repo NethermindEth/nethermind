@@ -41,7 +41,6 @@ namespace Nethermind.Specs.Forks
         public UInt256 BlockReward { get; } = UInt256.Parse("2000000000000000000");
         public long DifficultyBombDelay => 5000000L;
         public long DifficultyBoundDivisor => 0x0800;
-        public bool DifficultyBombDisabled => false;
         public long? FixedDifficulty => null;
         public int MaximumUncleCount => 2;
         public bool IsTimeAdjustmentPostOlympic => true;

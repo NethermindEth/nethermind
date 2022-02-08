@@ -8,6 +8,9 @@
         "difficultyBoundDivisor": "0x800",
         "difficultyBombDisabled": "true",
         "durationLimit": "0xd",
+        "difficultyBombDelays": {
+          "0": "0x7FFFFFFFFFFFFFFF"
+        },
         "blockReward": {
           "0x0": "0x1bc16d674ec80000"
         },

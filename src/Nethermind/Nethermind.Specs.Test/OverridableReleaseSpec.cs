@@ -146,19 +146,6 @@ namespace Nethermind.Specs.Test
                 _overridenEip1559TransitionBlock = value;
             }
         }
-        
-        private bool? _overridenDifficultyBombDisabled;
-        public bool DifficultyBombDisabled
-        {
-            get
-            {
-                return _overridenDifficultyBombDisabled ?? _spec.DifficultyBombDisabled;
-            }
-            set
-            {
-                _overridenDifficultyBombDisabled = value;
-            }
-        }
 
         public Address? Eip1559FeeCollector => _spec.Eip1559FeeCollector;
     }

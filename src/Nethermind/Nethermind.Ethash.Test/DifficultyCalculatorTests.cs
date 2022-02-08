@@ -83,28 +83,6 @@ namespace Nethermind.Ethash.Test
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 London.Instance, ArrowGlacier.Instance);
         }
-        
-        [TestCase(9700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000 + 1)]
-        public void Calculation_should_change_based_on_difficulty_bomb_disabled_flag(long blocksAbove)
-        {
-            UInt256 parentDifficulty = 0x55f78f7;
-            UInt256 parentTimestamp = 1613570258;
-            UInt256 currentTimestamp = 0x602d20d2;
-            OverridableReleaseSpec enabledBombReleaseSpec = new(London.Instance);
-            enabledBombReleaseSpec.DifficultyBombDisabled = false;
-            TestSpecProvider enabledBombSpecProvider = new(new OverridableReleaseSpec(enabledBombReleaseSpec));
-            
-            EthashDifficultyCalculator enabledDifficultyCalculator = new(enabledBombSpecProvider);
-            UInt256 enabledResult = enabledDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
-            
-            OverridableReleaseSpec disabledReleaseSpec = new(London.Instance);
-            disabledReleaseSpec.DifficultyBombDisabled = true;
-            TestSpecProvider disabledBombSpecProvider = new(new OverridableReleaseSpec(disabledReleaseSpec));
-            EthashDifficultyCalculator disabledDifficultyCalculator = new(disabledBombSpecProvider);
-            UInt256 disabledResult = disabledDifficultyCalculator.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blocksAbove, false);
-            
-            Assert.AreNotEqual(enabledResult, disabledResult);
-        }
 
         private void Calculation_should_not_be_equal_on_different_difficulty_hard_forks(
             long blocksAbove, IReleaseSpec firstHardfork, IReleaseSpec secondHardfork)

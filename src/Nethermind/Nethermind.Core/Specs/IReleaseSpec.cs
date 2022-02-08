@@ -29,7 +29,6 @@ namespace Nethermind.Core.Specs
         long MinGasLimit { get; }
         long GasLimitBoundDivisor { get; }
         UInt256 BlockReward { get; }
-        bool DifficultyBombDisabled { get; }
         long DifficultyBombDelay { get; }
         long DifficultyBoundDivisor { get; }
         long? FixedDifficulty { get; }
