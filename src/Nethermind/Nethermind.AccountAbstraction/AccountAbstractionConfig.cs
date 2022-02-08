@@ -23,7 +23,8 @@ namespace Nethermind.AccountAbstraction
     {
         public bool Enabled { get; set; }
         public int UserOperationPoolSize { get; set; } = 200;
-        public string EntryPointContractAddress { get; set; } = "";
+        // public string EntryPointContractAddress { get; set; } = "";
+        public string EntryPointContractAddresses {get; set;} = new List<string>();
         public string Create2FactoryAddress { get; set; } = "";
         public UInt256 MinimumGasPrice { get; set; } = 1;
         public string FlashbotsEndpoint { get; set; } = "https://relay.flashbots.net/";

@@ -38,20 +38,24 @@ namespace Nethermind.AccountAbstraction.Source
     {
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-        private readonly IUserOperationTxBuilder _userOperationTxBuilder;
-        private readonly IUserOperationPool _userOperationPool;
-        private readonly IUserOperationSimulator _userOperationSimulator;
+        // private readonly IUserOperationTxBuilder _userOperationTxBuilder;
+        // private readonly IUserOperationPool _userOperationPool;
+        // private readonly IUserOperationSimulator _userOperationSimulator;
+
+        private readonly IDictionary<Address, IUserOperationTxBuilder> _userOperationTxBuilders;
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools;
+        private readonly IDictionary<Address, IUserOperationSimulator> _userOperationSimulators;
 
         public UserOperationTxSource(
-            IUserOperationTxBuilder userOperationTxBuilder,
-            IUserOperationPool userOperationPool,
-            IUserOperationSimulator userOperationSimulator,
+            IDictionary<Address, IUserOperationTxBuilder> userOperationTxBuilders,
+            IDictionary<Address, IUserOperationPool> userOperationPools,
+            IDictionary<Address, IUserOperationSimulator> userOperationSimulators,
             ISpecProvider specProvider,
             ILogger logger)
         {
-            _userOperationTxBuilder = userOperationTxBuilder;
-            _userOperationPool = userOperationPool;
-            _userOperationSimulator = userOperationSimulator;
+            _userOperationTxBuilders = userOperationTxBuilders;
+            _userOperationPools = userOperationPools;
+            _userOperationSimulators = userOperationSimulators;
             _specProvider = specProvider;
             _logger = logger;
         }
@@ -62,11 +66,22 @@ namespace Nethermind.AccountAbstraction.Source
             IList<UserOperation> userOperationsToInclude = new List<UserOperation>();
             ulong gasUsed = 0;
 
-            IEnumerable<UserOperation> userOperations =
-                _userOperationPool
-                    .GetUserOperations()
-                    .Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas)
-                    .OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op, parent.BaseFeePerGas));
+            IList<UserOperation> _userOperations = new List<UserOperation>();
+            foreach (UserOperationPool _userOperationPool in _userOperationPools)
+            {
+                _userOperations.Add(
+                    _userOperationPool
+                    .GetUserOPerations()
+                    .Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas));
+            }
+            IEnumerable<UserOperation> userOperations = _userOperations.OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op, parent.BaseFeePerGas));
+
+            // IEnumerable<UserOperation> userOperations =
+            //     _userOperationPool
+            //         .GetUserOperations()
+            //         .Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas)
+            //         .OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op, parent.BaseFeePerGas));
+            
             foreach (UserOperation userOperation in userOperations)
             {
                 if (gasUsed >= (ulong)gasLimit) continue;
