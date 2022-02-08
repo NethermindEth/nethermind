@@ -63,18 +63,24 @@ namespace Nethermind.AccountAbstraction.Source
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit)
         {
             IDictionary<Address, HashSet<UInt256>> usedAccessList = new Dictionary<Address, HashSet<UInt256>>();
-            IList<UserOperation> userOperationsToInclude = new List<UserOperation>();
+            // IList<UserOperation> userOperationsToInclude = new List<UserOperation>();
+            IList<Tuple<Address, UserOperation>> addressedUserOperationsToInclude = new List<Tuple<Address, UserOperation>>();
             ulong gasUsed = 0;
 
-            IList<UserOperation> _userOperations = new List<UserOperation>();
-            foreach (UserOperationPool _userOperationPool in _userOperationPools)
+            IList<Tuple<Address, UserOperation>> _combinedUserOperations = new List<Tuple<Address, UserOperation>>();
+            foreach (Address entryPoint in _userOperationPools.Values)
             {
-                _userOperations.Add(
-                    _userOperationPool
-                    .GetUserOPerations()
+                IEnumerable<UserOperation> _entryPointUserOperations = 
+                    _userOperationPools[entryPoint]
+                    .GetUserOperations()
                     .Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas));
+
+                foreach(UserOperation _userOperation in _entryPointUserOperations)
+                {
+                    _combinedUserOperations.Add(Tuple.Create(entryPoint, _userOperation));
+                }
             }
-            IEnumerable<UserOperation> userOperations = _userOperations.OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op, parent.BaseFeePerGas));
+            IList<Tuple<Address, UserOperation>> addressedUserOperations = _combinedUserOperations.OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op.Item2, parent.BaseFeePerGas)).toList();
 
             // IEnumerable<UserOperation> userOperations =
             //     _userOperationPool
@@ -82,15 +88,18 @@ namespace Nethermind.AccountAbstraction.Source
             //         .Where(op => op.MaxFeePerGas >= parent.BaseFeePerGas)
             //         .OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op, parent.BaseFeePerGas));
             
-            foreach (UserOperation userOperation in userOperations)
+            foreach (Tuple<Address, UserOperation> addressedUserOperation in addressedUserOperations)
             {
                 if (gasUsed >= (ulong)gasLimit) continue;
+
+                UserOperation userOperation = addressedUserOperation.Item2;
+                Address entryPoint = addressedUserOperation.Item1;
 
                 // no intersect of accessed addresses between ops
                 if (userOperation.AccessList.AccessListOverlaps(usedAccessList)) continue;
 
                 // simulate again to make sure the op is still valid
-                ResultWrapper<Keccak> result = _userOperationSimulator.Simulate(userOperation, parent);
+                ResultWrapper<Keccak> result = _userOperationSimulators[entryPoint].Simulate(userOperation, parent);
                 if (result.Result != Result.Success)
                 {
                     //if (_logger.IsDebug) commented out for testing
@@ -99,7 +108,7 @@ namespace Nethermind.AccountAbstraction.Source
                         // TODO: Remove logging, just for testing
                         _logger.Info($"UserOperation {userOperation.Hash} resimulation unsuccessful: {result.Result.Error}");
 
-                        bool removeResult = _userOperationPool.RemoveUserOperation(userOperation.Hash);
+                        bool removeResult = _userOperationPools[entryPoint].RemoveUserOperation(userOperation.Hash);
                         if (_logger.IsDebug)
                         {
                             _logger.Debug(
@@ -112,7 +121,7 @@ namespace Nethermind.AccountAbstraction.Source
                     continue;
                 }
 
-                userOperationsToInclude.Add(userOperation);
+                addressedUserOperationsToInclude.Add(addressedUserOperation);
                 gasUsed += (ulong)userOperation.CallGas +
                            (ulong)userOperation.PreVerificationGas +
                            (ulong)userOperation.VerificationGas;
@@ -125,34 +134,45 @@ namespace Nethermind.AccountAbstraction.Source
                         usedAccessList[kv.Key] = kv.Value;
             }
 
-            if (userOperationsToInclude.Count == 0) return new List<Transaction>();
+            if (addressedUserOperationsToInclude.Count == 0) return new List<Transaction>();
 
-            Transaction userOperationTransaction =
-                _userOperationTxBuilder.BuildTransactionFromUserOperations(
-                    userOperationsToInclude, 
-                    parent, 
-                    100_000_000, // high gas to test
-                    _specProvider.GetSpec(parent.Number + 1));
-            if (_logger.IsDebug)
-                _logger.Debug($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
-            // TODO: Remove logging, just for testing
-            _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
+            IList<Transaction> userOperationTransactions = new List<Transaction>();
 
-            BlockchainBridge.CallOutput callOutput = _userOperationSimulator.EstimateGas(parent, userOperationTransaction, CancellationToken.None);
-            FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(callOutput.OutputData);
-            if (failedOp is not null)
+            foreach(Address entryPoint in _userOperationTxBuilders.Values)
             {
-                // TODO punish paymaster
-            }
-            
-            Transaction updatedUserOperationTransaction =
-                _userOperationTxBuilder.BuildTransactionFromUserOperations(
-                    userOperationsToInclude, 
-                    parent, 
-                    callOutput.GasSpent,
-                    _specProvider.GetSpec(parent.Number + 1));
+                IList<UserOperation> userOperationsToInclude = addressedUserOperationsToInclude.Where(op => op.Item1 == entryPoint);
 
-            return new List<Transaction> { updatedUserOperationTransaction };
+                if(userOperationsToInclude.Count == 0) continue;
+
+                Transaction userOperationTransaction =
+                    _userOperationTxBuilders[entryPoint].BuildTransactionFromUserOperations(
+                        userOperationsToInclude, 
+                        parent, 
+                        100_000_000, // high gas to test
+                        _specProvider.GetSpec(parent.Number + 1));
+                if (_logger.IsDebug)
+                    _logger.Debug($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
+                // TODO: Remove logging, just for testing
+                _logger.Info($"Constructed tx from {userOperationsToInclude.Count} userOperations: {userOperationTransaction.Hash}");
+
+                BlockchainBridge.CallOutput callOutput = _userOperationSimulators[entryPoint].EstimateGas(parent, userOperationTransaction, CancellationToken.None);
+                FailedOp? failedOp = _userOperationTxBuilders[entryPoint].DecodeEntryPointOutputError(callOutput.OutputData);
+                if (failedOp is not null)
+                {
+                    // TODO punish paymaster
+                }
+                
+                Transaction updatedUserOperationTransaction =
+                    _userOperationTxBuilders[entryPoint].BuildTransactionFromUserOperations(
+                        userOperationsToInclude, 
+                        parent, 
+                        callOutput.GasSpent,
+                        _specProvider.GetSpec(parent.Number + 1));
+
+                userOperationTransactions.Add(updatedUserOperationTransaction);
+            }
+
+            return userOperationTransactions;
         }
 
         private UInt256 CalculateUserOperationPremiumGasPrice(UserOperation op, UInt256 baseFeePerGas)

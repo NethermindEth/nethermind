@@ -35,13 +35,13 @@ namespace Nethermind.AccountAbstraction
         [ConfigItem(
             Description =
                 "Defines the hex string representation of the address of the EntryPoint contract to which transactions will be made",
-            DefaultValue = new List<string>())]
-        List<string> EntryPointContractAddresses {get; set;}
+            DefaultValue = "")]
+        string EntryPointContractAddresses {get; set;}
         // string EntryPointContractAddress { get; set; }
 
         [ConfigItem(
             Description =
-                "Defines the hex string representation of the address of the create2Factory contract which was used to create the entryPoint",
+                "Defines the list of the hex string representation of the addresses of the create2Factory contract which was used to create the entryPoint",
             DefaultValue = "")]
         string Create2FactoryAddress { get; set; }
 
@@ -54,5 +54,15 @@ namespace Nethermind.AccountAbstraction
             Description = "Defines the string URL for the flashbots bundle reception endpoint",
             DefaultValue = "https://relay.flashbots.net/")]
         string FlashbotsEndpoint { get; set; }
+    }
+
+    public static class AccountAbtractionConfigExtensions
+    {
+        public static IEnumerable<string> GetEntryPointAddresses(this IAccountAbstractionConfig accountAbstractionConfig) =>
+            accountAbstractionConfig.EntryPointContractAddresses
+                .split(",")
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .Distinct()
     }
 }

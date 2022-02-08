@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
@@ -223,7 +224,7 @@ namespace Nethermind.AccountAbstraction
                 //     _entryPointContractAddress = entryPointContractAddress!;
                 // }
 
-                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.EntryPointContractAddresses;
+                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses();
                 foreach (string _addressString in _entryPointContractAddressesString){
                     bool parsed = Address.TryParse(
                         _addressString,
