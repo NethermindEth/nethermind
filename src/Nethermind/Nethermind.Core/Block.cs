@@ -44,16 +44,12 @@ namespace Nethermind.Core
         {
         }
 
-        public Block WithReplacedHeader(BlockHeader newHeader)
-        {
-            return new(newHeader, Body);
-        }
+        public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
 
-        public Block WithReplacedBody(BlockBody newBody)
-        {
-            return new(Header, newBody);
-        }
+        public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
         
+        public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody);
+
         public BlockHeader Header { get; }
 
         public BlockBody Body { get; }
