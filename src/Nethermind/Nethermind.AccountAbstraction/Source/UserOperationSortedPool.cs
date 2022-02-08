@@ -27,12 +27,12 @@ namespace Nethermind.AccountAbstraction.Source
 {
     public class UserOperationSortedPool : DistinctValueSortedPool<Keccak, UserOperation, Address>
     {
-        private readonly IAccountAbstractionConfig _config;
+        private readonly int _maximumUserOperationPerSender;
 
-        public UserOperationSortedPool(int capacity, IComparer<UserOperation> comparer, ILogManager logManager, IAccountAbstractionConfig config) :
+        public UserOperationSortedPool(int capacity, IComparer<UserOperation> comparer, ILogManager logManager, int maximumUserOperationPerSender) :
             base(capacity, comparer, CompetingUserOperationEqualityComparer.Instance, logManager)
         {
-            _config = config;
+            _maximumUserOperationPerSender = maximumUserOperationPerSender;
         }
 
         protected override IComparer<UserOperation> GetUniqueComparer(IComparer<UserOperation> comparer) => 
@@ -54,15 +54,12 @@ namespace Nethermind.AccountAbstraction.Source
         // hold the maximum we still want to allow fee replacement
         public bool UserOperationWouldOverflowSenderBucket(UserOperation op)
         {
-            if (GetBucketSnapshot().TryGetValue(op.Sender, out UserOperation[]? opsForSender))
+            if (GetBucketCount(op.Sender) < _maximumUserOperationPerSender)
             {
-                // if bucket is not full then we can add it
-                if (opsForSender.Length < _config.MaximumUserOperationPerSender) return false;
-
-                return !CanInsert(op.Hash, op);
+                return false;
             }
 
-            return false;
+            return !CanInsert(op.Hash, op);
         }
     }
 }

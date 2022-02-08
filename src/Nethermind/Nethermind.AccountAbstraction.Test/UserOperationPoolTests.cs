@@ -432,7 +432,7 @@ namespace Nethermind.AccountAbstraction.Test
             config.MaximumUserOperationPerSender.Returns(perSenderCapacity);
             
             UserOperationSortedPool userOperationSortedPool =
-                new(capacity, CompareUserOperationsByDecreasingGasPrice.Default, LimboLogs.Instance, config);
+                new(capacity, CompareUserOperationsByDecreasingGasPrice.Default, LimboLogs.Instance, config.MaximumUserOperationPerSender);
 
             _stateProvider.GetBalance(Arg.Any<Address>()).Returns(1.Ether());
             _stateProvider.AccountExists(Arg.Any<Address>()).Returns(true);

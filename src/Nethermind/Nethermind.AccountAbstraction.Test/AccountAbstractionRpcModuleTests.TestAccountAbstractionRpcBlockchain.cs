@@ -196,7 +196,7 @@ namespace Nethermind.AccountAbstraction.Test
                         _accountAbstractionConfig.UserOperationPoolSize, 
                         new CompareUserOperationsByDecreasingGasPrice(), 
                         LogManager, 
-                        _accountAbstractionConfig));
+                        _accountAbstractionConfig.MaximumUserOperationPerSender));
                 
                 return blockProcessor;
             }

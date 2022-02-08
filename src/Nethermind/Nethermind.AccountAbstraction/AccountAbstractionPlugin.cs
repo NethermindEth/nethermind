@@ -81,7 +81,7 @@ namespace Nethermind.AccountAbstraction
                         _accountAbstractionConfig.UserOperationPoolSize,
                         CompareUserOperationsByDecreasingGasPrice.Default,
                         getFromApi.LogManager,
-                        _accountAbstractionConfig);
+                        _accountAbstractionConfig.MaximumUserOperationPerSender);
 
                     _userOperationPool = new UserOperationPool(
                         _accountAbstractionConfig,
