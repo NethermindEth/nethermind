@@ -173,7 +173,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset, receipt.GasSpent, "gas");
             BigInteger expectedValue = new BigInteger(0);
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
 
@@ -191,7 +191,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet, receipt.GasSpent, "gas");
             BigInteger expectedValue = new BigInteger(1);
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
 
@@ -209,7 +209,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SSet, receipt.GasSpent, "gas");
             BigInteger expectedValue = new BigInteger(1);
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
 
@@ -327,7 +327,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet + GasCostOf.Exp + GasCostOf.ExpByteEip160, receipt.GasSpent, "gas");
             BigInteger expectedValue = BigInteger.Pow(2, 160);
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
 
@@ -345,7 +345,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.SSet, receipt.GasSpent, "gas");
             BigInteger expectedValue = BigInteger.One;
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
         
@@ -363,7 +363,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SReset, receipt.GasSpent, "gas");
             BigInteger expectedValue = BigInteger.Zero; 
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
         
@@ -381,7 +381,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SSet, receipt.GasSpent, "gas");
             BigInteger expectedValue = BigInteger.One;
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
         
@@ -399,7 +399,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasSpent, "gas");
             BigInteger expectedValue = new BigInteger(0);
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
         
@@ -415,7 +415,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.SSet, receipt.GasSpent, "gas");
             BigInteger expectedValue = BigInteger.Pow(2, 256) - 1;
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
         
@@ -433,7 +433,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasSpent, "gas");
             BigInteger expectedValue = BigInteger.Zero;
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
         
@@ -448,7 +448,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset, receipt.GasSpent, "gas");
             BigInteger expectedValue = BigInteger.Zero;
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32); 
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
 

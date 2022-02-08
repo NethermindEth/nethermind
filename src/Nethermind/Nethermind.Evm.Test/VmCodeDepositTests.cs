@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Test
                 .Done;
             
             BigInteger expectedValue = new BigInteger(0);
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
@@ -122,7 +122,7 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
             BigInteger expectedValue = new BigInteger(0);
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, result, "storage reverted");
             Assert.AreEqual(83199, receipt.GasSpent, "with refund");
             

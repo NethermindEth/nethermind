@@ -45,14 +45,14 @@ namespace Nethermind.Evm.Test
             MerkleTrie,
             VerkleTrie
         }
-        
+
         protected const string SampleHexData1 = "a01234";
         protected const string SampleHexData2 = "b15678";
         protected const string HexZero = "00";
 
         private IEthereumEcdsa _ethereumEcdsa;
         protected ITransactionProcessor _processor;
-        
+
         protected VirtualMachine Machine { get; private set; }
         protected IStateProvider TestState { get; private set; }
         protected IStorageProvider Storage { get; private set; }
@@ -79,7 +79,7 @@ namespace Nethermind.Evm.Test
         {
             _stateProvider = stateProvider;
         }
-        
+
         [SetUp]
         public virtual void Setup()
         {
@@ -95,7 +95,7 @@ namespace Nethermind.Evm.Test
             }
             else
             {
-                VerkleStateProvider stateProvider = new (logManager, codeDb);
+                VerkleStateProvider stateProvider = new(logManager, codeDb);
                 TestState = stateProvider;
                 Storage = new VerkleStorageProvider(stateProvider, logManager);
             }
@@ -177,7 +177,8 @@ namespace Nethermind.Evm.Test
             return (block, transaction);
         }
 
-        protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code, byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
+        protected (Block block, Transaction transaction) PrepareTx(long blockNumber, long gasLimit, byte[] code,
+            byte[] input, UInt256 value, SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
@@ -200,7 +201,8 @@ namespace Nethermind.Evm.Test
             return (block, transaction);
         }
 
-        protected (Block block, Transaction transaction) PrepareInitTx(long blockNumber, long gasLimit, byte[] code, SenderRecipientAndMiner senderRecipientAndMiner = null)
+        protected (Block block, Transaction transaction) PrepareInitTx(long blockNumber, long gasLimit, byte[] code,
+            SenderRecipientAndMiner senderRecipientAndMiner = null)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
@@ -223,10 +225,12 @@ namespace Nethermind.Evm.Test
             return BuildBlock(blockNumber, senderRecipientAndMiner, null);
         }
 
-        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx)
+        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner,
+            Transaction tx)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
+            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx})
+                .WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
         protected void AssertGas(TestAllTracerWithOutput receipt, long gas)
@@ -236,7 +240,8 @@ namespace Nethermind.Evm.Test
 
         protected void AssertStorage(UInt256 address, Address value)
         {
-            Assert.AreEqual(value.Bytes.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(value.Bytes.PadLeft(32), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32),
+                "storage");
         }
 
         protected void AssertStorage(UInt256 address, Keccak value)
@@ -246,7 +251,8 @@ namespace Nethermind.Evm.Test
 
         protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
         {
-            Assert.AreEqual(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray(), Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
+            Assert.AreEqual(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray(),
+                Storage.Get(new StorageCell(Recipient, address)).PadLeft(32), "storage");
         }
 
         protected void AssertStorage(UInt256 address, BigInteger expectedValue)
@@ -259,40 +265,57 @@ namespace Nethermind.Evm.Test
             }
             else
             {
-                expected = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+                expected = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie
+                    ? expectedValue.ToBigEndianByteArray()
+                    : expectedValue.ToBigEndianByteArray(32);
             }
+
             Assert.AreEqual(expected, actualValue, "storage");
         }
-        
+
         protected void AssertStorage(UInt256 address, UInt256 expectedValue)
         {
-            byte[] bytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? ((BigInteger)expectedValue).ToBigEndianByteArray() : ((BigInteger)expectedValue).ToBigEndianByteArray(32);
+            byte[] bytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie
+                ? ((BigInteger)expectedValue).ToBigEndianByteArray()
+                : ((BigInteger)expectedValue).ToBigEndianByteArray(32);
 
             byte[] actualValue = Storage.Get(new StorageCell(Recipient, address));
             Assert.AreEqual(bytes, actualValue, "storage");
         }
 
         private static int _callIndex = -1;
-        
+
         protected void AssertStorage(StorageCell storageCell, UInt256 expectedValue)
         {
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray() : expectedValue.ToBigEndian();
+            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie
+                ? expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray()
+                : expectedValue.ToBigEndian();
             _callIndex++;
             if (!TestState.AccountExists(storageCell.Address))
             {
-                byte[] bytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? new BigInteger(0).ToBigEndianByteArray() : new BigInteger(0).ToBigEndianByteArray(32);
+                byte[] bytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie
+                    ? new BigInteger(0).ToBigEndianByteArray()
+                    : new BigInteger(0).ToBigEndianByteArray(32);
                 Assert.AreEqual(expectedValueBytes, bytes, $"storage {storageCell}, call {_callIndex}");
             }
             else
             {
                 byte[] actualValue = Storage.Get(storageCell);
-                Assert.AreEqual(expectedValueBytes, actualValue, $"storage {storageCell}, call {_callIndex}");    
+                Assert.AreEqual(expectedValueBytes, actualValue, $"storage {storageCell}, call {_callIndex}");
             }
         }
 
         protected void AssertCodeHash(Address address, Keccak codeHash)
         {
             Assert.AreEqual(codeHash, TestState.GetCodeHash(address), "code hash");
+        }
+
+        protected byte[] GetStorageValueBytes(BigInteger value, VirtualMachineTestsStateProvider stateProvider)
+
+        {
+            return stateProvider == VirtualMachineTestsStateProvider.MerkleTrie 
+                ? value.ToBigEndianByteArray() 
+                : value.ToBigEndianByteArray(32);
         }
     }
 }

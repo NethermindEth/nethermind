@@ -698,16 +698,16 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.True(trace.StateChanges.ContainsKey(TestItem.AddressC), "address c");
             Assert.AreEqual(2, trace.StateChanges[Recipient].Storage.Count, "recipient storage count");
             BigInteger expectedValue = new BigInteger(0);
-            byte[] expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, trace.StateChanges[Recipient].Storage[2].Before, "recipient storage[2]");
             expectedValue = new BigInteger(Bytes.FromHexString(SampleHexData1), true, true);
-            expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, trace.StateChanges[Recipient].Storage[2].After, "recipient storage[2] after");
             expectedValue = new BigInteger(0);
-            expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, trace.StateChanges[Recipient].Storage[3].Before, "recipient storage[3]");
             expectedValue = new BigInteger(Bytes.FromHexString(SampleHexData2), true, true);
-            expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
+            expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
             Assert.AreEqual(expectedValueBytes, trace.StateChanges[Recipient].Storage[3].After, "recipient storage[3] after");
         }
 

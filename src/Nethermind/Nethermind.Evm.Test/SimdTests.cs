@@ -24,6 +24,8 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture(true, VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(false, VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(true, VirtualMachineTestsStateProvider.VerkleTrie)]
     [TestFixture(false, VirtualMachineTestsStateProvider.VerkleTrie)]
     // [Parallelizable(ParallelScope.Self)]
     public class SimdTests : VirtualMachineTestsBase

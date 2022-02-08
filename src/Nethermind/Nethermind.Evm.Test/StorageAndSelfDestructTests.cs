@@ -30,10 +30,10 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture]
     public class StorageAndSelfDestructTests : VirtualMachineTestsBase
     {
-        public StorageAndSelfDestructTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        public StorageAndSelfDestructTests() : base(VirtualMachineTestsStateProvider.MerkleTrie)
         {
         }
         protected override long BlockNumber => MainnetSpecProvider.MuirGlacierBlockNumber;
