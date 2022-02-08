@@ -21,7 +21,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Json
 {
     [TestFixture]
-    public class TxTypeConverterTests : ConverterTestBase<TxType>
+    public class NullableTxTypeConverterTests : ConverterTestBase<TxType?>
     {
         [TestCase(null)]
         [TestCase((TxType)0)]
@@ -31,9 +31,9 @@ namespace Nethermind.Core.Test.Json
         [TestCase(TxType.Legacy)]
         [TestCase(TxType.AccessList)]
         [TestCase(TxType.EIP1559)]
-        public void Test_roundtrip(TxType arg)
+        public void Test_roundtrip(TxType? arg)
         {
-            TestConverter(arg, (before, after) => before.Equals(after), new TxTypeConverter());
+            TestConverter(arg, (before, after) => before.Equals(after), new NullableTxTypeConverter());
         }
     }
 }
