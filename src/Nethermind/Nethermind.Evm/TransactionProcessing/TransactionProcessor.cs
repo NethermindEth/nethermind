@@ -183,6 +183,25 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 value = transaction.Value;
 
+            if (!noBaseFee || transaction.MaxFeePerGas > 0 || transaction.MaxPriorityFeePerGas > 0)
+            {
+                if (!noValidation && transaction.MaxFeePerGas < block.BaseFeePerGas)
+                {
+                    TraceLogInvalidTx(transaction, "MAX FEE PER GAS LESS THAN BLOCK BASE FEE");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, 
+                        $"max fee per gas less than block base fee: address {transaction.SenderAddress}, maxFeePerGas: {transaction.MaxFeePerGas}, baseFee {block.BaseFeePerGas}");
+                    return;
+                }
+
+                if (!noValidation && transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas)
+                {
+                    TraceLogInvalidTx(transaction, "MAX FEE PER GAS LESS THAN MAX PRIORITY FEE PER GAS");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, 
+                        $"max fee per gas less than max priority fee per gas: address {transaction.SenderAddress}, maxFeePerGas: {transaction.MaxFeePerGas}, maxPriorityFeePerGas: {transaction.MaxPriorityFeePerGas}");
+                    return;
+                }
+            }
+
             if (!transaction.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas) && !noValidation)
             {
                 TraceLogInvalidTx(transaction, "MINER_PREMIUM_IS_NEGATIVE");
@@ -222,7 +241,9 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (gasLimit < intrinsicGas)
                 {
                     TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas");
+                    //HEREE
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, $"gas limit below intrinsic gas: have {gasLimit}, want {intrinsicGas}");
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas");
                     return;
                 }
 
@@ -230,7 +251,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
+                    //HEREE
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, $"block gas limit exceeded: gasLimit {gasLimit} > block gasLimit {block.GasLimit} - block gasUsed {block.GasUsed}");
+                    
+                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
                     return;
                 }
             }
