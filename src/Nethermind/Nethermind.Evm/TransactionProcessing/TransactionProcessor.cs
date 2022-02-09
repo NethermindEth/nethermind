@@ -279,6 +279,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
                     if (!commit || noValidation || effectiveGasPrice == UInt256.Zero)
                     {
+                        //HERE IS
                         deleteCallerAccount = !commit || restore;
                         _stateProvider.CreateAccount(caller, UInt256.Zero);
                     }
@@ -298,16 +299,17 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!noBaseFee || !skipGasPricing)
                 {
                     UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                    if (!noValidation && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
+                    if (!noValidation && !noBaseFee && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
                                           senderReservedGasPayment + value > senderBalance))
                     {
+                        //HERE IS NOT
                         TraceLogInvalidTx(transaction,
                             $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
                         QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
                         return;
                     }
 
-                    if (!noValidation && spec.IsEip1559Enabled && !transaction.IsFree() &&
+                    if (!noValidation && !noBaseFee && spec.IsEip1559Enabled && !transaction.IsFree() &&
                         senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                     {
                         TraceLogInvalidTx(transaction,

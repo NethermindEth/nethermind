@@ -207,6 +207,16 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
+        
+        [Test]
+        public async Task Eth_call_gas_price()
+        {
+            using Context ctx = await Context.Create();
+            TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
+                "{\"from\": \"0xec37828d7e88b3cbb2cabffa353d7de556cadaff\", \"to\": \"0x343bdeb107d2b2babbe8f533693ddb043d23ea95\", \"gasPrice\": \"0x4D5CFC203B8C8\"}");
+            string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+        }
 
         [Test]
         public async Task Eth_call_without_gas_pricing_after_1559_legacy()
