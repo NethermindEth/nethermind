@@ -290,7 +290,6 @@ public class VerkleTree
         public CodeChunkEnumerator(Span<byte> code)
         {
             _code = code;
-            _bufferChunk = new byte[32];
             _bufferChunkCodePart = _bufferChunk.AsSpan().Slice(1);
         }
 
