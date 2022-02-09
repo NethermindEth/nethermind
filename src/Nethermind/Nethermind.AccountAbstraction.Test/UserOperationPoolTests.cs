@@ -178,20 +178,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             _userOperationPool.GetUserOperations().Count().Should().Be(10);
         }
-        
-        [Test]
-        public void should_not_allow_more_than_max_capacity_per_sender_ops_from_same_sender_()
-        {
-            _userOperationPool = GenerateUserOperationPool();
-            for (int j = 0; j < 20; j++)
-            {
-                UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)j).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-                _userOperationPool.AddUserOperation(op);
-            }
 
-            _userOperationPool.GetUserOperations().Count().Should().Be(10);
-        }
-        
         [Test]
         public void should_replace_op_with_higher_fee()
         {
@@ -255,6 +242,7 @@ namespace Nethermind.AccountAbstraction.Test
             _userOperationPool.GetUserOperations().Should().NotContain(opsIncluded.ToArray()[3]);
         }
         
+        [Test]
         public void should_not_replace_op_with_lower_fee_at_full_capacity()
         {
             _userOperationPool = GenerateUserOperationPool();
@@ -268,12 +256,12 @@ namespace Nethermind.AccountAbstraction.Test
                 _userOperationPool.AddUserOperation(op);
             }
             
-            UserOperation higherGasPriceOp = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce(9).WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            _userOperationPool.AddUserOperation(higherGasPriceOp);
+            UserOperation lowerGasPriceOp = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce(9).WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _userOperationPool.AddUserOperation(lowerGasPriceOp);
 
             _userOperationPool.GetUserOperations().Count().Should().Be(10);
             _userOperationPool.GetUserOperations().Take(10).Should().BeEquivalentTo(opsIncluded.Take(10));
-            _userOperationPool.GetUserOperations().Should().NotContain(higherGasPriceOp);
+            _userOperationPool.GetUserOperations().Should().NotContain(lowerGasPriceOp);
         }
         
         [Test]
