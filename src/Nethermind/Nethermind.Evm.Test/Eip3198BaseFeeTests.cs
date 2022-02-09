@@ -68,6 +68,7 @@ namespace Nethermind.Evm.Test
             if (send1559Tx)
             {
                 transaction.DecodedMaxFeePerGas = (UInt256)baseFee;
+                transaction.GasPrice = (UInt256)baseFee;
                 transaction.Type = TxType.EIP1559;
             }
             else
