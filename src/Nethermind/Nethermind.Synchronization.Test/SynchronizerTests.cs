@@ -60,7 +60,8 @@ namespace Nethermind.Synchronization.Test
             _synchronizerType = synchronizerType;
         }
 
-        private static Block _genesisBlock = Build.A.Block.Genesis.WithDifficulty(100000).WithTotalDifficulty((UInt256)100000).TestObject;
+        private static Block _genesisBlock = Build.A.Block.Genesis.WithDifficulty(100000)
+            .WithTotalDifficulty((UInt256)100000).TestObject;
 
         private class SyncPeerMock : ISyncPeer
         {
@@ -73,7 +74,8 @@ namespace Nethermind.Synchronization.Test
 
             public BlockHeader HeadHeader => HeadBlock.Header;
 
-            public SyncPeerMock(string peerName, bool causeTimeoutOnInit = false, bool causeTimeoutOnBlocks = false, bool causeTimeoutOnHeaders = false)
+            public SyncPeerMock(string peerName, bool causeTimeoutOnInit = false, bool causeTimeoutOnBlocks = false,
+                bool causeTimeoutOnHeaders = false)
             {
                 _causeTimeoutOnInit = causeTimeoutOnInit;
                 _causeTimeoutOnBlocks = causeTimeoutOnBlocks;
@@ -187,7 +189,7 @@ namespace Nethermind.Synchronization.Test
             }
 
             public ConcurrentStack<Block> ReceivedBlocks { get; } = new();
-            
+
             public event EventHandler Disconnected;
 
             public PublicKey Id => Node.Id;
@@ -209,10 +211,12 @@ namespace Nethermind.Synchronization.Test
                 Block block = Blocks.Last();
                 for (long j = block.Number; j < i; j++)
                 {
-                    block = Build.A.Block.WithDifficulty(1000000).WithParent(block).WithTotalDifficulty(block.TotalDifficulty + 1000000).WithExtraData(j < branchStart ? Array.Empty<byte>() : new [] {branchIndex}).TestObject;
+                    block = Build.A.Block.WithDifficulty(1000000).WithParent(block)
+                        .WithTotalDifficulty(block.TotalDifficulty + 1000000)
+                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] {branchIndex}).TestObject;
                     Blocks.Add(block);
                 }
-                
+
                 UpdateHead();
             }
 
@@ -221,7 +225,9 @@ namespace Nethermind.Synchronization.Test
                 Block block = Blocks.Last();
                 for (long j = block.Number; j < i; j++)
                 {
-                    block = Build.A.Block.WithParent(block).WithDifficulty(2000000).WithTotalDifficulty(block.TotalDifficulty + 2000000).WithExtraData(j < branchStart ? Array.Empty<byte>() : new [] {branchIndex}).TestObject;
+                    block = Build.A.Block.WithParent(block).WithDifficulty(2000000)
+                        .WithTotalDifficulty(block.TotalDifficulty + 2000000)
+                        .WithExtraData(j < branchStart ? Array.Empty<byte>() : new[] {branchIndex}).TestObject;
                     Blocks.Add(block);
                 }
                 
@@ -288,7 +294,9 @@ namespace Nethermind.Synchronization.Test
                 IDb stateDb = new MemDb();
                 IDb codeDb = dbProvider.CodeDb;
                 MemDb blockInfoDb = new();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
+                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb,
+                    new ChainLevelInfoRepository(blockInfoDb),
+                    new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
@@ -300,10 +308,10 @@ namespace Nethermind.Synchronization.Test
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     _logManager);
-                MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
-                Synchronizer = new Synchronizer(
-                    dbProvider,
-                    MainnetSpecProvider.Instance,
+                MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool,
+                    syncConfig, No.BeaconSync, _logManager);
+                Pivot pivot = new (syncConfig);
+                BlockDownloaderFactory blockDownloaderFactory = new(MainnetSpecProvider.Instance,
                     BlockTree,
                     NullReceiptStorage.Instance,
                     Always.Valid,
@@ -312,6 +320,19 @@ namespace Nethermind.Synchronization.Test
                     stats,
                     syncModeSelector,
                     syncConfig,
+                    pivot,
+                    _logManager);
+                Synchronizer = new Synchronizer(
+                    dbProvider,
+                    MainnetSpecProvider.Instance,
+                    BlockTree,
+                    NullReceiptStorage.Instance,
+                    SyncPeerPool,
+                    stats,
+                    syncModeSelector,
+                    syncConfig,
+                    blockDownloaderFactory,
+                    pivot,
                     _logManager);
 
                 SyncServer = new SyncServer(
@@ -324,7 +345,7 @@ namespace Nethermind.Synchronization.Test
                     SyncPeerPool,
                     syncModeSelector,
                     syncConfig,
-                    new WitnessCollector(new MemDb(), LimboLogs.Instance), 
+                    new WitnessCollector(new MemDb(), LimboLogs.Instance),
                     Policy.FullGossip,
                     _logManager);
                 

@@ -20,7 +20,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -29,9 +28,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
-using Nethermind.Synchronization;
+using Nethermind.Merge.Plugin.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -47,8 +45,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly IPayloadService _payloadService;
-        private readonly ISynchronizer _synchronizer;
-        private readonly ISyncConfig _syncConfig;
+        private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private bool synced = false;
 
@@ -59,8 +56,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IEthSyncingInfo ethSyncingInfo,
             IBlockConfirmationManager blockConfirmationManager,
             IPayloadService payloadService,
-            ISynchronizer synchronizer,
-            ISyncConfig syncConfig,
+            IMergeSyncController mergeSyncController,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -71,19 +67,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _blockConfirmationManager = blockConfirmationManager ??
                                         throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadService = payloadService;
-            _synchronizer = synchronizer;
-            _syncConfig = syncConfig;
+            _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
         }
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState,
             PayloadAttributes? payloadAttributes)
         {
-            if (_syncConfig.FastSync && _blockTree.LowestInsertedBodyNumber != 0)
-            {
-                return ForkchoiceUpdatedV1Result.Syncing;
-            }
-
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
                 return ForkchoiceUpdatedV1Result.Syncing;
@@ -102,19 +92,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 EnsureNewHeadHeader(newHeadBlock);
             if (setHeadErrorMsg != null)
                 return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
-
-            // if (_ethSyncingInfo.IsSyncing() && synced == false)
-            // {
-            //     return ForkchoiceUpdatedV1Result.Syncing;
-            // }
-            // else if (synced == false)
-            // {
-            //     await _synchronizer.StopAsync();
-            //     synced = true;
-            // }
             
-            await _synchronizer.StopAsync();
-
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 newHeadBlock!.Header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
@@ -268,7 +246,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private bool TryGetBranch(Block newHeadBlock, out Block[] blocks)
         {
-            
             List<Block> blocksList = new() { newHeadBlock };
             Block? predecessor = newHeadBlock;
 
@@ -283,8 +260,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 blocksList.Add(predecessor);
             }
-
-            ;
 
             blocksList.Reverse();
             blocks = blocksList.ToArray();

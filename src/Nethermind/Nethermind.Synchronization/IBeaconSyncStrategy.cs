@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,19 +13,29 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Synchronization
 {
-    public interface ISyncModeSelector : IDisposable
+    public class No : IBeaconSyncStrategy
     {
-        SyncMode Current { get; }
-        
-        event EventHandler<SyncModeChangedEventArgs> Preparing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changed;
+        private No() { }
+
+        public static No BeaconSync { get; } = new();
+            
+        public bool ShouldBeInBeaconHeaders() => false;
+
+        public bool ShouldBeInBeaconModeControl() => false;
+
+        public bool IsBeaconSyncHeadersFinished() => true;
+    }
+    
+    public interface IBeaconSyncStrategy
+    {
+        bool ShouldBeInBeaconHeaders();
+
+        bool ShouldBeInBeaconModeControl();
+
+        bool IsBeaconSyncHeadersFinished();
     }
 }

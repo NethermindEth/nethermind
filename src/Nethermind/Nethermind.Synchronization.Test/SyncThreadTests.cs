@@ -44,6 +44,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
@@ -354,10 +355,9 @@ namespace Nethermind.Synchronization.Test
 
             SyncProgressResolver resolver = new(
                 tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, syncConfig, logManager);
-            MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, logManager);
-            Synchronizer synchronizer = new(
-                dbProvider,
-                MainnetSpecProvider.Instance,
+            MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, logManager);
+            Pivot pivot = new(syncConfig);
+            BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(MainnetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
                 blockValidator,
@@ -366,6 +366,19 @@ namespace Nethermind.Synchronization.Test
                 nodeStatsManager,
                 StaticSelector.Full,
                 syncConfig,
+                pivot,
+                logManager);
+            Synchronizer synchronizer = new(
+                dbProvider,
+                MainnetSpecProvider.Instance,
+                tree,
+                NullReceiptStorage.Instance,
+                syncPeerPool,
+                nodeStatsManager,
+                StaticSelector.Full,
+                syncConfig,
+                blockDownloaderFactory,
+                pivot,
                 logManager);
             SyncServer syncServer = new(
                 stateDb,

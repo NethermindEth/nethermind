@@ -40,7 +40,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
-        private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+        private readonly TimeSpan Timeout = TimeSpan.FromSeconds(100);
         private readonly ILogger _logger;
 
         public EngineRpcModule(

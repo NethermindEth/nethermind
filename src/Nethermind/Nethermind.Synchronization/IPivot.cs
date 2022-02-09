@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,19 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Synchronization
 {
-    public interface ISyncModeSelector : IDisposable
+    public interface IPivot
     {
-        SyncMode Current { get; }
+        long PivotNumber { get; }
+
+        Keccak? PivotHash { get; }
+
+        UInt256? PivotTotalDifficulty { get; }
         
-        event EventHandler<SyncModeChangedEventArgs> Preparing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changed;
+        long PivotDestinationNumber { get; }
     }
 }

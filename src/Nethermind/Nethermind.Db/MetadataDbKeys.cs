@@ -24,5 +24,7 @@ namespace Nethermind.Db
         public const int FirstPoSHash = 3;
         public const int FinalizedBlockHash = 3;
         public const int SafeBlockHash = 4;
+        public const int BeaconSyncPivotNumber = 5;
+        public const int BeaconSyncDestinationNumber = 6;
     }
 }

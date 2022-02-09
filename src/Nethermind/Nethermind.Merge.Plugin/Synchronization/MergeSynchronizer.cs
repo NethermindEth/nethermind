@@ -1,0 +1,77 @@
+//  Copyright (c) 2021 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
+
+using System;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Specs;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Stats;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+
+namespace Nethermind.Merge.Plugin.Synchronization;
+
+public class MergeSynchronizer : Synchronizer
+{
+    public MergeSynchronizer(
+        IDbProvider dbProvider,
+        ISpecProvider specProvider,
+        IBlockTree blockTree,
+        IReceiptStorage receiptStorage,
+        ISyncPeerPool peerPool,
+        INodeStatsManager nodeStatsManager,
+        ISyncModeSelector syncModeSelector,
+        ISyncConfig syncConfig,
+        IBlockDownloaderFactory blockDownloaderFactory,
+        IPivot pivot,
+        ILogManager logManager) : base(dbProvider, specProvider, blockTree, receiptStorage, peerPool, nodeStatsManager,
+        syncModeSelector, syncConfig, blockDownloaderFactory, pivot, logManager)
+    {
+    }
+
+    public override void Start()
+    {
+        base.Start();
+        StartBeaconHeadersComponents();
+    }
+
+    private void StartBeaconHeadersComponents()
+    {
+        FastBlocksPeerAllocationStrategyFactory fastFactory = new();
+        BeaconHeadersSyncFeed beaconHeadersFeed =
+            new(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _logManager);
+        BeaconHeadersSyncDispatcher beaconHeadersDispatcher =
+            new (beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
+        beaconHeadersDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+            {
+                if (_logger.IsError) _logger.Error("Beacon headers downloader failed", t.Exception);
+            }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info("Beacon headers task completed.");
+            }
+        });
+    }
+}

@@ -13,19 +13,23 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using Nethermind.Logging;
+using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 
-namespace Nethermind.Synchronization.ParallelSync
+namespace Nethermind.Merge.Plugin.Synchronization;
+
+public class BeaconHeadersSyncDispatcher : HeadersSyncDispatcher
 {
-    public interface ISyncModeSelector : IDisposable
+    public BeaconHeadersSyncDispatcher(
+        ISyncFeed<HeadersSyncBatch> syncFeed,
+        ISyncPeerPool syncPeerPool,
+        IPeerAllocationStrategyFactory<FastBlocksBatch> peerAllocationStrategy,
+        ILogManager logManager)
+        : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
     {
-        SyncMode Current { get; }
-        
-        event EventHandler<SyncModeChangedEventArgs> Preparing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changing;
-        
-        event EventHandler<SyncModeChangedEventArgs> Changed;
     }
 }
