@@ -166,7 +166,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void PostFinishCleanUp()
         {
-            HeadersSyncProgressReport.Update(_pivotNumber);
+            // if block 0 is requested, it not included in the sync report
+            HeadersSyncProgressReport.Update(_pivotNumber - _lowestRequestedHeaderNumber + _lowestRequestedHeaderNumber == 0 ? 0 : 1);
             HeadersSyncProgressReport.MarkEnd();
             _dependencies.Clear(); // there may be some dependencies from wrong branches
             _pending.Clear(); // there may be pending wrong branches

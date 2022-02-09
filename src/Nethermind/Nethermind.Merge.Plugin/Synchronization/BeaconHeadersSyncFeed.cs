@@ -55,7 +55,7 @@ public class BeaconHeadersSyncFeed : HeadersSyncFeed
     public override bool IsMultiFeed => true;
     
     public override AllocationContexts Contexts => AllocationContexts.Headers;
-    protected override void InitializeFeed()
+    public override void InitializeFeed()
     {
         _blockTree.LoadLowestInsertedBeaconHeader();
         _pivotNumber = _pivot.PivotNumber;

@@ -64,12 +64,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public void EnsurePivot(BlockHeader? blockHeader)
         {
             bool beaconPivotExists = BeaconPivotExists();
-            if (beaconPivotExists && blockHeader != null)
-            {
-                // TODO: beaconsync multiple beacon pivots
-                _currentBeaconPivot = blockHeader;
-                PivotDestinationNumber = CalculatePivotDestinationNumber(_currentBeaconPivot, blockHeader);
-            }
+            // if (beaconPivotExists && blockHeader != null)
+            // {
+            //     _currentBeaconPivot = blockHeader;
+            //     PivotDestinationNumber = CalculatePivotDestinationNumber(_currentBeaconPivot, blockHeader);
+            // }
             
             if (!beaconPivotExists && blockHeader != null)
             {
@@ -103,7 +102,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_pivotParent == null)
                 _pivotParent = _blockTree.FindParentHeader(_currentBeaconPivot!,
                     BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            
+
             if (_pivotParent != null)
                 _pivotParentProcessed = _blockTree.WasProcessed(_pivotParent.Number,
                     _pivotParent.Hash ?? _pivotParent.CalculateHash());

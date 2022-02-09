@@ -52,8 +52,6 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        protected bool ShouldBeActive() => ShouldBeActive(_syncModeSelector.Current);
-
         private bool ShouldBeActive(SyncMode current)
             => CurrentState == SyncFeedState.Dormant && (current & ActivationSyncModes) != SyncMode.None;
 
@@ -68,6 +66,6 @@ namespace Nethermind.Synchronization.ParallelSync
             StateChanged -= OnStateChanged;
         }
 
-        protected virtual void InitializeFeed() { }
+        public virtual void InitializeFeed() { }
     }
 }
