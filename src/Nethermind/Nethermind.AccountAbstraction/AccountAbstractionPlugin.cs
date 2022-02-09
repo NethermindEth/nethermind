@@ -75,10 +75,7 @@ namespace Nethermind.AccountAbstraction
         {
             if (_userOperationPools.TryGetValue(entryPoint, out UserOperationPool? userOperationPool))
             {
-<<<<<<< HEAD
 
-=======
->>>>>>> Support added for multiple entry points-1
                 return userOperationPool;
             }
 
@@ -186,7 +183,7 @@ namespace Nethermind.AccountAbstraction
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
 
-                    IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); // EntryPoint Address -> Pool
+                    IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); 
                     IDictionary<Address, UserOperationSimulator> _Simulators = new Dictionary<Address, UserOperationSimulator>();
                     IDictionary<Address, UserOperationTxBuilder> _TxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
 
@@ -325,8 +322,14 @@ namespace Nethermind.AccountAbstraction
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
 
+                IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); 
+                foreach(Address entryPoint in _entryPointContractAddresses)
+                {
+                    _Pools[entryPoint] = UserOperationPool(entryPoint);
+                }
+
                 // AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(UserOperationPool, new[] {_entryPointContractAddress});
-                AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(UserOperationPool, _entryPointContractAddresses.ToArray());
+                AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(_Pools, _entryPointContractAddresses.ToArray());
 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
 

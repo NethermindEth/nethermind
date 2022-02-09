@@ -28,7 +28,7 @@ namespace Nethermind.AccountAbstraction
 {
     public class AccountAbstractionRpcModule : IAccountAbstractionRpcModule
     {
-        private readonly IUserOperationPool _userOperationPool;
+        private readonly IDictionary<Address, UserOperationPool> _userOperationPool;
         private readonly Address[] _supportedEntryPoints;
 
         static AccountAbstractionRpcModule()
@@ -36,7 +36,7 @@ namespace Nethermind.AccountAbstraction
             Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly);
         }
         
-        public AccountAbstractionRpcModule(IUserOperationPool userOperationPool, Address[] supportedEntryPoints)
+        public AccountAbstractionRpcModule(IDictionary<Address, UserOperationPool> userOperationPool, Address[] supportedEntryPoints)
         {
             _userOperationPool = userOperationPool;
             _supportedEntryPoints = supportedEntryPoints;
@@ -48,7 +48,7 @@ namespace Nethermind.AccountAbstraction
             {
                 return ResultWrapper<Keccak>.Fail($"entryPoint {entryPointAddress} not supported, supported entryPoints: {string.Join(", ", _supportedEntryPoints.ToList())}");
             }
-            return _userOperationPool.AddUserOperation(new UserOperation(userOperationRpc));
+            return _userOperationPool[entryPointAddress].AddUserOperation(new UserOperation(userOperationRpc));
         }
 
         public ResultWrapper<Address[]> eth_supportedEntryPoints()

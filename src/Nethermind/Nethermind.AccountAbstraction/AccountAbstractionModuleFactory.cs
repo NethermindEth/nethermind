@@ -23,10 +23,10 @@ namespace Nethermind.AccountAbstraction
 {
     public class AccountAbstractionModuleFactory : ModuleFactoryBase<IAccountAbstractionRpcModule>
     {
-        private readonly UserOperationPool _userOperationPool;
+        private readonly IDictionary<Address, UserOperationPool> _userOperationPool;
         private readonly Address[] _supportedEntryPoints;
 
-        public AccountAbstractionModuleFactory(UserOperationPool userOperationPool, Address[] supportedEntryPoints)
+        public AccountAbstractionModuleFactory(IDictionary<Address, UserOperationPool> userOperationPool, Address[] supportedEntryPoints)
         {
             _userOperationPool = userOperationPool;
             _supportedEntryPoints = supportedEntryPoints;
