@@ -572,6 +572,8 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
+                if (block is not null && (BestSuggestedBody?.Number ?? 0) < block.Number && block.IsPostMerge)
+                    BestSuggestedBody = block;
                 
                 if (block is not null && shouldProcess)
                 {

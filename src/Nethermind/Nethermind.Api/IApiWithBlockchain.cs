@@ -52,6 +52,7 @@ namespace Nethermind.Api
         IEnode? Enode { get; set; }
         IFilterStore? FilterStore { get; set; }
         IFilterManager? FilterManager { get; set; }
+        IUnclesValidator? UnclesValidator { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
         IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IReadOnlyTrieStore? ReadOnlyTrieStore { get; set; }

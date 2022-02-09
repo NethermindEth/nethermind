@@ -76,7 +76,7 @@ namespace Nethermind.Mev.Test
                 _maxMergedBundles = maxMergedBundles;
                 _relayAddresses = relayAddresses ?? Array.Empty<Address>();
                 _mevConfig = new MevConfig{Enabled = true, TrustedRelays = string.Join(",", _relayAddresses.ToList()), MaxMergedBundles = _maxMergedBundles};
-                Signer = new Eth2Signer(MinerAddress);
+                Signer = new TestMevSigner(MinerAddress);
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One)
                     .WithGasLimit(GasLimitCalculator.GasLimit)

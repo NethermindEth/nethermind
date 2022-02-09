@@ -15,20 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Merge.Plugin.Data
+using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+
+namespace Nethermind.Merge.Plugin;
+
+public class MergeUnclesValidator : IUnclesValidator
 {
-    public static class PayloadStatus
+    private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IUnclesValidator _preMergeUnclesValidator;
+
+    public MergeUnclesValidator(
+        IPoSSwitcher poSSwitcher,
+        IUnclesValidator preMergeUnclesValidator)
     {
-        public const string Valid = "VALID";
+        _poSSwitcher = poSSwitcher;
+        _preMergeUnclesValidator = preMergeUnclesValidator;
+    }
+    
+    public bool Validate(BlockHeader header, BlockHeader[] uncles)
+    {
+        if (_poSSwitcher.IsPostMerge(header))
+            return true;
 
-        public const string Invalid = "INVALID";
-
-        public const string Syncing = "SYNCING";
-        
-        public const string Accepted = "ACCEPTED";
-        
-        public const string InvalidBlockHash = "INVALID_BLOCK_HASH";
-        
-        public const string InvalidTerminalBlock = "INVALID_TERMINAL_BLOCK";
+        return _preMergeUnclesValidator.Validate(header, uncles);
     }
 }

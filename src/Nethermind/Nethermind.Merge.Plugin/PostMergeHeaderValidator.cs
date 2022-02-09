@@ -29,6 +29,9 @@ namespace Nethermind.Merge.Plugin
 {
     public sealed class PostMergeHeaderValidator : HeaderValidator
     {
+        // https://eips.ethereum.org/EIPS/eip-3675#constants
+        private const int MaxExtraDataBytes = 32;
+        
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBlockTree _blockTree;
 
@@ -60,7 +63,6 @@ namespace Nethermind.Merge.Plugin
         {
             return _poSSwitcher.IsPostMerge(header, parent) || base.ValidateTotalDifficulty(parent, header);
         }
-
         private bool ValidateTheMergeChecks(BlockHeader header, BlockHeader? parent)
         {
             bool validDifficulty = true, validNonce = true, validUncles = true;
@@ -71,8 +73,6 @@ namespace Nethermind.Merge.Plugin
                 validDifficulty =
                     ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
                 validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
-                // validExtraData needed in previous version of EIP-3675 specification
-                //bool validExtraData = ValidateHeaderField<byte>(header, header.ExtraData, Array.Empty<byte>(), nameof(header.ExtraData));
                 validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
                     nameof(header.UnclesHash));
             }
@@ -80,8 +80,20 @@ namespace Nethermind.Merge.Plugin
             return terminalTotalDifficultyChecks
                    && validDifficulty
                    && validNonce
-                   //&& validExtraData
                    && validUncles;
+        }
+        
+        protected override bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
+        {
+            if (_poSSwitcher.IsPostMerge(header, parent))
+            {
+                if (header.ExtraData.Length <= MaxExtraDataBytes) return true;
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {nameof(header.MixHash)} exceeded max length of {MaxExtraDataBytes}.");
+                return false;
+            }
+            return base.ValidateExtraData(header, parent, spec, isUncle);
         }
 
         private bool ValidateTerminalTotalDifficultyChecks(BlockHeader header, bool isTerminal)

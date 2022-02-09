@@ -42,7 +42,6 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class PayloadService : IPayloadService
     {
         private readonly Eth2BlockProductionContext _idealBlockContext;
-        private readonly IInitConfig _initConfig;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private ulong _secondsPerSlot = 12; // in seconds
@@ -55,13 +54,11 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public PayloadService(
             Eth2BlockProductionContext idealBlockContext,
-            IInitConfig initConfig,
             ISealer sealer,
             IMergeConfig mergeConfig,
             ILogManager logManager)
         {
             _idealBlockContext = idealBlockContext;
-            _initConfig = initConfig;
             _sealer = sealer;
             _secondsPerSlot = mergeConfig.SecondsPerSlot;
             _timeout = TimeSpan.FromSeconds(_secondsPerSlot);
@@ -113,8 +110,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             Task<Block?> idealBlockTask =
                 _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
                     // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
-                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv),
-                        cts.Token)
+                    // .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv),
+                    //     cts.Token)
                     .ContinueWith(LogProductionResult, cts.Token);
 
             _payloadStorage[payloadId.ToHexString()] = new IdealBlockContext(emptyBlock, idealBlockTask, cts);
