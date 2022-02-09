@@ -114,6 +114,15 @@ public class VerkleTree
     }
     
     [DebuggerStepThrough]
+    public void SetValue(Span<byte> rawKey, Span<byte> value)
+    {
+        if (_logger.IsTrace)
+            _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
+        // TODO; error handling here? or at least a way to check if the operation was successful
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey.ToArray(), value.ToArray());
+    }
+    
+    [DebuggerStepThrough]
     public void SetValue(Span<byte> keyPrefix, byte subIndex, byte[] value)
     {
         if (_logger.IsTrace)
@@ -125,9 +134,11 @@ public class VerkleTree
 
     public byte[] GetTreeKeyPrefix(Address address, UInt256 treeIndex)
     {
-         byte[] keyPrefix = new byte[64];
-         Array.Copy(address.Bytes, 0, keyPrefix, 12, 20);
-         treeIndex.ToBigEndian(keyPrefix.AsSpan(32));
+         Span<byte> keyPrefix = stackalloc byte[64];
+         Span<byte> cursor = keyPrefix.Slice(12);
+         address.Bytes.CopyTo(cursor);
+         cursor = cursor.Slice(20);
+         treeIndex.ToBigEndian(cursor);
          return Sha2.Compute(keyPrefix);
     }
     
