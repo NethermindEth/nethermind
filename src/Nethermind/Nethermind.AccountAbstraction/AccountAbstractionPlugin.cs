@@ -99,10 +99,10 @@ namespace Nethermind.AccountAbstraction
                 _nethermindApi.EngineSigner!,
                 _nethermindApi.StateProvider!,
                 _nethermindApi.Timestamper,
-                UserOperationSimulators[entryPoint],
+                UserOperationSimulator(entryPoint),
                 userOperationSortedPool);
 
-            return _userOperationPool[entryPoint];
+            return _userOperationPools[entryPoint];
             //     if (_userOperationPool is null)
             //     {
             //         var (getFromApi, _) = _nethermindApi!.ForProducer;
@@ -139,7 +139,7 @@ namespace Nethermind.AccountAbstraction
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
             _userOperationSimulators[entryPoint] = new userOperationSimulator(
-                UserOperationTxBuilder,
+                UserOperationTxBuilder(entryPoint),
                 getFromApi.StateProvider!,
                 getFromApi.StateReader!,
                 _entryPointContractAbi,
@@ -186,11 +186,22 @@ namespace Nethermind.AccountAbstraction
                 {
                     var (getFromApi, _) = _nethermindApi!.ForProducer;
 
+                    IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); // EntryPoint Address -> Pool
+                    IDictionary<Address, UserOperationSimulator> _Simulators = new Dictionary<Address, UserOperationSimulator>();
+                    IDictionary<Address, UserOperationTxBuilder> _TxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
+
+                    foreach(Address entryPoint in _entryPointContractAddresses)
+                    {
+                        _Pools[entryPoint] = UserOperationPool(entryPoint);
+                        _Simulators[entryPoint] = UserOperationSimulator(entryPoint);
+                        _TxBuilders[entryPoint] = UserOperationTxBuilder(entryPoint);
+                    }
+
                     _userOperationTxSource = new UserOperationTxSource
                     (
-                        UserOperationTxBuilder,
-                        UserOperationPool,
-                        UserOperationSimulator,
+                        _TxBuilders,
+                        _Pools,
+                        _Simulators,
                         _nethermindApi.SpecProvider!,
                         _logger
                     );
