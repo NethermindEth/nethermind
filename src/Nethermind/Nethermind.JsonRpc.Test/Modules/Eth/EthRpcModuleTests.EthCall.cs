@@ -43,7 +43,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
         }
 
-        /*
         [Test]
         public async Task Eth_call_web3_sample_not_enough_gas_system_account()
         {
@@ -56,7 +55,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
             ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
         }
-        */
 
         [Test]
         public async Task Eth_call_web3_should_return_insufficient_balance_error()
@@ -68,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\", \"value\": 500}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"insufficient funds for transfer: address 0x0001020304050607080910111213141516171819\"},\"id\":67}",
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"insufficient funds for gas * price + value: address 0x0001020304050607080910111213141516171819, have 0, want 22473081332\",\"data\":\"insufficient funds for gas * price + value: address 0x0001020304050607080910111213141516171819, have 0, want 22473081332\"},\"id\":67}",
                 serialized);
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         }
@@ -80,7 +78,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Address someAccount = new("0x0001020304050607080910111213141516171819");
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
-                "{\"from\":\"0x0001020304050607080910111213141516171819\",\"gasPrice\":\"0x100000\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+                "{\"from\":\"0x0001020304050607080910111213141516171819\", \"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
             string serialized =
                 ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "0x0");
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
@@ -110,7 +108,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             string serialized =
                 ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
             Assert.AreEqual(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"StackUnderflow\"},\"id\":67}",
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"StackUnderflow\",\"data\":\"StackUnderflow\"},\"id\":67}",
                 serialized);
         }
         
@@ -129,7 +127,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
             string serialized =
                 ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction), "latest");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"max fee per gas less than block base fee: address 0xb7705ae4c6f81b66cdb323c65f4e8133690fc099, maxFeePerGas: 1, baseFee 765625000\",\"data\":\"max fee per gas less than block base fee: address 0xb7705ae4c6f81b66cdb323c65f4e8133690fc099, maxFeePerGas: 1, baseFee 765625000\"},\"id\":67}", serialized);
         }
 
         [Test]
@@ -205,7 +203,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"insufficient funds for gas * price + value: address 0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24, have 0, want 336000\",\"data\":\"insufficient funds for gas * price + value: address 0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24, have 0, want 336000\"},\"id\":67}", serialized);
         }
         
         [Test]
@@ -215,7 +213,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0xec37828d7e88b3cbb2cabffa353d7de556cadaff\", \"to\": \"0x343bdeb107d2b2babbe8f533693ddb043d23ea95\", \"gasPrice\": \"0x4D5CFC203B8C8\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"insufficient funds for gas * price + value: address 0xec37828d7e88b3cbb2cabffa353d7de556cadaff, have 0, want 28580752133073000000\",\"data\":\"insufficient funds for gas * price + value: address 0xec37828d7e88b3cbb2cabffa353d7de556cadaff, have 0, want 28580752133073000000\"},\"id\":67}", serialized);
         }
 
         [Test]
@@ -225,7 +223,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             TransactionForRpc transaction = ctx._test.JsonSerializer.Deserialize<TransactionForRpc>(
                 "{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"to\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"gasPrice\": \"0x10\"}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}", serialized);
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"max fee per gas less than block base fee: address 0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24, maxFeePerGas: 16, baseFee 765625000\",\"data\":\"max fee per gas less than block base fee: address 0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24, maxFeePerGas: 16, baseFee 765625000\"},\"id\":67}", serialized);
         }
 
         [Test]
@@ -282,7 +280,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
             string serialized = ctx._test.TestEthRpc("eth_call", ctx._test.JsonSerializer.Serialize(transaction));
             Assert.AreEqual(
-                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":\"revert\"},\"id\":67}",
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32015,\"message\":\"revert\",\"data\":\"revert\"},\"id\":67}",
                 serialized);
         }
     }

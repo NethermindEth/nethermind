@@ -83,7 +83,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token, bool noBaseFee = false)
             {
-                // Call path
                 BlockchainBridge.CallOutput result = _blockchainBridge.Call(header, tx, token, noBaseFee);
             
                 if (result.Error is null)
@@ -93,7 +92,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 return result.InputError
                     ? GetInputError(result)
-                    : ResultWrapper<string>.Fail("VM execution error.", ErrorCodes.ExecutionError, result.Error);
+                    : ResultWrapper<string>.Fail(result.Error, ErrorCodes.ExecutionError, result.Error);
             }
         }
 

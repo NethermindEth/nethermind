@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc
         int Timeout { get; set; }
         
         [ConfigItem(
-            Description = "No base fee.",
+            Description = "Defines whether the eth_call should be executed without taking base fee into consideration (in case when maxPriorityFeePerGas and maxFeePerGas are equal to zero).",
             DefaultValue = "false")] 
         bool NoBaseFee { get; set; }
 

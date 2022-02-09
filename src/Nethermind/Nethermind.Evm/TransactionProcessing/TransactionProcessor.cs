@@ -185,7 +185,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!noBaseFee || transaction.MaxFeePerGas > 0 || transaction.MaxPriorityFeePerGas > 0)
             {
-                if (!noValidation && transaction.MaxFeePerGas < block.BaseFeePerGas)
+                if ((!noValidation || noBaseFee) && transaction.MaxFeePerGas < block.BaseFeePerGas)
                 {
                     TraceLogInvalidTx(transaction, "MAX FEE PER GAS LESS THAN BLOCK BASE FEE");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, 
@@ -193,7 +193,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     return;
                 }
 
-                if (!noValidation && transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas)
+                if ((!noValidation || noBaseFee) && transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas)
                 {
                     TraceLogInvalidTx(transaction, "MAX FEE PER GAS LESS THAN MAX PRIORITY FEE PER GAS");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, 
@@ -241,9 +241,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (gasLimit < intrinsicGas)
                 {
                     TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                    //HEREE
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, $"gas limit below intrinsic gas: have {gasLimit}, want {intrinsicGas}");
-                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "gas limit below intrinsic gas");
                     return;
                 }
 
@@ -251,10 +249,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     TraceLogInvalidTx(transaction,
                         $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                    //HEREE
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, $"block gas limit exceeded: gasLimit {gasLimit} > block gasLimit {block.GasLimit} - block gasUsed {block.GasUsed}");
-                    
-                    // QuickFail(transaction, block, txTracer, eip658NotEnabled, "block gas limit exceeded");
                     return;
                 }
             }
@@ -279,7 +274,6 @@ namespace Nethermind.Evm.TransactionProcessing
                     TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {caller}");
                     if (!commit || noValidation || effectiveGasPrice == UInt256.Zero)
                     {
-                        //HERE IS
                         deleteCallerAccount = !commit || restore;
                         _stateProvider.CreateAccount(caller, UInt256.Zero);
                     }
@@ -302,10 +296,9 @@ namespace Nethermind.Evm.TransactionProcessing
                     if ((!noValidation || noBaseFee) && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
                                           senderReservedGasPayment + value > senderBalance))
                     {
-                        //HERE IS NOT
                         TraceLogInvalidTx(transaction,
                             $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
-                        QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient sender balance");
+                        QuickFail(transaction, block, txTracer, eip658NotEnabled, $"insufficient funds for gas * price + value: address {caller}, have {senderBalance}, want {UInt256.Max(senderReservedGasPayment + value, (ulong)intrinsicGas * effectiveGasPrice + value)}");
                         return;
                     }
 
@@ -314,8 +307,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         TraceLogInvalidTx(transaction,
                             $"INSUFFICIENT_MAX_FEE_PER_GAS_FOR_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}, MAX_FEE_PER_GAS: {transaction.MaxFeePerGas}");
-                        QuickFail(transaction, block, txTracer, eip658NotEnabled,
-                            "insufficient MaxFeePerGas for sender balance");
+                        QuickFail(transaction, block, txTracer, eip658NotEnabled, $"insufficient MaxFeePerGas for sender balance: address {{caller}}, sender_balance = {senderBalance}, maxFeePerGas: {transaction.MaxFeePerGas}");
                         return;
                     }
                 }
