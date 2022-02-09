@@ -299,7 +299,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!noBaseFee || !skipGasPricing)
                 {
                     UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                    if (!noValidation && !noBaseFee && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
+                    if ((!noValidation || noBaseFee) && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
                                           senderReservedGasPayment + value > senderBalance))
                     {
                         //HERE IS NOT
@@ -309,7 +309,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         return;
                     }
 
-                    if (!noValidation && !noBaseFee && spec.IsEip1559Enabled && !transaction.IsFree() &&
+                    if ((!noValidation || noBaseFee) && spec.IsEip1559Enabled && !transaction.IsFree() &&
                         senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                     {
                         TraceLogInvalidTx(transaction,

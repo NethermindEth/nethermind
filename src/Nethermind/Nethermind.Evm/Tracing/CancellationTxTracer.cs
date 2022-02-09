@@ -43,12 +43,16 @@ namespace Nethermind.Evm.Tracing
         private readonly bool _isTracingBlockAccess;
 
         public ITxTracer InnerTracer => _innerTracer;
-        public bool NoBaseFee { get; set; }
 
         public CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default)
         {
             _innerTracer = innerTracer;
             _token = token;
+        }
+        
+        public bool NoBaseFee {
+            get => _innerTracer.NoBaseFee;
+            set => _innerTracer.NoBaseFee = value;
         }
         
         public bool IsTracingReceipt
