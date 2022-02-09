@@ -24,6 +24,7 @@ using Nethermind.Trie;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -224,7 +225,7 @@ public class VerkleTree
         return GetTreeKey(address, UInt256.Zero, CodeSizeLeafKey);
     }
     
-    private byte[] GetTreeKeyForCodeChunk(Address address, UInt256 chunk)
+    public byte[] GetTreeKeyForCodeChunk(Address address, UInt256 chunk)
     {
         UInt256 chunkOffset = CodeOffset + chunk;
         
@@ -255,33 +256,33 @@ public class VerkleTree
         
     public void SetCode(Address address, byte[] code)
     {
-        byte[][] chunkifiedCode = ChunkifyCode(code);
-        byte[] chunkKey;
-        for (int i = 0; i < chunkifiedCode.Length; i++)
+        Span<byte> processedCode = PrepareCodeForChunkification(code); 
+        
+        int chunkCount = processedCode.Length / 32;
+
+        for (int i = 0; i < chunkCount; i++)
         {
-            chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
-            SetValue(chunkKey, chunkifiedCode[i]);
+            byte[] chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
+            SetValue(chunkKey, processedCode.Slice(i*32, 32));
         }
     }
-    private byte[][] ChunkifyCode(byte[] code)
+    
+    private static Span<byte> PrepareCodeForChunkification(byte[] code)
     {
         const int PUSH_OFFSET = 95;
         const int PUSH1 = PUSH_OFFSET + 1;
         const int PUSH32 = PUSH_OFFSET + 32;
-            
-        // To ensure that the code can be split into chunks of 31 bytes
-        byte[] chunkifyableCode = new byte[code.Length + 31 - code.Length % 31];
-        Buffer.BlockCopy(code, 0, chunkifyableCode, 0, code.Length);
-
-        int[] bytesToExecData  = new int[chunkifyableCode.Length];
+        
+        var codeLength = code.Length;
+        int[] bytesToExecData  = new int[codeLength];
         int pos = 0;
         int pushLength;
-        while (pos < chunkifyableCode.Length)
+        while (pos < code.Length)
         {
             pushLength = 0;
-            if ( PUSH1 <= chunkifyableCode[pos] && chunkifyableCode[pos] <= PUSH32)
+            if ( PUSH1 <= code[pos] && code[pos] <= PUSH32)
             {
-                pushLength = chunkifyableCode[pos] - PUSH_OFFSET;
+                pushLength = code[pos] - PUSH_OFFSET;
             }
 
             pos += 1;
@@ -302,22 +303,25 @@ public class VerkleTree
 
             pos += pushLength;
         }
-            
-        int chunkCount = (chunkifyableCode.Length + 31) / 32;
-        byte[][] chunks = new byte[chunkCount][];
+        
+        int chunkCount = (code.Length + 30) / 31; 
+        Span<byte> chunkifyableCode = new byte[chunkCount * 32];
+        
         pos = 0;
-            
+        Span<byte> codeCursor = chunkifyableCode;    
         for (int i = 0; i < chunkCount; i++)
-        {
-            chunks[i] = new byte[32];
-            chunks[i][0] = (byte)Math.Min(bytesToExecData[pos], 31);
-            Buffer.BlockCopy(chunkifyableCode, pos, chunks[i], 1, 31);
-            pos = pos + 31;
+        {   
+            codeCursor[0] = (byte)Math.Min(bytesToExecData[pos], 31);
+            codeCursor = codeCursor.Slice(1);
+            
+            code.Slice(pos, code.Length - pos < 31? code.Length - pos: 31).CopyTo(codeCursor);
+            codeCursor = codeCursor.Slice(31);
+            pos += 31;
         }
 
-        return chunks;
+        return chunkifyableCode;
     }
-    
+
     public void UpdateRootHash()
     {
         byte[] rootHash = RustVerkleLib.VerkleTrieGetStateRoot(_verkleTrieObj);

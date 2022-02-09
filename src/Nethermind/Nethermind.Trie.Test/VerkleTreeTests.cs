@@ -18,6 +18,7 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -73,20 +74,7 @@ public class VerkleTreeTests
         Trie.Metrics.TreeNodeRlpDecodings = 0;
         Trie.Metrics.TreeNodeRlpEncodings = 0;
     }
-    
-    // [Test]
-    // public void Get_Account_Keys()
-    // {
-    //     VerkleStateTree tree = new(LimboLogs.Instance);
-    //     byte[][] treeKeys = tree.GetTreeKeysForAccount(TestItem.AddressA);
-    //     Assert.AreEqual(treeKeys.Length, 5);
-    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.Version], treeKeyVersion);
-    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.Balance], treeKeyBalance);
-    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.Nonce], treeKeyNonce);
-    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.CodeHash], treeKeyCodeKeccak);
-    //     Assert.AreEqual(treeKeys[AccountTreeIndexes.CodeSize], treeKeyCodeSize);
-    // }
-    
+
     [Test]
     public void Get_Account_Keys()
     {
@@ -213,6 +201,72 @@ public class VerkleTreeTests
         tree.GetValue(keyPrefix,AccountTreeIndexes.CodeSize).Should().BeEquivalentTo(codeSize);
         
     }
+
+    [Test]
+    public void Set_Account_With_Code()
+    {
+        VerkleStateTree tree = new(LimboLogs.Instance);
+        byte[] code = {1, 2, 3, 4};
+        tree.SetCode(TestItem.AddressA, code);
+
+        byte[] key =tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        byte[] value = tree.GetValue(key);
+        value.Should().NotBeNull();
+        value.Slice(0, 5).Should().BeEquivalentTo(new byte[] {0, 1, 2, 3, 4}); 
+        value.Slice(5, 27).Should().BeEquivalentTo(new byte[27]);
+        
+        key =tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        value = tree.GetValue(key);
+
+        value.Should().BeNull();
+    }
     
-    
+    [Test]
+    public void Set_Account_With_Code_Push_Opcodes()
+    {
+        VerkleStateTree tree = new(LimboLogs.Instance);
+        byte[] code = {97, 1, 2, 3, 4};
+        tree.SetCode(TestItem.AddressA, code);
+
+        byte[] key =tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        byte[] value = tree.GetValue(key);
+        value.Should().NotBeNull();
+        value.Slice(0, 6).Should().BeEquivalentTo(new byte[] {0, 97, 1, 2, 3, 4}); 
+        value.Slice(6, 26).Should().BeEquivalentTo(new byte[26]);
+        
+        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        value = tree.GetValue(key);
+
+        value.Should().BeNull();
+        
+        byte[] codeLong =
+        {
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 100, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45
+        };
+        tree.SetCode(TestItem.AddressA, codeLong);
+        
+        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        value = tree.GetValue(key);
+
+        byte[] firstCodeChunk =
+        {
+            0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+            28, 100, 30
+        };
+        byte[] secondCodeChunk =
+        {
+            4, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45
+        };
+
+        value.Should().BeEquivalentTo(firstCodeChunk);
+        
+        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        value = tree.GetValue(key);
+        
+        value.Slice(0, 16).Should().BeEquivalentTo(secondCodeChunk); 
+        value.Slice(16, 16).Should().BeEquivalentTo(new byte[16]);
+
+    }
+
 }
