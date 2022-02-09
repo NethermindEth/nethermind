@@ -655,7 +655,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            Keccak lastHash = (await ProduceBranchV1(rpc, chain, chain.BlockTree, count,
+            Keccak lastHash = (await ProduceBranchV1(rpc, chain, count,
                     CreateParentBlockRequestOnHead(chain.BlockTree), true))
                 .Last()
                 .BlockHash;
@@ -691,34 +691,13 @@ namespace Nethermind.Merge.Plugin.Test
                 {
                     await CanReorganizeToBlock(branch.Last(), testChain);
                 }
-
-                foreach (IReadOnlyList<BlockRequestResult>? branch in branches)
-                {
-                    foreach (BlockRequestResult block in branch)
-                    {
-                        await CanReorganizeToBlock(block, testChain);
-                    }
-
-                    foreach (BlockRequestResult block in branch.Reverse())
-                    {
-                        await CanReorganizeToBlock(block, testChain);
-                    }
-                }
             }
 
             IReadOnlyList<BlockRequestResult> branch1 =
-                await ProduceBranchV1(rpc, chain, chain.BlockTree, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+                await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
             IReadOnlyList<BlockRequestResult> branch2 =
-                await ProduceBranchV1(rpc, chain, chain.BlockTree, 6, branch1[3], true);
-            // branch2.Last().BlockNumber.Should().Be(1 + 3 + 5);
-            // IReadOnlyList<BlockRequestResult> branch3 =
-            //     await ProduceBranchV1(rpc, chain, chain.BlockTree, 7, branch1[7], true);
-            // branch3.Last().BlockNumber.Should().Be(1 + 7 + 7);
-            // IReadOnlyList<BlockRequestResult> branch4 =
-            //     await ProduceBranchV1(rpc, chain, chain.BlockTree, 3, branch3[4], true);
-            // branch3.Last().BlockNumber.Should().Be(1 + 7 + 4 + 3);
-
-           // await CanReorganizeToAnyBlock(chain, branch1, branch2, branch3, branch4);
+                await ProduceBranchV1(rpc, chain, 6, branch1[3], true, TestItem.KeccakC);
+            
             await CanReorganizeToAnyBlock(chain, branch1, branch2);
         }
 
@@ -747,7 +726,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             IReadOnlyList<BlockRequestResult> branch =
-                await ProduceBranchV1(rpc, chain, chain.BlockTree, 8, CreateParentBlockRequestOnHead(chain.BlockTree),
+                await ProduceBranchV1(rpc, chain, 8, CreateParentBlockRequestOnHead(chain.BlockTree),
                     moveHead);
 
             foreach (BlockRequestResult block in branch)
@@ -790,7 +769,7 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             IReadOnlyList<BlockRequestResult> branch =
-                await ProduceBranchV1(rpc, chain, chain.BlockTree, 1, CreateParentBlockRequestOnHead(chain.BlockTree), false);
+                await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), false);
 
             foreach (BlockRequestResult block in branch)
             {
@@ -908,9 +887,8 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
 
-        private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranchV1(IEngineRpcModule rpc, MergeTestBlockchain chain, 
-            IBlockTree blockTree,
-            int count, BlockRequestResult startingParentBlock, bool setHead)
+        private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranchV1(IEngineRpcModule rpc, MergeTestBlockchain chain,
+            int count, BlockRequestResult startingParentBlock, bool setHead, Keccak? random = null)
         {
             List<BlockRequestResult> blocks = new();
             BlockRequestResult parentBlock = startingParentBlock;
@@ -919,7 +897,7 @@ namespace Nethermind.Merge.Plugin.Test
             for (int i = 0; i < count; i++)
             {
                 BlockRequestResult? getPayloadResult = await BuildAndGetPayloadResult2(rpc, chain, parentHeader, parentBlock.Timestamp + 12,
-                    TestItem.KeccakA, Address.Zero);
+                    random ?? TestItem.KeccakA, Address.Zero);
                 PayloadStatusV1 payloadStatusResponse =
                     (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
                 payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
@@ -931,7 +909,6 @@ namespace Nethermind.Merge.Plugin.Test
                         await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
                     setHeadResponse.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
                     setHeadResponse.Data.PayloadId.Should().Be(null);
-                  //  blockTree.HeadHash.Should().Be(newHead);
                 }
 
                 blocks.Add((getPayloadResult));

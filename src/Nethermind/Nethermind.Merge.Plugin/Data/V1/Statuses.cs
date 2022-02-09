@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Merge.Plugin.Data
+namespace Nethermind.Merge.Plugin.Data.V1
 {
     public static class PayloadStatus
     {
