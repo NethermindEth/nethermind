@@ -31,6 +31,11 @@ namespace Nethermind.AccountAbstraction
             Description = "Defines the maximum number of UserOperations that can be kept in memory by clients",
             DefaultValue = "200")]
         int UserOperationPoolSize { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines the maximum number of UserOperations that can be kept for each sender",
+            DefaultValue = "10")]
+        int MaximumUserOperationPerSender { get; set; }
 
         [ConfigItem(
             Description =

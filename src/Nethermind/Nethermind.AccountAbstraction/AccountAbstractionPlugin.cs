@@ -75,6 +75,7 @@ namespace Nethermind.AccountAbstraction
         {
             if (_userOperationPools.TryGetValue(entryPoint, out UserOperationPool? userOperationPool))
             {
+
                 return userOperationPool;
             }
 
