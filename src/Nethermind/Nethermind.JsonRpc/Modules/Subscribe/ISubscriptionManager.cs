@@ -16,13 +16,14 @@
 // 
 
 using System;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public interface ISubscriptionManager
     {
-        string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter = null);
+        string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter = null, ISpecProvider? specProvider = null);
         bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId);
         void RemoveClientSubscriptions(object? sender, EventArgs e);
     }

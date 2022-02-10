@@ -16,6 +16,7 @@
 // 
 
 using System;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
@@ -23,10 +24,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class SubscribeRpcModule : ISubscribeRpcModule
     {
         private readonly ISubscriptionManager _subscriptionManager;
+        private readonly ISpecProvider _specProvider;
 
-        public SubscribeRpcModule(ISubscriptionManager subscriptionManager)
+        public SubscribeRpcModule(ISubscriptionManager subscriptionManager, ISpecProvider specProvider)
         {
             _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
         
         
@@ -34,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             if (Enum.TryParse(typeof(SubscriptionType), subscriptionName, true, out var subscriptionType))
             {
-                return ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, (SubscriptionType)subscriptionType, arguments));
+                return ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, (SubscriptionType)subscriptionType, arguments, _specProvider));
             }
             return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
         }

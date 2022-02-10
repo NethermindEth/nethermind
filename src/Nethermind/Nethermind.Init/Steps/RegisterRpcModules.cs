@@ -203,11 +203,12 @@ namespace Nethermind.Init.Steps
                 _api.TxPool,
                 _api.ReceiptStorage,
                 _api.FilterStore,
-                _api.EthSyncingInfo!);
+                _api.EthSyncingInfo!,
+                _api.SpecProvider);
             
             SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
             
-            SubscribeRpcModule subscribeRpcModule = new(subscriptionManager);
+            SubscribeRpcModule subscribeRpcModule = new(subscriptionManager, _api.SpecProvider);
             _api.RpcModuleProvider.RegisterSingle<ISubscribeRpcModule>(subscribeRpcModule);
 
             Web3RpcModule web3RpcModule = new(_api.LogManager);

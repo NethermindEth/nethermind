@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -57,6 +58,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private ISubscriptionManager _subscriptionManager;
         private IJsonRpcDuplexClient _jsonRpcDuplexClient;
         private IJsonSerializer _jsonSerializer;
+        private ISpecProvider _specProvider;
 
         [SetUp]
         public void Setup()
@@ -65,6 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
+            _specProvider = Substitute.For<ISpecProvider>();
             _filterStore = new FilterStore();
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
@@ -75,13 +78,14 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _txPool,
                 _receiptStorage,
                 _filterStore,
-                new EthSyncingInfo(_blockTree));
+                new EthSyncingInfo(_blockTree),
+                _specProvider);
             
             _subscriptionManager = new SubscriptionManager(
                 subscriptionFactory,
                 _logManager);
             
-            _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager);
+            _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager, _specProvider);
             _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
             
             // block numbers matching filters in LogsSubscriptions with null arguments will be 33333-77777
