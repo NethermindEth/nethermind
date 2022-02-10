@@ -18,12 +18,14 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Abi; //TODO: decide if this stays or if UserOperationDecoder inherits AbiEncoder.
 
 namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperation
     {
         private static readonly UserOperationDecoder _decoder = new();
+        //private static readonly AbiEncoder _abiEncoder = new(); //TODO: decide if this stays or if UserOperationDecoder inherits AbiEncoder.
 
         public UserOperation(UserOperationRpc userOperationRpc)
         {
@@ -43,11 +45,17 @@ namespace Nethermind.AccountAbstraction.Data
             AccessList = UserOperationAccessList.Empty;
 
             Hash = CalculateHash(this);
+            RequestId = CalculateRequestId(this);
         }
-        
+
         public static Keccak CalculateHash(UserOperation userOperation)
         {
             return Keccak.Compute(_decoder.Encode(userOperation).Bytes);
+        }
+        public static Keccak CalculateRequestId(UserOperation userOperation)
+        {
+            return void;
+            //TODO: Write this method. Should be of the form keccak256(abi.encode(userOp.hash(), address(this), block.chainid))
         }
 
         public UserOperationAbi Abi => new()

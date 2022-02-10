@@ -86,7 +86,7 @@ namespace Nethermind.AccountAbstraction.Source
             _accountAbstractionConfig = accountAbstractionConfig;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
-                
+
             // topic hash emitted by a successful user operation
             _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
 
@@ -171,7 +171,7 @@ namespace Nethermind.AccountAbstraction.Source
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
                     _broadcaster.BroadcastOnce(userOperation);
-                    return ResultWrapper<Keccak>.Success(userOperation.Hash);
+                    return ResultWrapper<Keccak>.Success(userOperation.RequestId);
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} failed to be inserted into pool");
@@ -198,14 +198,14 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 foreach (var userOperationHash in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperationHash);
             }
-            
+
             BlockParameter currentBlockParameter = new BlockParameter(block.Number);
             AddressFilter entryPointAddressFilter = new AddressFilter(_entryPointAddress);
-            IEnumerable<FilterLog> foundLogs = _logFinder.FindLogs(new LogFilter(0, 
-                currentBlockParameter, 
+            IEnumerable<FilterLog> foundLogs = _logFinder.FindLogs(new LogFilter(0,
+                currentBlockParameter,
                 currentBlockParameter,
                 entryPointAddressFilter,
-                new SequenceTopicsFilter(new TopicExpression[] {new SpecificTopic(_userOperationEventTopic)})));
+                new SequenceTopicsFilter(new TopicExpression[] { new SpecificTopic(_userOperationEventTopic) })));
 
             // find any userOps included on chain submitted by this miner, delete from the pool
             foreach (FilterLog log in foundLogs)
@@ -317,7 +317,7 @@ namespace Nethermind.AccountAbstraction.Source
             if (_broadcaster.AddPeer(peerInfo))
             {
                 _broadcaster.BroadcastOnce(peerInfo, _userOperationSortedPool.GetSnapshot());
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer.Id}");
             }
         }
