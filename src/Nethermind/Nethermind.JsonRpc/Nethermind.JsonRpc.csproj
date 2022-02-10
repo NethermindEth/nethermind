@@ -10,6 +10,7 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
     <PackageReference Include="System.IO.Abstractions" Version="13.2.47" />
     <PackageReference Include="Jint" Version="2.11.58" />
+    <PackageReference Include="JWT" Version="8.9.0" />
 
   </ItemGroup>
   <ItemGroup>

@@ -43,6 +43,7 @@ namespace Nethermind.JsonRpc
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly Recorder _recorder;
+        private readonly JwtProcessor _jwtProcessor = JwtProcessor.Instance;
 
         public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
         {
@@ -133,7 +134,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(TextReader request, JsonRpcContext context)
+        private async IAsyncEnumerable<JsonRpcResult> ProcessJsonAsync(TextReader request, JsonRpcContext context)
         {
             request = await RecordRequest(request);
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -251,6 +252,37 @@ namespace Nethermind.JsonRpc
                     }
                 }
             } while (moveNext);
+        }
+
+        public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(TextReader request, JsonRpcContext context)
+        {
+            string requestData = await request.ReadToEndAsync();
+            var decoded = DecodeJwtToken(requestData);
+            if (decoded.Item2)
+            {
+                context = new JsonRpcContext(context.RpcEndpoint, context.DuplexClient, context.Url, true);
+            }
+
+            request = decoded.Item1;
+            var result = ProcessJsonAsync(request, context);
+            var enumerator = result.GetAsyncEnumerator();
+            while (await enumerator.MoveNextAsync())
+            {
+                yield return enumerator.Current;
+            }
+        }
+
+        private (TextReader, bool) DecodeJwtToken(string token)
+        {
+            if (!token.StartsWith("Bearer "))
+            {
+                return (new StringReader(token), false);
+            }
+
+            token = token.Remove(0, "Bearer ".Length);
+            string? decoded = _jwtProcessor.AuthenticateAndDecode(token);
+            if (decoded == null) return (new StringReader("bearer"), false);
+            return (new StringReader(decoded), true);
         }
 
         private JsonRpcResult RecordResponse(JsonRpcResult result)

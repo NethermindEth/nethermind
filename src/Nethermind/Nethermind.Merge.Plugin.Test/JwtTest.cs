@@ -29,49 +29,53 @@ public class JwtTest
     [Test]
     public async Task valid_token()
     {
-        JwtProcessor processor = new("123");
+        JwtProcessor processor = JwtProcessor.Instance;
+        processor.Secret = "123";
         string token =
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
             "eyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiZW5naW5lX2dldFBheWxvYWRWMSIsInBhcmFtcyI6WyIweGEyNDcyNDM3NTJlYjEwYjQiXSwiaWQiOjY3fQ." +
             "zdrxSPA1ZoeGb5_FXkd_rh62qeIMeb5i-HEliwhu3uw";
-        JsonRpcRequest actual = processor.AuthenticateAndDecode(token)!;
-        Assert.AreEqual("ID 67, engine_getPayloadV1(0xa247243752eb10b4)", actual.ToString());
+        string? actual = processor.AuthenticateAndDecode(token)!;
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"method\":\"engine_getPayloadV1\",\"params\":[\"0xa247243752eb10b4\"],\"id\":67}", actual);
     }
     
     [Test]
     public async Task wrong_secret()
     {
-        JwtProcessor processor = new("12");
+        JwtProcessor processor = JwtProcessor.Instance;
+        processor.Secret = "12";
         string token =
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
             "eyJmaWVsZDEiOiJkYXRhMSIsImFycmF5IjpbImVsZW0xIiwiZWxlbTIiLG51bGxdfQ." +
             "jzcbA6dAXbOU__NT7rrBwyGcBzTunxTKmQXzN4yU-2Y";
-        JsonRpcRequest? actual = processor.AuthenticateAndDecode(token);
+        string? actual = processor.AuthenticateAndDecode(token);
         Assert.AreEqual(null, actual);
     }
     
     [Test]
     public async Task wrong_algorithm_in_token_header()
     {
-        JwtProcessor processor = new("123");
+        JwtProcessor processor = JwtProcessor.Instance;
+        processor.Secret = "123";
         string token =
             "eyJhbGciOiJIUzM4NCIsInR5cCI6IkpXVCJ9." +
             "eyJmaWVsZDEiOiJkYXRhMSIsImFycmF5IjpbImVsZW0xIiwiZWxlbTIiLG51bGxdfQ." +
             "H6n9LMKu8VJ06n4pxMK-Kes2nXl8L_2AjJT-VVBwDhxcRHer7UU5hlXAUPawxVYe";
-        JsonRpcRequest? actual = processor.AuthenticateAndDecode(token);
+        string? actual = processor.AuthenticateAndDecode(token);
         Assert.AreEqual(null, actual);
     }
-    
+
     [Test]
     public async Task empty_json()
     {
-        JwtProcessor processor = new("1234");
+        JwtProcessor processor = JwtProcessor.Instance;
+        processor.Secret = "1234";
         string token =
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkoyV1QifQ." +
             "e30." +
             "02YnbaptBoWN-QbWUkp4aCdsNvwUk2__NqrRWzh97To";
-        JsonRpcRequest actual = processor.AuthenticateAndDecode(token)!;
-        Assert.AreEqual("ID , ()", actual.ToString());
+        string? actual = processor.AuthenticateAndDecode(token)!;
+        Assert.AreEqual("{}", actual);
     }
 
     [Test]
@@ -79,8 +83,9 @@ public class JwtTest
     [TestCase("")]
     public async Task incorrect_token_structure(string token)
     {
-        JwtProcessor processor = new("1234");
-        JsonRpcRequest? actual = processor.AuthenticateAndDecode(token);
+        JwtProcessor processor = JwtProcessor.Instance;
+        processor.Secret = "1234";
+        string? actual = processor.AuthenticateAndDecode(token);
         Assert.AreEqual(null, actual);
     }
 

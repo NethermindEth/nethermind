@@ -33,5 +33,7 @@ namespace Nethermind.Merge.Plugin
         public long? TerminalBlockNumber { get; set; }
         
         public ulong SecondsPerSlot { get; set; } = 12;
+
+        public string? Secret { get; set; } = null;
     }
 }

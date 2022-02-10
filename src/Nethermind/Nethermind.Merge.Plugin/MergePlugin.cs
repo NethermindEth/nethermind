@@ -25,6 +25,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Db;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
@@ -154,6 +155,8 @@ namespace Nethermind.Merge.Plugin
 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
+
+                JwtProcessor.Instance.Secret = _mergeConfig.Secret;
             }
         }
 
