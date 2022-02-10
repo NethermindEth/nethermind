@@ -239,12 +239,12 @@ public class VerkleTreeTests
 
         value.Should().BeNull();
         
-        byte[] codeLong =
+        byte[] code2 =
         {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
             24, 25, 26, 27, 28, 100, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45
         };
-        tree.SetCode(TestItem.AddressA, codeLong);
+        tree.SetCode(TestItem.AddressA, code2);
         
         key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
         value = tree.GetValue(key);
@@ -267,6 +267,46 @@ public class VerkleTreeTests
         value.Slice(0, 16).Should().BeEquivalentTo(secondCodeChunk); 
         value.Slice(16, 16).Should().BeEquivalentTo(new byte[16]);
 
+    }
+
+    [Test]
+    public void Set_Code_Edge_Cases()
+    {
+        VerkleStateTree tree = new(LimboLogs.Instance);
+        byte[] code2 =
+        {
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+            28, 29, 127, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
+            54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65
+        };
+        tree.SetCode(TestItem.AddressA, code2);
+
+        byte[] firstCodeChunk =
+        {
+            0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+            28, 29, 127
+        };
+        byte[] secondCodeChunk =
+        {
+            31, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
+            54, 55, 56, 57, 58, 59, 60, 61
+        };
+        byte[] thirdCodeChunk =
+        {
+            1, 62, 63, 64, 65
+        };
+        
+        byte[] key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        byte[] value = tree.GetValue(key);
+        value.Should().BeEquivalentTo(firstCodeChunk);
+        
+        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        value = tree.GetValue(key);
+        value.Should().BeEquivalentTo(secondCodeChunk); 
+        
+        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 2);
+        value = tree.GetValue(key);
+        value.Slice(0, 5).Should().BeEquivalentTo(thirdCodeChunk); 
     }
 
 }
