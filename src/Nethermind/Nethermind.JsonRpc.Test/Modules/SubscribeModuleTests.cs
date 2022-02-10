@@ -238,7 +238,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             expectedResult.Should().Be(serialized);
         }
         
-        //HEREEEEEEE
         [Test]
         public void NewHeadSubscription_on_BlockAddedToMain_event2()
         {
