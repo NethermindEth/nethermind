@@ -788,6 +788,21 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
         
         [Test]
+        public void NewHeadSubscription_with_baseFeePerGas_test()
+        {
+            _specProvider.GetSpec(Arg.Any<long>()).IsEip1559Enabled.Returns(true);
+            Block block = Build.A.Block.Genesis.WithTotalDifficulty(0L).WithBaseFeePerGas(10000).TestObject;
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block);
+            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out var subscriptionId, null, _specProvider);
+            
+            jsonRpcResult.Response.Should().NotBeNull();
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0xb3157bcccab04639f6393042690a6c9862deebe88c781f911e8dfd265531e9ff\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x2710\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}";
+            expectedResult.Should().Be(serialized);
+            
+        }
+        
+        [Test]
         public void DroppedPendingTransactionsSubscription_creating_result()
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "droppedPendingTransactions");
@@ -1075,21 +1090,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = _jsonSerializer.Serialize(jsonRpcResults[0].Response);
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", logsSubscription.Id, "\",\"result\":{\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"blockNumber\":\"0xd903\",\"data\":\"0x010203\",\"logIndex\":\"0x0\",\"removed\":true,\"topics\":[\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"],\"transactionIndex\":\"0x0\",\"transactionLogIndex\":\"0x0\"}}}");
             expectedResult.Should().Be(serialized);
-        }
-        
-         [Test]
-        public void NewHeadSubscription_test()
-        {
-            _specProvider.GetSpec(Arg.Any<long>()).IsEip1559Enabled.Returns(true);
-            Block block = Build.A.Block.Genesis.WithTotalDifficulty(0L).WithBaseFeePerGas(10000).TestObject;
-            BlockReplacementEventArgs blockReplacementEventArgs = new(block);
-            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out var subscriptionId, null, _specProvider);
-            
-            jsonRpcResult.Response.Should().NotBeNull();
-            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"author\":\"0x0000000000000000000000000000000000000000\",\"difficulty\":\"0xf4240\",\"extraData\":\"0x010203\",\"gasLimit\":\"0x3d0900\",\"gasUsed\":\"0x0\",\"hash\":\"0xb3157bcccab04639f6393042690a6c9862deebe88c781f911e8dfd265531e9ff\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"miner\":\"0x0000000000000000000000000000000000000000\",\"mixHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"nonce\":\"0x00000000000003e8\",\"number\":\"0x0\",\"parentHash\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"sha3Uncles\":\"0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347\",\"size\":\"0x201\",\"stateRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"totalDifficulty\":\"0x0\",\"timestamp\":\"0xf4240\",\"baseFeePerGas\":\"0x2710\",\"transactions\":[],\"transactionsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"uncles\":[]}}}";
-            expectedResult.Should().Be(serialized);
-            
         }
     }
 }
