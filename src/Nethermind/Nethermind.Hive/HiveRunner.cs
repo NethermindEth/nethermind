@@ -143,14 +143,17 @@ namespace Nethermind.Hive
                     break;
                 }
 
-                Block? block = DecodeBlock(file);
-
-                if (block is not null)
+                try
                 {
+                    Block block = DecodeBlock(file);
                     if (_logger.IsInfo)
                         _logger.Info(
                             $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
                     await ProcessBlock(block);
+                }
+                catch (RlpException e)
+                {
+                    if (_logger.IsError) _logger.Error($"HIVE Wrong block rlp.", e);
                 }
             }
         }
@@ -186,24 +189,12 @@ namespace Nethermind.Hive
             }
         }
 
-        private Block? DecodeBlock(string file)
+        private Block DecodeBlock(string file)
         {
             byte[] fileContent = File.ReadAllBytes(file);
             if (_logger.IsInfo) _logger.Info(fileContent.ToHexString());
             Rlp blockRlp = new(fileContent);
-
-            Block? decodedBlock = null;
-
-            try
-            {
-                decodedBlock = Rlp.Decode<Block>(blockRlp);
-            }
-            catch (RlpException e)
-            {
-                if (_logger.IsError) _logger.Error($"HIVE Wrong block rlp.", e);
-            }
-
-            return decodedBlock;
+            return Rlp.Decode<Block>(blockRlp);
         }
 
         private async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
