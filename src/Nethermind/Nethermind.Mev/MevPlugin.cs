@@ -149,11 +149,6 @@ namespace Nethermind.Mev
             return Task.CompletedTask;
         }
 
-        public void AfterHeaderValidator()
-        {
-            
-        }
-
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (!Enabled)

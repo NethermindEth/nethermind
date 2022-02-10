@@ -221,7 +221,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             BlockHeader? blockHeader = _blockTree.FindHeader(confirmedBlockHash, BlockTreeLookupOptions.None);
             if (blockHeader is null)
             {
-                errorMsg = $"Syncing... Block {confirmedBlockHash} not found for confirmation.";
+                errorMsg = $"Block {confirmedBlockHash} not found for confirmation.";
                 if (_logger.IsWarn) _logger.Warn(errorMsg);
             }
 
@@ -239,7 +239,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (!TryGetBranch(newHeadBlock, out Block[] branchOfBlocks))
             {
                 errorMsg =
-                    $"Syncing... Block's {newHeadBlock} main chain predecessor cannot be found and it will not be set as head.";
+                    $"Block's {newHeadBlock} main chain predecessor cannot be found and it will not be set as head.";
                 if (_logger.IsWarn) _logger.Warn(errorMsg);
             }
 

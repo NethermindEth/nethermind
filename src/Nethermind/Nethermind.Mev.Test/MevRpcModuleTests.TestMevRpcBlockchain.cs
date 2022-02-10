@@ -188,7 +188,7 @@ namespace Nethermind.Mev.Test
                     blockProducers.Add(bundleProducer);
                 }
 
-                var blockProducer = new MevBlockProducer(BlockProductionTrigger, LogManager, blockProducers.ToArray());
+                MevBlockProducer blockProducer = new MevBlockProducer(BlockProductionTrigger, LogManager, blockProducers.ToArray());
                 blockProducer.BlockProduced += OnBlockProduced;
                 return blockProducer;
             }

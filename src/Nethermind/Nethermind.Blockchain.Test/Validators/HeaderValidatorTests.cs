@@ -156,8 +156,6 @@ namespace Nethermind.Blockchain.Test.Validators
         [Test]
         public void When_timestamp_same_as_parent()
         {
-            // this test is failing during the Merge interop workshop but should be fine outside of it
-            
             _block.Header.Timestamp = _parentBlock.Header.Timestamp;
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();

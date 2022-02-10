@@ -30,6 +30,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -71,7 +72,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             byte[] payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             payloadAttributes.SuggestedFeeRecipient = _sealer.Address != Address.Zero ? _sealer.Address : payloadAttributes.SuggestedFeeRecipient;
             using CancellationTokenSource cts = new(_timeout);
-            var blockProductionTask = PreparePayload(payloadId, parentHeader, payloadAttributes);
+            Task blockProductionTask = PreparePayload(payloadId, parentHeader, payloadAttributes);
             _taskQueue.Enqueue(() => blockProductionTask);
             return payloadId;
         }
@@ -127,13 +128,13 @@ namespace Nethermind.Merge.Plugin.Handlers
                 {
                     if (_logger.IsInfo)
                         _logger.Info(
-                            $"Sealed eth2 block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                            $"Produced post-merge block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                 }
                 else
                 {
                     if (_logger.IsInfo)
                         _logger.Info(
-                            $"Failed to seal eth2 block (null seal)");
+                            $"Failed to produce post-merge block");
                 }
             }
             else if (t.IsFaulted)
@@ -191,8 +192,8 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             if (block == null)
                 return null;
-            var stateProvider = blockProducerEnv.ReadOnlyStateProvider;
-            var processor = blockProducerEnv.ChainProcessor;
+            IStateProvider stateProvider = blockProducerEnv.ReadOnlyStateProvider;
+            IBlockchainProcessor processor = blockProducerEnv.ChainProcessor;
             Block? processedBlock = null;
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
 
