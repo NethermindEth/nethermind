@@ -265,12 +265,22 @@ public class VerkleTree
         //     byte[] chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
         //     SetValue(chunkKey, processedCode.Slice(i*32, 32));
         // }
-
-        int i = 0;
+        
+        UInt256 i = 0;
+        Span<byte> subIndexBytes = stackalloc byte[32];
         CodeChunkEnumerator chunkEnumerator = new(code);
         while (chunkEnumerator.TryGetNextChunk(out byte[] chunk))
         {
-            byte[] chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
+            // byte[] chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
+            
+            // find tree index and the sub index in verkle tree for the code chunk
+            UInt256 chunkOffset = CodeOffset + i;
+            UInt256 treeIndex = chunkOffset / VerkleNodeWidth;
+            UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
+            subIndex.ToBigEndian(subIndexBytes);
+            
+            byte[] chunkKey = GetTreeKeyPrefix(address, treeIndex);
+            chunkKey[31] = subIndexBytes[31];
             SetValue(chunkKey, chunk);
             i++;
         }
