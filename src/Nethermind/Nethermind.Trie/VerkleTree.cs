@@ -163,12 +163,16 @@ public class VerkleTree
 
     public byte[] GetTreeKeyPrefix(Address address, UInt256 treeIndex)
     {
-         Span<byte> keyPrefix = stackalloc byte[64];
-         Span<byte> cursor = keyPrefix.Slice(12);
-         address.Bytes.CopyTo(cursor);
-         cursor = cursor.Slice(20);
-         treeIndex.ToBigEndian(cursor);
-         return Sha2.Compute(keyPrefix);
+        // allocate the array on stack  
+        Span<byte> keyPrefix = stackalloc byte[64];
+        // first 12 bytes are '0' padding to convert 12 byte address -> 32 bytes
+        Span<byte> cursor = keyPrefix.Slice(12);
+        address.Bytes.CopyTo(cursor);
+        // copy the address to the remaining 20 bytes
+        cursor = cursor.Slice(20);
+        // copy the tree index to the remaining 32 bytes
+        treeIndex.ToBigEndian(cursor);
+        return Sha2.Compute(keyPrefix);
     }
     
     public byte[] GetTreeKeyPrefixAccount(Address address)
