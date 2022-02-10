@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Network;
@@ -25,26 +26,17 @@ namespace Nethermind.AccountAbstraction.Network
 {
     public class UserOperationsMessageSerializer : IZeroInnerMessageSerializer<UserOperationsMessage>
     {
-        private UserOperationDecoder _decoder = new();
+        private readonly UserOperationDecoder _decoder = new();
         
         public void Serialize(IByteBuffer byteBuffer, UserOperationsMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
-            
-            nettyRlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.UserOperations.Count; i++)
-            {
-                nettyRlpStream.Encode(message.UserOperations[i]);
-            }
+            byteBuffer.WriteBytes(_decoder.Encode(message.UserOperations.ToArray()));
         }
 
         public UserOperationsMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            UserOperation[] uOps = DeserializeUOps(rlpStream);
-            return new UserOperationsMessage(uOps);
+            // TODO: Can we do !?
+            return new UserOperationsMessage(_decoder.Decode(byteBuffer.Array)!);
         }
 
         public int GetLength(UserOperationsMessage message, out int contentLength)

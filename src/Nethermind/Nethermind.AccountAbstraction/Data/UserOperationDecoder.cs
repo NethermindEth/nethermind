@@ -15,106 +15,42 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core;
-using Nethermind.Abi
+using Nethermind.Abi;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.AccountAbstraction.Data
 {
-    public class UserOperationDecoder : AbiEncoder
+    public class UserOperationDecoder
     {
+        private readonly AbiEncoder _abiEncoder = new AbiEncoder();
+        private AbiSignature _opSignature = new AbiSignature("arrayOfOps", new AbiArray(
+            new AbiTuple(
+                AbiAddress.Instance,
+                AbiType.UInt256,
+                AbiType.DynamicBytes,
+                AbiType.DynamicBytes,
+                AbiType.UInt256,
+                AbiType.UInt256,
+                AbiType.UInt256,
+                AbiType.UInt256,
+                AbiType.UInt256,
+                AbiAddress.Instance,
+                AbiType.DynamicBytes,
+                AbiType.DynamicBytes
+            )
+        ));
 
-        public byte[] Encode(UserOperation? op, AbiEncodingStyle encodingStyle, AbiSignature signature)
+        public byte[] Encode(UserOperation[] ops)
         {
-            if (item is null)
-            {
-                return [];
-            }
-
-
-
-        }
-        public Rlp Encode(UserOperation? op, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data!);
-
-        }
-
-        public void Encode(RlpStream stream, UserOperation? op, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (op is null)
-            {
-                stream.EncodeNullObject();
-                return;
-            }
-
-            int contentLength = GetContentLength(op);
-
-            stream.StartSequence(contentLength);
-
-            stream.Encode(op.Sender);
-            stream.Encode(op.Nonce);
-            stream.Encode(op.InitCode);
-            stream.Encode(op.CallData);
-            stream.Encode(op.CallGas);
-            stream.Encode(op.VerificationGas);
-            stream.Encode(op.PreVerificationGas);
-            stream.Encode(op.MaxFeePerGas);
-            stream.Encode(op.MaxPriorityFeePerGas);
-            stream.Encode(op.Paymaster);
-            stream.Encode(op.PaymasterData);
-            stream.Encode(op.Signature);
+            return _abiEncoder.Encode(AbiEncodingStyle.None, _opSignature, ops);
         }
 
-        public UserOperation Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public UserOperation[]? Decode(byte[] byteArray)
         {
-            throw new System.NotImplementedException();
-        }
-
-        public UserOperation Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            rlpStream.SkipLength();
-
-            UserOperationRpc userOperationRpc = new UserOperationRpc
-            {
-                Sender = rlpStream.DecodeAddress() ?? Address.Zero,
-                Nonce = rlpStream.DecodeUInt256(),
-                InitCode = rlpStream.DecodeByteArray(),
-                CallData = rlpStream.DecodeByteArray(),
-                CallGas = rlpStream.DecodeUInt256(),
-                VerificationGas = rlpStream.DecodeUInt256(),
-                PreVerificationGas = rlpStream.DecodeUInt256(),
-                MaxFeePerGas = rlpStream.DecodeUInt256(),
-                MaxPriorityFeePerGas = rlpStream.DecodeUInt256(),
-                Paymaster = rlpStream.DecodeAddress() ?? Address.Zero,
-                PaymasterData = rlpStream.DecodeByteArray(),
-                Signature = rlpStream.DecodeByteArray()
-            };
-
-            return new UserOperation(userOperationRpc);
-        }
-
-        public int GetLength(UserOperation item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOfSequence(GetContentLength(item));
-        }
-
-        private static int GetContentLength(UserOperation op)
-        {
-            return Rlp.LengthOf(op.Sender)
-                   + Rlp.LengthOf(op.Nonce)
-                   + Rlp.LengthOf(op.InitCode)
-                   + Rlp.LengthOf(op.CallData)
-                   + Rlp.LengthOf(op.CallGas)
-                   + Rlp.LengthOf(op.VerificationGas)
-                   + Rlp.LengthOf(op.PreVerificationGas)
-                   + Rlp.LengthOf(op.MaxFeePerGas)
-                   + Rlp.LengthOf(op.MaxPriorityFeePerGas)
-                   + Rlp.LengthOf(op.Paymaster)
-                   + Rlp.LengthOf(op.PaymasterData)
-                   + Rlp.LengthOf(op.Signature);
+            // TODO: should this throw?
+            return _abiEncoder.Decode(AbiEncodingStyle.None, _opSignature, byteArray) as UserOperation[];
         }
     }
 }

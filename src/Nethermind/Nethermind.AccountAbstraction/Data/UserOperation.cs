@@ -15,10 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Abi; //TODO: decide if this stays or if UserOperationDecoder inherits AbiEncoder.
+using Nethermind.Abi;
+using Nethermind.Core.Extensions; //TODO: decide if this stays or if UserOperationDecoder inherits AbiEncoder.
 
 namespace Nethermind.AccountAbstraction.Data
 {
@@ -44,17 +46,18 @@ namespace Nethermind.AccountAbstraction.Data
 
             AccessList = UserOperationAccessList.Empty;
 
-            Hash = CalculateHash(this);
             RequestId = CalculateRequestId(this);
         }
-
-        public static Keccak CalculateHash(UserOperation userOperation)
+        
+        private static Keccak CalculateHash(UserOperation userOperation)
         {
             return Keccak.Compute(_decoder.Encode(userOperation).Bytes);
-        }
-        public static Keccak CalculateRequestId(UserOperation userOperation)
+        } 
+        
+        public static Keccak CalculateRequestId(UserOperation userOperation, Address entryPointAddress, int chainId)
         {
-            return void;
+            byte[] userOperationHash
+            Keccak.Compute(Bytes.Concat())
             //TODO: Write this method. Should be of the form keccak256(abi.encode(userOp.hash(), address(this), block.chainid))
         }
 
@@ -74,7 +77,7 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = Signature!
         };
 
-        public Keccak Hash { get; set; }
+        public Keccak RequestId { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] InitCode { get; set; }
