@@ -32,8 +32,13 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     // Alex Beregszaszi, Paweł Bylica, Andrei Maiboroda, Alexey Akhunov, Christian Reitwiessner, Martin Swende, "EIP-3541: Reject new contracts starting with the 0xEF byte," Ethereum Improvement Proposals, no. 3541, March 2021. [Online serial]. Available: https://eips.ethereum.org/EIPS/eip-3541.
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class Eip3541Tests : VirtualMachineTestsBase
     {
+        public Eip3541Tests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         const long LondonTestBlockNumber = 4_370_000;
         protected override ISpecProvider SpecProvider
         {

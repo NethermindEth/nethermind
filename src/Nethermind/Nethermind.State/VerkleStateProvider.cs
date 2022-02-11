@@ -48,7 +48,8 @@ namespace Nethermind.State
         public const int CodeHash = 3;
         public const int CodeSize = 4;
     }
-    public class VerkleStateProvider:  IStateProvider
+    
+    public class VerkleStateProvider : IStateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
