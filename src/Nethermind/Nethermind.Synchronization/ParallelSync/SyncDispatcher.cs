@@ -19,6 +19,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
+using System.Linq;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -86,14 +88,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
                 if (currentStateLocal == SyncFeedState.Dormant)
                 {
-                    if(Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
+                    if (Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
                     if (dormantTaskLocal == null)
                     {
                         if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
                     }
 
                     await (dormantTaskLocal?.Task ?? Task.CompletedTask);
-                    if(Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
+                    if (Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
                 }
                 else if (currentStateLocal == SyncFeedState.Active)
                 {
@@ -102,7 +104,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         if (!Feed.IsMultiFeed)
                         {
-                            if(Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
+                            if (Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
                         }
 
                         await Task.Delay(10, cancellationToken);
@@ -113,7 +115,8 @@ namespace Nethermind.Synchronization.ParallelSync
                     PeerInfo? allocatedPeer = allocation.Current;
                     if (allocatedPeer != null)
                     {
-                        Task task = Dispatch(allocatedPeer, request, cancellationToken).ContinueWith(t =>
+                        Task task = Dispatch(allocatedPeer, request, cancellationToken)
+                            .ContinueWith(t =>
                         {
                             if (t.IsFaulted)
                             {
@@ -140,12 +143,12 @@ namespace Nethermind.Synchronization.ParallelSync
                                 Free(allocation);
                             }
                         }, cancellationToken);
-                        
+
                         if (!Feed.IsMultiFeed)
                         {
-                            if(Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
+                            if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
                             await task;
-                            if(Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
+                            if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
                         }
                     }
                     else
@@ -156,7 +159,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 else if (currentStateLocal == SyncFeedState.Finished)
                 {
-                    if(Logger.IsInfo) Logger.Info($"{GetType().Name} has finished work.");
+                    if (Logger.IsInfo) Logger.Info($"{GetType().Name} has finished work.");
                     break;
                 }
             }
@@ -170,6 +173,8 @@ namespace Nethermind.Synchronization.ParallelSync
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
             SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, 1000);
+            //var geths = SyncPeerPool.InitializedPeers.Where(p => p.PeerClientType == Stats.Model.NodeClientType.Geth).ToArray();
+
             return allocation;
         }
 

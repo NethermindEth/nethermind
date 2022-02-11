@@ -126,10 +126,10 @@ namespace Nethermind.Store.Test
 
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
-
-            Keccak result = SnapProvider.AddAccountRange(store, 1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
+            SnapProvider snapProvider = new(store, LimboLogs.Instance);
+            bool result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
             
-            Assert.AreEqual(rootHash, result);
+            Assert.IsTrue(result);
             Assert.AreEqual(7, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
@@ -148,10 +148,10 @@ namespace Nethermind.Store.Test
 
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
+            SnapProvider snapProvider = new(store, LimboLogs.Instance);
+            var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].AddressHash, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
-            Keccak result = SnapProvider.AddAccountRange(store, 1, rootHash, TestItem.Tree.AccountsWithPaths[0].AddressHash, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
-
-            Assert.AreEqual(rootHash, result);
+            Assert.IsTrue(result);
             Assert.AreEqual(7, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
@@ -163,10 +163,10 @@ namespace Nethermind.Store.Test
 
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
+            SnapProvider snapProvider = new(store, LimboLogs.Instance);
+            var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].AddressHash, TestItem.Tree.AccountsWithPaths);
 
-            Keccak result = SnapProvider.AddAccountRange(store, 1, rootHash, TestItem.Tree.AccountsWithPaths[0].AddressHash, TestItem.Tree.AccountsWithPaths);
-
-            Assert.AreEqual(rootHash, result);
+            Assert.IsTrue(result);
             Assert.AreEqual(11, db.Keys.Count);  // we don't have the proofs so we persist all nodes
             Assert.IsTrue(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
         }
@@ -179,6 +179,7 @@ namespace Nethermind.Store.Test
             // output state
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
+            SnapProvider snapProvider = new(store, LimboLogs.Instance);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -187,7 +188,7 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            Keccak result1 = SnapProvider.AddAccountRange(store, 1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[2].AddressHash.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -196,7 +197,7 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             lastProof = accountProofCollector.BuildResult().Proof;
 
-            Keccak result2 = SnapProvider.AddAccountRange(store, 1, rootHash, TestItem.Tree.AccountsWithPaths[2].AddressHash, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
+            var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].AddressHash, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[4].AddressHash.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -205,11 +206,11 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             lastProof = accountProofCollector.BuildResult().Proof;
 
-            Keccak result3 = SnapProvider.AddAccountRange(store, 1, rootHash, TestItem.Tree.AccountsWithPaths[4].AddressHash, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+            var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].AddressHash, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(rootHash, result1);
-            Assert.AreEqual(rootHash, result2);
-            Assert.AreEqual(rootHash, result3);
+            Assert.IsTrue(result1);
+            Assert.IsTrue(result2);
+            Assert.IsTrue(result3);
             Assert.AreEqual(6, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
@@ -222,6 +223,7 @@ namespace Nethermind.Store.Test
             // output state
             MemDb db = new MemDb();
             TrieStore store = new TrieStore(db, LimboLogs.Instance);
+            SnapProvider snapProvider = new(store, LimboLogs.Instance);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -230,7 +232,7 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            Keccak result1 = SnapProvider.AddAccountRange(store, 1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[2].AddressHash.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -240,7 +242,7 @@ namespace Nethermind.Store.Test
             lastProof = accountProofCollector.BuildResult().Proof;
 
             // missing TestItem.Tree.AccountsWithHashes[2]
-            Keccak result2 = SnapProvider.AddAccountRange(store, 1, rootHash, TestItem.Tree.AccountsWithPaths[2].AddressHash, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
+            var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].AddressHash, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[4].AddressHash.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -249,11 +251,11 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             lastProof = accountProofCollector.BuildResult().Proof;
 
-            Keccak result3 = SnapProvider.AddAccountRange(store, 1, rootHash, TestItem.Tree.AccountsWithPaths[4].AddressHash, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+            var result3 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[4].AddressHash, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.AreEqual(rootHash, result1);
-            Assert.AreNotEqual(rootHash, result2);
-            Assert.AreEqual(rootHash, result3);
+            Assert.IsTrue(result1);
+            Assert.IsFalse(result2);
+            Assert.IsTrue(result3);
             Assert.AreEqual(4, db.Keys.Count);  // we don't persist proof nodes (boundary nodes)
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }

@@ -804,6 +804,11 @@ namespace Nethermind.Serialization.Rlp
             return item;
         }
 
+        public bool IsNextItemEmptyArray()
+        {
+            return PeekByte() == Rlp.EmptyArrayByte;
+        }
+
         public bool IsNextItemNull()
         {
             return PeekByte() == Rlp.NullObjectByte;

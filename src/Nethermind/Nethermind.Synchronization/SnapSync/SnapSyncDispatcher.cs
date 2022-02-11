@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
+using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -32,27 +33,30 @@ namespace Nethermind.Synchronization.SnapSync
         {
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, AccountsSyncBatch request, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, AccountsSyncBatch batch, CancellationToken cancellationToken)
         {
+            Logger.Info("DISPATCH");
+
             ISyncPeer peer = peerInfo.SyncPeer;
             //TODO: replace with a constant "snap"
             peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler);
-            Task<int> task = handler.GetAccountRange();
-            // var getNodeDataTask = peer.GetNodeData(request.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
+            Task<AccountsAndProofs> task = handler.GetAccountRange(batch.Request, cancellationToken);
+
             await task.ContinueWith(
                 (t, state) =>
                 {
                     if (t.IsFaulted)
                     {
-                        if(Logger.IsTrace) Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
+                        if (Logger.IsTrace)
+                            Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
                     }
                     
                     AccountsSyncBatch batchLocal = (AccountsSyncBatch) state!;
                     if (t.IsCompletedSuccessfully)
                     {
-                        // batchLocal.Responses = t.Result;
+                        batchLocal.Response = t.Result;
                     }
-                }, request);
+                }, batch);
 
             await Task.CompletedTask;
         }

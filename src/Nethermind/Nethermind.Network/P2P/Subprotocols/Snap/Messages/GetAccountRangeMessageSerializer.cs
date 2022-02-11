@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 // 
 
 using DotNetty.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
@@ -28,9 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();
-            message.RootHash = rlpStream.DecodeKeccak();
-            message.StartingHash = rlpStream.DecodeKeccak();
-            message.LimitHash = rlpStream.DecodeKeccak();
+            message.AccountRange = new(rlpStream.DecodeKeccak(), rlpStream.DecodeKeccak(), rlpStream.DecodeKeccak());
             message.ResponseBytes = rlpStream.DecodeLong();
 
             return message;
@@ -41,18 +40,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);
             
             rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(message.RootHash);
-            rlpStream.Encode(message.StartingHash);
-            rlpStream.Encode(message.LimitHash);
-            rlpStream.Encode(message.ResponseBytes);
+            rlpStream.Encode(message.AccountRange.RootHash);
+            rlpStream.Encode(message.AccountRange.StartingHash);
+
+            rlpStream.Encode(message.AccountRange.LimitHash ?? Keccak.MaxValue);
+            rlpStream.Encode(message.ResponseBytes == 0 ? 1000 : message.ResponseBytes);
         }
 
         public override int GetLength(GetAccountRangeMessage message, out int contentLength)
         {
             contentLength = Rlp.LengthOf(message.RequestId);
-            contentLength += Rlp.LengthOf(message.RootHash);
-            contentLength += Rlp.LengthOf(message.StartingHash);
-            contentLength += Rlp.LengthOf(message.LimitHash);
+            contentLength += Rlp.LengthOf(message.AccountRange.RootHash);
+            contentLength += Rlp.LengthOf(message.AccountRange.StartingHash);
+            contentLength += Rlp.LengthOf(message.AccountRange.LimitHash);
             contentLength += Rlp.LengthOf(message.ResponseBytes);
 
             return Rlp.LengthOfSequence(contentLength);

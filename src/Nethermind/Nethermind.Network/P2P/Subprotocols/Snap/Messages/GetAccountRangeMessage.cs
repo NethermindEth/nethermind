@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core.Crypto;
+using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
@@ -23,20 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public override int PacketType => SnapMessageCode.GetAccountRange;
 
-        /// <summary>
-        /// Root hash of the account trie to serve
-        /// </summary>
-        public Keccak RootHash { get; set; }
-        
-        /// <summary>
-        /// Account hash of the first to retrieve
-        /// </summary>
-        public Keccak StartingHash { get; set; }
-        
-        /// <summary>
-        /// Account hash after which to stop serving data
-        /// </summary>
-        public Keccak LimitHash { get; set; }
+        public AccountRange AccountRange { get; set; }
         
         /// <summary>
         /// Soft limit at which to stop returning data
