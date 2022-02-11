@@ -42,14 +42,14 @@ namespace Nethermind.Core.Test.Builders
             private static readonly Account _account4 = Build.An.Account.WithBalance(4).TestObject;
             private static readonly Account _account5 = Build.An.Account.WithBalance(5).TestObject;
 
-            public static AccountWithAddressHash[] AccountsWithPaths = new AccountWithAddressHash[]
+            public static PathWithAccount[] AccountsWithPaths = new PathWithAccount[]
                 {
-                new AccountWithAddressHash(AccountAddress0, _account0),
-                new AccountWithAddressHash(new Keccak("0000000000000000000000000000000000000000000000000000000001112345"), _account1),
-                new AccountWithAddressHash(new Keccak("0000000000000000000000000000000000000000000000000000000001113456"), _account2),
-                new AccountWithAddressHash(new Keccak("0000000000000000000000000000000000000000000000000000000001114567"), _account3),
-                new AccountWithAddressHash(new Keccak("0000000000000000000000000000000000000000000000000000000001123456"), _account4),
-                new AccountWithAddressHash(new Keccak("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
+                new PathWithAccount(AccountAddress0, _account0),
+                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001112345"), _account1),
+                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001113456"), _account2),
+                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001114567"), _account3),
+                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001123456"), _account4),
+                new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
                 };
 
             public static SlotWithKeyHash[] SlotsWithPaths = new SlotWithKeyHash[]

@@ -8,9 +8,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Snap
 {
-    public class AccountWithAddressHash
+    public class PathWithAccount
     {
-        public AccountWithAddressHash(Keccak addressHash, Account account)
+        public PathWithAccount(Keccak addressHash, Account account)
         {
             AddressHash = addressHash;
             Account = account;

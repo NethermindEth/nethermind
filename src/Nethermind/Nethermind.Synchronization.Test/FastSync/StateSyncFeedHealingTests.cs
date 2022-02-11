@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                     endHashIndex = startingHashIndex + 1000;
 
                     ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, blockNumber, dbContext.RemoteStateTree.RootHash,
-                       accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new AccountWithAddressHash(a.Key, a.Value)).ToArray());
+                       accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
                     startingHashIndex = endHashIndex + 1;
                 }
@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 }
 
                 ProcessAccountRange(dbContext.RemoteStateTree, dbContext.LocalStateTree, blockJumps, dbContext.RemoteStateTree.RootHash,
-                    accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new AccountWithAddressHash(a.Key, a.Value)).ToArray());
+                    accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
 
                 startingHashIndex += 1000;
@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             Assert.IsTrue(data.RequestedNodesCount < accounts.Count/2);
         }
 
-        private static void ProcessAccountRange(StateTree remoteStateTree, StateTree localStateTree, int blockNumber, Keccak rootHash, AccountWithAddressHash[] accounts)
+        private static void ProcessAccountRange(StateTree remoteStateTree, StateTree localStateTree, int blockNumber, Keccak rootHash, PathWithAccount[] accounts)
         {
             Keccak startingHash = accounts.First().AddressHash;
             Keccak endHash = accounts.Last().AddressHash;
@@ -165,7 +165,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            Keccak result = SnapProvider.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, accounts, firstProof!.Concat(lastProof!).ToArray());
+            Keccak result = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, accounts, firstProof!.Concat(lastProof!).ToArray());
         }
     }
 }

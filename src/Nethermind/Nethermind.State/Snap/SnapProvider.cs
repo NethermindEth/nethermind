@@ -14,96 +14,39 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Snap
 {
-    public static class SnapProvider
+    public class SnapProvider
     {
-        public static Keccak? AddAccountRange(TrieStore store, long blockNumber, Keccak expectedRootHash, Keccak startingHash, AccountWithAddressHash[] accounts, byte[][] proofs = null)
+        private readonly ITrieStore _store;
+        private readonly ILogManager _logManager;
+
+        public Keccak NextStartingHash { get; private set; } = Keccak.Zero;
+
+        public SnapProvider(ITrieStore store, ILogManager logManager)
         {
-            StateTree tree = new(store, LimboLogs.Instance);
-            return AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
+            _store = store;
+            _logManager = logManager;
         }
 
-        public static Keccak? AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, AccountWithAddressHash[] accounts, byte[][] proofs = null)
+
+        public bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
-            // TODO: Check the accounts boundaries and sorting
+            StateTree tree = new(_store, _logManager);
+            Keccak calculatedRootHash = SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
 
-            Keccak lastHash = accounts.Last().AddressHash;
+            bool success = expectedRootHash == calculatedRootHash;
 
-            bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
-
-            if (proved)
+            if(success)
             {
-                foreach (var account in accounts)
-                {
-                    tree.Set(account.AddressHash, account.Account);
-                }
-
-                tree.UpdateRootHash();
-
-                if (tree.RootHash != expectedRootHash)
-                {
-                    // TODO: log incorrect range
-                    return Keccak.EmptyTreeHash;
-                }
-
-                tree.Commit(blockNumber);
+                NextStartingHash = accounts[accounts.Length - 1].AddressHash;
             }
 
-            return tree.RootHash;
+            return success;
         }
 
-        public static Keccak? AddStorageRange(TrieStore store, long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
+        public Keccak? AddStorageRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
         {
-            StorageTree tree = new(store, LimboLogs.Instance);
-            return AddStorageRange(tree, blockNumber, expectedRootHash, startingHash, slots, proofs);
+            StorageTree tree = new(_store, _logManager);
+            return SnapProviderHelper.AddStorageRange(tree, blockNumber, expectedRootHash, startingHash, slots, proofs);
         }
-
-        public static Keccak? AddStorageRange(StorageTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
-        {
-            // TODO: Check the slots boundaries and sorting
-
-            Keccak lastHash = slots.Last().KeyHash;
-
-            bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
-
-            if (proved)
-            {
-                foreach (var slot in slots)
-                {
-                    tree.Set(slot.KeyHash, slot.SlotValue);
-                }
-
-                tree.UpdateRootHash();
-
-                if (tree.RootHash != expectedRootHash)
-                {
-                    // TODO: log incorrect range
-                    return Keccak.EmptyTreeHash;
-                }
-
-                tree.Commit(blockNumber);
-            }
-
-            return tree.RootHash;
-        }
-
-        private static bool ProcessProofs(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak lastHash, byte[][] proofs = null)
-        {
-            if (proofs != null && proofs.Length > 0)
-            {
-                (bool proved, _) = ProofVerifier.VerifyMultipleProofs(proofs, expectedRootHash);
-
-                if (!proved)
-                {
-                    //TODO: log incorrect proofs
-                    return false;
-                }
-
-                SnapProviderHelper.FillBoundaryTree(tree, expectedRootHash, proofs, startingHash, lastHash);
-            }
-
-            return true;
-        }
-
-        
     }
 }

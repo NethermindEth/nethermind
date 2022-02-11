@@ -187,7 +187,7 @@ namespace Nethermind.Serialization.Rlp
         private Keccak DecodeStorageRoot(RlpStream rlpStream)
         {
             Keccak storageRoot = null;
-            if (_slimFormat && rlpStream.IsNextItemNull())
+            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
                 storageRoot = Keccak.EmptyTreeHash;
@@ -203,7 +203,7 @@ namespace Nethermind.Serialization.Rlp
         private Keccak DecodeCodeHash(RlpStream rlpStream)
         {
             Keccak codeHash = null;
-            if (_slimFormat && rlpStream.IsNextItemNull())
+            if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
                 codeHash = Keccak.OfAnEmptyString;

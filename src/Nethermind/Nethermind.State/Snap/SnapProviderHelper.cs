@@ -5,6 +5,8 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -12,7 +14,90 @@ namespace Nethermind.State.Snap
 {
     internal static class SnapProviderHelper
     {
-        internal static void FillBoundaryTree(PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
+        public static Keccak? AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+        {
+            // TODO: Check the accounts boundaries and sorting
+
+            var rlps = proofs.Select(p => $"{Keccak.Compute(p).ToString(false)}:{new Rlp(p).ToString(false)}").ToArray();
+
+            var res = string.Join($"{Environment.NewLine}{Environment.NewLine}", rlps);
+
+            var first = proofs.Select((p) => { var n = (new TrieNode(NodeType.Unknown, p, true)); n.ResolveNode(tree.TrieStore); return n; }) ;
+
+
+            Keccak lastHash = accounts.Last().AddressHash;
+
+            bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
+
+            if (proved)
+            {
+                foreach (var account in accounts)
+                {
+                    tree.Set(account.AddressHash, account.Account);
+                }
+
+                tree.UpdateRootHash();
+
+                if (tree.RootHash != expectedRootHash)
+                {
+                    // TODO: log incorrect range
+                    return Keccak.EmptyTreeHash;
+                }
+
+                tree.Commit(blockNumber);
+            }
+
+            return tree.RootHash;
+        }
+
+        public static Keccak? AddStorageRange(StorageTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
+        {
+            // TODO: Check the slots boundaries and sorting
+
+            Keccak lastHash = slots.Last().KeyHash;
+
+            bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
+
+            if (proved)
+            {
+                foreach (var slot in slots)
+                {
+                    tree.Set(slot.KeyHash, slot.SlotValue);
+                }
+
+                tree.UpdateRootHash();
+
+                if (tree.RootHash != expectedRootHash)
+                {
+                    // TODO: log incorrect range
+                    return Keccak.EmptyTreeHash;
+                }
+
+                tree.Commit(blockNumber);
+            }
+
+            return tree.RootHash;
+        }
+
+        private static bool ProcessProofs(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak lastHash, byte[][] proofs = null)
+        {
+            if (proofs != null && proofs.Length > 0)
+            {
+                //(bool proved, _) = ProofVerifier.VerifyMultipleProofs(proofs, expectedRootHash);
+
+                //if (!proved)
+                //{
+                //    //TODO: log incorrect proofs
+                //    return false;
+                //}
+
+                FillBoundaryTree(tree, expectedRootHash, proofs, startingHash, lastHash);
+            }
+
+            return true;
+        }
+
+        private static void FillBoundaryTree(PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
         {
             if (tree == null)
             {
