@@ -16,7 +16,6 @@
 // 
 
 using System;
-using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
@@ -38,7 +37,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
             return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
         }
-        
 
         public ResultWrapper<bool> eth_unsubscribe(string subscriptionId)
         {
