@@ -151,7 +151,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
             AccountRangeMessage response = await SendRequest(request, token);
 
-            return new AccountsAndProofs() { PathAndAccounts = response.Accounts, Proofs = response.Proofs};
+            return new AccountsAndProofs() { PathAndAccounts = response.PathsWithAccounts, Proofs = response.Proofs};
         }
 
         private async Task<AccountRangeMessage> SendRequest(GetAccountRangeMessage msg, CancellationToken token)

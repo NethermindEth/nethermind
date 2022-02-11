@@ -51,15 +51,15 @@ namespace Nethermind.Core.Test.Builders
 
         public static Keccak KeccakFromNumber(int i)
         {
-            UInt256 keccakNumber = (UInt256) i;
+            UInt256 keccakNumber = (UInt256)i;
             byte[] keccakBytes = new byte[32];
             keccakNumber.ToBigEndian(keccakBytes);
             return new Keccak(keccakBytes);
         }
 
-        public static byte[]RandomDataA = {1, 2, 3};
-        public static byte[] RandomDataB = {4, 5, 6, 7};
-        public static byte[] RandomDataC = {1, 2, 8, 9, 10};
+        public static byte[] RandomDataA = { 1, 2, 3 };
+        public static byte[] RandomDataB = { 4, 5, 6, 7 };
+        public static byte[] RandomDataC = { 1, 2, 8, 9, 10 };
 
         public static Keccak KeccakA = Keccak.Compute("A");
         public static Keccak KeccakB = Keccak.Compute("B");
@@ -107,14 +107,14 @@ namespace Nethermind.Core.Test.Builders
         public static IPEndPoint IPEndPointF = IPEndPoint.Parse("10.0.0.6");
 
         public static Bloom NonZeroBloom;
-        
+
         public static Address GetRandomAddress(Random? random = null)
         {
             byte[] bytes = new byte[20];
             (random ?? Random).NextBytes(bytes);
             return new Address(bytes);
         }
-        
+
         public static Keccak GetRandomKeccak(Random? random = null)
         {
             byte[] bytes = new byte[32];
