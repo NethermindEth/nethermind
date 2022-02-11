@@ -20,15 +20,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Abi;
-using Nethermind.Core.Extensions; //TODO: decide if this stays or if UserOperationDecoder inherits AbiEncoder.
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperation
     {
         private static readonly UserOperationDecoder _decoder = new();
-        //private static readonly AbiEncoder _abiEncoder = new(); //TODO: decide if this stays or if UserOperationDecoder inherits AbiEncoder.
-
+        private static readonly AbiEncoder _abiEncoder = new();
         public UserOperation(UserOperationRpc userOperationRpc)
         {
             Sender = userOperationRpc.Sender;
@@ -45,20 +44,19 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
-
-            RequestId = CalculateRequestId(this);
+            RequestId = CalculateRequestId(entryPointAddress, chainId); //TODO: Change the constructor?
         }
-        
-        private static Keccak CalculateHash(UserOperation userOperation)
+
+        private static Keccak CalculateHash()
         {
-            return Keccak.Compute(_decoder.Encode(userOperation).Bytes);
-        } 
-        
-        public static Keccak CalculateRequestId(UserOperation userOperation, Address entryPointAddress, int chainId)
+            return Keccak.Compute(_decoder.Encode(this).Bytes);
+        }
+
+        public static Keccak CalculateRequestId(Address entryPointAddress, int chainId)
         {
-            byte[] userOperationHash
-            Keccak.Compute(Bytes.Concat())
-            //TODO: Write this method. Should be of the form keccak256(abi.encode(userOp.hash(), address(this), block.chainid))
+
+            byte[] hash = userOperation.CalculateHash(userOperation);
+            return Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, [hash, entryPointAddress, chainId]));
         }
 
         public UserOperationAbi Abi => new()
