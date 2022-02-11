@@ -66,8 +66,8 @@ namespace Nethermind.Synchronization.FastSync
         public TreeSync(SyncMode syncMode, IDb codeDb,IDb stateDb, IBlockTree blockTree, ILogManager logManager)
         {
             _syncMode = syncMode;
-            _codeDb = codeDb.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
-            _stateDb = stateDb.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
