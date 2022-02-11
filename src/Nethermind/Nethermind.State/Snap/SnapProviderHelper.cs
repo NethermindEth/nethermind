@@ -18,11 +18,9 @@ namespace Nethermind.State.Snap
         {
             // TODO: Check the accounts boundaries and sorting
 
-            var rlps = proofs.Select(p => $"{Keccak.Compute(p).ToString(false)}:{new Rlp(p).ToString(false)}").ToArray();
-
-            var res = string.Join($"{Environment.NewLine}{Environment.NewLine}", rlps);
-
-            var first = proofs.Select((p) => { var n = (new TrieNode(NodeType.Unknown, p, true)); n.ResolveNode(tree.TrieStore); return n; }) ;
+            //var rlps = proofs.Select(p => $"{Keccak.Compute(p).ToString(false)}:{new Rlp(p).ToString(false)}").ToArray();
+            //var res = string.Join($"{Environment.NewLine}{Environment.NewLine}", rlps);
+            //var first = proofs.Select((p) => { var n = (new TrieNode(NodeType.Unknown, p, true)); n.ResolveNode(tree.TrieStore); return n; }) ;
 
 
             Keccak lastHash = accounts.Last().AddressHash;
@@ -91,10 +89,117 @@ namespace Nethermind.State.Snap
                 //    return false;
                 //}
 
-                FillBoundaryTree(tree, expectedRootHash, proofs, startingHash, lastHash);
+                FillBoundaryTree_2(tree, expectedRootHash, proofs, startingHash, lastHash);
             }
 
             return true;
+        }
+
+        private static bool FillBoundaryTree_2(PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
+        {
+            if (proofs is null || proofs.Length == 0)
+            {
+                return true;
+            }
+
+            if (tree == null)
+            {
+                throw new ArgumentNullException(nameof(tree));
+            }
+
+            Dictionary<Keccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
+
+            Dictionary<Keccak, TrieNode> processed = new();
+            Span<byte> leftBoundary = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(startingHash.Bytes, leftBoundary);
+            Span<byte> rightBoundary = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
+
+            Stack<(TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
+
+            if(dict.TryGetValue(expectedRootHash, out TrieNode root))
+            {
+                tree.RootRef = root;
+
+                proofNodesToProcess.Push((root, -1, new List<byte>()));
+            }
+            else
+            {
+                return false;
+            }
+
+            while (proofNodesToProcess.Count > 0)
+            {
+                (TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
+
+                if (node.IsExtension)
+                {
+                    Keccak? childKeccak = node.GetChildHash(0);
+                    
+                    if(childKeccak is not null && dict.TryGetValue(childKeccak, out TrieNode child))
+                    {
+                        node.SetChild(0, child);
+
+                        pathIndex += node.Path.Length;
+                        path.AddRange(node.Path);
+                        proofNodesToProcess.Push((child, pathIndex, path));
+                    }                    
+                }
+
+                if (node.IsBranch)
+                {
+                    pathIndex++;
+
+                    int left = Bytes.Comparer.Compare(path.ToArray(), leftBoundary[0..path.Count()].ToArray()) == 0 ? leftBoundary[pathIndex] : 0;
+                    int right = Bytes.Comparer.Compare(path.ToArray(), rightBoundary[0..path.Count()].ToArray()) == 0 ? rightBoundary[pathIndex] : 15;
+
+                    for (int ci = left; ci <= right; ci++)
+                    {
+                        Keccak? childKeccak = node.GetChildHash(ci);
+
+                        if (ci >= left && ci <= right)
+                        {
+                            node.SetChild(ci, null);
+                        }
+
+                        if (childKeccak is not null && (ci == left || ci == right) && dict.TryGetValue(childKeccak, out TrieNode child))
+                        {
+                            if (!child.IsLeaf)
+                            {
+                                node.SetChild(ci, child);
+
+                                // TODO: we should optimize it - copy only if there are two boundary children
+                                List<byte> newPath = new(path);
+
+                                newPath.Add((byte)ci);
+
+                                proofNodesToProcess.Push((child, pathIndex, newPath));
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            return true;
+        }
+
+        private static Dictionary<Keccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
+        {
+            Dictionary<Keccak, TrieNode> dict = new();
+
+            for (int i = 0; i < proofs.Length; i++)
+            {
+                byte[] proof = proofs[i];
+                var node = new TrieNode(NodeType.Unknown, proof, true);
+                node.IsBoundaryProofNode = true;
+                node.ResolveNode(store);
+                node.ResolveKey(store, i == 0);
+
+                dict[node.Keccak] = node;
+            }
+
+            return dict;
         }
 
         private static void FillBoundaryTree(PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
