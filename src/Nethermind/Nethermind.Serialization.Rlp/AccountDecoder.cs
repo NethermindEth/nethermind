@@ -109,7 +109,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (_slimFormat && !account.HasStorage)
             {
-                rlpStream.EncodeNullObject();
+                rlpStream.EncodeEmptyByteArray();
             }
             else
             {
@@ -118,7 +118,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (_slimFormat && !account.HasCode)
             {
-                rlpStream.EncodeNullObject();
+                rlpStream.EncodeEmptyByteArray();
             }
             else
             {
@@ -153,7 +153,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(GetContentLength(item));
         }
         
-        private int GetContentLength(Account? item)
+        public int GetContentLength(Account? item)
         {
             if (item is null)
             {
