@@ -24,6 +24,7 @@ using Nethermind.Trie;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -79,6 +80,7 @@ public class VerkleTree
         _verkleTrieObj = RustVerkleLib.VerkleTrieNew();
             
         _logger = logManager?.GetClassLogger<VerkleTree>() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger.Info(_verkleTrieObj.ToString());
         _allowCommits = allowCommits;
         RootHash = rootHash;
         MainStorageOffsetBase.LeftShift(MainStorageOffsetExponent, out MainStorageOffset);
@@ -100,7 +102,9 @@ public class VerkleTree
         return result;
     }
     
-    
+    public Span<byte> GetValueSpan(byte[] rawKey) => RustVerkleLib.VerkleTrieGetSpan(_verkleTrieObj, rawKey);
+
+
     [DebuggerStepThrough]
     public void SetValue(Span<byte> rawKey, byte[] value)
     {
@@ -109,56 +113,120 @@ public class VerkleTree
         // TODO; error handling here? or at least a way to check if the operation was successful
         RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey.ToArray(), value);
     }
-
-    private byte[] GetTreeKeyPrefix(Address address, UInt256 treeIndex)
+    
+    [DebuggerStepThrough]
+    public void SetValue(byte[] rawKey, byte[] value)
     {
-         // is it guaranteed that the its a 12 length byte array initialized with zeros?
-         byte[] addressPadding = new byte[12] ;
-         IEnumerable<byte> treeKeyPrecursor = addressPadding.Concat(address.Bytes);
-         treeKeyPrecursor = treeKeyPrecursor.Concat(treeIndex.ToBigEndian());
-         return Sha2.Compute(treeKeyPrecursor.ToArray());
+        if (_logger.IsTrace)
+            _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
+        // TODO; error handling here? or at least a way to check if the operation was successful
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value);
     }
     
-     private byte[] GetTreeKey(Address address, UInt256 treeIndex , byte subIndexBytes)
-     {
-        
-         byte[] treeKeyPrefix = GetTreeKeyPrefix(address, treeIndex);
-
-         byte[] treeKey = new byte[32];
-         Buffer.BlockCopy(treeKeyPrefix, 0, treeKey, 0, 31);
-         treeKey[31] = subIndexBytes;
-         return treeKey;
-     }
-
-     public byte[][] GetTreeKeysForAccount(Address address)
-     {
-         byte[] treeKeyPrefix = GetTreeKeyPrefix(address, 0);
-         
-         byte[] treeKeyVersion = new byte[32];
-         Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyVersion, 0, 31);
-         treeKeyVersion[31] = VersionLeafKey;
-         
-         byte[] treeKeyBalance = new byte[32];
-         Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyBalance, 0, 31);
-         treeKeyBalance[31] = BalanceLeafKey;
-         
-         byte[] treeKeyNounce = new byte[32];
-         Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyNounce, 0, 31);
-         treeKeyNounce[31] = NonceLeafKey;
-         
-         byte[] treeKeyCodeKeccak = new byte[32];
-         Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeKeccak, 0, 31);
-         treeKeyCodeKeccak[31] = CodeKeccakLeafKey;
-         
-         byte[] treeKeyCodeSize = new byte[32];
-         Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeSize, 0, 31);
-         treeKeyCodeSize[31] = CodeSizeLeafKey;
-        
-         return new [] {treeKeyVersion, treeKeyBalance, treeKeyNounce, treeKeyCodeKeccak, treeKeyCodeSize};
-     }
-     
-     
+    [DebuggerStepThrough]
+    public void SetValue(Span<byte> rawKey, Span<byte> value)
+    {
+        if (_logger.IsTrace)
+            _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
+        // TODO; error handling here? or at least a way to check if the operation was successful
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey.ToArray(), value.ToArray());
+    }
     
+    [DebuggerStepThrough]
+    public void SetValue(byte[] rawKey, Span<byte> value)
+    {
+        if (_logger.IsTrace)
+            _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
+        // TODO; error handling here? or at least a way to check if the operation was successful
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value.ToArray());
+    }
+    
+    [DebuggerStepThrough]
+    public void SetValue(Span<byte> keyPrefix, byte subIndex, byte[] value)
+    {
+        if (_logger.IsTrace)
+            _logger.Trace($"{(value.Length == 0 ? $"Deleting {keyPrefix.ToHexString() + subIndex}" : $"Setting {keyPrefix.ToHexString() + + subIndex} = {value.ToHexString()}")}");
+        // TODO; error handling here? or at least a way to check if the operation was successful
+        keyPrefix[31] = subIndex;
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, keyPrefix.ToArray(), value);
+    }
+    
+    [DebuggerStepThrough]
+    public void SetValue(byte[] keyPrefix, byte subIndex, byte[] value)
+    {
+        if (_logger.IsTrace)
+            _logger.Trace($"{(value.Length == 0 ? $"Deleting {keyPrefix.ToHexString() + subIndex}" : $"Setting {keyPrefix.ToHexString() + + subIndex} = {value.ToHexString()}")}");
+        // TODO; error handling here? or at least a way to check if the operation was successful
+        keyPrefix[31] = subIndex;
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, keyPrefix, value);
+    }
+
+    public byte[] GetTreeKeyPrefix(Address address, UInt256 treeIndex)
+    {
+        // allocate the array on stack  
+        Span<byte> keyPrefix = stackalloc byte[64];
+        // first 12 bytes are '0' padding to convert 12 byte address -> 32 bytes
+        Span<byte> cursor = keyPrefix.Slice(12);
+        address.Bytes.CopyTo(cursor);
+        // copy the address to the remaining 20 bytes
+        cursor = cursor.Slice(20);
+        // copy the tree index to the remaining 32 bytes
+        treeIndex.ToBigEndian(cursor);
+        return Sha2.Compute(keyPrefix);
+    }
+    
+    public byte[] GetTreeKeyPrefixAccount(Address address)
+    {
+        return GetTreeKeyPrefix(address, 0);
+    }
+    
+    public byte[]? GetValue(byte[] keyPrefix, byte subIndex)
+    {
+        keyPrefix[31] = subIndex;
+        byte[]? result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, keyPrefix);
+        return result;
+    }
+    
+    public Span<byte> GetValueSpan(byte[] keyPrefix, byte subIndex)
+    {
+        keyPrefix[31] = subIndex;
+        return RustVerkleLib.VerkleTrieGetSpan(_verkleTrieObj, keyPrefix);
+    }
+
+    private byte[] GetTreeKey(Address address, UInt256 treeIndex, byte subIndexBytes)
+    {
+        byte[] treeKeyPrefix = GetTreeKeyPrefix(address, treeIndex);
+        treeKeyPrefix[31] = subIndexBytes;
+        return treeKeyPrefix;
+    }
+
+    // public byte[][] GetTreeKeysForAccount(Address address)
+    // {
+    //     byte[] treeKeyPrefix = GetTreeKeyPrefix(address, 0);
+    //
+    //     byte[] treeKeyVersion = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyVersion, 0, 31);
+    //     treeKeyVersion[31] = VersionLeafKey;
+    //
+    //     byte[] treeKeyBalance = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyBalance, 0, 31);
+    //     treeKeyBalance[31] = BalanceLeafKey;
+    //
+    //     byte[] treeKeyNounce = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyNounce, 0, 31);
+    //     treeKeyNounce[31] = NonceLeafKey;
+    //
+    //     byte[] treeKeyCodeKeccak = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeKeccak, 0, 31);
+    //     treeKeyCodeKeccak[31] = CodeKeccakLeafKey;
+    //
+    //     byte[] treeKeyCodeSize = new byte[32];
+    //     Buffer.BlockCopy(treeKeyPrefix, 0, treeKeyCodeSize, 0, 31);
+    //     treeKeyCodeSize[31] = CodeSizeLeafKey;
+    //
+    //     return new[] { treeKeyVersion, treeKeyBalance, treeKeyNounce, treeKeyCodeKeccak, treeKeyCodeSize };
+    // }
+
     // private byte[] GetTreeKeyForAccountLeaf(Address address, byte leaf)
     // {
     //     return GetTreeKey(address, UInt256.Zero, leaf);
@@ -189,7 +257,7 @@ public class VerkleTree
         return GetTreeKey(address, UInt256.Zero, CodeSizeLeafKey);
     }
     
-    private byte[] GetTreeKeyForCodeChunk(Address address, UInt256 chunk)
+    public byte[] GetTreeKeyForCodeChunk(Address address, UInt256 chunk)
     {
         UInt256 chunkOffset = CodeOffset + chunk;
         
@@ -220,33 +288,152 @@ public class VerkleTree
         
     public void SetCode(Address address, byte[] code)
     {
-        byte[][] chunkifiedCode = chunkifyCode(code);
-        byte[] chunkKey;
-        for (int i = 0; i < chunkifiedCode.Length; i++)
+        // Span<byte> processedCode = PrepareCodeForChunkification(code); 
+        //
+        // int chunkCount = processedCode.Length / 32;
+        //
+        // for (int i = 0; i < chunkCount; i++)
+        // {
+        //     byte[] chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
+        //     SetValue(chunkKey, processedCode.Slice(i*32, 32));
+        // }
+        
+        UInt256 i = 0;
+        Span<byte> subIndexBytes = stackalloc byte[32];
+        CodeChunkEnumerator chunkEnumerator = new(code);
+        while (chunkEnumerator.TryGetNextChunk(out byte[] chunk))
         {
-            chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
-            SetValue(chunkKey, chunkifiedCode[i]);
+            // byte[] chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
+            
+            // find tree index and the sub index in verkle tree for the code chunk
+            FillTreeAndSubIndexForChunk(i, ref subIndexBytes, out UInt256 treeIndex);
+            
+            byte[] chunkKey = GetTreeKeyPrefix(address, treeIndex);
+            chunkKey[31] = subIndexBytes[31];
+            SetValue(chunkKey, chunk);
+            i++;
         }
     }
-    private byte[][] chunkifyCode(byte[] code)
+
+    private void FillTreeAndSubIndexForChunk(UInt256 chunkId, ref Span<byte> subIndexBytes, out UInt256 treeIndex)
+    {
+        UInt256 chunkOffset = CodeOffset + chunkId;
+        treeIndex = chunkOffset / VerkleNodeWidth;
+        UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
+        subIndex.ToBigEndian(subIndexBytes);
+    }
+
+    private ref struct CodeChunkEnumerator
+    {
+        const byte PushOffset = 95;
+        const byte Push1 = PushOffset + 1;
+        const byte Push32 = PushOffset + 32;
+        
+        private Span<byte> _code;
+        private byte _rollingOverPushLength = 0;
+        private readonly byte[] _bufferChunk = new byte[32];
+        private readonly Span<byte> _bufferChunkCodePart;
+
+        public CodeChunkEnumerator(Span<byte> code)
+        {
+            _code = code;
+            _bufferChunkCodePart = _bufferChunk.AsSpan().Slice(1);
+        }
+
+        // Try get next chunk
+        public bool TryGetNextChunk(out byte[] chunk)
+        {
+            chunk = _bufferChunk;
+            
+            // we don't have chunks left
+            if (_code.IsEmpty)
+            {
+                return false;
+            }
+
+            // we don't have full chunk
+            if (_code.Length < 31)
+            {
+                // need to have trailing zeroes
+                _bufferChunkCodePart.Fill(0);
+                
+                // set number of push bytes
+                _bufferChunk[0] = _rollingOverPushLength;
+                
+                // copy main bytes
+                _code.CopyTo(_bufferChunkCodePart);
+                
+                // we are done
+                _code = Span<byte>.Empty;
+            }
+            else
+            {
+                // fill up chunk to store
+                
+                // get current chunk of code
+                Span<byte> currentChunk = _code.Slice(0, 31);
+
+                // copy main bytes
+                currentChunk.CopyTo(_bufferChunkCodePart);
+
+                switch (_rollingOverPushLength)
+                {
+                    case 32 or 31: // all bytes are roll over
+                        
+                        // set number of push bytes
+                        _bufferChunk[0] = 31;
+                        
+                        // if 32, then we will roll over with 1 to even next chunk
+                        _rollingOverPushLength -= 31;
+                        break;
+                    default:
+                        // set number of push bytes
+                        _bufferChunk[0] = _rollingOverPushLength;
+                        _rollingOverPushLength = 0;
+
+                        // check if we have a push instruction in remaining code
+                        // ignore the bytes we rolled over, they are not instructions
+                        for (int i =  _bufferChunk[0]; i < 31;)
+                        {
+                            byte instruction = currentChunk[i];
+                            i++;
+                            if (instruction is >= Push1 and <= Push32)
+                            {
+                                // we calculate data to ignore in code
+                                i += instruction - PushOffset;
+
+                                // check if we rolled over the chunk
+                                _rollingOverPushLength = (byte)Math.Max(i - 31, 0);
+                            }
+                        }
+
+                        break;
+                }
+                
+                // move to next chunk
+                _code = _code.Slice(31);
+            }
+
+            return true;
+        }
+    }
+
+    private static Span<byte> PrepareCodeForChunkification(byte[] code)
     {
         const int PUSH_OFFSET = 95;
         const int PUSH1 = PUSH_OFFSET + 1;
         const int PUSH32 = PUSH_OFFSET + 32;
-            
-        // To ensure that the code can be split into chunks of 31 bytes
-        byte[] chunkifyableCode = new byte[code.Length + 31 - code.Length % 31];
-        Buffer.BlockCopy(code, 0, chunkifyableCode, 0, code.Length);
-
-        int[] bytesToExecData  = new int[chunkifyableCode.Length];
+        
+        var codeLength = code.Length;
+        int[] bytesToExecData  = new int[codeLength];
         int pos = 0;
         int pushLength;
-        while (pos < chunkifyableCode.Length)
+        while (pos < code.Length)
         {
             pushLength = 0;
-            if ( PUSH1 <= chunkifyableCode[pos] && chunkifyableCode[pos] <= PUSH32)
+            if ( PUSH1 <= code[pos] && code[pos] <= PUSH32)
             {
-                pushLength = chunkifyableCode[pos] - PUSH_OFFSET;
+                pushLength = code[pos] - PUSH_OFFSET;
             }
 
             pos += 1;
@@ -267,22 +454,25 @@ public class VerkleTree
 
             pos += pushLength;
         }
-            
-        int chunkCount = (chunkifyableCode.Length + 31) / 32;
-        byte[][] chunks = new byte[chunkCount][];
+        
+        int chunkCount = (code.Length + 30) / 31; 
+        Span<byte> chunkifyableCode = new byte[chunkCount * 32];
+        
         pos = 0;
-            
+        Span<byte> codeCursor = chunkifyableCode;    
         for (int i = 0; i < chunkCount; i++)
-        {
-            chunks[i] = new byte[32];
-            chunks[i][0] = (byte)Math.Min(bytesToExecData[pos], 31);
-            Buffer.BlockCopy(chunkifyableCode, pos, chunks[i], 1, 31);
-            pos = pos + 31;
+        {   
+            codeCursor[0] = (byte)Math.Min(bytesToExecData[pos], 31);
+            codeCursor = codeCursor.Slice(1);
+            
+            code.Slice(pos, code.Length - pos < 31? code.Length - pos: 31).CopyTo(codeCursor);
+            codeCursor = codeCursor.Slice(31);
+            pos += 31;
         }
 
-        return chunks;
+        return chunkifyableCode;
     }
-    
+
     public void UpdateRootHash()
     {
         byte[] rootHash = RustVerkleLib.VerkleTrieGetStateRoot(_verkleTrieObj);

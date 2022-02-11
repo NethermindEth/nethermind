@@ -22,8 +22,10 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
+    [TestFixture(true, VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(true, VirtualMachineTestsStateProvider.VerkleTrie)]
+    [TestFixture(false, VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(false, VirtualMachineTestsStateProvider.VerkleTrie)]
     // [Parallelizable(ParallelScope.Self)]
     public class CmpTests : VirtualMachineTestsBase
     {
@@ -35,7 +37,7 @@ namespace Nethermind.Evm.Test
             AssertCodeHash(address, Keccak.Compute(code));
         }
 
-        public CmpTests(bool simdDisabled)
+        public CmpTests(bool simdDisabled, VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
         {
             _simdDisabled = simdDisabled;
         }
