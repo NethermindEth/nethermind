@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.FastSync
             ILogManager logManager)
         {
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-            _treeSync = treeSync ?? throw new ArgumentNullException(nameof(treeSync)); ;
+            _treeSync = treeSync ?? throw new ArgumentNullException(nameof(treeSync));
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
 
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

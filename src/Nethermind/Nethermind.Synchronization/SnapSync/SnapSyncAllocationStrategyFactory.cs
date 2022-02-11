@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,18 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Stats;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncAllocationStrategyFactory<T> : StaticPeerAllocationStrategyFactory<T> where T : class
+    public class SnapSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<AccountsSyncBatch>
     {
         
         private static readonly IPeerAllocationStrategy DefaultStrategy = 
-            new SatelliteProtocolPeerAllocationStrategy<T>(new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse), "snap");
+            new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse), "snap");
 
         public SnapSyncAllocationStrategyFactory() : base(DefaultStrategy)
         {

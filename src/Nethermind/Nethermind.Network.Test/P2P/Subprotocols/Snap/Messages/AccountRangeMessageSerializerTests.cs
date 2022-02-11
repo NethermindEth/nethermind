@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.State.Snap;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
@@ -39,8 +40,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(), 
-                Accounts = System.Array.Empty<Account>(),
-                Proofs = Array.Empty<Keccak>()
+                Accounts = System.Array.Empty<PathWithAccount>(),
+                Proofs = Array.Empty<byte[]>()
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -65,8 +66,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(), 
-                Accounts = new[] { acc01, acc02 },
-                Proofs = TestItem.Keccaks
+                //Accounts = new[] { acc01, acc02 },
+                //Proofs = TestItem.Keccaks
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -86,8 +87,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(), 
-                Accounts = new[] { acc01 },
-                Proofs = TestItem.Keccaks
+                //Accounts = new[] { acc01 },
+                //Proofs = TestItem.Keccaks
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -105,8 +106,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             AccountRangeMessage msg = new() { 
                 RequestId = MessageConstants.Random.NextLong(), 
-                Accounts = new[] { acc01 }, 
-                Proofs = TestItem.Keccaks
+                //Accounts = new[] { acc01 }, 
+                //Proofs = TestItem.Keccaks
             };
 
             AccountRangeMessageSerializer serializer = new();

@@ -19,27 +19,31 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.State.Snap;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.SnapSync.State;
 
 namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<AccountsSyncBatch?>, IDisposable
     {
+        private BlockHeader _bestHeader;
+
         private readonly ISyncModeSelector _syncModeSelector;
-        //private readonly ISnapStateProvider _stateProvider;
+        private readonly SnapProvider _snapProvider;
+
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         public override bool IsMultiFeed => true;
-        public override AllocationContexts Contexts => AllocationContexts.State;
+        public override AllocationContexts Contexts => AllocationContexts.Snap;
         
-        public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapStateProvider stateProvider, IBlockTree blockTree, ILogManager logManager)
+        public SnapSyncFeed(ISyncModeSelector syncModeSelector, SnapProvider snapProvider, IBlockTree blockTree, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-            //_stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider)); ;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
@@ -47,22 +51,42 @@ namespace Nethermind.Synchronization.SnapSync
         
         public override async Task<AccountsSyncBatch?> PrepareRequest()
         {
-            AccountsSyncBatch request = new AccountsSyncBatch(); // { Request = _stateProvider.GetNextAccountRange() };
-            return await Task.FromResult(request);
+            try
+            {
+                AccountsSyncBatch request = new AccountsSyncBatch();
+                request.Request = new(_bestHeader.StateRoot, _snapProvider.NextStartingHash, Keccak.MaxValue, _bestHeader.Number);
+
+                _logger.Info($"{request.Request.RootHash}:{request.Request.StartingHash}:{request.Request.LimitHash}");
+
+                return await Task.FromResult(request);
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error when preparing a batch", e);
+                return await Task.FromResult<AccountsSyncBatch>(null);
+            }
         }
 
         public override SyncResponseHandlingResult HandleResponse(AccountsSyncBatch? batch)
         {
-            if (batch.Response == null)
+            _logger.Info($"HANDLE RESPONSE:{batch.Response is not null}");
+
+            if (batch == null)
             {
-                if(_logger.IsError) _logger.Error("Received empty response");
+                if (_logger.IsError) _logger.Error("Received empty batch as a response");
                 return SyncResponseHandlingResult.InternalError;
             }
-            else
+
+            if(batch.Response is null)
             {
-                //_stateProvider.AddAccounts(batch.Response);
-                return SyncResponseHandlingResult.OK;
+                if (_logger.IsInfo) _logger.Info("SNAP peer not assigned to handle request");
+                return SyncResponseHandlingResult.NoProgress;
             }
+
+            _snapProvider.AddAccountRange(batch.Request.BlockNumber.Value, batch.Request.RootHash, batch.Request.StartingHash, batch.Response.PathAndAccounts, batch.Response.Proofs);
+
+
+            return SyncResponseHandlingResult.OK;
         }
 
         public void Dispose()
@@ -76,14 +100,16 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if ((e.Current & SyncMode.SnapSync) == SyncMode.SnapSync)
                 {
-                    BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
-                    if (bestSuggested == null || bestSuggested.Number == 0)
+                   _bestHeader = _blockTree.BestSuggestedHeader;
+                    if (_bestHeader == null || _bestHeader.Number == 0)
                     {
+                        if (_logger.IsInfo) _logger.Info($"No Best Suggested Header available. Snap Sync not started.");
+
                         return;
                     }
 
-                    if (_logger.IsInfo) _logger.Info($"Starting the node data sync from the {bestSuggested.ToString(BlockHeader.Format.Short)} {bestSuggested.StateRoot} root");
-                    // ResetStateRoot(bestSuggested.Number, bestSuggested.StateRoot!);
+                    if (_logger.IsInfo) _logger.Info($"Starting the snap data sync from the {_bestHeader.ToString(BlockHeader.Format.Short)} {_bestHeader.StateRoot} root");
+
                     Activate();
                 }
             }

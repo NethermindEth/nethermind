@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -76,6 +77,10 @@ namespace Nethermind.State.Proofs
 
             List<byte[]?> provedValues = new();
             int leafIndex = proofs.Length - 1;
+
+            var rlps = proofs.Select(p => $"{Keccak.Compute(p).ToString(false)}:{new Rlp(p).ToString(false)}").ToArray();
+
+            var res = string.Join($"{Environment.NewLine}{Environment.NewLine}", rlps);
 
             for (int i = proofs.Length - 1; i >= 0; i--)
             {
