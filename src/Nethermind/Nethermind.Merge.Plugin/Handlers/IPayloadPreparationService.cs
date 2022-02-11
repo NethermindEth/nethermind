@@ -16,30 +16,18 @@
 // 
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 
-namespace Nethermind.Merge.Plugin
+namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class TaskQueue
+    public interface IPayloadPreparationService
     {
-        private readonly SemaphoreSlim _semaphore;
-        public TaskQueue()
-        {
-            _semaphore = new SemaphoreSlim(1);
-        }
-        
-        public async Task Enqueue(Func<Task> taskGenerator)
-        {
-            await _semaphore.WaitAsync();
-            try
-            {
-                await taskGenerator();
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-        }
+        string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
+
+        Block? GetPayload(byte[] payloadId);
+
+        event EventHandler<BlockEventArgs>? BlockImproved;
     }
 }

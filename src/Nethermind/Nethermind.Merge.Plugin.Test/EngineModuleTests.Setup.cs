@@ -31,6 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -49,7 +50,7 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadService? mockedPayloadService = null) 
+        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) 
             => await new MergeTestBlockchain(mergeConfig, mockedPayloadService)
                 .Build(
                     new SingleReleaseSpecProvider(London.Instance, 1));
@@ -59,9 +60,9 @@ namespace Nethermind.Merge.Plugin.Test
             ISynchronizer synchronizer = Substitute.For<ISynchronizer>();
 
             return new EngineRpcModule(
-                new GetPayloadV1Handler(chain.PayloadService!, chain.LogManager),
+                new GetPayloadV1Handler(chain.PayloadPreparationService!, chain.LogManager),
                 new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.PoSSwitcher, synchronizer, new SyncConfig(), chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, chain.PayloadService, synchronizer, new SyncConfig(), chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, chain.PayloadPreparationService, synchronizer, new SyncConfig(), chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
                 chain.LogManager);
@@ -73,19 +74,19 @@ namespace Nethermind.Merge.Plugin.Test
 
             public IMergeConfig MergeConfig { get; set; } 
             
-            public IPayloadService? PayloadService { get; set; }
+            public IPayloadPreparationService? PayloadPreparationService { get; set; }
 
             public Eth2BlockProductionContext IdealBlockProductionContext { get; set; } = new();
 
             public Eth2BlockProductionContext EmptyBlockProductionContext { get; set; } = new();
 
-            public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadService? mockedPayloadService = null)
+            public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             {
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 BlockConfirmationManager = new BlockConfirmationManager();
                 MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
-                PayloadService = mockedPayloadService;
+                PayloadPreparationService = mockedPayloadPreparationService;
             }
             
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -134,8 +135,8 @@ namespace Nethermind.Merge.Plugin.Test
                 Eth2BlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
                     IdealBlockProductionContext);
                 IdealBlockProductionContext.BlockProducer = postMergeBlockProducer;
-                PayloadService ??= new PayloadService(IdealBlockProductionContext, SealEngine,
-                    MergeConfig, LogManager);
+                PayloadPreparationService ??= new PayloadPreparationService(IdealBlockProductionContext, SealEngine,
+                    MergeConfig, TimerFactory.Default, LogManager);
                 return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
             }
             

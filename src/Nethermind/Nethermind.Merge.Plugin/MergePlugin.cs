@@ -24,6 +24,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -124,10 +125,10 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
-                PayloadService payloadService = new (_idealBlockProductionContext, _api.Sealer, _mergeConfig, _api.LogManager);
+                PayloadPreparationService payloadPreparationService = new (_idealBlockProductionContext, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new GetPayloadV1Handler(payloadService, _api.LogManager),
+                    new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
                     new NewPayloadV1Handler(
                         _api.BlockValidator,
                         _api.BlockTree,
@@ -144,7 +145,7 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher,
                         _api.EthSyncingInfo,
                         _api.BlockConfirmationManager,
-                        payloadService,
+                        payloadPreparationService,
                         _api.Synchronizer,
                         syncConfig, 
                         _api.LogManager),

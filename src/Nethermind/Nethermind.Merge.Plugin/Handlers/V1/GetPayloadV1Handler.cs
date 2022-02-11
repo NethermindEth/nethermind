@@ -37,18 +37,18 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     /// </summary>
     public class GetPayloadV1Handler: IAsyncHandler<byte[], BlockRequestResult?>
     {
-        private readonly IPayloadService _payloadService;
+        private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly ILogger _logger;
 
-        public GetPayloadV1Handler(IPayloadService payloadService, ILogManager logManager)
+        public GetPayloadV1Handler(IPayloadPreparationService payloadPreparationService, ILogManager logManager)
         {
-            _payloadService = payloadService;
+            _payloadPreparationService = payloadPreparationService;
             _logger = logManager.GetClassLogger();
         }
 
         public async Task<ResultWrapper<BlockRequestResult?>> HandleAsync(byte[] payloadId)
         {
-            Block? block = _payloadService.GetPayload(payloadId);
+            Block? block = _payloadPreparationService.GetPayload(payloadId);
 
             if (block == null)
             {
