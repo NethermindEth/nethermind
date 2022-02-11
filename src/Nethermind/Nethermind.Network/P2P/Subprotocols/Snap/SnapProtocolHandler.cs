@@ -18,6 +18,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -29,6 +30,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -46,17 +48,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public override string ProtocolCode => Protocol.Snap;
         public override int MessageIdSpaceSize => 8;
 
-        /// <summary>
-        /// Currently we use ETH Status msg but it's probable that SNAP will get own Status msg in the future
-        /// </summary>
-        //private bool _ethStatusReceived;
-        
+        private readonly MessageQueue<GetAccountRangeMessage, AccountRangeMessage> _getAccountsRequests;
+
+
         public SnapProtocolHandler(ISession session, 
             INodeStatsManager nodeStats, 
             IMessageSerializationService serializer, 
             ILogManager logManager) 
             : base(session, nodeStats, serializer, logManager)
         {
+            _getAccountsRequests = new(Send);
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -89,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.AccountRange:
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
                     ReportIn(accountRangeMessage);
-                    //Handle(msg);
+                    Handle(accountRangeMessage, size);
                     break;
                 case SnapMessageCode.GetStorageRanges:
                     GetStorageRangesMessage getStorageRangesMessage = Deserialize<GetStorageRangesMessage>(message.Content);
@@ -124,6 +125,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             }
         }
 
+        private void Handle(AccountRangeMessage msg, long size)
+        {
+            Metrics.Eth63NodeDataReceived++;
+            _getAccountsRequests.Handle(msg, size);
+        }
+
         private void Handle(GetAccountRangeMessage msg)
         {
             throw new NotImplementedException();
@@ -134,18 +141,49 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             Dispose();
         }
 
-        public Task<int> GetAccountRange()
+        public async Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
         {
             var request = new GetAccountRangeMessage()
             {
-                RootHash = new Keccak("0x30453381dfe09bc62b6e97884ad0a66cd5287620604f05c2c65ccbbd15c48419"),
-                StartingHash = Keccak.Zero,
-                LimitHash = Keccak.Zero
+                AccountRange = range,
+                ResponseBytes = 100000
             };
 
-            Send(request);
+            AccountRangeMessage response = await SendRequest(request, token);
 
-            return Task.FromResult(0);
+            return new AccountsAndProofs() { PathAndAccounts = response.Accounts, Proofs = response.Proofs};
+        }
+
+        private async Task<AccountRangeMessage> SendRequest(GetAccountRangeMessage msg, CancellationToken token)
+        {
+            Request<GetAccountRangeMessage, AccountRangeMessage> batch = new(msg);
+            _getAccountsRequests.Send(batch);
+
+            Task<AccountRangeMessage> task = batch.CompletionSource.Task;
+
+            using CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource compositeCancellation
+                = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
+            if (firstTask.IsCanceled)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+
+            if (firstTask == task)
+            {
+                delayCancellation.Cancel();
+                long elapsed = batch.FinishMeasuringTime();
+                long bytesPerMillisecond = (long) ((decimal)batch.ResponseSize / Math.Max(1, elapsed));
+                if (Logger.IsTrace)
+                    Logger.Trace($"{this} speed is {batch.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, bytesPerMillisecond);
+
+                return task.Result;
+            }
+            
+            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, 0L);
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetAccountRangeMessage)}");
         }
     }
 }

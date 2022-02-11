@@ -19,6 +19,7 @@ using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
@@ -28,13 +29,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         /// <summary>
         /// List of consecutive accounts from the trie
-        /// TODO: add address hashes (use AccountWithAddressHash)
         /// </summary>
-        public Account[] Accounts { get; set; }
+        public PathWithAccount[] Accounts { get; set; }
 
         /// <summary>
         /// List of trie nodes proving the account range
         /// </summary>
-        public Keccak[] Proofs { get; set; }
+        public byte[][] Proofs { get; set; }
     }
 }

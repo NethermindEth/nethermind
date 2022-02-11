@@ -375,7 +375,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             // this is really the only condition - fast blocks headers can always run if there are peers until it is done
             // also fast blocks headers can run in parallel with all other sync modes
-            return fastBlocksHeadersNotFinished;
+            return false; // fastBlocksHeadersNotFinished;
         }
 
         private bool ShouldBeInFastBodiesMode(Snapshot best)
@@ -444,7 +444,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
             bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInFastSync = !best.IsInFastSync;
-            bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
+            bool notNeedToWaitForHeaders = true; // NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
             bool stateNotDownloadedYet = (best.PeerBlock - best.State > FastSyncLag ||
                                           best.Header > best.State && best.Header > best.Block);

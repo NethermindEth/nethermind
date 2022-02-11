@@ -25,6 +25,7 @@ using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -34,8 +35,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.SnapSync.State;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization
 {
@@ -170,9 +171,10 @@ namespace Nethermind.Synchronization
 
         private void StartSnapSyncComponents()
         {
-            // TODO: pass an instance of ISnapStateProvider
-            _snapSyncFeed = new SnapSyncFeed(_syncMode, null, _blockTree, _logManager);
-            SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory<AccountsSyncBatch>(), _logManager);
+            TrieStore store = new(_dbProvider.StateDb, _logManager);
+            SnapProvider snapProvider = new(store, _logManager);
+            _snapSyncFeed = new SnapSyncFeed(_syncMode, snapProvider, _blockTree, _logManager);
+            SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
             
             Task _ = dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
