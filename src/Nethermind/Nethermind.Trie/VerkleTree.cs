@@ -384,10 +384,11 @@ public class VerkleTree
                     default:
                         // set number of push bytes
                         _bufferChunk[0] = _rollingOverPushLength;
+                        _rollingOverPushLength = 0;
 
                         // check if we have a push instruction in remaining code
                         // ignore the bytes we rolled over, they are not instructions
-                        for (int i = _rollingOverPushLength; i < 31;)
+                        for (int i =  _bufferChunk[0]; i < 31;)
                         {
                             byte instruction = currentChunk[i];
                             i++;
