@@ -22,9 +22,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class Eip145Tests : VirtualMachineTestsBase
     {
+        public Eip145Tests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
         
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;

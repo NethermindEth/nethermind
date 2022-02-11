@@ -26,9 +26,13 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [Explicit("Failing on MacOS GitHub Actions with stack overflow")]
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class GasPriceExtractorTests : VirtualMachineTestsBase
     {
+        public GasPriceExtractorTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
 
         [Test]
