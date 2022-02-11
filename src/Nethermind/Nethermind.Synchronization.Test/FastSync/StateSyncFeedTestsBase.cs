@@ -149,7 +149,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
 
                 RemoteStateTree = new StateTree(RemoteTrieStore, logManager);
-                LocalStateTree = new StateTree(new TrieStore(LocalStateDb.Innermost, logManager), logManager);
+                LocalStateTree = new StateTree(new TrieStore(LocalStateDb, logManager), logManager);
             }
 
             public IDb RemoteCodeDb { get; }
