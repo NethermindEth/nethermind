@@ -23,6 +23,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter = null);
         bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId);
-        void RemoveClientSubscriptions(string clientId);
+        void RemoveClientSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient);
     }
 }

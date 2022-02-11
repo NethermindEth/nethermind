@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             void OnJsonRpcDuplexClientClosed(object? sender, EventArgs e)
             {
                 IJsonRpcDuplexClient jsonRpcDuplexClient = (IJsonRpcDuplexClient)sender;
-                RemoveClientSubscriptions(jsonRpcDuplexClient!.Id);
+                RemoveClientSubscriptions(jsonRpcDuplexClient!);
                 jsonRpcDuplexClient.Closed -= OnJsonRpcDuplexClientClosed;
             }
             
@@ -118,8 +118,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionId} from dictionary _subscriptions.");
         }
 
-        public void RemoveClientSubscriptions(string clientId)
+        public void RemoveClientSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient)
         {
+            string clientId = jsonRpcDuplexClient.Id;
             if (_subscriptionsByJsonRpcClient.TryRemove(clientId, out HashSet<Subscription> subscriptionsBag))
             {
                 DisposeAndRemoveFromDictionary(subscriptionsBag);
