@@ -128,6 +128,8 @@ namespace Nethermind.State.Snap
                 return false;
             }
 
+            bool moreChildrenToRight = false;
+
             while (proofNodesToProcess.Count > 0)
             {
                 (TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
@@ -153,9 +155,13 @@ namespace Nethermind.State.Snap
                     int left = Bytes.Comparer.Compare(path.ToArray(), leftBoundary[0..path.Count()].ToArray()) == 0 ? leftBoundary[pathIndex] : 0;
                     int right = Bytes.Comparer.Compare(path.ToArray(), rightBoundary[0..path.Count()].ToArray()) == 0 ? rightBoundary[pathIndex] : 15;
 
-                    for (int ci = left; ci <= right; ci++)
+                    int maxIndex = moreChildrenToRight ? right : 15;
+
+                    for (int ci = left; ci <= maxIndex; ci++)
                     {
                         Keccak? childKeccak = node.GetChildHash(ci);
+
+                        moreChildrenToRight = ci > right && childKeccak is not null;
 
                         if (ci >= left && ci <= right)
                         {

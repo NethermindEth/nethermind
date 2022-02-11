@@ -36,11 +36,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_NoAccountsNoProofs()
         {
-
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(), 
-                Accounts = System.Array.Empty<PathWithAccount>(),
+                PathsWithAccounts = System.Array.Empty<PathWithAccount>(),
                 Proofs = Array.Empty<byte[]>()
             };
 
@@ -65,9 +64,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             AccountRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(), 
-                //Accounts = new[] { acc01, acc02 },
-                //Proofs = TestItem.Keccaks
+                RequestId = MessageConstants.Random.NextLong(),
+                PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakA, acc01), new PathWithAccount(TestItem.KeccakB, acc02) },
+                Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -86,9 +85,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             AccountRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(), 
-                //Accounts = new[] { acc01 },
-                //Proofs = TestItem.Keccaks
+                RequestId = MessageConstants.Random.NextLong(),
+                PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakB, acc01) },
+                Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -99,15 +98,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_EmptyCode()
         {
+
             var acc01 = Build.An.Account
                 .WithBalance(1)
-                .WithStorageRoot(new Keccak("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"))
+                .WithStorageRoot(TestItem.KeccakA)
                 .TestObject;
 
             AccountRangeMessage msg = new() { 
-                RequestId = MessageConstants.Random.NextLong(), 
-                //Accounts = new[] { acc01 }, 
-                //Proofs = TestItem.Keccaks
+                RequestId = MessageConstants.Random.NextLong(),
+                PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakB, acc01) },
+                Proofs = new[] {TestItem.RandomDataA, TestItem.RandomDataB}
             };
 
             AccountRangeMessageSerializer serializer = new();

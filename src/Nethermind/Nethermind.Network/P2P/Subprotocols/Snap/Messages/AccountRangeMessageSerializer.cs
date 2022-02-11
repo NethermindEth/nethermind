@@ -29,26 +29,46 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public void Serialize(IByteBuffer byteBuffer, AccountRangeMessage message)
         {
-            (int contentLength, int accountsLength) = GetLength(message);
+            (int contentLength, int pwasLength, int proofsLength) = GetLength(message);
+
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
-            NettyRlpStream stream = new (byteBuffer);
+
+            NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
-            
+
             stream.Encode(message.RequestId);
-            //if (message.Accounts == null || message.Accounts.Length == 0)
-            //{
-            //    stream.EncodeNullObject();
-            //}
-            //else
-            //{
-            //    stream.StartSequence(accountsLength);
-            //    for (int i = 0; i < message.Accounts.Length; i++)
-            //    {
-            //        _decoder.Encode(message.Accounts[i], stream);
-            //    }
-            //}
-            
-            //stream.Encode(message.Proofs);
+            if (message.PathsWithAccounts == null || message.PathsWithAccounts.Length == 0)
+            {
+                stream.EncodeNullObject();
+            }
+            else
+            {
+                stream.StartSequence(pwasLength);
+                for (int i = 0; i < message.PathsWithAccounts.Length; i++)
+                {
+                    PathWithAccount pwa = message.PathsWithAccounts[i];
+
+                    int accountContentLength = _decoder.GetContentLength(pwa.Account);
+                    int pwaLength = Rlp.LengthOf(pwa.AddressHash) + Rlp.LengthOfSequence(accountContentLength);
+
+                    stream.StartSequence(pwaLength);
+                    stream.Encode(pwa.AddressHash);
+                    _decoder.Encode(pwa.Account, stream, accountContentLength);
+                }
+            }
+
+            if (message.Proofs == null || message.Proofs.Length == 0)
+            {
+                stream.EncodeNullObject();
+            }
+            else
+            {
+                stream.StartSequence(proofsLength);
+                for (int i = 0; i < message.Proofs.Length; i++)
+                {
+                    stream.Encode(message.Proofs[i]);
+                }
+            }
         }
 
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
@@ -56,13 +76,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             AccountRangeMessage message = new();
             NettyRlpStream rlpStream = new (byteBuffer);
 
-            var rlp = byteBuffer.Array.ToHexString();
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();
-            //int seqLen = rlpStream.ReadSequenceLength();
-            message.Accounts = rlpStream.DecodeArray(s => DecodePathWithRlpData(s));
-
+            message.PathsWithAccounts = rlpStream.DecodeArray(s => DecodePathWithRlpData(s));
             message.Proofs = rlpStream.DecodeArray(s => s.DecodeByteArray());
 
             return message;
@@ -77,14 +94,45 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return data;
         }
 
-        private (int contentLength, int accountsLength) GetLength(AccountRangeMessage message)
+        private (int contentLength, int pwasLength, int proofsLength) GetLength(AccountRangeMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
-            int accountsLength = 0; // _decoder.GetLength(message.Accounts);
-            contentLength += Rlp.LengthOfSequence(accountsLength);
-            //contentLength += Rlp.LengthOf(message.Proofs, true);
 
-            return (contentLength, accountsLength);
+            int pwasLength = 0;
+            if (message.PathsWithAccounts == null || message.PathsWithAccounts.Length == 0)
+            {
+                pwasLength = 1;
+            }
+            else
+            {
+                for (int i = 0; i < message.PathsWithAccounts.Length; i++)
+                {
+                    PathWithAccount pwa = message.PathsWithAccounts[i];
+                    int pwaLength = Rlp.LengthOf(pwa.AddressHash);
+                    pwaLength += _decoder.GetLength(pwa.Account);
+
+                    pwasLength += Rlp.LengthOfSequence(pwaLength);
+                }
+            }
+
+            contentLength += Rlp.LengthOfSequence(pwasLength);
+
+            int proofsLength = 0;
+            if (message.Proofs == null || message.Proofs.Length == 0)
+            {
+                proofsLength = 1;
+            }
+            else
+            {
+                for (int i = 0; i < message.Proofs.Length; i++)
+                {
+                    proofsLength += Rlp.LengthOf(message.Proofs[i]);
+                }
+            }
+
+            contentLength += Rlp.LengthOfSequence(proofsLength);
+
+            return (contentLength, pwasLength, proofsLength);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,36 +20,45 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
-    public class TrieNodesMessageSerializer: SnapSerializerBase<TrieNodesMessage>
+    public class TrieNodesMessageSerializer : IZeroMessageSerializer<TrieNodesMessage>
     {
-        public override void Serialize(IByteBuffer byteBuffer, TrieNodesMessage message)
+        public void Serialize(IByteBuffer byteBuffer, TrieNodesMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
-            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            
+            (int contentLength, int nodesLength) = GetLength(message);
+
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
+
+            NettyRlpStream rlpStream = new(byteBuffer);
+
             rlpStream.StartSequence(contentLength);
+            rlpStream.Encode(message.RequestId);
+            rlpStream.StartSequence(nodesLength);
             for (int i = 0; i < message.Nodes.Length; i++)
             {
                 rlpStream.Encode(message.Nodes[i]);
             }
         }
 
-        protected override TrieNodesMessage Deserialize(RlpStream rlpStream)
+        public TrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
+            NettyRlpStream rlpStream = new(byteBuffer);
+
+            rlpStream.ReadSequenceLength();
+
+            long requestId = rlpStream.DecodeLong();
             byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
-            return new TrieNodesMessage(result);
+            return new TrieNodesMessage(result) { RequestId = requestId };
         }
 
-        public override int GetLength(TrieNodesMessage message, out int contentLength)
+        public  (int contentLength, int nodesLength) GetLength(TrieNodesMessage message)
         {
-            contentLength = 0;
+            int nodesLength = 0;
             for (int i = 0; i < message.Nodes.Length; i++)
             {
-                contentLength += Rlp.LengthOf(message.Nodes[i]);
+                nodesLength += Rlp.LengthOf(message.Nodes[i]);
             }
-            
-            return Rlp.LengthOfSequence(contentLength);
+
+            return (nodesLength + Rlp.LengthOf(message.RequestId), nodesLength);
         }
     }
 }
