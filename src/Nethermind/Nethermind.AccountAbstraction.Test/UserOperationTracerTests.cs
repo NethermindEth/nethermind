@@ -32,7 +32,8 @@ using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class UserOperationTracerTests : VirtualMachineTestsBase
     {
         
@@ -131,5 +132,9 @@ namespace Nethermind.AccountAbstraction.Test
         }
 
         protected override long BlockNumber { get; } = MainnetSpecProvider.LondonBlockNumber;
+
+        public UserOperationTracerTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
     }
 }
