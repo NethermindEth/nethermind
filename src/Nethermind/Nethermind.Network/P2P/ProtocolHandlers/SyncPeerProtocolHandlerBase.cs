@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
@@ -222,6 +223,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             SendMessage(new[]{tx});
         }
+
+        public void SendNewTransactions(IEnumerable<(Transaction Tx, bool IsPersistent)> txs) =>
+            SendNewTransactions(txs.Select(t => t.Tx));
 
         public virtual void SendNewTransactions(IEnumerable<Transaction> txs)
         {
