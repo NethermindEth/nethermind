@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,36 +20,44 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
-    public class ByteCodesMessageSerializer : SnapSerializerBase<ByteCodesMessage>
+    public class ByteCodesMessageSerializer : IZeroMessageSerializer<ByteCodesMessage>
     {
-        public override void Serialize(IByteBuffer byteBuffer, ByteCodesMessage message)
+        public void Serialize(IByteBuffer byteBuffer, ByteCodesMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
+            (int contentLength, int codesLength) = GetLength(message);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             
             rlpStream.StartSequence(contentLength);
+            rlpStream.Encode(message.RequestId);
+            rlpStream.StartSequence(codesLength);
             for (int i = 0; i < message.Codes.Length; i++)
             {
                 rlpStream.Encode(message.Codes[i]);
             }
         }
 
-        protected override ByteCodesMessage Deserialize(RlpStream rlpStream)
+        public ByteCodesMessage Deserialize(IByteBuffer byteBuffer)
         {
+            NettyRlpStream rlpStream = new(byteBuffer);
+
+            rlpStream.ReadSequenceLength();
+
+            long requestId = rlpStream.DecodeLong();
             byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
-            return new ByteCodesMessage(result);
+
+            return new ByteCodesMessage(result) { RequestId = requestId };
         }
 
-        public override int GetLength(ByteCodesMessage message, out int contentLength)
+        public (int contentLength, int codesLength) GetLength(ByteCodesMessage message)
         {
-            contentLength = 0;
+            int codesLength = 0;
             for (int i = 0; i < message.Codes.Length; i++)
             {
-                contentLength += Rlp.LengthOf(message.Codes[i]);
+                codesLength += Rlp.LengthOf(message.Codes[i]);
             }
             
-            return Rlp.LengthOfSequence(contentLength);
+            return (codesLength + Rlp.LengthOf(message.RequestId), codesLength);
         }
     }
 }

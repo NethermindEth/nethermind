@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// List of consecutive accounts from the trie
         /// </summary>
-        public PathWithAccount[] Accounts { get; set; }
+        public PathWithAccount[] PathsWithAccounts { get; set; }
 
         /// <summary>
         /// List of trie nodes proving the account range
