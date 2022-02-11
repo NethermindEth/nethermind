@@ -25,10 +25,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     // [Parallelizable(ParallelScope.Self)]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
+        public VmCodeDepositTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         private long _blockNumber = MainnetSpecProvider.ByzantiumBlockNumber;
 
         protected override long BlockNumber => _blockNumber;
@@ -70,14 +74,17 @@ namespace Nethermind.Evm.Test
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
-
+            
+            BigInteger expectedValue = new BigInteger(0);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
+            
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), result, "storage reverted");
+            Assert.AreEqual(expectedValueBytes, result, "storage reverted");
             Assert.AreEqual(98777, receipt.GasSpent, "no refund");
             
             byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), returnData, "address returned");
+            Assert.AreEqual(expectedValueBytes, returnData, "address returned");
         }
         
         [Test(Description = "Deposit OutOfGas before EIP-2")]
@@ -114,11 +121,15 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             byte[] result = Storage.Get(storageCell);
-            Assert.AreEqual(new BigInteger(0).ToBigEndianByteArray(32), result, "storage reverted");
+            BigInteger expectedValue = new BigInteger(0);
+            byte[] expectedValueBytes = GetStorageValueBytes(expectedValue, _stateProvider);
+            Assert.AreEqual(expectedValueBytes, result, "storage reverted");
             Assert.AreEqual(83199, receipt.GasSpent, "with refund");
             
+            expectedValue = new BigInteger(deployed.Bytes, true, true);
+            expectedValueBytes = _stateProvider == VirtualMachineTestsStateProvider.MerkleTrie ? expectedValue.ToBigEndianByteArray() : expectedValue.ToBigEndianByteArray(32);
             byte[] returnData = Storage.Get(new StorageCell(TestItem.AddressC, 0));
-            Assert.AreEqual(new BigInteger(deployed.Bytes, true, true).ToBigEndianByteArray(32), returnData, "address returned");
+            Assert.AreEqual(expectedValueBytes, returnData, "address returned");
         }
     }
 }

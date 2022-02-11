@@ -24,10 +24,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     // [Parallelizable(ParallelScope.Self)]
     public class InvalidOpcodeTests : VirtualMachineTestsBase
     {
+        public InvalidOpcodeTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         private static readonly Instruction[] FrontierInstructions =

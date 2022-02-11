@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Extensions;
 using Nethermind.HashLib;
 
@@ -24,6 +25,11 @@ namespace Nethermind.Crypto
         private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();
 
         public static byte[] Compute(byte[] input)
+        {
+            return Hash.ComputeBytes(input).GetBytes();
+        }
+        
+        public static byte[] Compute(Span<byte> input)
         {
             return Hash.ComputeBytes(input).GetBytes();
         }
