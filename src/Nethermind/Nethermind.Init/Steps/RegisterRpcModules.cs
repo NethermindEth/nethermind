@@ -208,7 +208,7 @@ namespace Nethermind.Init.Steps
             
             SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
             
-            SubscribeRpcModule subscribeRpcModule = new(subscriptionManager, _api.SpecProvider);
+            SubscribeRpcModule subscribeRpcModule = new(subscriptionManager);
             _api.RpcModuleProvider.RegisterSingle<ISubscribeRpcModule>(subscribeRpcModule);
 
             Web3RpcModule web3RpcModule = new(_api.LogManager);

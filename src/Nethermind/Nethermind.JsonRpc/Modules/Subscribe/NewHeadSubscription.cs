@@ -32,13 +32,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ISpecProvider _specProvider;
 
 
-        public NewHeadSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager, Filter? filter = null, ISpecProvider? specProvider = null) 
+        public NewHeadSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager, ISpecProvider specProvider, Filter? filter = null) 
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = filter?.IncludeTransactions ?? false;
-            if (specProvider != null) _specProvider = specProvider;
+            _specProvider = specProvider;
 
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
             if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");

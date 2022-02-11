@@ -54,12 +54,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
-        public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter, ISpecProvider? specProvider)
+        public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter)
         {
             switch (subscriptionType)
             {
                 case SubscriptionType.NewHeads: 
-                    return new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, filter, _specProvider);
+                    return new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, filter);
                 case SubscriptionType.Logs:
                     return new LogsSubscription(jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
                 case SubscriptionType.NewPendingTransactions:

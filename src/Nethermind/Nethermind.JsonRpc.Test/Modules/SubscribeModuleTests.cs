@@ -85,7 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 subscriptionFactory,
                 _logManager);
             
-            _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager, _specProvider);
+            _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager);
             _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
             
             // block numbers matching filters in LogsSubscriptions with null arguments will be 33333-77777
@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, Filter filter = null, ISpecProvider specProvider = null)
         {
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, filter, specProvider);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, specProvider, filter);
             
             JsonRpcResult jsonRpcResult = new();
             
@@ -287,16 +287,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             MemDb headersDb = new();
             MemDb blocksInfosDb = new();
             ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
+            MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             BlockTree blockTree = new(
                 blocksDb,
                 headersDb,
                 blocksInfosDb,
                 chainLevelInfoRepository,
-                MainnetSpecProvider.Instance,
+                specProvider,
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
             
             Block block0 = Build.A.Block.Genesis.WithTotalDifficulty(0L).TestObject;
@@ -343,16 +344,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             MemDb headersDb = new();
             MemDb blocksInfosDb = new();
             ChainLevelInfoRepository chainLevelInfoRepository = new(blocksInfosDb);
+            MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             BlockTree blockTree = new(
                 blocksDb,
                 headersDb,
                 blocksInfosDb,
                 chainLevelInfoRepository,
-                MainnetSpecProvider.Instance,
+                specProvider,
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
 
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, blockTree, _logManager, specProvider);
             ConcurrentQueue<JsonRpcResult> jsonRpcResult = new();
             
             Block block0 = Build.A.Block.Genesis.WithDifficulty(0).WithTotalDifficulty(0L).TestObject;
