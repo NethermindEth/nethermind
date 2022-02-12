@@ -375,7 +375,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             // this is really the only condition - fast blocks headers can always run if there are peers until it is done
             // also fast blocks headers can run in parallel with all other sync modes
-            return false; // fastBlocksHeadersNotFinished;
+            return fastBlocksHeadersNotFinished;
         }
 
         private bool ShouldBeInFastBodiesMode(Snapshot best)
