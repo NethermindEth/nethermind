@@ -14,7 +14,7 @@ namespace Nethermind.State.Snap
 {
     internal static class SnapProviderHelper
     {
-        public static Keccak? AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+        public static (Keccak? rootHash, bool moreChildrenToRight) AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
@@ -25,9 +25,9 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = accounts.Last().AddressHash;
 
-            bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
+            (bool success, bool moreChildrenToRight) = FillBoundaryTree_2(tree, expectedRootHash, startingHash, lastHash, proofs);
 
-            if (proved)
+            if (success)
             {
                 foreach (var account in accounts)
                 {
@@ -39,13 +39,13 @@ namespace Nethermind.State.Snap
                 if (tree.RootHash != expectedRootHash)
                 {
                     // TODO: log incorrect range
-                    return Keccak.EmptyTreeHash;
+                    return (Keccak.EmptyTreeHash, true);
                 }
 
                 tree.Commit(blockNumber);
             }
 
-            return tree.RootHash;
+            return (tree.RootHash, moreChildrenToRight);
         }
 
         public static Keccak? AddStorageRange(StorageTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
@@ -54,9 +54,9 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = slots.Last().KeyHash;
 
-            bool proved = ProcessProofs(tree, expectedRootHash, startingHash, lastHash, proofs);
+            (bool success, bool moreChildrenToRight) = FillBoundaryTree_2(tree, expectedRootHash, startingHash, lastHash, proofs);
 
-            if (proved)
+            if (success)
             {
                 foreach (var slot in slots)
                 {
@@ -89,17 +89,17 @@ namespace Nethermind.State.Snap
                 //    return false;
                 //}
 
-                FillBoundaryTree_2(tree, expectedRootHash, proofs, startingHash, lastHash);
+                //FillBoundaryTree_2(tree, expectedRootHash, proofs, startingHash, lastHash);
             }
 
             return true;
         }
 
-        private static bool FillBoundaryTree_2(PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
+        private static (bool success, bool moreChildrenToRight) FillBoundaryTree_2(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak endHash, byte[][] proofs = null)
         {
             if (proofs is null || proofs.Length == 0)
             {
-                return true;
+                return (true, true);
             }
 
             if (tree == null)
@@ -125,7 +125,7 @@ namespace Nethermind.State.Snap
             }
             else
             {
-                return false;
+                return (false, true);
             }
 
             bool moreChildrenToRight = false;
@@ -187,7 +187,7 @@ namespace Nethermind.State.Snap
                 }
             }
 
-            return true;
+            return (true, moreChildrenToRight);
         }
 
         private static Dictionary<Keccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
