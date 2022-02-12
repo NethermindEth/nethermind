@@ -165,7 +165,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            Keccak result = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, accounts, firstProof!.Concat(lastProof!).ToArray());
+            (Keccak calculatedRootHash, bool moreChildrenToRight) = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, accounts, firstProof!.Concat(lastProof!).ToArray());
         }
     }
 }
