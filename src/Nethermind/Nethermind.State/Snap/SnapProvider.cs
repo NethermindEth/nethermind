@@ -20,6 +20,7 @@ namespace Nethermind.State.Snap
         private readonly ILogManager _logManager;
 
         public Keccak NextStartingHash { get; private set; } = Keccak.Zero;
+        public bool MoreChildrenToRight { get; set; }
 
         public SnapProvider(ITrieStore store, ILogManager logManager)
         {
@@ -31,13 +32,14 @@ namespace Nethermind.State.Snap
         public bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             StateTree tree = new(_store, _logManager);
-            Keccak calculatedRootHash = SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
+            (Keccak? calculatedRootHash, bool moreChildrenToRight) = SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
 
             bool success = expectedRootHash == calculatedRootHash;
 
             if(success)
             {
                 NextStartingHash = accounts[accounts.Length - 1].AddressHash;
+                MoreChildrenToRight = moreChildrenToRight;
             }
 
             return success;
