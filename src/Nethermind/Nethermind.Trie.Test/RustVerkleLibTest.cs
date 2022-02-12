@@ -16,6 +16,7 @@
 // 
 
 using System;
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -75,21 +76,60 @@ namespace Nethermind.Trie.Test
 
 
         [Test]
-        public void TestInsertGet()
+        public void TestInsertByteGet()
         {
-            byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
-            byte[] one32 = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+            byte[] one = 
+            {
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+            };
+            byte[] one32 = 
+            {
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+            };
 
             IntPtr trie = RustVerkleLib.VerkleTrieNew();
 
             RustVerkleLib.VerkleTrieInsert(trie, one, one32);
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
-            
-            byte[] array32 = RustVerkleLib.VerkleTrieGet(trie, one32);
-            Assert.True(checkIfEqual(one, array32));
 
-            byte[] array = RustVerkleLib.VerkleTrieGet(trie, one);
-            Assert.True(checkIfEqual(one32, array));
+            RustVerkleLib.VerkleTrieGet(trie, one32).Should().BeEquivalentTo(one);
+            RustVerkleLib.VerkleTrieGet(trie, one).Should().BeEquivalentTo(one32);
+        }
+        
+        [Test]
+        public void TestInsertSpanGetSpan()
+        {
+            Span<byte> one = new byte[]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+            Span<byte> one32 = new byte[]{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
+
+            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+
+            RustVerkleLib.VerkleTrieInsert(trie, one, one32);
+            RustVerkleLib.VerkleTrieInsert(trie, one32, one);
+
+            RustVerkleLib.VerkleTrieGetSpan(trie, one32).ToArray().Should().BeEquivalentTo(one.ToArray());
+            RustVerkleLib.VerkleTrieGetSpan(trie, one).ToArray().Should().BeEquivalentTo(one32.ToArray());
+        }
+        
+        [Test]
+        public void TestInsertStackAllocGet()
+        {
+            Span<byte> one = stackalloc byte[]
+            {
+                0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
+            };
+            Span<byte> one32 = stackalloc byte[]
+            {
+                1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+            };
+
+            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+
+            RustVerkleLib.VerkleTrieInsert(trie, one, one32);
+            RustVerkleLib.VerkleTrieInsert(trie, one32, one);
+
+            RustVerkleLib.VerkleTrieGet(trie, one32).Should().BeEquivalentTo(one.ToArray());
+            RustVerkleLib.VerkleTrieGet(trie, one).Should().BeEquivalentTo(one32.ToArray());
         }
 
         [Test]
@@ -108,16 +148,11 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieInsert(trie, treeKeyCodeKeccak, codeHash.Bytes);
             RustVerkleLib.VerkleTrieInsert(trie, treeKeyCodeSize, codeSize.ToBigEndian());
             
-            byte[] versionVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyVersion);
-            Assert.True(checkIfEqual(version.ToBigEndian(), versionVal));
-            byte[] balanceVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyBalance);
-            Assert.True(checkIfEqual(balance.ToBigEndian(), balanceVal));
-            byte[] nonceVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyNonce);
-            Assert.True(checkIfEqual(nonce.ToBigEndian(), nonceVal));
-            byte[] codeKeccakVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeKeccak);
-            Assert.True(checkIfEqual(codeHash.Bytes, codeKeccakVal));
-            byte[] codeSizeVal = RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeSize);
-            Assert.True(checkIfEqual(codeSize.ToBigEndian(), codeSizeVal));
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyVersion).Should().BeEquivalentTo(version.ToBigEndian());
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyBalance).Should().BeEquivalentTo(balance.ToBigEndian());
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyNonce).Should().BeEquivalentTo(nonce.ToBigEndian());
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeKeccak).Should().BeEquivalentTo(codeHash.Bytes);
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeSize).Should().BeEquivalentTo(codeSize.ToBigEndian());
             
         }
 
@@ -132,37 +167,14 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieInsert(trie, treeKeyCodeKeccak, emptyCodeHashValue);
             RustVerkleLib.VerkleTrieInsert(trie, treeKeyCodeSize, value0);
             
-            byte[] version = RustVerkleLib.VerkleTrieGet(trie, treeKeyVersion);
-            Assert.True(checkIfEqual(version, value0));
-            byte[] balance = RustVerkleLib.VerkleTrieGet(trie, treeKeyBalance);
-            Assert.True(checkIfEqual(balance, value2));
-            byte[] nonce = RustVerkleLib.VerkleTrieGet(trie, treeKeyNonce);
-            Assert.True(checkIfEqual(nonce, value0));
-            byte[] codeKeccak = RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeKeccak);
-            Assert.True(checkIfEqual(codeKeccak, emptyCodeHashValue));
-            byte[] codeSize = RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeSize);
-            Assert.True(checkIfEqual(codeSize, value0));
-            
-        }
-        
-        public bool checkIfEqual(byte[] a, byte[] b)
-        {
-            if (a.Length != b.Length)
-            {
-                return false;
-            }
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyVersion).Should().BeEquivalentTo(value0);
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyBalance).Should().BeEquivalentTo(value2);
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyNonce).Should().BeEquivalentTo(value0);
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeKeccak).Should().BeEquivalentTo(emptyCodeHashValue);
+            RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeSize).Should().BeEquivalentTo(value0);
 
-            for (int i = 0; i < a.Length; i++)
-            {
-                if (a[i] != b[i])
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
-        
+
         [Test]
         public void TestGetStateRoot()
         {
@@ -176,12 +188,11 @@ namespace Nethermind.Trie.Test
             byte[] one32 = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
             IntPtr trie = RustVerkleLib.VerkleTrieNew();
-            byte[] stateRootNew = RustVerkleLib.VerkleTrieGetStateRoot(trie);
-            Assert.AreEqual(stateRootNew, zero);
+            RustVerkleLib.VerkleTrieGetStateRoot(trie).Should().BeEquivalentTo(zero);
+            
             RustVerkleLib.VerkleTrieInsert(trie, one, one);
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
-            byte[] stateRootAfter = RustVerkleLib.VerkleTrieGetStateRoot(trie);
-            Assert.AreEqual(stateRootAfter, expectedHash);
+            RustVerkleLib.VerkleTrieGetStateRoot(trie).Should().BeEquivalentTo(expectedHash);
         }
         
         [Test]
@@ -195,10 +206,8 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
 
             byte[] proof = RustVerkleLib.VerkleProofGet(trie, one32);
-            bool verification = RustVerkleLib.VerkleProofVerify(trie, proof, proof.Length, one32, one);
-            Assert.IsTrue(verification);
-            verification = RustVerkleLib.VerkleProofVerify(trie, proof, proof.Length, one32, one32);
-            Assert.IsTrue(!verification);
+            RustVerkleLib.VerkleProofVerify(trie, proof, proof.Length, one32, one).Should().BeTrue();
+            RustVerkleLib.VerkleProofVerify(trie, proof, proof.Length, one32, one32).Should().BeFalse();
         }
 
         [Test]
@@ -209,30 +218,25 @@ namespace Nethermind.Trie.Test
 
             IntPtr trie = RustVerkleLib.VerkleTrieNew();
 
-            byte[,] keys = new byte[,] {
-                                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, 
-                                            {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
-                                       };
-            byte[,] vals = new byte[,] {
-                                            {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-                                            {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1} 
-                                       };
+            byte[,] keys = {
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, 
+                {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+            };
+            
+            byte[,] vals = {
+                {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
+                {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1} 
+            };
             
             RustVerkleLib.VerkleTrieInsertMultiple(trie, keys, vals, keys.GetLength(0)); 
 
-            byte[] array32 = RustVerkleLib.VerkleTrieGet(trie, one32);
-            Assert.True(checkIfEqual(one, array32));
-            
-            byte[] array = RustVerkleLib.VerkleTrieGet(trie, one);
-            Assert.True(checkIfEqual(array, one32));
+            RustVerkleLib.VerkleTrieGet(trie, one32).Should().BeEquivalentTo(one);
+            RustVerkleLib.VerkleTrieGet(trie, one).Should().BeEquivalentTo(one32);
 
             byte[] proof = RustVerkleLib.VerkleProofGetMultiple(trie, keys, keys.GetLength(0));
 
-            bool verification = RustVerkleLib.VerkleProofVerifyMultiple(trie, proof, proof.Length, keys, vals, keys.GetLength(0));
-            Assert.IsTrue(verification);
-
-            // Console.WriteLine("Verifying first value");
-            // verification = RustVerkleLibTest.VerifyVerkleProof(trie, proof, )
+            RustVerkleLib.VerkleProofVerifyMultiple(
+                trie, proof, proof.Length, keys, vals, keys.GetLength(0)).Should().BeTrue();
         }
         
     }

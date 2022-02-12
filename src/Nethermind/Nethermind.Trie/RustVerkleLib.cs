@@ -16,136 +16,219 @@
 // 
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.Trie
+namespace Nethermind.Trie;
+
+[StructLayout(LayoutKind.Sequential)]
+public class Proof
 {
-    [StructLayout(LayoutKind.Sequential)]
-    public class Proof
+    public IntPtr ptr;
+    public int len;
+}
+
+public static class RustVerkleLib {
+    
+    static RustVerkleLib()
     {
-        public IntPtr ptr;
-        public int len;
+        LibResolver.Setup();
     }
     
-    public static class RustVerkleLib {
-        
-        static RustVerkleLib()
+    [DllImport("rust_verkle")]
+    private static extern IntPtr verkle_trie_new();
+
+    [DllImport("rust_verkle")]
+    private static extern unsafe IntPtr verkle_trie_get(IntPtr verkleTrie, byte *  key);
+    
+    [DllImport("rust_verkle")]
+    private static extern IntPtr get_root_hash(IntPtr verkleTrie);
+    
+    [DllImport("rust_verkle")]
+    private static extern unsafe void verkle_trie_insert(IntPtr verkleTrie, byte * key, byte * value);
+    
+    [DllImport("rust_verkle")]
+    private static extern unsafe IntPtr get_verkle_proof(IntPtr verkleTrie, byte * key);
+
+    [DllImport("rust_verkle")]
+    private static extern unsafe byte verify_verkle_proof(IntPtr verkleTrie, byte * verkleProof, int proofLen, byte * key, byte * value);
+
+    [DllImport("rust_verkle")]
+    private static extern unsafe void verkle_trie_insert_multiple(IntPtr verkleTrie, byte * keys, byte * values, int len);
+
+    [DllImport("rust_verkle")]
+    private static extern unsafe IntPtr get_verkle_proof_multiple(IntPtr verkleTrie, byte * keys, int len);
+
+    [DllImport("rust_verkle")]
+    private static extern unsafe byte verify_verkle_proof_multiple(IntPtr verkleTrie, byte * verkleProof, int proofLen, byte * keys, byte * values, int len);
+
+    public static IntPtr VerkleTrieNew()
+    {
+        return verkle_trie_new();
+    }
+    
+    public static unsafe void VerkleTrieInsert(IntPtr verkleTrie, Span<byte> key, Span<byte> value)
+    {
+        int valueLength = value.Length;
+        if (valueLength != 32)
         {
-            LibResolver.Setup();
+            throw new InvalidOperationException("Value length must be less than 32");
         }
-        
-        [DllImport("rust_verkle")]
-        private static extern IntPtr verkle_trie_new();
 
-        [DllImport("rust_verkle")]
-        private static extern IntPtr verkle_trie_get(IntPtr verkleTrie, byte[] key);
-        
-        [DllImport("rust_verkle")]
-        private static extern IntPtr get_root_hash(IntPtr verkleTrie);
-        
-        [DllImport("rust_verkle")]
-        private static extern void verkle_trie_insert(IntPtr verkleTrie, byte[] key, byte[] value);
-        
-        [DllImport("rust_verkle")]
-        private static extern IntPtr get_verkle_proof(IntPtr verkleTrie, byte[] key);
-
-        [DllImport("rust_verkle")]
-        private static extern byte verify_verkle_proof(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[] key, byte[] value);
-
-        [DllImport("rust_verkle")]
-        private static extern void verkle_trie_insert_multiple(IntPtr verkleTrie, byte[,] keys, byte[,] vals, int len);
-
-        [DllImport("rust_verkle")]
-        private static extern IntPtr get_verkle_proof_multiple(IntPtr verkleTrie, byte[,] keys, int len);
-
-        [DllImport("rust_verkle")]
-        private static extern byte verify_verkle_proof_multiple(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[,] key, byte[,] value, int len);
-
-        public static IntPtr VerkleTrieNew()
+        fixed (byte* pKey = &MemoryMarshal.GetReference(key))
         {
-            return verkle_trie_new();
-        }
-        
-        public static void VerkleTrieInsert(IntPtr verkleTrie, byte[] key, byte[] value)
-        {
-            int valueLength = value.Length;
-            if (valueLength != 32)
+            fixed (byte* pValue = &MemoryMarshal.GetReference(value))
             {
-                throw new InvalidOperationException("Value length must be less than 32");
+                verkle_trie_insert(verkleTrie, pKey, pValue);
             }
-
-            verkle_trie_insert(verkleTrie, key, value);
+        }
+    }
+    
+    public static unsafe void VerkleTrieInsert(IntPtr verkleTrie, byte[] key, byte[] value)
+    {
+        int valueLength = value.Length;
+        if (valueLength != 32)
+        {
+            throw new InvalidOperationException("Value length must be less than 32");
         }
 
-        public static byte[]? VerkleTrieGet(IntPtr verkleTrie, byte[] key)
+        fixed (byte* pKey = key)
         {
-            IntPtr value = verkle_trie_get(verkleTrie, key);
+            fixed (byte* pValue = value)
+            {
+                verkle_trie_insert(verkleTrie, pKey, pValue);
+            }
+        }
+    }
+
+    public static unsafe byte[]? VerkleTrieGet(IntPtr verkleTrie, Span<byte> key)
+    {
+        fixed (byte* p = &MemoryMarshal.GetReference(key))
+        {
+            IntPtr value = verkle_trie_get(verkleTrie, p);
             if (value == IntPtr.Zero)
             {
                 return null;
             }
-            // Span<byte> bytes = new Span<byte>(x.ToPointer(), 32);
-            // Console.WriteLine(bytes.ToArray());
-            // return bytes.ToArray();
             byte[] managedValue = new byte[32];
             Marshal.Copy(value, managedValue, 0, 32);
             return managedValue;
         }
         
-        public static unsafe Span<byte> VerkleTrieGetSpan(IntPtr verkleTrie, byte[] key)
+    }
+    
+    public static unsafe byte[]? VerkleTrieGet(IntPtr verkleTrie, byte[] key)
+    {
+        fixed (byte* p = key)
         {
-            IntPtr value = verkle_trie_get(verkleTrie, key);
+            IntPtr value = verkle_trie_get(verkleTrie, p);
+            if (value == IntPtr.Zero)
+            {
+                return null;
+            }
+            byte[] managedValue = new byte[32];
+            Marshal.Copy(value, managedValue, 0, 32);
+            return managedValue;
+        }
+        
+    }
+    
+    public static unsafe Span<byte> VerkleTrieGetSpan(IntPtr verkleTrie, Span<byte> key)
+    {
+        fixed (byte* p = &MemoryMarshal.GetReference(key))
+        {
+            IntPtr value = verkle_trie_get(verkleTrie, p);
             return value == IntPtr.Zero ? Span<byte>.Empty : new Span<byte>(value.ToPointer(), 32);
         }
-        
-        public static byte[] VerkleTrieGetStateRoot(IntPtr verkleTrie)
+    }
+    
+    public static unsafe Span<byte> VerkleTrieGetSpan(IntPtr verkleTrie, byte[] key)
+    {
+        fixed (byte* p = key)
         {
-            IntPtr value = get_root_hash(verkleTrie);
-            byte[] managedValue = new byte[32];
-            Marshal.Copy(value, managedValue, 0, 32);
-            return managedValue;
+            IntPtr value = verkle_trie_get(verkleTrie, p);
+            return value == IntPtr.Zero ? Span<byte>.Empty : new Span<byte>(value.ToPointer(), 32);
         }
-
-        public static byte[] VerkleProofGet(IntPtr verkleTrie, byte[] key){
-            IntPtr proof_box =  get_verkle_proof(verkleTrie, key);
-            Proof vp = (Proof)Marshal.PtrToStructure(proof_box, typeof(Proof));
-            byte[] proof_bytes = new byte[vp.len];
-            Marshal.Copy(vp.ptr, proof_bytes, 0, vp.len);
-            return proof_bytes;
-        }
-
-        public static bool VerkleProofVerify(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[] key, byte[] value){
-            byte verification = verify_verkle_proof(verkleTrie, verkleProof, proof_len, key, value);
-            if (verification == 0)
-            {
-                return false;
-            }
-            return true;
-        }
-
-        public static void VerkleTrieInsertMultiple(IntPtr verkleTrie, byte[,] keys, byte[,] vals, int len){
-            verkle_trie_insert_multiple(verkleTrie, keys, vals, len);
-        }
-
-        public static byte[] VerkleProofGetMultiple(IntPtr verkleTrie, byte[,] keys, int len){
-            IntPtr proof_box =  get_verkle_proof_multiple(verkleTrie, keys, len);
-            Proof vp = (Proof)Marshal.PtrToStructure(proof_box, typeof(Proof));
-            byte[] proof_bytes = new byte[vp.len];
-            Marshal.Copy(vp.ptr, proof_bytes, 0, vp.len);
-            return proof_bytes;
-        }
-
-        public static bool VerkleProofVerifyMultiple(IntPtr verkleTrie, byte[] verkleProof, int proof_len, byte[,] keys, byte[,] vals, int len){
-            byte verification = verify_verkle_proof_multiple(verkleTrie, verkleProof, proof_len, keys, vals, len);
-            if (verification == 0)
-            {
-                return false;
-            }
-            return true;
-        }
-
+    }
+    
+    public static byte[] VerkleTrieGetStateRoot(IntPtr verkleTrie)
+    {
+        IntPtr value = get_root_hash(verkleTrie);
+        byte[] managedValue = new byte[32];
+        Marshal.Copy(value, managedValue, 0, 32);
+        return managedValue;
     }
 
+    public static unsafe byte[] VerkleProofGet(IntPtr verkleTrie, byte[] key)
+    {
+        fixed (byte* p = key)
+        {
+            IntPtr proofBox =  get_verkle_proof(verkleTrie, p);
+            Proof vp = (Proof)Marshal.PtrToStructure(proofBox, typeof(Proof));
+            byte[] proofBytes = new byte[vp.len];
+            Marshal.Copy(vp.ptr, proofBytes, 0, vp.len);
+            return proofBytes;
+        }
+    }
+
+    public static unsafe bool VerkleProofVerify(IntPtr verkleTrie, byte[] verkleProof, int proofLen, byte[] key, byte[] value)
+    {
+        fixed(byte* pProof = verkleProof)
+        {
+            fixed(byte* pKey = key)
+            {
+                fixed(byte* pValue = value)
+                {
+                    byte verification = verify_verkle_proof(verkleTrie, pProof, proofLen, pKey, pValue);
+                    if (verification == 0)
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+            }
+        }
+    }
+
+    public static unsafe void VerkleTrieInsertMultiple(IntPtr verkleTrie, byte[,] keys, byte[,] vals, int len)
+    {
+        fixed (byte*  pKey = keys)
+        {
+            fixed (byte* pValue = vals)
+            {
+                verkle_trie_insert_multiple(verkleTrie, pKey, pValue, len);
+            }
+        }
+    }
+
+    public static unsafe byte[] VerkleProofGetMultiple(IntPtr verkleTrie, byte[,] keys, int len)
+    {
+        fixed(byte* pKey = keys)
+        {
+            IntPtr proofBox = get_verkle_proof_multiple(verkleTrie, pKey, len);
+            Proof vp = (Proof)Marshal.PtrToStructure(proofBox, typeof(Proof));
+            byte[] proofBytes = new byte[vp.len];
+            Marshal.Copy(vp.ptr, proofBytes, 0, vp.len);
+            return proofBytes;
+        }
+    }
+
+    public static unsafe bool VerkleProofVerifyMultiple(IntPtr verkleTrie, byte[] verkleProof, int proofLen, byte[,] keys, byte[,] values, int len)
+    {
+        fixed(byte* pProof = verkleProof)
+        {
+            fixed(byte* pKey = keys)
+            {
+                fixed(byte* pValue = values)
+                {
+                    byte verification = verify_verkle_proof_multiple(verkleTrie, pProof, proofLen, pKey, pValue, len);
+                    if (verification == 0)
+                    {
+                        return false;
+                    }
+                    return true;
+                }
+            }
+        }
+    }
 }
+
