@@ -174,7 +174,7 @@ namespace Nethermind.Synchronization
             TrieStore store = new(_dbProvider.StateDb, _logManager);
             SnapProvider snapProvider = new(store, _logManager);
             _snapSyncFeed = new SnapSyncFeed(_syncMode, snapProvider, _blockTree, _logManager);
-            SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
+            SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _blockTree, _logManager);
             
             Task _ = dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
