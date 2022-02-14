@@ -444,12 +444,13 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
             bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInFastSync = !best.IsInFastSync;
-            bool notNeedToWaitForHeaders = false;// NotNeedToWaitForHeaders;
+            bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
             bool stateNotDownloadedYet = (best.PeerBlock - best.State > FastSyncLag ||
                                           best.Header > best.State && best.Header > best.Block);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
+            bool canSnapSync = best.PeerBlock >= best.Header && (best.PeerBlock - best.Header) < 128;
 
             bool result = fastSyncEnabled &&
                           hasFastSyncBeenActive &&
@@ -458,7 +459,8 @@ namespace Nethermind.Synchronization.ParallelSync
                           stateNotDownloadedYet &&
                           notHasJustStartedFullSync &&
                           notInAStickyFullSync && 
-                          notNeedToWaitForHeaders;
+                          notNeedToWaitForHeaders &&
+                          canSnapSync;
             
             if (_logger.IsTrace)
             {

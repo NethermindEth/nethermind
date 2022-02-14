@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.SnapSync
     public class SnapSyncFeed : SyncFeed<AccountsSyncBatch?>, IDisposable
     {
         private BlockHeader _bestHeader;
-
+        private int _responsesCount;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly SnapProvider _snapProvider;
 
@@ -83,6 +83,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return SyncResponseHandlingResult.NoProgress;
             }
 
+            _responsesCount++;
             _snapProvider.AddAccountRange(batch.Request.BlockNumber.Value, batch.Request.RootHash, batch.Request.StartingHash, batch.Response.PathAndAccounts, batch.Response.Proofs);
 
 
