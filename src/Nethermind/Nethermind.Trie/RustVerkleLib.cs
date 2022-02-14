@@ -35,7 +35,7 @@ public static class RustVerkleLib {
     }
     
     [DllImport("rust_verkle")]
-    private static extern IntPtr verkle_trie_new();
+    private static extern IntPtr verkle_trie_new(byte databaseScheme, byte commitScheme);
 
     [DllImport("rust_verkle")]
     private static extern unsafe IntPtr verkle_trie_get(IntPtr verkleTrie, byte *  key);
@@ -61,9 +61,9 @@ public static class RustVerkleLib {
     [DllImport("rust_verkle")]
     private static extern unsafe byte verify_verkle_proof_multiple(IntPtr verkleTrie, byte * verkleProof, int proofLen, byte * keys, byte * values, int len);
 
-    public static IntPtr VerkleTrieNew()
+    public static IntPtr VerkleTrieNew(byte databaseScheme = 0, byte commitScheme = 0)
     {
-        return verkle_trie_new();
+        return verkle_trie_new(databaseScheme, commitScheme);
     }
     
     public static unsafe void VerkleTrieInsert(IntPtr verkleTrie, Span<byte> key, Span<byte> value)
