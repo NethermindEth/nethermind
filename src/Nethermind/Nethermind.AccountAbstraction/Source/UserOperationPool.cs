@@ -61,7 +61,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationBroadcaster _broadcaster;
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
-
+        private readonly ulong _chainId;
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
             IBlockTree blockTree,
@@ -73,7 +73,9 @@ namespace Nethermind.AccountAbstraction.Source
             IStateProvider stateProvider,
             ITimestamper timestamper,
             IUserOperationSimulator userOperationSimulator,
-            UserOperationSortedPool userOperationSortedPool)
+            UserOperationSortedPool userOperationSortedPool,
+            ulong chainId = 5 //TODO: Update tests and plugin to remove this.
+            )
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
@@ -86,6 +88,7 @@ namespace Nethermind.AccountAbstraction.Source
             _accountAbstractionConfig = accountAbstractionConfig;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
+            _chainId = chainId;
 
             // topic hash emitted by a successful user operation
             _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
@@ -171,7 +174,7 @@ namespace Nethermind.AccountAbstraction.Source
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
                     _broadcaster.BroadcastOnce(userOperation);
-                    return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, ChainId));
+                    return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, _chainId));
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} failed to be inserted into pool");
