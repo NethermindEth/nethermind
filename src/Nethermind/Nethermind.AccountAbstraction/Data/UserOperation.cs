@@ -26,9 +26,9 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperation
     {
-        private static readonly UserOperationDecoder _decoder = new();
+        private static readonly UserOperationAbiDecoder _decoder = new();
         private static readonly AbiEncoder _abiEncoder = new();
-        public UserOperation(UserOperationRpc userOperationRpc) //TODO: change the constructor?
+        public UserOperation(UserOperationRpc userOperationRpc, Address entryPointAddress, int chainId) // TODO: change the constructor?
         {
             Sender = userOperationRpc.Sender;
             Nonce = userOperationRpc.Nonce;
@@ -49,20 +49,21 @@ namespace Nethermind.AccountAbstraction.Data
 
         private Keccak CalculateHash()
         {
-            return Keccak.Compute(_decoder.Encode(this)).Bytes;
+            return Keccak.Compute(_decoder.Encode(new [] {this}));
         }
 
-        private AbiSignature _idSignature = new AbiSignature("RequestId", new AbiArray(
+        private readonly AbiSignature _idSignature = new AbiSignature("RequestId", new AbiArray(
             new AbiTuple(
                 AbiType.Bytes32,
                 AbiAddress.Instance,
                 AbiType.UInt256
             )
         ));
+        
         public Keccak CalculateRequestId(Address entryPointAddress, int chainId)
         {
-            Keccak hash = this.CalculateHash();
-            return Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, [hash, entryPointAddress, chainId]));
+            Keccak hash = CalculateHash();
+            return Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, hash, entryPointAddress, chainId));
         }
 
         public UserOperationAbi Abi => new()
@@ -80,7 +81,7 @@ namespace Nethermind.AccountAbstraction.Data
             PaymasterData = PaymasterData,
             Signature = Signature!
         };
-
+        
         public Keccak RequestId { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
@@ -96,21 +97,5 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
         public bool AlreadySimulated { get; set; }
-    }
-
-    public struct UserOperationAbi
-    {
-        public Address Sender { get; set; }
-        public UInt256 Nonce { get; set; }
-        public byte[] InitCode { get; set; }
-        public byte[] CallData { get; set; }
-        public UInt256 CallGas { get; set; }
-        public UInt256 VerificationGas { get; set; }
-        public UInt256 PreVerificationGas { get; set; }
-        public UInt256 MaxFeePerGas { get; set; }
-        public UInt256 MaxPriorityFeePerGas { get; set; }
-        public Address Paymaster { get; set; }
-        public byte[] PaymasterData { get; set; }
-        public byte[] Signature { get; set; }
     }
 }
