@@ -319,8 +319,9 @@ namespace Nethermind.Consensus.Processing
             }
             else if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0 && lastProcessed!.IsPostMerge)
             {
-                _logger.Info($"Marked chain as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
+                if (_logger.IsTrace) _logger.Trace($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
+                Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
             }
 
             if ((options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.None)
@@ -341,9 +342,6 @@ namespace Nethermind.Consensus.Processing
             else // user does not setup interval and we cannot set interval time based on chainspec
                 return true;
         }
-
-        public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
-        public event EventHandler<BlockProcessedEventArgs> BlockInvalid;
 
         private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
@@ -398,8 +396,6 @@ namespace Nethermind.Consensus.Processing
             }
             catch (InvalidBlockException ex)
             {
-                BlockInvalid?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, Array.Empty<TxReceipt>()));
-                
                 invalidBlockHash = ex.InvalidBlockHash;
                 TraceFailingBranch(
                     processingBranch,
@@ -430,7 +426,6 @@ namespace Nethermind.Consensus.Processing
                 }
             }
             
-            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, Array.Empty<TxReceipt>()));
             return processedBlocks;
         }
 
@@ -532,7 +527,7 @@ namespace Nethermind.Consensus.Processing
                 preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) && !suggestedBlockIsPostMerge;
                 postMergeFinishBranchingCondition = suggestedBlockIsPostMerge &&
                                                     _blockTree.WasProcessed(branchingPoint.Number, branchingPoint.Hash) == false;
-                _logger.Info($"Conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}, postMergeFinishBranchingCondition: {postMergeFinishBranchingCondition}");
+                if (_logger.IsTrace) _logger.Trace($" Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}, postMergeFinishBranchingCondition: {postMergeFinishBranchingCondition}");
             } while (preMergeFinishBranchingCondition || postMergeFinishBranchingCondition);
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
