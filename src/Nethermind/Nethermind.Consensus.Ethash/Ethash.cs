@@ -31,6 +31,7 @@ using Nethermind.Serialization.Rlp;
 [assembly: InternalsVisibleTo("Nethermind.Ethash.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmarks.Mining")]
 
 namespace Nethermind.Consensus.Ethash
 {
