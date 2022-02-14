@@ -85,10 +85,11 @@ namespace Nethermind.AccountAbstraction
             UserOperationSortedPool userOperationSortedPool = new UserOperationSortedPool(
                 _accountAbstractionConfig.UserOperationPoolSize,
                 CompareUserOperationsByDecreasingGasPrice.Default,
-                getFromApi.LogManager);
+                getFromApi.LogManager,
+                _accountAbstractionConfig.MaximumUserOperationPerSender);
 
             _userOperationPools[entryPoint] = new UserOperationPool(
-                accountAbstractionConfig,
+                _accountAbstractionConfig,
                 _nethermindApi.BlockTree!,
                 entryPoint,
                 _logger,
@@ -129,14 +130,14 @@ namespace Nethermind.AccountAbstraction
 
         private UserOperationSimulator UserOperationSimulator (Address entryPoint)
         {
-            if(_userOperationSimulators[entryPoint].TryGetValue(entryPoint, out UserOperationSimulator userOperationSimulator))
+            if(_userOperationSimulators.TryGetValue(entryPoint, out UserOperationSimulator? userOperationSimulator))
             {
                 return userOperationSimulator;
             }
 
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
-            _userOperationSimulators[entryPoint] = new userOperationSimulator(
+            _userOperationSimulators[entryPoint] = new UserOperationSimulator(
                 UserOperationTxBuilder(entryPoint),
                 getFromApi.StateProvider!,
                 getFromApi.StateReader!,
@@ -237,7 +238,7 @@ namespace Nethermind.AccountAbstraction
                 //     _entryPointContractAddress = entryPointContractAddress!;
                 // }
 
-                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses();
+                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
                 foreach (string _addressString in _entryPointContractAddressesString){
                     bool parsed = Address.TryParse(
                         _addressString,
@@ -286,7 +287,15 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 if (_nethermindApi is null) throw new ArgumentNullException(nameof(_nethermindApi));
-                if (UserOperationPool is null) throw new ArgumentNullException(nameof(UserOperationPool));
+
+                //TODO: try filling the _userOperationPools instead and try using that
+                IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); 
+                foreach(Address entryPoint in _entryPointContractAddresses)
+                {
+                    _Pools[entryPoint] = UserOperationPool(entryPoint);
+                }
+
+                if (_Pools.Count == 0) throw new ArgumentNullException(nameof(UserOperationPool));
 
                 IProtocolsManager protocolsManager = _nethermindApi.ProtocolsManager ??
                                                      throw new ArgumentNullException(
@@ -298,14 +307,6 @@ namespace Nethermind.AccountAbstraction
                                           throw new ArgumentNullException(nameof(_nethermindApi.NodeStatsManager));
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
-
-
-                //TODO: try filling the _userOperationPools instead and try using that
-                IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); 
-                foreach(Address entryPoint in _entryPointContractAddresses)
-                {
-                    _Pools[entryPoint] = UserOperationPool(entryPoint);
-                }
 
                 UserOperationBroadcaster _broadcaster = new UserOperationBroadcaster(_logger);
                 AccountAbstractionPeerManager peerManager = new AccountAbstractionPeerManager(_Pools, _broadcaster, _logger);

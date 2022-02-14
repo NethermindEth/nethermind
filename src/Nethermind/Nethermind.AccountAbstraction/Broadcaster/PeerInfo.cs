@@ -17,7 +17,7 @@
 
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
-using Nethermind.Nethermind.AccountAbstraction.Network;
+using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
@@ -50,7 +50,7 @@ namespace Nethermind.AccountAbstraction.Broadcaster
         }
 
         //TODO: check whether NotifiedUserOperations will support this form
-        private IEnumerable<UserOperation> GetUOpsToSendAndMarkAsNotified(IEnumerable<UserOperationWithEntryPoint> uops)
+        private IEnumerable<UserOperationWithEntryPoint> GetUOpsToSendAndMarkAsNotified(IEnumerable<UserOperationWithEntryPoint> uops)
         {
             foreach (UserOperationWithEntryPoint uop in uops)
             {

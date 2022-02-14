@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Config;
 using Nethermind.Int256;
 
@@ -65,7 +67,7 @@ namespace Nethermind.AccountAbstraction
     {
         public static IEnumerable<string> GetEntryPointAddresses(this IAccountAbstractionConfig accountAbstractionConfig) =>
             accountAbstractionConfig.EntryPointContractAddresses
-                .split(",")
+                .Split(",")
                 .Where(s => !string.IsNullOrWhiteSpace(s))
                 .Select(s => s.Trim())
                 .Distinct();

@@ -35,6 +35,19 @@ namespace Nethermind.AccountAbstraction.Data
             return new Rlp(rlpStream.Data!);
 
         }
+
+        public Rlp Encode(UserOperation? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item is null)
+            {
+                return Rlp.OfEmptySequence;
+            }
+            
+            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
+            Encode(rlpStream, item, rlpBehaviors);
+            return new Rlp(rlpStream.Data!);
+
+        }
         
         public void Encode(RlpStream stream, UserOperationWithEntryPoint? opWithEntryPoint, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -64,6 +77,32 @@ namespace Nethermind.AccountAbstraction.Data
             stream.Encode(op.PaymasterData);
             stream.Encode(op.Signature);
             stream.Encode(entryPoint);
+        }
+
+        public void Encode(RlpStream stream, UserOperation? op, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (op is null)
+            {
+                stream.EncodeNullObject();
+                return;
+            }
+
+            int contentLength = GetContentLength(op);
+
+            stream.StartSequence(contentLength);
+
+            stream.Encode(op.Sender);
+            stream.Encode(op.Nonce);
+            stream.Encode(op.InitCode);
+            stream.Encode(op.CallData);
+            stream.Encode(op.CallGas);
+            stream.Encode(op.VerificationGas);
+            stream.Encode(op.PreVerificationGas);
+            stream.Encode(op.MaxFeePerGas);
+            stream.Encode(op.MaxPriorityFeePerGas);
+            stream.Encode(op.Paymaster);
+            stream.Encode(op.PaymasterData);
+            stream.Encode(op.Signature);
         }
 
         public UserOperationWithEntryPoint Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -101,6 +140,11 @@ namespace Nethermind.AccountAbstraction.Data
         {
             return Rlp.LengthOfSequence(GetContentLength(item));
         }
+
+        public int GetLength(UserOperation item, RlpBehaviors rlpBehaviors)
+        {
+            return Rlp.LengthOfSequence(GetContentLength(item));
+        }
         
         private static int GetContentLength(UserOperationWithEntryPoint opWithEntryPoint)
         {
@@ -120,6 +164,22 @@ namespace Nethermind.AccountAbstraction.Data
                    + Rlp.LengthOf(op.PaymasterData)
                    + Rlp.LengthOf(op.Signature)
                    + Rlp.LengthOf(entryPoint);
+        }
+
+        private static int GetContentLength(UserOperation op)
+        {
+            return Rlp.LengthOf(op.Sender)
+                   + Rlp.LengthOf(op.Nonce)
+                   + Rlp.LengthOf(op.InitCode)
+                   + Rlp.LengthOf(op.CallData)
+                   + Rlp.LengthOf(op.CallGas)
+                   + Rlp.LengthOf(op.VerificationGas)
+                   + Rlp.LengthOf(op.PreVerificationGas)
+                   + Rlp.LengthOf(op.MaxFeePerGas)
+                   + Rlp.LengthOf(op.MaxPriorityFeePerGas)
+                   + Rlp.LengthOf(op.Paymaster)
+                   + Rlp.LengthOf(op.PaymasterData)
+                   + Rlp.LengthOf(op.Signature);
         }
     }
 }

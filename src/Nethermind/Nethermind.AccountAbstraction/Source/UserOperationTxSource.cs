@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Consensus.Transactions;
@@ -42,14 +43,14 @@ namespace Nethermind.AccountAbstraction.Source
         // private readonly IUserOperationPool _userOperationPool;
         // private readonly IUserOperationSimulator _userOperationSimulator;
 
-        private readonly IDictionary<Address, IUserOperationTxBuilder> _userOperationTxBuilders;
-        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools;
-        private readonly IDictionary<Address, IUserOperationSimulator> _userOperationSimulators;
+        private readonly IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders;
+        private readonly IDictionary<Address, UserOperationPool> _userOperationPools;
+        private readonly IDictionary<Address, UserOperationSimulator> _userOperationSimulators;
 
         public UserOperationTxSource(
-            IDictionary<Address, IUserOperationTxBuilder> userOperationTxBuilders,
-            IDictionary<Address, IUserOperationPool> userOperationPools,
-            IDictionary<Address, IUserOperationSimulator> userOperationSimulators,
+            IDictionary<Address, UserOperationTxBuilder> userOperationTxBuilders,
+            IDictionary<Address, UserOperationPool> userOperationPools,
+            IDictionary<Address, UserOperationSimulator> userOperationSimulators,
             ISpecProvider specProvider,
             ILogger logger)
         {
@@ -68,7 +69,7 @@ namespace Nethermind.AccountAbstraction.Source
             ulong gasUsed = 0;
 
             IList<Tuple<Address, UserOperation>> _combinedUserOperations = new List<Tuple<Address, UserOperation>>();
-            foreach (Address entryPoint in _userOperationPools.Values)
+            foreach (Address entryPoint in _userOperationPools.Keys)
             {
                 IEnumerable<UserOperation> _entryPointUserOperations = 
                     _userOperationPools[entryPoint]
@@ -80,7 +81,7 @@ namespace Nethermind.AccountAbstraction.Source
                     _combinedUserOperations.Add(Tuple.Create(entryPoint, _userOperation));
                 }
             }
-            IList<Tuple<Address, UserOperation>> addressedUserOperations = _combinedUserOperations.OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op.Item2, parent.BaseFeePerGas)).toList();
+            IList<Tuple<Address, UserOperation>> addressedUserOperations = _combinedUserOperations.OrderByDescending(op => CalculateUserOperationPremiumGasPrice(op.Item2, parent.BaseFeePerGas)).ToList();
 
             // IEnumerable<UserOperation> userOperations =
             //     _userOperationPool
@@ -138,9 +139,14 @@ namespace Nethermind.AccountAbstraction.Source
 
             IList<Transaction> userOperationTransactions = new List<Transaction>();
 
-            foreach(Address entryPoint in _userOperationTxBuilders.Values)
+            foreach(Address entryPoint in _userOperationTxBuilders.Keys)
             {
-                IList<UserOperation> userOperationsToInclude = addressedUserOperationsToInclude.Where(op => op.Item1 == entryPoint);
+                IList<UserOperation> userOperationsToInclude = new List<UserOperation>();
+                foreach (Tuple<Address, UserOperation> uop in addressedUserOperationsToInclude)
+                {
+                    if (uop.Item1 == entryPoint)
+                    userOperationsToInclude.Add(uop.Item2);
+                }
 
                 if(userOperationsToInclude.Count == 0) continue;
 

@@ -46,7 +46,7 @@ namespace Nethermind.AccountAbstraction.Network
             {
                 // TODO: Gather all ops for all pools and submit at the same time
                 Address[] entryPoints = new Address[_userOperationPools.Count];
-                UserOperation[,] userOperations = new UserOperation[_userOperationPools.Count,];
+                UserOperation[][] userOperations = new UserOperation[_userOperationPools.Count][];
                 int counter = 0;
                 int totalLength = 0;
                 foreach (KeyValuePair<Address, UserOperationPool> kv in _userOperationPools) {
