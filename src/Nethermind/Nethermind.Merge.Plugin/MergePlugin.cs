@@ -151,6 +151,7 @@ namespace Nethermind.Merge.Plugin
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
                     new GetPayloadBodiesV1Handler(_api.BlockTree, _api.LogManager),
+                    new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                     _api.LogManager);
 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);

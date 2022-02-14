@@ -61,9 +61,10 @@ namespace Nethermind.Merge.Plugin.Test
             return new EngineRpcModule(
                 new GetPayloadV1Handler(chain.PayloadService!, chain.LogManager),
                 new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.PoSSwitcher, synchronizer, new SyncConfig(), chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, chain.PayloadService, synchronizer, new SyncConfig(), chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, chain.PayloadService!, synchronizer, new SyncConfig(), chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
+                new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
                 chain.LogManager);
         }
 
