@@ -16,10 +16,11 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 //I think I need this nextLine because I though I would need to use the RLP encoding, now I am not as sure
-using Nethermind.Serialization.Rlp;
+//using Nethermind.Serialization.Rlp;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -45,42 +46,44 @@ namespace Nethermind.Merge.Plugin.Test
     [TestFixture]
     public class PostMergeHeaderValidatorTests
     {
-        //I think I need to add this line
         private IPoSSwitcher _poSSwitcher;
         private IHeaderValidator _validator;
-         private ISealValidator _ethash;
-        //Not sure if this is a good var name or if it is even necessary
+        private ISealValidator _ethash;
         private ISealEngine _mergeSealEngine;
         private TestLogger _testLogger;
         private Block _parentBlock;
         private Block _block;
         private IBlockTree _blockTree;
         private ISpecProvider _specProvider;
+        private IMergeConfig _mergeConfig;
 
         [SetUp]
         public void Setup()
         {
-            //I though I had to remove these, but now I think I need them for the new IsealEngine
-            EthashDifficultyCalculator calculator = new(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
-            _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance));
-            
-            //I need to make an instance of the IposSwitcher TODO: if it needs any args
-            _poSSwitcher = new IPoSSwitcher();
-            //I think I need a signer to pass to the MergeSealEngine
-            ISigner signer = new Eth2Signer(address);
             _testLogger = new TestLogger();
-           //TODO: Need to create an instance of the IsealValidator that is meant for PostMerge and it needs some conditions
-            _mergeSealEngine = new MergeSealEngine(_ethash, _poSSwitcher, signer, _testLogger);
-            
             MemDb blockInfoDb = new();
             //I am not sure, but I think I need to change the specProvider instances in the next two lines
             _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
             _specProvider = new SingleReleaseSpecProvider(Byzantium.Instance, 3);
-            //TODO: Check if _mergeSealEngine is the correct var to pass 
+            //Do I need to set up the whole MergeConfig? I assume so.
+            _mergeConfig = new MergeConfig();
+            //not sure if I can do this in the line above
+            _mergeConfig.Enabled = true;
+            //TODO: MetaDataDB, I also need an ILogManager
+            _poSSwitcher = new PoSSwitcher(_mergeConfig, _plcHdr, _blockTree, _specProvider, _testLogger);
+            
+            //I think I need to create an AssemblyInfo.cs to the Nethermind
+            EthashDifficultyCalculator calculator = new(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.Mainnet));
+            _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance));
+            
+           //Not sure if I should be using Address.SysyemUser
+           //Also expects _ethash to be a "_preMergeSealValidator" that is type ISealEngine,
+           //but EthashSealValidator inherits from IsealValidator which ISealEngine Inherits from
+            _mergeSealEngine = new MergeSealEngine(_ethash, _poSSwitcher, Address.SystemUser, _testLogger);
             _validator = new PostMergeHeaderValidator(_poSSwitcher, _blockTree, _mergeSealEngine, _specProvider, new OneLoggerLogManager(_testLogger));
-            //parent with 0 difficulty because it is post merge, does it also need WithPostMergeHeader?
+            //Not sure if it needs WithPostMergeHeader tag?
             _parentBlock = Build.A.Block.WithDifficulty(0).TestObject;
-            //0 diff, 0 nonce, but Do I need to get a real random number for the MixHash in this case? does it also need WithPostMergeHeader?
+            //but Do I need to get a real random number for the MixHash in this case? does it also need WithPostMergeHeader?
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(0)
                 .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
