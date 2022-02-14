@@ -171,7 +171,7 @@ namespace Nethermind.AccountAbstraction.Source
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
                     _broadcaster.BroadcastOnce(userOperation);
-                    return ResultWrapper<Keccak>.Success(userOperation.RequestId);
+                    return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, ChainId));
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} failed to be inserted into pool");

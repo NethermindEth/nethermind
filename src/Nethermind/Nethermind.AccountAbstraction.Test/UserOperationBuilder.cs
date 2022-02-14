@@ -120,7 +120,7 @@ namespace Nethermind.AccountAbstraction.Test
             base.BeforeReturn();
             if (TestObjectInternal.Hash == null)
             {
-                TestObjectInternal.Hash = UserOperation.CalculateHash(TestObjectInternal);
+                TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
             }
         }
     }

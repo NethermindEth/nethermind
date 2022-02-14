@@ -22,13 +22,6 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperationDecoder : IRlpValueDecoder<UserOperation>, IRlpStreamDecoder<UserOperation>
     {
-        private readonly int _chainId;
-
-        public UserOperationDecoder(int chainId)
-        {
-            _chainId = chainId;
-        }
-
         public Rlp Encode(UserOperation? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
@@ -93,7 +86,7 @@ namespace Nethermind.AccountAbstraction.Data
                     Signature = rlpStream.DecodeByteArray()
                 };
 
-            return new UserOperation(userOperationRpc, Address.Zero, _chainId);
+            return new UserOperation(userOperationRpc);
         }
 
         public int GetLength(UserOperation item, RlpBehaviors rlpBehaviors)

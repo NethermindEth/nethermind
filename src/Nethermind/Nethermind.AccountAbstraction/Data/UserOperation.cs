@@ -15,12 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Abi;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.AccountAbstraction.Data
 {
@@ -28,7 +26,7 @@ namespace Nethermind.AccountAbstraction.Data
     {
         private static readonly UserOperationAbiDecoder _decoder = new();
         private static readonly AbiEncoder _abiEncoder = new();
-        public UserOperation(UserOperationRpc userOperationRpc, Address entryPointAddress, int chainId) // TODO: change the constructor?
+        public UserOperation(UserOperationRpc userOperationRpc)
         {
             Sender = userOperationRpc.Sender;
             Nonce = userOperationRpc.Nonce;
@@ -44,10 +42,10 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
-            RequestId = CalculateRequestId(entryPointAddress, chainId);
+            Hash = CalculateHash();
         }
 
-        private Keccak CalculateHash()
+        public Keccak CalculateHash()
         {
             return Keccak.Compute(_decoder.Encode(new [] {this}));
         }
@@ -60,10 +58,10 @@ namespace Nethermind.AccountAbstraction.Data
             )
         ));
         
-        public Keccak CalculateRequestId(Address entryPointAddress, int chainId)
+        public Keccak CalculateRequestId(Address entryPointAddress, ulong chainId)
         {
-            Keccak hash = CalculateHash();
-            return Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, hash, entryPointAddress, chainId));
+            RequestId = Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, Hash, entryPointAddress, chainId));
+            return RequestId;
         }
 
         public UserOperationAbi Abi => new()
@@ -82,7 +80,8 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = Signature!
         };
         
-        public Keccak RequestId { get; set; }
+        public Keccak Hash { get; set; }
+        public Keccak? RequestId { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] InitCode { get; set; }

@@ -397,7 +397,6 @@ namespace Nethermind.AccountAbstraction.Test
                 );
 
             op.Signature = Bytes.FromHexString(signature.ToString());
-            op.Hash = UserOperation.CalculateHash(op);
         }
     }
 }
