@@ -28,7 +28,7 @@ namespace Nethermind.AccountAbstraction.Data
     {
         private static readonly UserOperationDecoder _decoder = new();
         private static readonly AbiEncoder _abiEncoder = new();
-        public UserOperation(UserOperationRpc userOperationRpc)
+        public UserOperation(UserOperationRpc userOperationRpc) //TODO: change the constructor?
         {
             Sender = userOperationRpc.Sender;
             Nonce = userOperationRpc.Nonce;
@@ -49,19 +49,19 @@ namespace Nethermind.AccountAbstraction.Data
 
         private Keccak CalculateHash()
         {
-            return Keccak.Compute(_decoder.Encode(this).Bytes);
+            return Keccak.Compute(_decoder.Encode(this)).Bytes;
         }
 
+        private AbiSignature _idSignature = new AbiSignature("RequestId", new AbiArray(
+            new AbiTuple(
+                AbiType.Bytes32,
+                AbiAddress.Instance,
+                AbiType.UInt256
+            )
+        ));
         public Keccak CalculateRequestId(Address entryPointAddress, int chainId)
         {
-            private AbiSignature _idSignature = new AbiSignature("RequestId", new AbiArray(
-                new AbiTuple(
-                    AbiType.Bytes32,
-                    AbiAddress.Instance,
-                    AbiType.UInt256
-                )
-            ));
-            Keccac hash = userOperation.CalculateHash();
+            Keccak hash = this.CalculateHash();
             return Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, [hash, entryPointAddress, chainId]));
         }
 

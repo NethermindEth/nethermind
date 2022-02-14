@@ -4,6 +4,8 @@ using Nethermind.Core;
 using Nethermind.Network;
 using System.Collections.Generic;
 using System.Net;
+using Nethermind.Core.Crypto;
+using NUnit.Framework;
 
 namespace Nethermind.AccountAbstraction.Test.Network
 {
@@ -34,7 +36,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             string IdFromTransaction = "0x9f5d37eb5cc7b0707b2898b1da01fa7aac806a18d531b17a981994bc512cbfc8";
 
             Keccak IdFromUserOperation = userOperation.RequestId;
-            Assert.AreEqual(IdFromUserOperation.ToString(withZeroX = true), IdFromTransaction,
+            Assert.AreEqual(IdFromUserOperation.ToString(true), IdFromTransaction,
                 "Request IDs do not match.")
             //IdFromTransaction.ShouldBe(IdFromUserOperation)??
         }
