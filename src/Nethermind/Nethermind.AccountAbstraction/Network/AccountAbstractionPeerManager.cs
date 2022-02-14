@@ -45,17 +45,30 @@ namespace Nethermind.AccountAbstraction.Network
             if (_broadcaster.AddPeer(peerInfo))
             {
                 // TODO: Gather all ops for all pools and submit at the same time
-                foreach (KeyValuePair<Address, UserOperationPool> kv in _userOperationPools)
+                Address[] entryPoints = new Address[_userOperationPools.Count];
+                UserOperation[,] userOperations = new UserOperation[_userOperationPools.Count,];
+                int counter = 0;
+                int totalLength = 0;
+                foreach (KeyValuePair<Address, UserOperationPool> kv in _userOperationPools) {
+                    entryPoints[counter] = kv.Key;
+                    userOperations[counter] = kv.Value.GetUserOperations().ToArray();
+                    totalLength = totalLength + userOperations[counter].Length;
+                    counter++;
+                }
+                UserOperationWithEntryPoint[] userOperationsWithEntryPoints = new UserOperationWithEntryPoint[totalLength];
+                counter = 0;
+                for (int i = 0; i < _userOperationPools.Count; i++)
                 {
                     // TODO: Try not to loop here, also maybe this doesn't need to be an array
-                    UserOperation[] userOperations = kv.Value.GetUserOperations().ToArray();
-                    UserOperationWithEntryPoint[] userOperationsWithEntryPoints = new UserOperationWithEntryPoint[userOperations.Length];
-                    for (int i = 0; i < userOperations.Length; i++)
+                    // UserOperation[] userOperations = kv.Value.GetUserOperations().ToArray();
+                    // UserOperationWithEntryPoint[] userOperationsWithEntryPoints = new UserOperationWithEntryPoint[userOperations.Length];
+                    for (int j = 0; j < userOperations[i].Length; j++)
                     {
-                        userOperationsWithEntryPoints[i] = new UserOperationWithEntryPoint(userOperations[i], kv.Key);
+                        userOperationsWithEntryPoints[counter] = new UserOperationWithEntryPoint(userOperations[i][j], entryPoints[i]);
+                        counter++;
                     }
-                    _broadcaster.BroadcastOnce(peerInfo, userOperationsWithEntryPoints);
                 }
+                _broadcaster.BroadcastOnce(peerInfo, userOperationsWithEntryPoints);
                 
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer.Id}");
             }

@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
+using Nethermind.Nethermind.AccountAbstraction.Network;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
@@ -35,24 +36,25 @@ namespace Nethermind.AccountAbstraction.Broadcaster
 
         public PublicKey Id => Peer.Id;
 
-        public void SendNewUserOperation(UserOperation uop)
+        public void SendNewUserOperation(UserOperationWithEntryPoint uop)
         {
-            if (NotifiedUserOperations.Set(uop.Hash))
+            if (NotifiedUserOperations.Set(uop.UserOperation.Hash))
             {
                 Peer.SendNewUserOperation(uop);
             }
         }
 
-        public void SendNewUserOperations(IEnumerable<UserOperation> uops)
+        public void SendNewUserOperations(IEnumerable<UserOperationWithEntryPoint> uops)
         {
             Peer.SendNewUserOperations(GetUOpsToSendAndMarkAsNotified(uops));
         }
 
-        private IEnumerable<UserOperation> GetUOpsToSendAndMarkAsNotified(IEnumerable<UserOperation> uops)
+        //TODO: check whether NotifiedUserOperations will support this form
+        private IEnumerable<UserOperation> GetUOpsToSendAndMarkAsNotified(IEnumerable<UserOperationWithEntryPoint> uops)
         {
-            foreach (UserOperation uop in uops)
+            foreach (UserOperationWithEntryPoint uop in uops)
             {
-                if (NotifiedUserOperations.Set(uop.Hash))
+                if (NotifiedUserOperations.Set(uop.UserOperation.Hash))
                 {
                     yield return uop;
                 }

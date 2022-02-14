@@ -44,6 +44,7 @@ namespace Nethermind.AccountAbstraction
         private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
         private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
         private UserOperationTxSource? _userOperationTxSource;
+
         private IBundler? _bundler;
 
         private MevPlugin MevPlugin => _nethermindApi
@@ -298,9 +299,20 @@ namespace Nethermind.AccountAbstraction
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
 
+
+                //TODO: try filling the _userOperationPools instead and try using that
+                IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); 
+                foreach(Address entryPoint in _entryPointContractAddresses)
+                {
+                    _Pools[entryPoint] = UserOperationPool(entryPoint);
+                }
+
+                UserOperationBroadcaster _broadcaster = new UserOperationBroadcaster(_logger);
+                AccountAbstractionPeerManager peerManager = new AccountAbstractionPeerManager(_Pools, _broadcaster, _logger);
+
                 serializer.Register(new UserOperationsMessageSerializer());
                 protocolsManager.AddProtocol(Protocol.AA,
-                    session => new AaProtocolHandler(session, serializer, stats, UserOperationPool(entryPoint), logManager));
+                    session => new AaProtocolHandler(session, serializer, stats, _Pools, peerManager, logManager));
                 protocolsManager.AddSupportedCapability(new Capability(Protocol.AA, 0));
 
                 if (_logger.IsInfo) _logger.Info("Initialized Account Abstraction network protocol");
@@ -322,6 +334,7 @@ namespace Nethermind.AccountAbstraction
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
 
+                //TODO: try filling the _userOperationPools instead and try using that
                 IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); 
                 foreach(Address entryPoint in _entryPointContractAddresses)
                 {
