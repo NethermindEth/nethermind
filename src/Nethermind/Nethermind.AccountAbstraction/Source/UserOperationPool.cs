@@ -25,6 +25,7 @@ using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
+using Nethermind.AccountAbstraction.Network;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
@@ -170,7 +171,8 @@ namespace Nethermind.AccountAbstraction.Source
                     Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
-                    _broadcaster.BroadcastOnce(userOperation);
+                    
+                    _broadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));
                     return ResultWrapper<Keccak>.Success(userOperation.Hash);
                 }
 
@@ -314,25 +316,6 @@ namespace Nethermind.AccountAbstraction.Source
                 _timestamper.UnixTime.Seconds, CancellationToken.None);
 
             return success;
-        }
-
-        public void AddPeer(IUserOperationPoolPeer peer)
-        {
-            PeerInfo peerInfo = new(peer);
-            if (_broadcaster.AddPeer(peerInfo))
-            {
-                _broadcaster.BroadcastOnce(peerInfo, _userOperationSortedPool.GetSnapshot());
-                
-                if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer.Id}");
-            }
-        }
-
-        public void RemovePeer(PublicKey nodeId)
-        {
-            if (_broadcaster.RemovePeer(nodeId))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Removed a peer from User Operation pool: {nodeId}");
-            }
         }
 
         public void Dispose()

@@ -34,33 +34,33 @@ namespace Nethermind.AccountAbstraction.Network
             NettyRlpStream nettyRlpStream = new(byteBuffer);
             
             nettyRlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.UserOperations.Count; i++)
+            for (int i = 0; i < message.UserOperationsWithEntryPoint.Count; i++)
             {
-                nettyRlpStream.Encode(message.UserOperations[i]);
+                nettyRlpStream.Encode(message.UserOperationsWithEntryPoint[i]);
             }
         }
 
         public UserOperationsMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyRlpStream rlpStream = new(byteBuffer);
-            UserOperation[] uOps = DeserializeUOps(rlpStream);
+            UserOperationWithEntryPoint[] uOps = DeserializeUOps(rlpStream);
             return new UserOperationsMessage(uOps);
         }
 
         public int GetLength(UserOperationsMessage message, out int contentLength)
         {
             contentLength = 0;
-            for (int i = 0; i < message.UserOperations.Count; i++)
+            for (int i = 0; i < message.UserOperationsWithEntryPoint.Count; i++)
             {
-                contentLength += _decoder.GetLength(message.UserOperations[i], RlpBehaviors.None);
+                contentLength += _decoder.GetLength(message.UserOperationsWithEntryPoint[i], RlpBehaviors.None);
             }
 
             return Rlp.LengthOfSequence(contentLength);
         }
         
-        private UserOperation[] DeserializeUOps(NettyRlpStream rlpStream)
+        private UserOperationWithEntryPoint[] DeserializeUOps(NettyRlpStream rlpStream)
         {
-            return Rlp.DecodeArray<UserOperation>(rlpStream);
+            return Rlp.DecodeArray<UserOperationWithEntryPoint>(rlpStream);
         }
     }
 }

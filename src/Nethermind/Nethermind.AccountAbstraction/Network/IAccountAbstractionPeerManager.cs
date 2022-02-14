@@ -15,18 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Broadcaster;
-using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc;
 
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.AccountAbstraction.Network
 {
-    public interface IUserOperationPool
+    public interface IAccountAbstractionPeerManager
     {
-        ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
-        bool RemoveUserOperation(Keccak? userOperationHash);
-        public IEnumerable<UserOperation> GetUserOperations();
+        void AddPeer(IUserOperationPoolPeer peer);
+        void RemovePeer(PublicKey nodeId);
     }
 }
