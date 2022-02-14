@@ -30,6 +30,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
@@ -42,7 +43,6 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class PayloadService : IPayloadService
     {
         private readonly Eth2BlockProductionContext _idealBlockContext;
-        private readonly IInitConfig _initConfig;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private ulong _secondsPerSlot = 12; // in seconds
@@ -55,13 +55,11 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public PayloadService(
             Eth2BlockProductionContext idealBlockContext,
-            IInitConfig initConfig,
             ISealer sealer,
             IMergeConfig mergeConfig,
             ILogManager logManager)
         {
             _idealBlockContext = idealBlockContext;
-            _initConfig = initConfig;
             _sealer = sealer;
             _secondsPerSlot = mergeConfig.SecondsPerSlot;
             _timeout = TimeSpan.FromSeconds(_secondsPerSlot);
@@ -74,7 +72,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             byte[] payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             payloadAttributes.SuggestedFeeRecipient = _sealer.Address != Address.Zero ? _sealer.Address : payloadAttributes.SuggestedFeeRecipient;
             using CancellationTokenSource cts = new(_timeout);
-            var blockProductionTask = PreparePayload(payloadId, parentHeader, payloadAttributes);
+            Task blockProductionTask = PreparePayload(payloadId, parentHeader, payloadAttributes);
             _taskQueue.Enqueue(() => blockProductionTask);
             return payloadId;
         }
@@ -113,8 +111,8 @@ namespace Nethermind.Merge.Plugin.Handlers
             Task<Block?> idealBlockTask =
                 _idealBlockContext.BlockProductionTrigger.BuildBlock(parentHeader, cts.Token, null, payloadAttributes)
                     // ToDo investigate why it is needed, because we should have processing blocks in BlockProducerBase
-                    .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv),
-                        cts.Token)
+                    // .ContinueWith((x) => Process(x.Result, parentHeader, _idealBlockContext.BlockProducerEnv),
+                    //     cts.Token)
                     .ContinueWith(LogProductionResult, cts.Token);
 
             _payloadStorage[payloadId.ToHexString()] = new IdealBlockContext(emptyBlock, idealBlockTask, cts);
@@ -130,13 +128,13 @@ namespace Nethermind.Merge.Plugin.Handlers
                 {
                     if (_logger.IsInfo)
                         _logger.Info(
-                            $"Sealed eth2 block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                            $"Produced post-merge block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                 }
                 else
                 {
                     if (_logger.IsInfo)
                         _logger.Info(
-                            $"Failed to seal eth2 block (null seal)");
+                            $"Failed to produce post-merge block");
                 }
             }
             else if (t.IsFaulted)
@@ -194,8 +192,8 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             if (block == null)
                 return null;
-            var stateProvider = blockProducerEnv.ReadOnlyStateProvider;
-            var processor = blockProducerEnv.ChainProcessor;
+            IStateProvider stateProvider = blockProducerEnv.ReadOnlyStateProvider;
+            IBlockchainProcessor processor = blockProducerEnv.ChainProcessor;
             Block? processedBlock = null;
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
 
@@ -215,10 +213,6 @@ namespace Nethermind.Merge.Plugin.Handlers
         private ProcessingOptions GetProcessingOptions()
         {
             ProcessingOptions options = ProcessingOptions.EthereumMerge | ProcessingOptions.NoValidation;
-            if (_initConfig.StoreReceipts)
-            {
-                options |= ProcessingOptions.StoreReceipts;
-            }
 
             return options;
         }

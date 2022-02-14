@@ -130,7 +130,7 @@ namespace Nethermind.Merge.Plugin
 
             return isTerminalBlock;
         }
-
+        
         public bool TryUpdateTerminalBlock(BlockHeader header, BlockHeader? parent = null)
         {
             if (_terminalBlockExplicitSpecified || TransitionFinished || IsTerminalBlock(header, parent) == false)
@@ -194,7 +194,12 @@ namespace Nethermind.Merge.Plugin
                 return (false, false);
 
             bool isTerminal = false, isPostMerge = false;
-            // ToDo TTD nulls?
+
+            if (header.TotalDifficulty == null)
+            {
+                return (false, header.Difficulty == 0);
+            }
+            
             if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
                 return (false, false);
 
@@ -221,6 +226,9 @@ namespace Nethermind.Merge.Plugin
         public event EventHandler? TerminalBlockReached;
 
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
+        public long? TerminalBlockNumber => _terminalBlockNumber;
+
+        public Keccak? TerminalBlockHash => _terminalBlockHash;
 
         private void LoadTerminalBlock()
         {

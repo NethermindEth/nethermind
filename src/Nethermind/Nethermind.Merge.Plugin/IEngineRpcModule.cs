@@ -64,5 +64,13 @@ namespace Nethermind.Merge.Plugin
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesV1(Keccak[] blockHashes);
+
+        [JsonRpcMethod(
+            Description =
+                "Returns PoS transition configuration.",
+            IsSharable = true,
+            IsImplemented = true)]
+        ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
+            TransitionConfigurationV1 beaconTransitionConfiguration);
     }
 }

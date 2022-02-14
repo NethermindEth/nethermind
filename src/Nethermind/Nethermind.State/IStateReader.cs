@@ -29,6 +29,6 @@ namespace Nethermind.State
 
         byte[]? GetCode(Keccak codeHash);
 
-        void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
+        void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot, VisitingOptions? visitingOptions = null);
     }
 }

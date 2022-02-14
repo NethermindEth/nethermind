@@ -29,19 +29,20 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         private readonly ISealEngine _preMergeSealValidator;
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly Address _feeRecipient;
         private readonly ISigner _signer;
         private readonly ILogger _logger;
 
         public MergeSealEngine(
             ISealEngine preMergeSealEngine,
             IPoSSwitcher? poSSwitcher,
-            ISigner? signer,
+            Address feeRecipient,
             ILogManager? logManager)
         {
             _preMergeSealValidator =
                 preMergeSealEngine ?? throw new ArgumentNullException(nameof(preMergeSealEngine));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _feeRecipient = feeRecipient;
             _logger = logManager?.GetClassLogger<MergeSealEngine>() ??
                       throw new ArgumentNullException(nameof(logManager));
         }
@@ -66,7 +67,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return _preMergeSealValidator.CanSeal(blockNumber, parentHash);
         }
 
-        public Address Address => _poSSwitcher.HasEverReachedTerminalBlock() ? _signer.Address : _preMergeSealValidator.Address;
+        public Address Address => _poSSwitcher.HasEverReachedTerminalBlock() ? _feeRecipient : _preMergeSealValidator.Address;
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {

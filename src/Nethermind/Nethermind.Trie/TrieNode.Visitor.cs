@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
@@ -30,7 +33,7 @@ namespace Nethermind.Trie
 {
     public partial class TrieNode
     {
-        private const int ParallelLevels = 5;
+        private const int BranchesCount = 16;
         
         internal void Accept(ITreeVisitor visitor, ITrieNodeResolver nodeResolver, TrieVisitContext trieVisitContext)
         {
@@ -50,6 +53,7 @@ namespace Nethermind.Trie
             {
                 case NodeType.Branch:
                 {
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
                     void VisitChild(int i, TrieNode? child, ITrieNodeResolver resolver, ITreeVisitor v, TrieVisitContext context)
                     {
                         if (child != null)
@@ -67,24 +71,61 @@ namespace Nethermind.Trie
                             }
                         }
                     }
+                    
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    void VisitSingleThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext)
+                    {
+                        // single threaded route
+                        for (int i = 0; i < BranchesCount; i++)
+                        {
+                            VisitChild(i, GetChild(trieNodeResolver, i), trieNodeResolver, treeVisitor, visitContext);
+                        }
+                    }
+                    
+                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+                    void VisitMultiThread(ITreeVisitor treeVisitor, ITrieNodeResolver trieNodeResolver, TrieVisitContext visitContext, TrieNode?[] children)
+                    {
+                        // multithreaded route
+                        Parallel.For(0, BranchesCount, i =>
+                        {
+                            visitContext.Semaphore.Wait();
+                            try
+                            {
+                                // we need to have separate context for each thread as context tracks level and branch child index
+                                TrieVisitContext childContext = visitContext.Clone();
+                                VisitChild(i, children[i], trieNodeResolver, treeVisitor, childContext);
+                            }
+                            finally
+                            {
+                                visitContext.Semaphore.Release();
+                            }
+                        });
+                    }
 
                     visitor.VisitBranch(this, trieVisitContext);
                     trieVisitContext.Level++;
-                    if (trieVisitContext.Parallel && trieVisitContext.Level <= ParallelLevels)
+                    
+                    if (trieVisitContext.MaxDegreeOfParallelism != 1 && trieVisitContext.Semaphore.CurrentCount > 1)
                     {
-                        TrieNode?[] children = new TrieNode?[16];
-                        for (int i = 0; i < 16; i++)
+                        // we need to preallocate children
+                        TrieNode?[] children = new TrieNode?[BranchesCount];
+                        for (int i = 0; i < BranchesCount; i++)
                         {
                             children[i] = GetChild(nodeResolver, i);
                         }
-                        Parallel.For(0, 16, i => VisitChild(i, children[i], nodeResolver, visitor, trieVisitContext.Clone()));
+
+                        if (trieVisitContext.Semaphore.CurrentCount > 1)
+                        {
+                            VisitMultiThread(visitor, nodeResolver, trieVisitContext, children);
+                        }
+                        else
+                        {
+                            VisitSingleThread(visitor, nodeResolver, trieVisitContext);
+                        }
                     }
                     else
                     {
-                        for (int i = 0; i < 16; i++)
-                        {
-                            VisitChild(i, GetChild(nodeResolver, i), nodeResolver, visitor, trieVisitContext);
-                        }
+                        VisitSingleThread(visitor, nodeResolver, trieVisitContext);
                     }
 
                     trieVisitContext.Level--;
@@ -130,10 +171,18 @@ namespace Nethermind.Trie
                         if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
                         {
                             trieVisitContext.IsStorage = true;
-                            TrieNode storageRoot = new(NodeType.Unknown, account.StorageRoot);
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
-                            storageRoot.Accept(visitor, nodeResolver, trieVisitContext);
+                            
+                            if (TryResolveStorageRoot(nodeResolver, out TrieNode? storageRoot))
+                            {
+                                storageRoot!.Accept(visitor, nodeResolver, trieVisitContext);
+                            }
+                            else
+                            {
+                                visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
+                            }
+
                             trieVisitContext.Level--;
                             trieVisitContext.IsStorage = false;
                         }

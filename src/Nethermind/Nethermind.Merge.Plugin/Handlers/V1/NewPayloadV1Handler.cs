@@ -54,7 +54,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ISynchronizer _synchronizer;
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
-        private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
         private bool synced = false;
@@ -79,15 +78,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _synchronizer = synchronizer;
             _syncConfig = syncConfig;
             _logger = logManager.GetClassLogger();
-            _blockValidationSemaphore = new SemaphoreSlim(0);
-            _processor.BlockProcessed += (s, e) =>
-            {
-                _blockValidationSemaphore.Release(1);
-            };
-            _processor.BlockInvalid += (s, e) =>
-            {
-                _blockValidationSemaphore.Release(1);
-            };
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(BlockRequestResult request)
@@ -113,7 +103,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (parent == null)
             {
                 // ToDo wait for final PostMerge sync
-                return NewPayloadV1Result.Syncing;
+                return NewPayloadV1Result.Accepted;
             }
 
             await _synchronizer.StopAsync();
@@ -151,9 +141,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             processedBlock.Header.IsPostMerge = true;
-            _blockTree.SuggestBlock(processedBlock, true);
-            _blockValidationSemaphore.Wait();
-            return NewPayloadV1Result.Valid(block.Hash!);
+            var addResult = _blockTree.SuggestBlock(processedBlock, false, false);
+            _logger.Info($"{processedBlock} add result {addResult}");
+            return NewPayloadV1Result.Valid(request.BlockHash);
         }
 
         private (ValidationResult ValidationResult, string? Message) ValidateBlockAndProcess(Block block,

@@ -16,10 +16,14 @@
 
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Threading.Tasks;
+using FluentAssertions;
+using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test
@@ -39,56 +43,62 @@ namespace Nethermind.Db.Test
         [TestCase(true)]
         public async Task InitializerTests_MemDbProvider(bool useReceipts)
         {
-            using IDbProvider dbProvider = new DbProvider(DbModeHint.Mem);
-            RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, "mem"));
-            StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), LimboLogs.Instance);
-            await initializer.InitStandardDbsAsync(useReceipts);
-            Type receiptsType = useReceipts ? typeof(MemColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
+            IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Mem, "mem");
+            Type receiptsType = GetReceiptsType(useReceipts, typeof(MemColumnsDb<ReceiptsColumns>));
             AssertStandardDbs(dbProvider, typeof(MemDb), receiptsType);
+            dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
         }
 
         [TestCase(false)]
         [TestCase(true)]
         public async Task InitializerTests_RocksDbProvider(bool useReceipts)
         {
-            using (IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted))
-            {
-                RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"rocks_{useReceipts}"));
-                StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), LimboLogs.Instance);
-                await initializer.InitStandardDbsAsync(useReceipts);
-                Type receiptsType = useReceipts ? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-                AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
-            }
+            IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Persisted, $"rocks_{useReceipts}");
+            Type receiptsType = GetReceiptsType(useReceipts);
+            AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
+            dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
         }
 
         [TestCase(false)]
         [TestCase(true)]
         public async Task InitializerTests_ReadonlyDbProvider(bool useReceipts)
         {
-            using (IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted))
-            {
-                RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, $"readonly_{useReceipts}"));
-                StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), LimboLogs.Instance);
-                await initializer.InitStandardDbsAsync(useReceipts);
-                using (ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true))
-                {
-                    Type receiptsType = useReceipts ? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
-                    AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
-                    AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), typeof(ReadOnlyColumnsDb<ReceiptsColumns>));
-                }
-            }
+            IDbProvider dbProvider = await InitializeStandardDb(useReceipts, DbModeHint.Persisted, $"readonly_{useReceipts}");
+            using ReadOnlyDbProvider readonlyDbProvider = new(dbProvider, true);
+            Type receiptsType = GetReceiptsType(useReceipts);
+            AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
+            AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), GetReceiptsType(false));
+            dbProvider.StateDb.Should().BeOfType(typeof(FullPruningDb));
+            ((IDbProvider)readonlyDbProvider).StateDb.Should().BeOfType(typeof(ReadOnlyDb));
         }
+        
+        [Test]
+        public async Task InitializerTests_WithPruning()
+        {
+            IDbProvider dbProvider = await InitializeStandardDb(false, DbModeHint.Mem, "pruning", true);
+            dbProvider.StateDb.Should().BeOfType<FullPruningDb>();
+        }
+        
+        private async Task<IDbProvider> InitializeStandardDb(bool useReceipts, DbModeHint dbModeHint, string path, bool pruning = false)
+        {
+            using IDbProvider dbProvider = new DbProvider(dbModeHint);
+            RocksDbFactory rocksDbFactory = new(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, path));
+            StandardDbInitializer initializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), Substitute.For<IFileSystem>(), pruning);
+            await initializer.InitStandardDbsAsync(useReceipts);
+            return dbProvider;
+        }
+        
+        private static Type GetReceiptsType(bool useReceipts, Type receiptType = null) => useReceipts ? receiptType ?? typeof(ColumnsDb<ReceiptsColumns>) : typeof(ReadOnlyColumnsDb<ReceiptsColumns>);
         
         private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
         {
-            Assert.IsTrue(dbProvider.BlockInfosDb.GetType() == dbType);
-            Assert.IsTrue(dbProvider.BlocksDb.GetType() == dbType);
-            Assert.IsTrue(dbProvider.BloomDb.GetType() == dbType);
-            Assert.IsTrue(dbProvider.ChtDb.GetType() == dbType);
-            Assert.IsTrue(dbProvider.HeadersDb.GetType() == dbType);
-            Assert.IsTrue(dbProvider.ReceiptsDb.GetType() == receiptsDb);
-            Assert.IsTrue(dbProvider.CodeDb.GetType() == dbType);
-            Assert.IsTrue(dbProvider.StateDb.GetType() == dbType);
+            dbProvider.BlockInfosDb.Should().BeOfType(dbType);
+            dbProvider.BlocksDb.Should().BeOfType(dbType);
+            dbProvider.BloomDb.Should().BeOfType(dbType);
+            dbProvider.ChtDb.Should().BeOfType(dbType);
+            dbProvider.HeadersDb.Should().BeOfType(dbType);
+            dbProvider.ReceiptsDb.Should().BeOfType(receiptsDb);
+            dbProvider.CodeDb.Should().BeOfType(dbType);
         }
 
         [OneTimeTearDown]

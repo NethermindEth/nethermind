@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Merge.Plugin.Data
+namespace Nethermind.Merge.Plugin.Data.V1
 {
     public static class PayloadStatus
     {
@@ -25,7 +25,7 @@ namespace Nethermind.Merge.Plugin.Data
 
         public const string Syncing = "SYNCING";
         
-        public const string Accepted = "Accepted";
+        public const string Accepted = "ACCEPTED";
         
         public const string InvalidBlockHash = "INVALID_BLOCK_HASH";
         

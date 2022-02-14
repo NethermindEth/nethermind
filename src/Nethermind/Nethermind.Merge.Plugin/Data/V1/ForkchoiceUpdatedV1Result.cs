@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
                 PayloadId = payloadId,
                 PayloadStatus = new PayloadStatusV1()
                 {
-                    Status = Data.PayloadStatus.Valid, LatestValidHash = latestValidHash
+                    Status = Data.V1.PayloadStatus.Valid, LatestValidHash = latestValidHash
                 }
             });
         }
@@ -57,7 +57,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
             {
                 PayloadStatus = new PayloadStatusV1()
                 {
-                    Status = Data.PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError
+                    Status = Data.V1.PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError
                 }
             });
         }

@@ -14,12 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Text;
 
 namespace Nethermind.Trie
 {
     public class TrieStats
     {
+        private const int Levels = 128;
         internal int _stateBranchCount;
         internal int _stateExtensionCount;
         internal int _accountCount;
@@ -33,6 +35,9 @@ namespace Nethermind.Trie
         internal long _storageSize;
         internal long _codeSize;
         internal long _stateSize;
+        internal readonly int[] _stateLevels = new int[Levels];
+        internal readonly int[] _storageLevels = new int[Levels];
+        internal readonly int[] _codeLevels = new int[Levels];
 
         public int StateBranchCount => _stateBranchCount;
 
@@ -72,6 +77,23 @@ namespace Nethermind.Trie
 
 //        public List<string> MissingNodes { get; set; } = new List<string>();
 
+        public int[] StateLevels => _stateLevels;
+        public int[] StorageLevels => _storageLevels;
+        public int[] CodeLevels => _codeLevels;
+        public int[] AllLevels
+        {
+            get
+            {
+                int[] result = new int[Levels];
+                for (int i = 0; i < result.Length; i++)
+                {
+                    result[i] = _stateLevels[i] + _storageLevels[i] + _codeLevels[i];
+                }
+
+                return result;
+            }
+        }
+
         public override string ToString()
         {
             StringBuilder builder = new();
@@ -82,6 +104,10 @@ namespace Nethermind.Trie
             builder.AppendLine($"  STORAGE NODES {StorageCount} ({StorageBranchCount}|{StorageExtensionCount}|{StorageLeafCount})");
             builder.AppendLine($"  ACCOUNTS {AccountCount} OF WHICH ({CodeCount}) ARE CONTRACTS");
             builder.AppendLine($"  MISSING {MissingNodes} (STATE {MissingState}, CODE {MissingCode}, STORAGE {MissingStorage})");
+            builder.AppendLine($"  ALL LEVELS {string.Join(" | ", AllLevels)}");
+            builder.AppendLine($"  STATE LEVELS {string.Join(" | ", StateLevels)}");
+            builder.AppendLine($"  STORAGE LEVELS {string.Join(" | ", StorageLevels)}");
+            builder.AppendLine($"  CODE LEVELS {string.Join(" | ", CodeLevels)}");
             return builder.ToString();
         }
     }

@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
@@ -24,6 +23,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter = null);
         bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId);
-        void RemoveClientSubscriptions(object? sender, EventArgs e);
+        void RemoveClientSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient);
     }
 }

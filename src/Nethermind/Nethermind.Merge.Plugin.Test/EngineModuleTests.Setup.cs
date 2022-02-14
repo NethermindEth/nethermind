@@ -49,22 +49,22 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null) 
-            => await new MergeTestBlockchain(mergeConfig)
+        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadService? mockedPayloadService = null) 
+            => await new MergeTestBlockchain(mergeConfig, mockedPayloadService)
                 .Build(
                     new SingleReleaseSpecProvider(London.Instance, 1));
 
-        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, IPayloadService? mockedPayloadService = null)
+        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
         {
-            IPayloadService payloadService = mockedPayloadService ?? new PayloadService(chain.IdealBlockProductionContext, new InitConfig(), chain.SealEngine, chain.MergeConfig, chain.LogManager);
             ISynchronizer synchronizer = Substitute.For<ISynchronizer>();
 
             return new EngineRpcModule(
-                new GetPayloadV1Handler(payloadService, chain.LogManager),
+                new GetPayloadV1Handler(chain.PayloadService!, chain.LogManager),
                 new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.PoSSwitcher, synchronizer, new SyncConfig(), chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, payloadService, synchronizer, new SyncConfig(), chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, chain.PayloadService!, synchronizer, new SyncConfig(), chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
+                new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
                 chain.LogManager);
         }
 
@@ -73,17 +73,20 @@ namespace Nethermind.Merge.Plugin.Test
             public IBlockProducer EmptyBlockProducer { get; private set; }
 
             public IMergeConfig MergeConfig { get; set; } 
+            
+            public IPayloadService? PayloadService { get; set; }
 
             public Eth2BlockProductionContext IdealBlockProductionContext { get; set; } = new();
 
             public Eth2BlockProductionContext EmptyBlockProductionContext { get; set; } = new();
 
-            public MergeTestBlockchain(IMergeConfig? mergeConfig = null)
+            public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadService? mockedPayloadService = null)
             {
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
                 BlockConfirmationManager = new BlockConfirmationManager();
                 MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
+                PayloadService = mockedPayloadService;
             }
             
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
@@ -132,6 +135,8 @@ namespace Nethermind.Merge.Plugin.Test
                 Eth2BlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
                     IdealBlockProductionContext);
                 IdealBlockProductionContext.BlockProducer = postMergeBlockProducer;
+                PayloadService ??= new PayloadService(IdealBlockProductionContext, SealEngine,
+                    MergeConfig, LogManager);
                 return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
             }
             
@@ -153,8 +158,8 @@ namespace Nethermind.Merge.Plugin.Test
             private IBlockValidator CreateBlockValidator()
             {
                 PoSSwitcher = new PoSSwitcher(MergeConfig, new MemDb(), BlockTree, SpecProvider, LogManager);
-                Eth2Signer signer = new (!string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero);
-                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, signer, LogManager);
+                Address feeRecipient = !string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero;
+                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, feeRecipient, LogManager);
                 HeaderValidator = new PostMergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealEngine, LogManager);
                 
                 return new BlockValidator(
@@ -164,8 +169,6 @@ namespace Nethermind.Merge.Plugin.Test
                     SpecProvider,
                     LogManager);
             }
-
-            public Address MinerAddress => TestItem.PrivateKeyA.Address;
             public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)

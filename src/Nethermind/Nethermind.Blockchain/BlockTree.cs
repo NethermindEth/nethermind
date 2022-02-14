@@ -77,6 +77,7 @@ namespace Nethermind.Blockchain
         public BlockHeader? LowestInsertedHeader { get; private set; }
 
         private long? _lowestInsertedReceiptBlock;
+        private long? _highestPersistedState;
 
         public long? LowestInsertedBodyNumber
         {
@@ -572,6 +573,8 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
+                if (block is not null && (BestSuggestedBody?.Number ?? 0) < block.Number && block.IsPostMerge)
+                    BestSuggestedBody = block;
                 
                 if (block is not null && shouldProcess)
                 {
@@ -1239,7 +1242,8 @@ namespace Nethermind.Blockchain
         {
             Block? startBlock = null;
             byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-            long? persistedNumber = persistedNumberData is null ? (long?) null : new RlpStream(persistedNumberData).DecodeLong();
+            BestPersistedState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeLong();
+            long? persistedNumber = BestPersistedState;
             if (persistedNumber is not null)
             {
                 startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
@@ -1660,9 +1664,18 @@ namespace Nethermind.Blockchain
 
         private Task WaitForReadinessToAcceptNewBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
-        public void SavePruningReorganizationBoundary(long blockNumber)
+        /// <inheritdoc />
+        public long? BestPersistedState
         {
-            _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(blockNumber).Bytes);
+            get => _highestPersistedState;
+            set
+            {
+                _highestPersistedState = value;
+                if (value.HasValue)
+                {
+                    _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
+                }
+            }
         }
     }
 }

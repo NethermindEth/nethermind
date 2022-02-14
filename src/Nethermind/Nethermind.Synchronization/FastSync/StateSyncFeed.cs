@@ -88,8 +88,8 @@ namespace Nethermind.Synchronization.FastSync
             IBlockTree blockTree,
             ILogManager logManager)
         {
-            _codeDb = codeDb.Innermost ?? throw new ArgumentNullException(nameof(codeDb));
-            _stateDb = stateDb.Innermost ?? throw new ArgumentNullException(nameof(stateDb));
+            _codeDb = codeDb;
+            _stateDb = stateDb;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
