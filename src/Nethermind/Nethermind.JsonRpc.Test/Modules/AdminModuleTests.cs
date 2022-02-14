@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -58,7 +59,15 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
             Enode enode = new(_enodeString);
-            _adminRpcModule = new AdminRpcModule(_blockTree, _networkConfig, peerPool, staticNodesManager, enode, _exampleDataDir);
+            _adminRpcModule = new AdminRpcModule(
+                _blockTree, 
+                _networkConfig, 
+                peerPool, 
+                staticNodesManager,
+                enode, 
+                _exampleDataDir,
+                new ManualPruningTrigger());
+            
             _serializer = new EthereumJsonSerializer();
         }
         

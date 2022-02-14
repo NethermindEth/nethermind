@@ -157,12 +157,5 @@ namespace Nethermind.Db.Test
             MemDb memDb = new();
             memDb.Flush();
         }
-
-        [Test]
-        public void Innermost_is_self()
-        {
-            MemDb memDb = new();
-            memDb.Innermost.Should().BeSameAs(memDb);
-        }
     }
 }

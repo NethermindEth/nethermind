@@ -24,10 +24,11 @@
     <PackageReference Include="NLog.Targets.Seq" Version="2.0.0" />
     <PackageReference Include="NLog" Version="4.7.12" />
     <PackageReference Include="Seq.Api" Version="2021.3.1" />
-    <PackageReference Include="System.IO.Abstractions" Version="13.2.47" />
+    <PackageReference Include="System.IO.Abstractions" Version="16.0.1" />
     <PackageReference Include="YamlDotNet" Version="11.2.1" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
     <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
@@ -113,6 +114,9 @@
   <ItemGroup>
     <GitHash Include="git-hash" />
   </ItemGroup>
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
+  </ItemGroup>
 
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
@@ -129,6 +133,8 @@
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild">
     <Message Text="---&gt; Copying Plugins After Build" Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" SkipUnchangedFiles="true" />
   </Target>
 
     <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish">

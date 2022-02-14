@@ -43,6 +43,9 @@ jobs:
     - name: Nethermind.AuRa.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.AuRa.Test
+    - name: Nethermind.AccountAbstraction.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.AccountAbstraction.Test
     - name: Nethermind.Baseline.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Baseline.Test

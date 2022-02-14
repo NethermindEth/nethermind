@@ -28,7 +28,7 @@ public class EnrTreeCrawler
 
     private async IAsyncEnumerable<string> SearchTree(DnsClient client, SearchContext searchContext)
     {
-        while (searchContext.RefsToVisit.Any())
+        while (searchContext.RefsToVisit.Count > 0)
         {
             string reference = searchContext.RefsToVisit.Dequeue();
             await foreach (string nodeRecordText in SearchNode(client, reference, searchContext))
@@ -43,11 +43,10 @@ public class EnrTreeCrawler
         if (!searchContext.VisitedRefs.Contains(query))
         {
             searchContext.VisitedRefs.Add(query);
-            string[][] lookupResult = await client.Lookup(query);
-            foreach (string[] strings in lookupResult)
+            IEnumerable<string> lookupResult = await client.Lookup(query);
+            foreach (string node in lookupResult)
             {
-                string s = string.Join(string.Empty, strings);
-                EnrTreeNode treeNode = EnrTreeParser.ParseNode(s);
+                EnrTreeNode treeNode = EnrTreeParser.ParseNode(node);
                 foreach (string link in treeNode.Links)
                 {
                     DnsClient linkedTreeLookup = new(link);

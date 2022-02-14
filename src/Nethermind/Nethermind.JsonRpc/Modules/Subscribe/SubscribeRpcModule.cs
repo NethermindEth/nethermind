@@ -28,8 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         }
-        
-        
+
         public ResultWrapper<string> eth_subscribe(string subscriptionName, Filter arguments = null)
         {
             if (Enum.TryParse(typeof(SubscriptionType), subscriptionName, true, out var subscriptionType))
@@ -38,7 +37,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
             return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
         }
-        
 
         public ResultWrapper<bool> eth_unsubscribe(string subscriptionId)
         {

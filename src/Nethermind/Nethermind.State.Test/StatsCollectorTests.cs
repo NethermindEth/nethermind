@@ -69,11 +69,13 @@ namespace Nethermind.Store.Test
             memDb.Delete(storageKey); // deletes some storage
             trieStore.ClearCache();
 
-            TrieStatsCollector statsCollector = new(stateDb, LimboLogs.Instance)
+            TrieStatsCollector statsCollector = new(stateDb, LimboLogs.Instance);
+            VisitingOptions visitingOptions = new VisitingOptions()
             {
-                SupportsParallelVisits = parallel
+                MaxDegreeOfParallelism = parallel ? 0 : 1
             };
-            stateProvider.Accept(statsCollector, stateProvider.StateRoot);
+            
+            stateProvider.Accept(statsCollector, stateProvider.StateRoot, visitingOptions);
             var stats = statsCollector.Stats;
             
             stats.CodeCount.Should().Be(1);

@@ -231,7 +231,7 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public (TxReceipt Receipt, UInt256? EffectiveGasPrice) GetReceiptAndEffectiveGasPrice(Keccak txHash)
+            public long? BestState { get; set; }
             {
                 throw new NotImplementedException();
             }

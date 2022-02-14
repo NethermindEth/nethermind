@@ -17,21 +17,22 @@
  */
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class ExampleTests : GeneralStateTestBase
+    public class ExampleTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public void Test(GeneralStateTest test)
+        public async Task Test(BlockchainTest test)
         {
-            Assert.True(RunTest(test).Pass);
+            await RunTest(test);
         }
         
-        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "bcExample");
-            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
+        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcExample");
+            return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
     }
 }

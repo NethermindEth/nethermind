@@ -27,7 +27,6 @@ namespace Nethermind.Blockchain.Contracts.Json
         {
             _abiType = abiType;
         }
-
         public AbiType? Create(string abiTypeSignature) => _abiType.Name == abiTypeSignature ? _abiType : null;
     }
 }

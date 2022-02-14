@@ -131,7 +131,7 @@ namespace Nethermind.Trie
                 int totalLength = 0;
                 item.InitData();
                 item.SeekChild(0);
-                for (int i = 0; i < 16; i++)
+                for (int i = 0; i < BranchesCount; i++)
                 {
                     if (item._rlpStream is not null && item._data![i] is null)
                     {
@@ -168,7 +168,7 @@ namespace Nethermind.Trie
                 RlpStream rlpStream = item._rlpStream;
                 item.InitData();
                 item.SeekChild(0);
-                for (int i = 0; i < 16; i++)
+                for (int i = 0; i < BranchesCount; i++)
                 {
                     if (rlpStream != null && item._data![i] is null)
                     {
