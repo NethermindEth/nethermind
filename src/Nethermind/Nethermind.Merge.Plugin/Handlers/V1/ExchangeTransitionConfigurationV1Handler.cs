@@ -55,10 +55,6 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
         {
             if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Found the difference in terminal total difficulty between Nethermind and CL. Nethermind TTD: {terminalTotalDifficulty}, CL TTD: {beaconTransitionConfiguration.TerminalTotalDifficulty}");
         }
-        if (terminalBlockNumber != null && beaconTransitionConfiguration.TerminalBlockNumber != terminalBlockNumber)
-        {
-            if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Found the difference in terminal block number between Nethermind and CL. Nethermind TerminalBlockNumber: {terminalBlockNumber}, CL TerminalBlockNumber: {beaconTransitionConfiguration.TerminalBlockNumber}");
-        }
         if (terminalBlockHash != null && beaconTransitionConfiguration.TerminalBlockHash != terminalBlockHash)
         {
             if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Found the difference in terminal block hash between Nethermind and CL. Nethermind TerminalBlockHash: {terminalBlockHash}, CL TerminalBlockHash: {beaconTransitionConfiguration.TerminalBlockHash}");
