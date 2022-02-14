@@ -44,18 +44,24 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
-            RequestId = CalculateRequestId(entryPointAddress, chainId); //TODO: Change the constructor?
+            RequestId = CalculateRequestId(entryPointAddress, chainId);
         }
 
-        private static Keccak CalculateHash()
+        private Keccak CalculateHash()
         {
             return Keccak.Compute(_decoder.Encode(this).Bytes);
         }
 
-        public static Keccak CalculateRequestId(Address entryPointAddress, int chainId)
+        public Keccak CalculateRequestId(Address entryPointAddress, int chainId)
         {
-
-            byte[] hash = userOperation.CalculateHash(userOperation);
+            private AbiSignature _idSignature = new AbiSignature("RequestId", new AbiArray(
+                new AbiTuple(
+                    AbiType.Bytes32,
+                    AbiAddress.Instance,
+                    AbiType.UInt256
+                )
+            ));
+            Keccac hash = userOperation.CalculateHash();
             return Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, [hash, entryPointAddress, chainId]));
         }
 

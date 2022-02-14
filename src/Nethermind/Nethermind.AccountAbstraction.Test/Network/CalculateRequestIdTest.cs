@@ -10,27 +10,33 @@ namespace Nethermind.AccountAbstraction.Test.Network
     [TestFixture]
     public class CalculateRequestIdTest
     {
-        UserOperation userOperation = new(new UserOperationRpc
+        [Test]
+        private void CompareRequestIds()
         {
-            Sender = new Address(1.ToString("x40")),
-            Nonce = 1000,
-            CallData = new byte[] { 1, 2 },
-            InitCode = new byte[] { 3, 4 },
-            CallGas = 5,
-            VerificationGas = 6,
-            PreVerificationGas = 7,
-            MaxFeePerGas = 8,
-            MaxPriorityFeePerGas = 1,
-            Paymaster = new Address(2.ToString("x40")),
-            PaymasterData = new byte[] { 5, 6 },
-            Signature = new byte[] { 1, 2, 3 }
-        });
+            //Using the following transaction as reference: https://goerli.etherscan.io/tx/0xa9236155292e30bfb43c5a758e0c906e18697cf23198f81e2a72e5322cd0acb7#eventlog
+            UserOperation userOperation = new(new UserOperationRpc
+            {
+                Sender =
+                    new Address(1.ToString("0x05c022028ef3e2c61b3babe0fbc8f658bc4b431f")),
+                Nonce = 5,
+                CallData = "0x2b31133700000000000000000000000000000000000000000000000000...00012c" //new byte[] { },
+                InitCode = "0x" // new byte[] { },
+                CallGas = 21000,
+                VerificationGas = 21000,
+                PreVerificationGas = 21000,
+                MaxFeePerGas = 2100000000,
+                MaxPriorityFeePerGas = 2100000000,
+                Paymaster = new Address(2.ToString("x0000000000000000000000000000000000000000")),
+                PaymasterData = "0x" // new byte[] { },
+                Signature = "0x" //new byte[] { }
+            });
 
-        string IdFromEntryPoint = ;
-        Keccak IdFromUserOperationCs = userOperation.RequestId;
+            string IdFromTransaction = "0x9f5d37eb5cc7b0707b2898b1da01fa7aac806a18d531b17a981994bc512cbfc8";
 
-        IdFromEntryPoint.ShouldBe(IdFromUserOperationCs);
-
+            Keccak IdFromUserOperation = userOperation.RequestId;
+            Assert.AreEqual(IdFromUserOperation.ToString(withZeroX = true), IdFromTransaction,
+                "Request IDs do not match.")
+            //IdFromTransaction.ShouldBe(IdFromUserOperation)??
+        }
     }
-
 }
