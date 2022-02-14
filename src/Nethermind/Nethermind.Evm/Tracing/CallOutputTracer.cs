@@ -42,7 +42,6 @@ namespace Nethermind.Evm.Tracing
 
         public long GasSpent { get; set; }
 
-        public bool NoBaseFee { get; set; }
         public string Error { get; set; }
 
         public byte StatusCode { get; set; }

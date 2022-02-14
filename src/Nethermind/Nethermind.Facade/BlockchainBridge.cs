@@ -168,9 +168,9 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool noBaseFee = false)
         {
             CallOutputTracer callOutputTracer = new();
-            callOutputTracer.NoBaseFee = noBaseFee;
+            // callOutputTracer.NoBaseFee = noBaseFee;
             (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Timestamp, tx, false,
-                callOutputTracer.WithCancellation(cancellationToken));
+                callOutputTracer.WithCancellation(cancellationToken), noBaseFee);
             return new CallOutput
             {
                 Error = tryCallResult.Success ? callOutputTracer.Error : tryCallResult.Error,
@@ -227,11 +227,12 @@ namespace Nethermind.Facade
             in UInt256 timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer)
+            ITxTracer tracer,
+            bool noBaseFee = false)
         {
             try
             {
-                CallAndRestore(blockHeader, timestamp, transaction, treatBlockHeaderAsParentBlock, tracer);
+                CallAndRestore(blockHeader, timestamp, transaction, treatBlockHeaderAsParentBlock, tracer, noBaseFee);
                 return (true, string.Empty);
             }
             catch (InsufficientBalanceException ex)
@@ -245,7 +246,8 @@ namespace Nethermind.Facade
             in UInt256 timestamp,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
-            ITxTracer tracer)
+            ITxTracer tracer,
+            bool noBaseFee = false)
         {
             if (transaction.SenderAddress == null)
             {
@@ -275,7 +277,15 @@ namespace Nethermind.Facade
                     : blockHeader.BaseFeePerGas;
 
                 transaction.Hash = transaction.CalculateHash();
-                _transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
+                if (noBaseFee)
+                {
+                    _transactionProcessor.CallWithNoBaseFee(transaction, callHeader, tracer);
+                }
+                else
+                { 
+                    _transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
+                }
+                
             }
             finally
             {

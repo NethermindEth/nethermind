@@ -50,11 +50,6 @@ namespace Nethermind.Evm.Tracing
             _token = token;
         }
         
-        public bool NoBaseFee {
-            get => _innerTracer.NoBaseFee;
-            set => _innerTracer.NoBaseFee = value;
-        }
-        
         public bool IsTracingReceipt
         {
             get => _isTracingReceipt || _innerTracer.IsTracingReceipt;

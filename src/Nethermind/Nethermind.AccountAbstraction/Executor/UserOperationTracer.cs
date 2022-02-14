@@ -187,7 +187,6 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => true;
-        public bool NoBaseFee { get; set; }
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
             Keccak? stateRoot = null)

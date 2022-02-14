@@ -106,7 +106,6 @@ namespace Nethermind.Evm.Tracing
             public bool IsTracingStorage => false;
             public bool IsTracingBlockHash => false;
             public bool IsTracingAccess => false;
-            public bool NoBaseFee { get; set; }
             
             public bool OutOfGas { get; set; }
             

@@ -66,8 +66,6 @@ namespace Nethermind.Evm.Tracing
         /// </summary>
         bool IsTracingAccess { get; }
 
-        bool NoBaseFee { get; set; }
-
         void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null);
 
         void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null);

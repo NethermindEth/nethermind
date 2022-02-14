@@ -53,7 +53,6 @@ namespace Nethermind.Evm.Tracing
         public bool IsTracingStorage => true;
         public bool IsTracingBlockHash => true;
         public bool IsTracingAccess => true;
-        public bool NoBaseFee { get; set; }
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 

@@ -40,5 +40,10 @@ namespace Nethermind.Evm.TransactionProcessing
         /// Call transaction, no validations, commit state
         /// </summary>
         void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer);
+        
+        /// <summary>
+        /// Call transaction, rollback state, do not check base fee when gas pricing is not passed 
+        /// </summary>
+        void CallWithNoBaseFee(Transaction transaction, BlockHeader block, ITxTracer txTracer);
     }
 }

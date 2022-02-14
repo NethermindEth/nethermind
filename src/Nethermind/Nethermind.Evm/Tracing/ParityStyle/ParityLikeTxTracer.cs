@@ -40,7 +40,6 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         
         private bool _treatGasParityStyle; // strange cost calculation from parity
         private bool _gasAlreadySetForCurrentOp; // workaround for jump destination errors
-        public bool NoBaseFee { get; set; }
 
         public ParityLikeTxTracer(Block block, Transaction? tx, ParityTraceTypes parityTraceTypes)
         {

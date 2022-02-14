@@ -67,7 +67,12 @@ namespace Nethermind.Evm.TransactionProcessing
             /// <summary>
             /// Commit and later restore state also skip validation, use for CallAndRestore
             /// </summary>
-            CommitAndRestore = Commit | Restore | NoValidation
+            CommitAndRestore = Commit | Restore | NoValidation,
+            
+            /// <summary>
+            /// Commit and later restore state also skip base fee validation if gas pricing is not passed
+            /// </summary>
+            NoBaseFee = CommitAndRestore | 8
         }
 
         public TransactionProcessor(
@@ -114,6 +119,11 @@ namespace Nethermind.Evm.TransactionProcessing
         public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
             Execute(transaction, block, txTracer, ExecutionOptions.NoValidation);
+        }
+
+        public void CallWithNoBaseFee(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        { 
+            Execute(transaction, block, txTracer, ExecutionOptions.NoBaseFee);
         }
 
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool eip658NotEnabled,
@@ -171,7 +181,7 @@ namespace Nethermind.Evm.TransactionProcessing
             //we commit only after all block is constructed 
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
-            bool noBaseFee = txTracer.NoBaseFee;
+            bool noBaseFee = (executionOptions & ExecutionOptions.NoBaseFee) == ExecutionOptions.NoBaseFee;
 
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)

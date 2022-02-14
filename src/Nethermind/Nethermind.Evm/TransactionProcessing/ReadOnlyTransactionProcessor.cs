@@ -51,6 +51,11 @@ namespace Nethermind.Evm.TransactionProcessing
         public void Trace(Transaction transaction, BlockHeader block, ITxTracer txTracer) =>
             _transactionProcessor.Trace(transaction, block, txTracer);
 
+        public void CallWithNoBaseFee(Transaction transaction, BlockHeader block, ITxTracer txTracer)
+        {
+            _transactionProcessor.CallWithNoBaseFee(transaction, block, txTracer);
+        }
+
 
         public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);
 

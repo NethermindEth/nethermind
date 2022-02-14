@@ -223,7 +223,6 @@ namespace Nethermind.Mev.Execution
             public bool IsTracingBlockHash => false;
             public bool IsTracingAccess => false;
             public long GasSpent { get; set; }
-            public bool NoBaseFee { get; set; }
             public UInt256? BeneficiaryBalanceBefore { get; private set; }
             public UInt256? BeneficiaryBalanceAfter { get; private set; }
             

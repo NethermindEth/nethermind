@@ -48,7 +48,6 @@ namespace Nethermind.Evm.Tracing.GethStyle
         public bool IsTracingStack { get; }
         public bool IsTracingBlockHash => false;
         public bool IsTracingAccess => false;
-        public bool NoBaseFee { get; set; }
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
         {
