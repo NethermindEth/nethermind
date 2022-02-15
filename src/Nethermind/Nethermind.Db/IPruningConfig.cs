@@ -27,10 +27,10 @@ namespace Nethermind.Db
         [Obsolete]
         public bool Enabled { get; set; }
         
-        [ConfigItem(Description = "Sets pruning mode. Possible values: 'None', 'Memory', 'Full', 'Hybrid'.", DefaultValue = "None")]
+        [ConfigItem(Description = "Sets pruning mode. Possible values: 'None', 'Memory', 'Full', 'Hybrid'.", DefaultValue = "Hybrid")]
         PruningMode Mode { get; set; }
         
-        [ConfigItem(Description = "'Memory' pruning: Pruning cache size in MB (amount if historical nodes data to store in cache - the bigger the cache the bigger the disk space savings).", DefaultValue = "512")]
+        [ConfigItem(Description = "'Memory' pruning: Pruning cache size in MB (amount if historical nodes data to store in cache - the bigger the cache the bigger the disk space savings).", DefaultValue = "1024")]
         long CacheMb { get; set; }
         
         [ConfigItem(

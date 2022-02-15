@@ -18,126 +18,69 @@ configs = {
     # fast sync section
     "mainnet": {
         "url": "api.etherscan.io",
-        "blockReduced": 2000,
-        "multiplierRequirement": 2000
+        "blockReduced": 100,
+        "multiplierRequirement": 100
     },
     "goerli": {
         "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000 
     },
     "ropsten": {
         "url": "api-ropsten.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
     },
     "rinkeby": {
         "url": "api-rinkeby.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
     },
+    "kovan": {
+        "url": "api-kovan.etherscan.io",
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
+    },     
     "poacore": {
         "url": "https://core.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
     },
     "xdai": {
         "url": "https://dai.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
     },
     "sokol": {
         "url": "https://sokol.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
     },
     "energyweb": {
         "url": "https://rpc.energyweb.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
     },
     "volta": {
         "url": "https://volta-rpc.energyweb.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
+    },   
     # mev section
     "mainnet_mev": {
         "url": "api.etherscan.io",
-        "blockReduced": 2000,
-        "multiplierRequirement": 2000
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
     },
     "goerli_mev": {
         "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000 
     },
     "xdai_mev": {
         "url": "https://dai.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    # pruned mev section
-    "mainnet_pruned_mev": {
-        "url": "api.etherscan.io",
-        "blockReduced": 2000,
-        "multiplierRequirement": 2000
-    },
-    "goerli_pruned_mev": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "xdai_pruned_mev": {
-        "url": "https://dai.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    # pruning section
-    "mainnet_pruned": {
-        "url": "api.etherscan.io",
-        "blockReduced": 2000,
-        "multiplierRequirement": 2000 
-    },
-    "goerli_pruned": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000 
-    },
-    "ropsten_pruned": {
-        "url": "api-ropsten.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "rinkeby_pruned": {
-        "url": "api-rinkeby.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000
-    },
-    "poacore_pruned": {
-        "url": "https://core.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "xdai_pruned": {
-        "url": "https://dai.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "sokol_pruned": {
-        "url": "https://sokol.poa.network",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "energyweb_pruned": {
-        "url": "https://rpc.energyweb.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "volta_pruned": {
-        "url": "https://volta-rpc.energyweb.org",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
     }
 }
 
