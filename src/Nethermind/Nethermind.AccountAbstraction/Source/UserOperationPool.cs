@@ -74,7 +74,7 @@ namespace Nethermind.AccountAbstraction.Source
             ITimestamper timestamper,
             IUserOperationSimulator userOperationSimulator,
             UserOperationSortedPool userOperationSortedPool,
-            ulong chainId = 5 //TODO: Update tests and plugin to remove this.
+            ulong chainId
             )
         {
             _blockTree = blockTree;
