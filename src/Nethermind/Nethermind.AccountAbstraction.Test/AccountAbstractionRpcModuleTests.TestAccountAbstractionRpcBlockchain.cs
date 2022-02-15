@@ -226,7 +226,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool.AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(userOperation.Hash);
+                resultOfUserOperation.GetData().Should().Be(userOperation.CalculateRequestId(new Address(_accountAbstractionConfig.EntryPointContractAddress), SpecProvider.ChainId));
             }
         }
     }

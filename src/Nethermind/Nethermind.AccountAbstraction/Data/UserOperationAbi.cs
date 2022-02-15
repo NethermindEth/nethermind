@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -40,26 +42,11 @@ namespace Nethermind.AccountAbstraction.Data
     public class UserOperationAbiDecoder
     {
         private readonly AbiEncoder _abiEncoder = new AbiEncoder();
-        private AbiSignature _opSignature = new AbiSignature("arrayOfOps", new AbiArray(
-            new AbiTuple(
-                AbiAddress.Instance,
-                AbiType.UInt256,
-                AbiType.DynamicBytes,
-                AbiType.DynamicBytes,
-                AbiType.UInt256,
-                AbiType.UInt256,
-                AbiType.UInt256,
-                AbiType.UInt256,
-                AbiType.UInt256,
-                AbiAddress.Instance,
-                AbiType.DynamicBytes,
-                AbiType.DynamicBytes
-            )
-        ));
+        private readonly AbiSignature _opSignature = new AbiSignature("encodeOp", new AbiTuple<UserOperationAbi>());
 
-        public byte[] Encode(UserOperation[] ops)
+        public byte[] Encode(UserOperation op)
         {
-            return _abiEncoder.Encode(AbiEncodingStyle.None, _opSignature, ops);
+            return _abiEncoder.Encode(AbiEncodingStyle.None, _opSignature, op.Abi);
         }
 
         public UserOperation[]? Decode(byte[] byteArray)

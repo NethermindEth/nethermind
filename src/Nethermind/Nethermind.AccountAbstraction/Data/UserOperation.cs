@@ -47,21 +47,14 @@ namespace Nethermind.AccountAbstraction.Data
 
         public Keccak CalculateHash()
         {
-            return Keccak.Compute(_decoder.Encode(new [] {this}));
+            return Keccak.Compute(_decoder.Encode(this));
         }
 
-        private readonly AbiSignature _idSignature = new AbiSignature("RequestId", new AbiArray(
-            new AbiTuple(
-                AbiType.Bytes32,
-                AbiAddress.Instance,
-                AbiType.UInt256
-            )
-        ));
+        private readonly AbiSignature _idSignature = new AbiSignature("RequestId", AbiType.Bytes32, AbiAddress.Instance, AbiType.UInt256);
         
         public Keccak CalculateRequestId(Address entryPointAddress, ulong chainId)
         {
-            RequestId = Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, Hash, entryPointAddress, chainId));
-            return RequestId;
+            return Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, Hash, entryPointAddress, chainId));
         }
 
         public UserOperationAbi Abi => new()
@@ -81,7 +74,6 @@ namespace Nethermind.AccountAbstraction.Data
         };
         
         public Keccak Hash { get; set; }
-        public Keccak? RequestId { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] InitCode { get; set; }
