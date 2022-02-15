@@ -14,7 +14,8 @@ RUN if [ "$TARGETARCH" = "amd64" ] ; \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
     fi
 RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
-    dotnet tool install --tool-path /dotnetcore-tools dotnet-dump
+    dotnet tool install --tool-path /dotnetcore-tools dotnet-dump && \
+    dotnet tool install --tool-path /dotnetcore-tools dotnet-gcdump
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 procps && \
