@@ -332,6 +332,8 @@ namespace Nethermind.Synchronization.FastSync
             {
                 try
                 {
+                    _logger.Info($"STATE SYNC FINISHED:{Metrics.StateSyncRequests}, {Metrics.SyncedStateTrieNodes}");
+
                     VerifyPostSyncCleanUp();
                     return (false, true);
                 }

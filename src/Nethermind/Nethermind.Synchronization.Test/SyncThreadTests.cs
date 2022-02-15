@@ -353,7 +353,7 @@ namespace Nethermind.Synchronization.Test
                 logManager);
 
             SyncProgressResolver resolver = new(
-                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, syncConfig, logManager);
+                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, null, syncConfig, logManager);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, logManager);
             Synchronizer synchronizer = new(
                 dbProvider,

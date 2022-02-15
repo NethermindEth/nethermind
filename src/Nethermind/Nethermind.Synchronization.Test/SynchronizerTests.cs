@@ -299,6 +299,7 @@ namespace Nethermind.Synchronization.Test
                     NullReceiptStorage.Instance,
                     stateDb,
                     new TrieStore(stateDb, LimboLogs.Instance),
+                    null,
                     syncConfig,
                     _logManager);
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);

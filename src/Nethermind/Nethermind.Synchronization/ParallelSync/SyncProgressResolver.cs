@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -39,6 +40,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IReceiptStorage _receiptStorage;
         private readonly IDb _stateDb;
         private readonly ITrieNodeResolver _trieNodeResolver;
+        private readonly ISnapProvider _snapProvider;
         private readonly ISyncConfig _syncConfig;
 
         // ReSharper disable once NotAccessedField.Local
@@ -51,6 +53,7 @@ namespace Nethermind.Synchronization.ParallelSync
             IReceiptStorage receiptStorage,
             IDb stateDb,
             ITrieNodeResolver trieNodeResolver,
+            State.Snap.ISnapProvider snapProvider,
             ISyncConfig syncConfig,
             ILogManager logManager)
         {
@@ -59,6 +62,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
+            _snapProvider = snapProvider;
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
             _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
@@ -185,6 +189,8 @@ namespace Nethermind.Synchronization.ParallelSync
                                                                           (_receiptStorage
                                                                                .LowestInsertedReceiptBlockNumber ??
                                                                            long.MaxValue) <= _receiptsBarrier);
+
+        public bool IsSnapGetAccountRangesFinished() => !_snapProvider.MoreChildrenToRight;
 
         private bool IsFastBlocks()
         {

@@ -38,7 +38,10 @@ namespace Nethermind.Synchronization.ParallelSync
         bool IsLoadingBlocksFromDb();
         
         long FindBestProcessedBlock();
-        
+
+        bool IsSnapGetAccountRangesFinished();
+
+
         UInt256 ChainDifficulty { get; }
 
         UInt256? GetTotalDifficulty(Keccak blockHash);
