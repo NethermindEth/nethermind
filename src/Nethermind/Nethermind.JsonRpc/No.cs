@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,28 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
+using Nethermind.JsonRpc.Authentication;
 
-namespace Nethermind.JsonRpc.Modules
+namespace Nethermind.JsonRpc;
+
+public class No
 {
-    [AttributeUsage(AttributeTargets.Method)]
-    public class JsonRpcMethodAttribute : Attribute
-    {
-        public string Description { get; set; }
-        
-        public string? EdgeCaseHint { get; set; }
-
-        public bool IsImplemented { get; set; } = true;
-
-        public bool IsSharable { get; set; } = true;
-
-        public RpcEndpoint Availability { get; set; } = RpcEndpoint.All;
-        
-        public string? ResponseDescription { get; set; }
-        
-        public string? ExampleResponse { get; set; }
-
-        public bool Authenticate { get; set; }
-    }
+    public static IRpcAuthentication Authentication = NoAuthentication.Instance;
 }

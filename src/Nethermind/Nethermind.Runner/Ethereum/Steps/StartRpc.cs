@@ -21,6 +21,7 @@ using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
@@ -46,26 +47,33 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (jsonRpcConfig.Enabled)
             {
                 IInitConfig initConfig = _api.Config<IInitConfig>();
-                IJsonRpcUrlCollection jsonRpcUrlCollection = new JsonRpcUrlCollection(_api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
+                IJsonRpcUrlCollection jsonRpcUrlCollection =
+                    new JsonRpcUrlCollection(_api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
 
                 JsonRpcLocalStats jsonRpcLocalStats = new(
                     _api.Timestamper,
                     jsonRpcConfig,
                     _api.LogManager);
 
-                JsonRpcService jsonRpcService = new(_api.RpcModuleProvider, _api.LogManager);
+                JsonRpcService jsonRpcService = new(_api.RpcModuleProvider!, _api.LogManager);
+
                 IJsonSerializer jsonSerializer = CreateJsonSerializer(jsonRpcService);
+                _api.RpcAuthentication = jsonRpcConfig.UnsecureDevNoRpcAuthentication
+                    ? No.Authentication
+                    : new JwtAuthentication(jsonRpcConfig);
 
                 JsonRpcProcessor jsonRpcProcessor = new(
                     jsonRpcService,
                     jsonSerializer,
                     jsonRpcConfig,
                     _api.FileSystem,
+                    _api.RpcAuthentication,
                     _api.LogManager);
 
                 if (initConfig.WebSocketsEnabled)
                 {
-                    JsonRpcWebSocketsModule webSocketsModule = new (jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats, _api.LogManager, jsonSerializer, jsonRpcUrlCollection);
+                    JsonRpcWebSocketsModule webSocketsModule = new(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats,
+                        _api.LogManager, jsonSerializer, jsonRpcUrlCollection);
                     _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 }
 
@@ -87,11 +95,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Error("Error during jsonRpc runner start", x.Exception);
                 }, cancellationToken);
 
-                JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, jsonRpcService, _api.ConfigProvider, _api.LogManager, jsonRpcLocalStats, jsonSerializer, _api.FileSystem);
+                JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, jsonRpcService, _api.ConfigProvider,
+                    _api.LogManager, jsonRpcLocalStats, jsonSerializer, _api.FileSystem);
                 jsonIpcRunner.Start(cancellationToken);
 
 #pragma warning disable 4014
-                _api.DisposeStack.Push(new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
+                _api.DisposeStack.Push(
+                    new Reactive.AnonymousDisposable(() => jsonRpcRunner.StopAsync())); // do not await
                 _api.DisposeStack.Push(jsonIpcRunner); // do not await
 #pragma warning restore 4014
             }

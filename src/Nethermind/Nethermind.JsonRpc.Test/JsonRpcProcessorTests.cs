@@ -21,6 +21,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -62,7 +63,7 @@ namespace Nethermind.JsonRpc.Test
              */
             JsonRpcConfig configWithRecorder = new() {RpcRecorderState = RpcRecorderState.All};
 
-            _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, LimboLogs.Instance);
+            _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, No.Authentication, LimboLogs.Instance);
             _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
@@ -327,7 +328,7 @@ namespace Nethermind.JsonRpc.Test
             Assert.Throws<ArgumentNullException>(() => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
                 Substitute.For<IJsonSerializer>(),
                 Substitute.For<IJsonRpcConfig>(),
-                null, LimboLogs.Instance));
+                null, No.Authentication, LimboLogs.Instance));
         }
     }
 }

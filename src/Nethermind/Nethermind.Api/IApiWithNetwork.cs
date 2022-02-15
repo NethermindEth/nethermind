@@ -19,6 +19,8 @@ using System.Collections.Generic;
 using Nethermind.Consensus;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Monitoring;
 using Nethermind.Network;
@@ -51,6 +53,7 @@ namespace Nethermind.Api
         IList<IPublisher> Publishers { get; }
         IRlpxHost? RlpxPeer { get; set; }
         IRpcModuleProvider? RpcModuleProvider { get; set; }
+        IRpcAuthentication? RpcAuthentication  { get; set; }
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; set; }

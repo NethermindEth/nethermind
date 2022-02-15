@@ -25,6 +25,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.Utils;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -38,20 +39,21 @@ namespace Nethermind.JsonRpc
     {
         private JsonSerializer _traceSerializer;
         private readonly IJsonRpcConfig _jsonRpcConfig;
+        private readonly IRpcAuthentication _rpcAuthentication;
         private readonly ILogger _logger;
         private readonly JsonSerializer _obsoleteBasicJsonSerializer = new();
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly Recorder _recorder;
-        private readonly JwtProcessor _jwtProcessor = JwtProcessor.Instance;
 
-        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
+        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, IRpcAuthentication rpcAuthentication, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             if (fileSystem == null) throw new ArgumentNullException(nameof(fileSystem));
 
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+            _rpcAuthentication = rpcAuthentication;
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
 
             if (_jsonRpcConfig.RpcRecorderState != RpcRecorderState.None)
@@ -280,7 +282,7 @@ namespace Nethermind.JsonRpc
             }
 
             token = token.Remove(0, "Bearer ".Length);
-            string? decoded = _jwtProcessor.AuthenticateAndDecode(token);
+            string? decoded = _rpcAuthentication.AuthenticateAndDecode(token);
             if (decoded == null) return (new StringReader("bearer"), false);
             return (new StringReader(decoded), true);
         }

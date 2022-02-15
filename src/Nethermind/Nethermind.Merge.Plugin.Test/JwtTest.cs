@@ -17,6 +17,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
@@ -27,54 +28,50 @@ namespace Nethermind.Merge.Plugin.Test;
 public class JwtTest
 {
     [Test]
-    public async Task valid_token()
+    public void valid_token()
     {
-        JwtProcessor processor = JwtProcessor.Instance;
-        processor.Secret = "123";
+        JwtAuthentication authentication = CreateRpcAuthentication("123");
         string token =
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
             "eyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiZW5naW5lX2dldFBheWxvYWRWMSIsInBhcmFtcyI6WyIweGEyNDcyNDM3NTJlYjEwYjQiXSwiaWQiOjY3fQ." +
             "zdrxSPA1ZoeGb5_FXkd_rh62qeIMeb5i-HEliwhu3uw";
-        string? actual = processor.AuthenticateAndDecode(token)!;
+        string? actual = authentication.AuthenticateAndDecode(token)!;
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"method\":\"engine_getPayloadV1\",\"params\":[\"0xa247243752eb10b4\"],\"id\":67}", actual);
     }
     
     [Test]
-    public async Task wrong_secret()
+    public void wrong_secret()
     {
-        JwtProcessor processor = JwtProcessor.Instance;
-        processor.Secret = "12";
+        JwtAuthentication authentication = CreateRpcAuthentication("12");
         string token =
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
             "eyJmaWVsZDEiOiJkYXRhMSIsImFycmF5IjpbImVsZW0xIiwiZWxlbTIiLG51bGxdfQ." +
             "jzcbA6dAXbOU__NT7rrBwyGcBzTunxTKmQXzN4yU-2Y";
-        string? actual = processor.AuthenticateAndDecode(token);
+        string? actual = authentication.AuthenticateAndDecode(token);
         Assert.AreEqual(null, actual);
     }
     
     [Test]
-    public async Task wrong_algorithm_in_token_header()
+    public void wrong_algorithm_in_token_header()
     {
-        JwtProcessor processor = JwtProcessor.Instance;
-        processor.Secret = "123";
+        JwtAuthentication authentication = CreateRpcAuthentication("123");
         string token =
             "eyJhbGciOiJIUzM4NCIsInR5cCI6IkpXVCJ9." +
             "eyJmaWVsZDEiOiJkYXRhMSIsImFycmF5IjpbImVsZW0xIiwiZWxlbTIiLG51bGxdfQ." +
             "H6n9LMKu8VJ06n4pxMK-Kes2nXl8L_2AjJT-VVBwDhxcRHer7UU5hlXAUPawxVYe";
-        string? actual = processor.AuthenticateAndDecode(token);
+        string? actual = authentication.AuthenticateAndDecode(token);
         Assert.AreEqual(null, actual);
     }
 
     [Test]
-    public async Task empty_json()
+    public void empty_json()
     {
-        JwtProcessor processor = JwtProcessor.Instance;
-        processor.Secret = "1234";
+        JwtAuthentication authentication = CreateRpcAuthentication("1234");
         string token =
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkoyV1QifQ." +
             "e30." +
             "02YnbaptBoWN-QbWUkp4aCdsNvwUk2__NqrRWzh97To";
-        string? actual = processor.AuthenticateAndDecode(token)!;
+        string? actual = authentication.AuthenticateAndDecode(token)!;
         Assert.AreEqual("{}", actual);
     }
 
@@ -83,9 +80,8 @@ public class JwtTest
     [TestCase("")]
     public async Task incorrect_token_structure(string token)
     {
-        JwtProcessor processor = JwtProcessor.Instance;
-        processor.Secret = "1234";
-        string? actual = processor.AuthenticateAndDecode(token);
+        JwtAuthentication authentication = CreateRpcAuthentication("1234");
+        string? actual = authentication.AuthenticateAndDecode(token);
         Assert.AreEqual(null, actual);
     }
 
@@ -107,7 +103,7 @@ public class JwtTest
     [Test]
     [TestCase(true)]
     [TestCase(false)]
-    public async Task method_have_not_to_be_authenticated(bool authenticated)
+    public void method_have_not_to_be_authenticated(bool authenticated)
     {
         var api = Build.ContextWithMocks();
         RpcModuleProvider rpcProvider = new(api.FileSystem, new JsonRpcConfig(), api.LogManager);
@@ -119,19 +115,24 @@ public class JwtTest
         Assert.AreEqual(expected, rpcProvider.Check("method_notAuthenticated", context));
     }
 
+    private JwtAuthentication CreateRpcAuthentication(string secret)
+    {
+        return new JwtAuthentication(new JsonRpcConfig() { Secret = secret });
+    }
+
     [RpcModule("Test")]
     private interface ITestRpcModule : IRpcModule
     {
         [JsonRpcMethod(
             IsSharable = true,
             IsImplemented = true,
-            ShouldBeAuthenticated = true)]
+            Authenticate = true)]
         ResultWrapper<ExecutionStatusResult> method_authenticated();
 
         [JsonRpcMethod(
             IsSharable = true,
             IsImplemented = true,
-            ShouldBeAuthenticated = false)]
+            Authenticate = false)]
         ResultWrapper<ExecutionStatusResult> method_notAuthenticated();
     }
 

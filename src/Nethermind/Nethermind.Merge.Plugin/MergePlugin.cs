@@ -157,8 +157,6 @@ namespace Nethermind.Merge.Plugin
 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
-
-                JwtProcessor.Instance.Secret = _mergeConfig.Secret;
             }
         }
 

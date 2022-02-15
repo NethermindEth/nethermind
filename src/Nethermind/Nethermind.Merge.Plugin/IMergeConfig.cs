@@ -45,8 +45,5 @@ namespace Nethermind.Merge.Plugin
 
         [ConfigItem(Description = "Seconds per slot.", DefaultValue = "12")]
         public ulong SecondsPerSlot { get; set; }
-
-        [ConfigItem(Description = "Secret for jwt authentication", DefaultValue = "null")]
-        public string? Secret { get; set; }
     }
 }
