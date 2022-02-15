@@ -10,7 +10,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
     public class CalculateRequestIdTest
     {
         [Test]
-        public void CompareRequestIds()
+        public void Calculates_RequestId_Correctly()
         {
             //Using the following transaction as reference: https://goerli.etherscan.io/tx/0xa9236155292e30bfb43c5a758e0c906e18697cf23198f81e2a72e5322cd0acb7#eventlog
             UserOperation userOperation = new(new UserOperationRpc

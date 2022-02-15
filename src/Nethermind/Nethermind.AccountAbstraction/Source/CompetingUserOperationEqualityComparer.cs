@@ -15,24 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
 
 namespace Nethermind.AccountAbstraction.Source
 {
-    public class CompareUserOperationsByHash : IComparer<UserOperation>
+    public class CompetingUserOperationEqualityComparer : IEqualityComparer<UserOperation?>
     {
-        public static readonly CompareUserOperationsByHash Instance = new();
+        public static readonly CompetingUserOperationEqualityComparer Instance = new();
         
-        private CompareUserOperationsByHash() { }
-
-        public int Compare(UserOperation? x, UserOperation? y)
+        private CompetingUserOperationEqualityComparer() { }
+        
+        public bool Equals(UserOperation? x, UserOperation? y)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
+            if (ReferenceEquals(x, y)) return true;
+            if (ReferenceEquals(x, null)) return false;
+            if (ReferenceEquals(y, null)) return false;
+            if (x.GetType() != y.GetType()) return false;
+            return x.Sender.Equals(y.Sender) && x.Nonce.Equals(y.Nonce);
+        }
 
-            return x.Hash.CompareTo(y.Hash);
+        public int GetHashCode(UserOperation obj)
+        {
+            return HashCode.Combine(obj.Sender, obj.Nonce);
         }
     }
 }

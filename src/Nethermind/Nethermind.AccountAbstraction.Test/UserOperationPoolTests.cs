@@ -112,13 +112,13 @@ namespace Nethermind.AccountAbstraction.Test
         public void should_add_user_operations_concurrently()
         {
             int capacity = 2048;
-            _userOperationPool = GenerateUserOperationPool(capacity);
+            _userOperationPool = GenerateUserOperationPool(capacity, capacity);
 
             Parallel.ForEach(TestItem.PrivateKeys, k =>
             {
                 for (int i = 0; i < 100; i++)
                 {
-                    UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)i).SignedAndResolved(k).TestObject;
+                    UserOperation op = Build.A.UserOperation.WithSender(k.Address).WithNonce((UInt256)i).SignedAndResolved(k).TestObject;
                     _userOperationPool.AddUserOperation(op);
                 }
             });
@@ -130,7 +130,7 @@ namespace Nethermind.AccountAbstraction.Test
         public async Task should_remove_user_operations_concurrently()
         {
             int capacity = 4096;
-            _userOperationPool = GenerateUserOperationPool(capacity);
+            _userOperationPool = GenerateUserOperationPool(capacity, capacity);
             
             int maxTryCount = 5;
             for (int i = 0; i < maxTryCount; ++i)
@@ -139,7 +139,7 @@ namespace Nethermind.AccountAbstraction.Test
                 {
                     for (int j = 0; j < 10; j++)
                     {
-                        UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)j).SignedAndResolved(k).TestObject;
+                        UserOperation op = Build.A.UserOperation.WithSender(k.Address).WithNonce((UInt256)j).SignedAndResolved(k).TestObject;
                         _userOperationPool.AddUserOperation(op);
                     }
                 });
@@ -164,6 +164,104 @@ namespace Nethermind.AccountAbstraction.Test
                     _userOperationPool.RemoveUserOperation(op.Hash);
                 }
             }
+        }
+        
+        [Test]
+        public void should_not_allow_more_than_max_capacity_per_sender_ops_from_same_sender()
+        {
+            _userOperationPool = GenerateUserOperationPool();
+            for (int j = 0; j < 20; j++)
+            {
+                UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)j).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+                _userOperationPool.AddUserOperation(op);
+            }
+
+            _userOperationPool.GetUserOperations().Count().Should().Be(10);
+        }
+
+        [Test]
+        public void should_replace_op_with_higher_fee()
+        {
+            _userOperationPool = GenerateUserOperationPool();
+            UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)0).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _userOperationPool.AddUserOperation(op);
+
+            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(new[] {op});
+
+            UserOperation higherGasPriceOp = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)0).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(20).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _userOperationPool.AddUserOperation(higherGasPriceOp);
+            
+            _userOperationPool.GetUserOperations().Count().Should().Be(1);
+            _userOperationPool.GetUserOperations().Should().BeEquivalentTo(new[] {higherGasPriceOp});
+        }
+        
+        [Test]
+        public void should_not_add_op_with_higher_fee_that_does_not_replace_op_if_sender_has_too_many_ops()
+        {
+            _userOperationPool = GenerateUserOperationPool();
+            
+            for (int j = 0; j < 10; j++)
+            {
+                UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)j).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+                _userOperationPool.AddUserOperation(op);
+            }
+
+            UserOperation higherGasPriceOp = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)10).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(20).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _userOperationPool.AddUserOperation(higherGasPriceOp);
+            
+            _userOperationPool.GetUserOperations().Count().Should().Be(10);
+            _userOperationPool.GetUserOperations().Should().NotContain(new[] {higherGasPriceOp});
+        }
+        
+        [Test]
+        public void should_replace_op_with_higher_fee_even_at_full_capacity()
+        {
+            _userOperationPool = GenerateUserOperationPool();
+
+            IList<UserOperation> opsIncluded = new List<UserOperation>();
+            
+            for (int j = 0; j < 10; j++)
+            {
+                UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)j).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+                opsIncluded.Add(op);
+                _userOperationPool.AddUserOperation(op);
+            }
+            
+            UserOperation higherGasPriceOp = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce(9).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(20).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _userOperationPool.AddUserOperation(higherGasPriceOp);
+
+            _userOperationPool.GetUserOperations().Count().Should().Be(10);
+            _userOperationPool.GetUserOperations().Take(9).Should().BeEquivalentTo(opsIncluded.Take(9));
+            _userOperationPool.GetUserOperations().Last().Should().BeEquivalentTo(higherGasPriceOp);
+            
+            UserOperation higherGasPriceOp2 = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce(3).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(20).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _userOperationPool.AddUserOperation(higherGasPriceOp2);
+            
+            _userOperationPool.GetUserOperations().Count().Should().Be(10);
+            _userOperationPool.GetUserOperations().ToArray()[3].Should().Be(higherGasPriceOp2);
+            _userOperationPool.GetUserOperations().Should().NotContain(opsIncluded.ToArray()[3]);
+        }
+        
+        [Test]
+        public void should_not_replace_op_with_lower_fee_at_full_capacity()
+        {
+            _userOperationPool = GenerateUserOperationPool();
+
+            IList<UserOperation> opsIncluded = new List<UserOperation>();
+            
+            for (int j = 0; j < 10; j++)
+            {
+                UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)j).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+                opsIncluded.Add(op);
+                _userOperationPool.AddUserOperation(op);
+            }
+            
+            UserOperation lowerGasPriceOp = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce(9).WithMaxFeePerGas(5).WithMaxPriorityFeePerGas(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _userOperationPool.AddUserOperation(lowerGasPriceOp);
+
+            _userOperationPool.GetUserOperations().Count().Should().Be(10);
+            _userOperationPool.GetUserOperations().Take(10).Should().BeEquivalentTo(opsIncluded.Take(10));
+            _userOperationPool.GetUserOperations().Should().NotContain(lowerGasPriceOp);
         }
         
         [Test]
@@ -314,10 +412,15 @@ namespace Nethermind.AccountAbstraction.Test
             userOperations.Length.Should().Be(0);
         }
 
-        private UserOperationPool GenerateUserOperationPool(int capacity = 10)
+        private UserOperationPool GenerateUserOperationPool(int capacity = 10, int perSenderCapacity = 10)
         {
+            IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
+            config.EntryPointContractAddress.Returns(_entryPointContractAddress);
+            config.UserOperationPoolSize.Returns(capacity);
+            config.MaximumUserOperationPerSender.Returns(perSenderCapacity);
+            
             UserOperationSortedPool userOperationSortedPool =
-                new(capacity, CompareUserOperationsByDecreasingGasPrice.Default, LimboLogs.Instance);
+                new(capacity, CompareUserOperationsByDecreasingGasPrice.Default, LimboLogs.Instance, config.MaximumUserOperationPerSender);
 
             _stateProvider.GetBalance(Arg.Any<Address>()).Returns(1.Ether());
             _stateProvider.AccountExists(Arg.Any<Address>()).Returns(true);
@@ -332,10 +435,6 @@ namespace Nethermind.AccountAbstraction.Test
 
             _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 
-            IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
-            config.EntryPointContractAddress.Returns(_entryPointContractAddress);
-            config.UserOperationPoolSize.Returns(capacity);
-            
             IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
             
             return new UserOperationPool(

@@ -15,18 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Int256;
+using System.Collections.Generic;
+using Nethermind.AccountAbstraction.Data;
 
-namespace Nethermind.AccountAbstraction
+namespace Nethermind.AccountAbstraction.Source
 {
-    public class AccountAbstractionConfig : IAccountAbstractionConfig
+    public class CompareUserOperationByNonce : IComparer<UserOperation?>
     {
-        public bool Enabled { get; set; }
-        public int UserOperationPoolSize { get; set; } = 200;
-        public int MaximumUserOperationPerSender { get; set; } = 10;
-        public string EntryPointContractAddress { get; set; } = "";
-        public string Create2FactoryAddress { get; set; } = "";
-        public UInt256 MinimumGasPrice { get; set; } = 1;
-        public string FlashbotsEndpoint { get; set; } = "https://relay.flashbots.net/";
+        public static readonly CompareUserOperationByNonce Instance = new();
+        
+        private CompareUserOperationByNonce() { }
+        
+        public int Compare(UserOperation? x, UserOperation? y)
+        {
+            if (ReferenceEquals(x, y)) return 0;
+            if (ReferenceEquals(null, y)) return 1;
+            if (ReferenceEquals(null, x)) return -1;
+            return x.Nonce.CompareTo(y.Nonce);
+        }
     }
 }

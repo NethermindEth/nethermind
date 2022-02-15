@@ -207,7 +207,8 @@ namespace Nethermind.Init.Steps
                 _api.TxPool,
                 _api.ReceiptStorage,
                 _api.FilterStore,
-                _api.EthSyncingInfo!);
+                _api.EthSyncingInfo!,
+                _api.SpecProvider);
             
             SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
             
