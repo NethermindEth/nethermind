@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
     {
         private ITxPoolPeer Peer { get; }
 
-        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
+        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         public PeerInfo(ITxPoolPeer peer)
         {
