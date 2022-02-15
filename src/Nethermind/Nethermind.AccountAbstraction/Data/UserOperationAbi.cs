@@ -19,6 +19,7 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.AccountAbstraction.Data
@@ -46,7 +47,11 @@ namespace Nethermind.AccountAbstraction.Data
 
         public byte[] Encode(UserOperation op)
         {
-            return _abiEncoder.Encode(AbiEncodingStyle.None, _opSignature, op.Abi);
+            UserOperationAbi abi = op.Abi;
+            abi.Signature = Bytes.Empty;
+            byte[] encodedBytes = _abiEncoder.Encode(AbiEncodingStyle.None, _opSignature, abi);
+            byte[] slicedBytes = encodedBytes.Slice(32, encodedBytes.Length - 64);
+            return slicedBytes;
         }
 
         public UserOperation[]? Decode(byte[] byteArray)

@@ -18,15 +18,15 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 Sender = new Address("0x05c022028ef3e2c61b3babe0fbc8f658bc4b431f"),
                 Nonce = 5,
                 CallData = Bytes.FromHexString("0x2b311337000000000000000000000000000000000000000000000000000000000000012c"),
-                InitCode = new byte[] {},
+                InitCode = Bytes.Empty,
                 CallGas = 21000,
                 VerificationGas = 21000,
                 PreVerificationGas = 21000,
                 MaxFeePerGas = 2100000000,
                 MaxPriorityFeePerGas = 2100000000,
                 Paymaster = new Address("0x0000000000000000000000000000000000000000"),
-                PaymasterData = new byte[] {},
-                Signature = new byte[] {}
+                PaymasterData = Bytes.Empty,
+                Signature = Bytes.Empty
             });
 
             Address entryPointId = new Address("0x90f3E1105E63C877bF9587DE5388C23Cdb702c6B");
