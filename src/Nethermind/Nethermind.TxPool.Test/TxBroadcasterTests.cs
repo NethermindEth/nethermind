@@ -91,7 +91,7 @@ public class TxBroadcasterTests
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-        List<Transaction> pickedTxs = _broadcaster.GetTxsToSend(txPoolPeer, ArraySegment<Transaction>.Empty).Select(t => t.Tx).ToList();
+        List<Transaction> pickedTxs = _broadcaster.GetTxsToSend(txPoolPeer, Array.Empty<Transaction>()).Select(t => t.Tx).ToList();
 
         int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         pickedTxs.Count.Should().Be(expectedCount);
@@ -143,7 +143,7 @@ public class TxBroadcasterTests
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-        List<Transaction> pickedTxs = _broadcaster.GetTxsToSend(txPoolPeer, ArraySegment<Transaction>.Empty).Select(t => t.Tx).ToList();
+        List<Transaction> pickedTxs = _broadcaster.GetTxsToSend(txPoolPeer, Array.Empty<Transaction>()).Select(t => t.Tx).ToList();
 
         int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
@@ -196,7 +196,7 @@ public class TxBroadcasterTests
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
         ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
-        List<Transaction> pickedTxs = _broadcaster.GetTxsToSend(txPoolPeer, ArraySegment<Transaction>.Empty).Select(t => t.Tx).ToList();
+        List<Transaction> pickedTxs = _broadcaster.GetTxsToSend(txPoolPeer, Array.Empty<Transaction>()).Select(t => t.Tx).ToList();
 
         int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
