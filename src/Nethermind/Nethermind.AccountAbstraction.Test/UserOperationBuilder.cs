@@ -118,10 +118,7 @@ namespace Nethermind.AccountAbstraction.Test
         protected override void BeforeReturn()
         {
             base.BeforeReturn();
-            if (TestObjectInternal.Hash == null)
-            {
-                TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
-            }
+            TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
         }
     }
 }

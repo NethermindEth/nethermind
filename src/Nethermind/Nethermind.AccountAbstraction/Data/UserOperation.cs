@@ -24,7 +24,7 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperation
     {
-        private static readonly UserOperationAbiDecoder _decoder = new();
+        private static readonly UserOperationAbiPacker _packer = new();
         private static readonly AbiEncoder _abiEncoder = new();
         public UserOperation(UserOperationRpc userOperationRpc)
         {
@@ -47,7 +47,7 @@ namespace Nethermind.AccountAbstraction.Data
 
         public Keccak CalculateHash()
         {
-            return Keccak.Compute(_decoder.Encode(this));
+            return Keccak.Compute(_packer.Pack(this));
         }
 
         private readonly AbiSignature _idSignature = new AbiSignature("RequestId", AbiType.Bytes32, AbiAddress.Instance, AbiType.UInt256);

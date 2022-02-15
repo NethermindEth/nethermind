@@ -40,24 +40,18 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] Signature { get; set; }
     }
     
-    public class UserOperationAbiDecoder
+    public class UserOperationAbiPacker
     {
         private readonly AbiEncoder _abiEncoder = new AbiEncoder();
         private readonly AbiSignature _opSignature = new AbiSignature("encodeOp", new AbiTuple<UserOperationAbi>());
 
-        public byte[] Encode(UserOperation op)
+        public byte[] Pack(UserOperation op)
         {
             UserOperationAbi abi = op.Abi;
             abi.Signature = Bytes.Empty;
             byte[] encodedBytes = _abiEncoder.Encode(AbiEncodingStyle.None, _opSignature, abi);
             byte[] slicedBytes = encodedBytes.Slice(32, encodedBytes.Length - 64);
             return slicedBytes;
-        }
-
-        public UserOperation[]? Decode(byte[] byteArray)
-        {
-            // TODO: should this throw?
-            return _abiEncoder.Decode(AbiEncodingStyle.None, _opSignature, byteArray) as UserOperation[];
         }
     }
 }
