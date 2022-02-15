@@ -108,10 +108,12 @@ namespace Nethermind.AccountAbstraction.Test
             return this;
         }
         
-        public UserOperationBuilder SignedAndResolved(PrivateKey? privateKey = null)
+        public UserOperationBuilder SignedAndResolved(PrivateKey? privateKey = null!, Address? entryPointAddress = null!, ulong? chainId = null!)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;
-            AccountAbstractionRpcModuleTests.SignUserOperation(TestObjectInternal, privateKey);
+            entryPointAddress ??= Address.Zero;
+            chainId ??= 1;
+            AccountAbstractionRpcModuleTests.SignUserOperation(TestObjectInternal, privateKey, entryPointAddress, chainId.Value);
             return this;
         }
 

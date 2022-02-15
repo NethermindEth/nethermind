@@ -182,7 +182,7 @@ namespace Nethermind.AccountAbstraction.Test
             UserOperation op = Build.A.UserOperation
                 .WithSender(walletAddress!)
                 .WithCallData(execCounterCountFromEntryPoint)
-                .SignedAndResolved(TestItem.PrivateKeyA)
+                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
                 .TestObject;
 
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -219,7 +219,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithInitCode(walletConstructor)
                 .WithCallGas(10_000_000)
                 .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA)
+                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
                 .TestObject;
 
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -250,7 +250,7 @@ namespace Nethermind.AccountAbstraction.Test
             UserOperation op = Build.A.UserOperation
                 .WithSender(walletAddress!)
                 .WithCallData(execCounterCountFromEntryPoint)
-                .SignedAndResolved(TestItem.PrivateKeyA)
+                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
                 .TestObject;
             
             byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress);
@@ -262,7 +262,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithCallData(execCounterCountFromEntryPoint)
                 .WithCallGas(10_000_000)
                 .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA)
+                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
                 .TestObject;
             
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -322,10 +322,10 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithInitCode(walletConstructor)
                 .WithCallGas(10_000_000)
                 .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA)
+                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
                 .TestObject;
 
-            byte[] addStakeCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TokenPaymasterAbi.Functions["addStake"].GetCallInfo().Signature);
+            byte[] addStakeCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TokenPaymasterAbi.Functions["addStake"].GetCallInfo().Signature, 0);
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
                 .WithTo(paymasterAddress!)
                 .WithGasLimit(100_000)
@@ -353,46 +353,16 @@ namespace Nethermind.AccountAbstraction.Test
             chain.State.GetCode(accountAddress).Should().BeEquivalentTo(_contracts.SimpleWalletAbi.DeployedBytecode!);
         }
 
-        public static void SignUserOperation(UserOperation op, PrivateKey privateKey)
+        public static void SignUserOperation(UserOperation op, PrivateKey privateKey, Address entryPointAddress, ulong chainId)
         {
-            AbiSignature abiSignature = new AbiSignature("userOperation", 
-                AbiType.Address, 
-                AbiType.UInt256,
-                AbiType.DynamicBytes,
-                AbiType.DynamicBytes,
-                AbiType.UInt256,
-                AbiType.UInt256,
-                AbiType.UInt256,
-                AbiType.UInt256,
-                AbiType.UInt256,
-                AbiType.Address,
-                AbiType.DynamicBytes,
-                AbiType.DynamicBytes);
+            Keccak requestId = op.CalculateRequestId(entryPointAddress, chainId);
             
-            byte[] bytes = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, abiSignature,
-                op.Sender!,
-                op.Nonce,
-                op.InitCode!,
-                op.CallData!,
-                op.CallGas,
-                op.VerificationGas,
-                op.PreVerificationGas,
-                op.MaxFeePerGas,
-                op.MaxPriorityFeePerGas,
-                op.Paymaster!,
-                op.PaymasterData!,
-                op.Signature);
-
-            byte[] encoded = bytes.Slice(0, bytes.Length - 32);
-
-            Keccak abiMessage = Keccak.Compute(encoded);
-
             Signer signer = new(1, privateKey, NullLogManager.Instance);
             Signature signature = signer.Sign(Keccak.Compute(
                     Bytes.Concat(
                         Encoding.UTF8.GetBytes("\x19"),
-                        Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + abiMessage.Bytes.Length),
-                        abiMessage.Bytes)
+                        Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + requestId.Bytes.Length),
+                        requestId.Bytes)
                     )
                 );
 

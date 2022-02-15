@@ -79,6 +79,8 @@ namespace Nethermind.AccountAbstraction.Test
             public UserOperationTxBuilder UserOperationTxBuilder { get; private set; } = null!;
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
 
+            public Address EntryPointAddress { get; private set; } = null!;
+
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
                 Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
@@ -94,7 +96,7 @@ namespace Nethermind.AccountAbstraction.Test
             private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
                 {
                     Enabled = true, 
-                    EntryPointContractAddress = "0xdb8b5f6080a8e466b64a8d7458326cb650b3353f",
+                    EntryPointContractAddress = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215",
                     Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
                     UserOperationPoolSize = 200
                 };
@@ -142,6 +144,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 Address.TryParse(_accountAbstractionConfig.EntryPointContractAddress, out Address? entryPointContractAddress);
                 Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
+                EntryPointAddress = entryPointContractAddress!;
                 
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
