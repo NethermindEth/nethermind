@@ -209,10 +209,10 @@ jobs:
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.KeyAddress.Test
     - name: Ethereum.PoW.Test
       run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Rlp.Test
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.PoW.Test
     - name: Ethereum.Rlp.Test
       run: |
-        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Basic.Test
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Rlp.Test
     - name: Ethereum.Transaction.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Transaction.Test
@@ -222,6 +222,9 @@ jobs:
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Trie.Test
+    - name: Ethereum.VM.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.VM.Test
     - name: Upload Codecov Report
       if: matrix.os == 'ubuntu-latest'
       uses: actions/upload-artifact@v2
