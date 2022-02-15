@@ -162,6 +162,10 @@
       "commandName": "Project",
       "commandLineArgs": "--config kiln_fastsync.cfg  --Init.DiagnosticMode MemDb"
     },
+    "TheMerge_Kiln_TestVectors" : {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_kiln_testvectors.cfg --Init.DiagnosticMode MemDb"
+    },
     "themerge_hivetests": {
       "commandName": "Project",
       "commandLineArgs": "--config themerge_hivetests.cfg  --Init.DiagnosticMode MemDb"
