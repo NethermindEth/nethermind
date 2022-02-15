@@ -120,10 +120,10 @@ namespace Nethermind.Synchronization
                 {
                     StartSnapSyncComponents();
                 }
-                else
-                {
+                //else
+                //{
                     StartStateSyncComponents();
-                }
+                //}
             }
         }
 

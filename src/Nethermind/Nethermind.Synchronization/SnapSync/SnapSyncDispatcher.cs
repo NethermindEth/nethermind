@@ -39,8 +39,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         protected override async Task Dispatch(PeerInfo peerInfo, AccountsSyncBatch batch, CancellationToken cancellationToken)
         {
-            Logger.Info("DISPATCH");
-
             ISyncPeer peer = peerInfo.SyncPeer;
 
             //TODO: replace with a constant "snap"
