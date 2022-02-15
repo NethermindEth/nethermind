@@ -23,7 +23,7 @@ namespace Nethermind.Db
     [ConfigCategory(Description = "Configuration of the pruning parameters (pruning is the process of removing some of the intermediary state nodes - it saves some disk space but makes most of the historical state queries fail).")]
     public interface IPruningConfig : IConfig
     {
-        [ConfigItem(Description = "Enables in-memory pruning. Obsolete, use Mode instead.", DefaultValue = "false", HiddenFromDocs = true)]
+        [ConfigItem(Description = "Enables in-memory pruning. Obsolete, use Mode instead.", DefaultValue = "true", HiddenFromDocs = true)]
         [Obsolete]
         public bool Enabled { get; set; }
         
