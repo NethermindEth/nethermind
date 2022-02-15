@@ -14,13 +14,13 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Snap
 {
-    public class SnapProvider
+    public class SnapProvider : ISnapProvider
     {
         private readonly ITrieStore _store;
         private readonly ILogManager _logManager;
 
         public Keccak NextStartingHash { get; private set; } = Keccak.Zero;
-        public bool MoreChildrenToRight { get; set; }
+        public bool MoreChildrenToRight { get; set; } = true;
 
         public SnapProvider(ITrieStore store, ILogManager logManager)
         {

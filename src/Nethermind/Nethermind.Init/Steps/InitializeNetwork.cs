@@ -43,6 +43,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
+using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.LesSync;
@@ -115,11 +116,14 @@ namespace Nethermind.Init.Steps
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
+            _api.SnapProvider = new SnapProvider(_api.TrieStore, _api.LogManager);
+
             SyncProgressResolver syncProgressResolver = new(
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.DbProvider.StateDb,
                 _api.ReadOnlyTrieStore!,
+                _api.SnapProvider,
                 _syncConfig,
                 _api.LogManager);
             

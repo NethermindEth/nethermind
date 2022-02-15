@@ -56,6 +56,8 @@ namespace Nethermind.Synchronization.ParallelSync
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
 
+        private bool IsSnapGetAccountRangesFinished => !SnapSyncEnabled || _syncProgressResolver.IsSnapGetAccountRangesFinished();
+
         internal long? LastBlockThatEnabledFullSync { get; set; }
 
         private Timer _timer;
@@ -163,8 +165,8 @@ namespace Nethermind.Synchronization.ParallelSync
                             CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
                             CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
                             CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
-                            CheckAddFlag(best.IsInStateSync && !SnapSyncEnabled, SyncMode.StateNodes, ref newModes);
-                            CheckAddFlag(best.IsInStateSync && SnapSyncEnabled, SyncMode.SnapSync, ref newModes);
+                            CheckAddFlag(best.IsInStateSync && IsSnapGetAccountRangesFinished, SyncMode.StateNodes, ref newModes);
+                            CheckAddFlag(best.IsInStateSync && !IsSnapGetAccountRangesFinished, SyncMode.SnapSync, ref newModes);
                             CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                             CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
                             if (IsTheModeSwitchWorthMentioning(newModes))
@@ -308,7 +310,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
-            bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
+            bool notNeedToWaitForHeaders = true; // NotNeedToWaitForHeaders;
 
             bool result =
                 postPivotPeerAvailable &&
@@ -444,7 +446,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
             bool hasAnyPostPivotPeer = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInFastSync = !best.IsInFastSync;
-            bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
+            bool notNeedToWaitForHeaders = true; // NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
             bool stateNotDownloadedYet = (best.PeerBlock - best.State > FastSyncLag ||
                                           best.Header > best.State && best.Header > best.Block);

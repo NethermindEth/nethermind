@@ -146,7 +146,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             var request = new GetAccountRangeMessage()
             {
                 AccountRange = range,
-                ResponseBytes = 100000
+                ResponseBytes = 1000_000
             };
 
             AccountRangeMessage response = await SendRequest(request, token);
