@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -214,6 +215,13 @@ namespace Nethermind.Core
         }
 
         public BloomStructRef ToStructRef() => new(Bytes);
+
+        public Bloom Clone()
+        {
+            Bloom clone = new();
+            Bytes.CopyTo(clone.Bytes, 0);
+            return clone;
+        }
     }
 
     public ref struct BloomStructRef

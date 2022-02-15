@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
                 Transaction tx = transactionCall.ToTransaction(_blockchainBridge.GetChainId());
-                return ExecuteTx(header, tx, cancellationTokenSource.Token, _rpcConfig.NoBaseFee);
+                return ExecuteTx(header.Clone(), tx, cancellationTokenSource.Token, _rpcConfig.NoBaseFee);
             }
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token, bool noBaseFee = false);

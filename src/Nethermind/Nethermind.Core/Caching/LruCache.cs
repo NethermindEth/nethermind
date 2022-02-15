@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 
@@ -137,6 +138,9 @@ namespace Nethermind.Core.Caching
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public IDictionary<TKey, TValue> Clone() => _lruList.ToDictionary(i => i.Key, i => i.Value);
 
         private void Replace(TKey key, TValue value)
         {

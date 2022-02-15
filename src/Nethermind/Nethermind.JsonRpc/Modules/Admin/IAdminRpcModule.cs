@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain.FullPruning;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
@@ -71,5 +73,11 @@ namespace Nethermind.JsonRpc.Modules.Admin
         [JsonRpcMethod(Description = "[DEPRECATED]",
             IsImplemented = false)]
         ResultWrapper<bool> admin_setSolc();
+        
+        [JsonRpcMethod(Description = "Runs full pruning if enabled.",
+            EdgeCaseHint = "",
+            ExampleResponse = "\"Starting\"",
+            IsImplemented = true)]
+        ResultWrapper<PruningStatus> admin_prune();
     }
 }

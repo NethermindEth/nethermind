@@ -24,6 +24,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Polly" Version="7.2.2" />
-    <PackageReference Include="System.IO.Abstractions" Version="13.2.47" />
+    <PackageReference Include="System.IO.Abstractions" Version="16.0.1" />
   </ItemGroup>
 </Project>

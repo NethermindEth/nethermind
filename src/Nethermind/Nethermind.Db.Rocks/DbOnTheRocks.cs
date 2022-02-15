@@ -67,12 +67,12 @@ namespace Nethermind.Db.Rocks
         }
 
         public DbOnTheRocks(string basePath, RocksDbSettings rocksDbSettings, IDbConfig dbConfig,
-            ILogManager logManager, ColumnFamilies? columnFamilies = null, bool deleteOnStart = false)
+            ILogManager logManager, ColumnFamilies? columnFamilies = null)
         {
             _logger = logManager.GetClassLogger();
             _settings = rocksDbSettings;
             Name = _settings.DbName;
-            _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, deleteOnStart);
+            _db = Init(basePath, rocksDbSettings.DbPath, dbConfig, logManager, columnFamilies, rocksDbSettings.DeleteOnStart);
         }
 
         private RocksDb Init(string basePath, string dbPath, IDbConfig dbConfig, ILogManager? logManager,
@@ -84,7 +84,7 @@ namespace Nethermind.Db.Rocks
                 return families == null ? RocksDb.Open(options, path) : RocksDb.Open(options, path, families);
             }
 
-            _fullPath = dbPath.GetApplicationResourcePath(basePath);
+            _fullPath = GetFullDbPath(dbPath, basePath);
             _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
             if (!Directory.Exists(_fullPath))
             {
@@ -92,7 +92,7 @@ namespace Nethermind.Db.Rocks
             }
             else if (deleteOnStart)
             {
-                Clear();
+                Delete();
             }
 
             try
@@ -154,7 +154,7 @@ namespace Nethermind.Db.Rocks
 
         protected static T ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
         {
-            string prefixed = string.Concat(tableName == "State" ? string.Empty : string.Concat(tableName, "Db"),
+            string prefixed = string.Concat(tableName.StartsWith("State") ? string.Empty : string.Concat(tableName, "Db"),
                 propertyName);
             try
             {
@@ -471,15 +471,34 @@ namespace Nethermind.Db.Rocks
 
         public void Clear()
         {
+            Dispose(true);
+            Delete();
+        }
+
+        private void Delete()
+        {
             try
             {
-                Directory.Delete(_fullPath!, true);
+                string fullPath = _fullPath!;
+                if (Directory.Exists(fullPath))
+                {
+                    // We want to keep the folder if it can have subfolders with copied databases from pruning
+                    if (_settings.CanDeleteFolder)
+                    {
+                        Directory.Delete(fullPath, true);
+                    }
+                    else
+                    {
+                        foreach (string file in Directory.EnumerateFiles(fullPath))
+                        {
+                            File.Delete(file);
+                        }
+                    }
+                }
             }
             catch (Exception e)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"This is not a problem but I could not delete the pending tx database on startup. {e.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Could not delete the {Name} database. {e.Message}");
             }
         }
 
@@ -508,11 +527,12 @@ namespace Nethermind.Db.Rocks
         {
             // ReSharper disable once ConstantConditionalAccessQualifier
             // running in finalizer, potentially not fully constructed
-            _db?.Dispose();
             foreach (IBatch batch in _currentBatches)
             {
                 batch.Dispose();
             }
+            
+            _db?.Dispose();
         }
 
         private void Dispose(bool disposing)
@@ -547,5 +567,7 @@ namespace Nethermind.Db.Rocks
         {
             Dispose(false);
         }
+
+        public static string GetFullDbPath(string dbPath, string basePath) => dbPath.GetApplicationResourcePath(basePath);
     }
 }

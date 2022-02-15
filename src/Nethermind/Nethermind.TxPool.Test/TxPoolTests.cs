@@ -380,7 +380,7 @@ namespace Nethermind.TxPool.Test
             tx.Value = (UInt256)(value * tx.GasLimit);
             EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
             _txPool.GetPendingTransactions().Length.Should().Be(30);
-            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             result.ToString().Should().Contain(expected);
         }
         
@@ -419,9 +419,42 @@ namespace Nethermind.TxPool.Test
             tx.Value = (UInt256)(value * tx.GasLimit);
             EnsureSenderBalance(tx.SenderAddress, (UInt256)(15 * tx.GasLimit));
             _txPool.GetPendingTransactions().Length.Should().Be(30);
-            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _txPool.GetPendingTransactions().Length.Should().Be(30);
             result.ToString().Should().Contain(expected);
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void should_add_underpaid_txs_to_full_TxPool_only_if_local(bool isLocal)
+        {
+            TxHandlingOptions txHandlingOptions = isLocal ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None;
+            
+            _txPool = CreatePool(new TxPoolConfig() {Size = 30});
+            Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
+            
+            foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
+            {
+                EnsureSenderBalance(address, UInt256.MaxValue);
+            }
+            
+            foreach (Transaction transaction in transactions)
+            {
+                transaction.GasPrice = 10;
+                _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+            }
+            
+            Transaction tx = Build.A.Transaction
+                .WithGasPrice(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
+            _txPool.GetPendingTransactions().Length.Should().Be(30);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(0);
+            AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
+            _txPool.GetPendingTransactions().Length.Should().Be(30);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(isLocal ? 1 : 0);
+            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.Accepted) : nameof(AcceptTxResult.FeeTooLow));
         }
 
         [TestCase(0)]
@@ -699,6 +732,83 @@ namespace Nethermind.TxPool.Test
             _txPool.RemoveTransaction(TestItem.KeccakA);
             _txPool.SubmitTx(transaction, TxHandlingOptions.None);
             Assert.AreEqual(0, _txPool.GetOwnPendingTransactions().Length);
+        }
+
+        [TestCase(1, 0)]
+        [TestCase(2, 0)]
+        [TestCase(2, 1)]
+        [TestCase(10, 0)]
+        [TestCase(10, 1)]
+        [TestCase(10, 5)]
+        [TestCase(10, 8)]
+        [TestCase(10, 9)]
+        public void should_remove_stale_txs_from_persistent_transactions(int numberOfTxs, int nonceIncludedInBlock)
+        {
+            _txPool = CreatePool();
+
+            Transaction[] transactions = new Transaction[numberOfTxs];
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            for (int i = 0; i < numberOfTxs; i++)
+            {
+                transactions[i] = Build.A.Transaction
+                    .WithNonce((UInt256)i)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .WithGasPrice(10.GWei())
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                    .TestObject;
+                _txPool.SubmitTx(transactions[i], TxHandlingOptions.PersistentBroadcast);
+            }
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(numberOfTxs);
+
+            Block block = Build.A.Block.WithTransactions(transactions[nonceIncludedInBlock]).TestObject;
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            
+            ManualResetEvent manualResetEvent = new(false);
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            
+            // transactions[nonceIncludedInBlock] was included in the block and should be removed, as well as all lower nonces.
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(numberOfTxs - nonceIncludedInBlock - 1);
+        }
+
+        [Test]
+        public void broadcaster_should_work_well_when_there_are_no_txs_in_persistent_txs_from_sender_of_tx_included_in_block()
+        {
+            _txPool = CreatePool();
+            
+            Transaction transactionA = Build.A.Transaction
+                .WithNonce(0)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(10.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(transactionA);
+            _txPool.SubmitTx(transactionA, TxHandlingOptions.None);
+
+            Transaction transactionB = Build.A.Transaction
+                .WithNonce(0)
+                .WithGasLimit(GasCostOf.Transaction)
+                .WithGasPrice(10.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB)
+                .TestObject;
+            EnsureSenderBalance(transactionB);
+            _txPool.SubmitTx(transactionB, TxHandlingOptions.PersistentBroadcast);
+            
+            _txPool.GetPendingTransactions().Length.Should().Be(2);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
+            
+            Block block = Build.A.Block.WithTransactions(transactionA).TestObject;
+            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            
+            ManualResetEvent manualResetEvent = new(false);
+            _txPool.RemoveTransaction(Arg.Do<Keccak>(t => manualResetEvent.Set()));
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
+            
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
         }
 
         [Test]

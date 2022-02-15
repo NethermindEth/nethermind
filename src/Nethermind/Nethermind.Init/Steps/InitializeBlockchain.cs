@@ -22,6 +22,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
@@ -32,6 +33,8 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.FullPruning;
+using Nethermind.Db.Rocks;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -79,6 +82,7 @@ namespace Nethermind.Init.Steps
             if (getApi.ChainSpec == null) throw new StepDependencyException(nameof(getApi.ChainSpec));
             if (getApi.DbProvider == null) throw new StepDependencyException(nameof(getApi.DbProvider));
             if (getApi.SpecProvider == null) throw new StepDependencyException(nameof(getApi.SpecProvider));
+            if (getApi.BlockTree == null) throw new StepDependencyException(nameof(getApi.BlockTree));
             
             _logger = getApi.LogManager.GetClassLogger();
             IInitConfig initConfig = getApi.Config<IInitConfig>();
@@ -107,32 +111,52 @@ namespace Nethermind.Init.Steps
                 setApi.WitnessRepository = NullWitnessCollector.Instance;
             }
 
-            IKeyValueStoreWithBatching cachedStateDb = getApi.DbProvider.StateDb
+            CachingStore cachedStateDb = getApi.DbProvider.StateDb
                 .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
             setApi.MainStateDbWithCache = cachedStateDb;
             IKeyValueStore codeDb = getApi.DbProvider.CodeDb
                 .WitnessedBy(witnessCollector);
 
             TrieStore trieStore;
-            if (pruningConfig.Enabled)
+            IKeyValueStoreWithBatching stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
+            if (pruningConfig.Mode.IsMemory())
             {
+                IPersistenceStrategy persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+                if (pruningConfig.Mode.IsFull())
+                {
+                    PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
+                    getApi.DisposeStack.Push(triggerPersistenceStrategy);
+                    persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+                }
+                
                 setApi.TrieStore = trieStore = new TrieStore(
-                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
+                    stateWitnessedBy,
                     Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()), // TODO: memory hint should define this
-                    Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval), // TODO: this should be based on time
+                    persistenceStrategy, 
                     getApi.LogManager);
+
+                if (pruningConfig.Mode.IsFull())
+                {
+                    IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
+                    fullPruningDb.PruningStarted += (_, args) =>
+                    {
+                        cachedStateDb.PersistCache(args.Context);
+                        trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                    };
+                }
             }
             else
             {
                 setApi.TrieStore = trieStore = new TrieStore(
-                    setApi.MainStateDbWithCache.WitnessedBy(witnessCollector),
+                    stateWitnessedBy,
                     No.Pruning,
                     Persist.EveryBlock,
                     getApi.LogManager);
             }
             
             getApi.DisposeStack.Push(trieStore);
-            trieStore.ReorgBoundaryReached += ReorgBoundaryReached;
+            TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
+            getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
@@ -153,9 +177,19 @@ namespace Nethermind.Init.Steps
 
             if (_api.Config<IInitConfig>().DiagnosticMode == DiagnosticMode.VerifyTrie)
             {
-                _logger.Info("Collecting trie stats and verifying that no nodes are missing...");
-                TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
-                _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+                Task.Run(() =>
+                {
+                    try
+                    {
+                        _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
+                        TrieStats stats = stateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                        _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger!.Error(ex.ToString());
+                    }
+                });
             }
 
             // Init state if we need system calls before actual processing starts
@@ -245,26 +279,60 @@ namespace Nethermind.Init.Steps
             IFilterStore? filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
+            
+            InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
+            
             return Task.CompletedTask;
         }
 
+        private static void InitializeFullPruning(
+            IPruningConfig pruningConfig,
+            IInitConfig initConfig, 
+            INethermindApi api, 
+            IStateReader stateReader)
+        {
+            IPruningTrigger CreateAutomaticTrigger(string dbPath)
+            {
+                long threshold = pruningConfig.FullPruningThresholdMb.MB();
+
+                switch (pruningConfig.FullPruningTrigger)
+                {
+                    case FullPruningTrigger.StateDbSize:
+                        return new PathSizePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
+                    case FullPruningTrigger.VolumeFreeSpace:
+                        return new DiskFreeSpacePruningTrigger(dbPath, threshold, api.TimerFactory, api.FileSystem);
+                    default:
+                        return null;
+                }
+            }
+
+            if (pruningConfig.Mode.IsFull())
+            {
+                IDb stateDb = api.DbProvider!.StateDb;
+                if (stateDb is IFullPruningDb fullPruningDb)
+                {
+                    IPruningTrigger pruningTrigger = CreateAutomaticTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
+                    if (pruningTrigger is not null)
+                    {
+                        api.PruningTrigger.Add(pruningTrigger);
+                    }
+
+                    FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!, stateReader, api.LogManager);
+                    api.DisposeStack.Push(pruner);
+                }
+            }
+        }
+		
         private static void InitBlockTraceDumper()
         {
             BlockTraceDumper.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
             BlockTraceDumper.Converters.AddRange(DebugModuleFactory.Converters);
             BlockTraceDumper.Converters.AddRange(TraceModuleFactory.Converters);
             BlockTraceDumper.Converters.Add(new TxReceiptConverter());
-        }
+        }		
 
-        private void ReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Saving reorg boundary {e.BlockNumber}");
-            (_api.BlockTree as BlockTree)!.SavePruningReorganizationBoundary(e.BlockNumber);
-        }
-        
         protected virtual IHealthHintService CreateHealthHintService() =>
-            new HealthHintService(_api.ChainSpec);
-
+            new HealthHintService(_api.ChainSpec!);
 
         protected virtual TxPool.TxPool CreateTxPool() =>
             new TxPool.TxPool(

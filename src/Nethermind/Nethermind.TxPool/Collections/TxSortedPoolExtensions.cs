@@ -25,7 +25,7 @@ namespace Nethermind.TxPool.Collections
     {
         public static IComparer<Transaction> GetPoolUniqueTxComparer(this IComparer<Transaction> comparer)
             => comparer
-                .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not loose transactions we need to differentiate on their identity which provided comparer might not be doing
+                .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
         public static IComparer<Transaction> GetPoolUniqueTxComparerByNonce(this IComparer<Transaction> comparer)
             => CompareTxByNonce.Instance // we need to ensure transactions are ordered by nonce, which might not be done in supplied comparer

@@ -71,7 +71,7 @@ namespace Nethermind.JsonRpc
                     defaultUrl.RpcEndpoint |= RpcEndpoint.Ws;
             }
 
-            foreach (string additionalRpcUrl in _jsonRpcConfig.AdditionalRPCUrls)
+            foreach (string additionalRpcUrl in _jsonRpcConfig.AdditionalRpcUrls)
             {
                 try
                 {

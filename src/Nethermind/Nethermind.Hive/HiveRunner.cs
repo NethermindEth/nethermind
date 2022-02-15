@@ -136,19 +136,25 @@ namespace Nethermind.Hive
             string[] files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
             if (_logger.IsInfo) _logger.Info($"Loaded {files.Length} files with blocks to process.");
 
-            foreach (var file in files)
+            foreach (string file in files)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
 
-                Block block = DecodeBlock(file);
-
-                if (_logger.IsInfo)
-                    _logger.Info(
-                        $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
-                await ProcessBlock(block);
+                try
+                {
+                    Block block = DecodeBlock(file);
+                    if (_logger.IsInfo)
+                        _logger.Info(
+                            $"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
+                    await ProcessBlock(block);
+                }
+                catch (RlpException e)
+                {
+                    if (_logger.IsError) _logger.Error($"HIVE Wrong block rlp.", e);
+                }
             }
         }
 
@@ -187,14 +193,13 @@ namespace Nethermind.Hive
         {
             byte[] fileContent = File.ReadAllBytes(file);
             if (_logger.IsInfo) _logger.Info(fileContent.ToHexString());
-            Rlp blockRlp = new Rlp(fileContent);
-
+            Rlp blockRlp = new(fileContent);
             return Rlp.Decode<Block>(blockRlp);
         }
 
         private async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
         {
-            if (!await semaphore.WaitAsync(-1))
+            if (!await semaphore.WaitAsync(5000))
             {
                 throw new InvalidOperationException();
             }
