@@ -56,7 +56,10 @@ namespace Nethermind.Synchronization.SnapSync
                 AccountsSyncBatch request = new AccountsSyncBatch();
                 request.Request = new(_bestHeader.StateRoot, _snapProvider.NextStartingHash, Keccak.MaxValue, _bestHeader.Number);
 
-                _logger.Info($"{request.Request.RootHash}:{request.Request.StartingHash}:{request.Request.LimitHash}");
+                if (_responsesCount == 1 || _responsesCount > 0 && _responsesCount % 10 == 0)
+                {
+                    _logger.Info($"SNAP - Responses:{_responsesCount}, next request:{request.Request.RootHash}:{request.Request.StartingHash}:{request.Request.LimitHash}");
+                }
 
                 return await Task.FromResult(request);
             }
@@ -69,8 +72,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         public override SyncResponseHandlingResult HandleResponse(AccountsSyncBatch? batch)
         {
-            _logger.Info($"HANDLE RESPONSE:{batch.Response is not null}");
-
             if (batch == null)
             {
                 if (_logger.IsError) _logger.Error("Received empty batch as a response");
@@ -79,7 +80,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if(batch.Response is null)
             {
-                if (_logger.IsInfo) _logger.Info("SNAP peer not assigned to handle request");
+                //if (_logger.IsInfo) _logger.Info("SNAP peer not assigned to handle request");
                 return SyncResponseHandlingResult.NoProgress;
             }
 
