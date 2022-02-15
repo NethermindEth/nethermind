@@ -73,8 +73,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         }
 
-
-        //Not working properly yet
         [Test]
         [TestCase("")]
         [TestCase("\"type\":null, ")]
@@ -91,7 +89,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ctx._test.ReadOnlyState.AccountExists(Address.SystemUser).Should().BeFalse();
         }
 
-        //Not working properly
         [Test]
         [TestCase("")]
         [TestCase("\"type\":null, ")]
@@ -109,7 +106,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             ctx._test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
         }
 
-        //Not working properly?
         [Test]
         [TestCase("")]
         [TestCase("\"type\":null, ")]
@@ -219,7 +215,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}", serialized);
         }
 
-        //Not working properly?
         [Test]
         [TestCase("")]
         [TestCase("\"type\":null, ")]
@@ -233,7 +228,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}", serialized);
         }
 
-        //Not working properly?
         [Test]
         [TestCase("")]
         [TestCase("\"type\":null, ")]

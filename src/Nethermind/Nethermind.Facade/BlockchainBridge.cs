@@ -168,7 +168,6 @@ namespace Nethermind.Facade
         public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool noBaseFee = false)
         {
             CallOutputTracer callOutputTracer = new();
-            // callOutputTracer.NoBaseFee = noBaseFee;
             (bool Success, string Error) tryCallResult = TryCallAndRestore(header, header.Timestamp, tx, false,
                 callOutputTracer.WithCancellation(cancellationToken), noBaseFee);
             return new CallOutput
