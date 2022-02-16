@@ -27,6 +27,7 @@ using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.AccountAbstraction.Test.TestContracts;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Contracts.Json;
@@ -73,10 +74,10 @@ namespace Nethermind.AccountAbstraction.Test
         
         public class TestAccountAbstractionRpcBlockchain : TestRpcBlockchain
         {
-            public IDictionary<Address, UserOperationPool> UserOperationPool { get; private set; } = null!;
-            public IDictionary<Address, UserOperationSimulator> UserOperationSimulator { get; private set; } = null!;
+            public IDictionary<Address, UserOperationPool> UserOperationPool { get; private set; } = new Dictionary<Address, UserOperationPool>();
+            public IDictionary<Address, UserOperationSimulator> UserOperationSimulator { get; private set; } = new Dictionary<Address, UserOperationSimulator>();
             public AbiDefinition EntryPointContractAbi { get; private set; } = null!;
-            public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = null!;
+            public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = new Dictionary<Address, UserOperationTxBuilder>();
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
 
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
@@ -94,7 +95,7 @@ namespace Nethermind.AccountAbstraction.Test
             private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
                 {
                     Enabled = true, 
-                    EntryPointContractAddress = "0xdb8b5f6080a8e466b64a8d7458326cb650b3353f,0x90f3e1105e63c877bf9587de5388c23cdb702c6b",
+                    EntryPointContractAddresses = "0xdb8b5f6080a8e466b64a8d7458326cb650b3353f,0x90f3e1105e63c877bf9587de5388c23cdb702c6b",
                     Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
                     UserOperationPoolSize = 200
                 };
@@ -142,7 +143,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 // Address.TryParse(_accountAbstractionConfig.EntryPointContractAddress, out Address? entryPointContractAddress);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses();
+                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
                 foreach (string _addressString in _entryPointContractAddressesString){
                     bool parsed = Address.TryParse(
                         _addressString,
@@ -219,7 +220,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses();
+                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
                 foreach (string _addressString in _entryPointContractAddressesString){
                     bool parsed = Address.TryParse(
                         _addressString,
@@ -245,9 +246,9 @@ namespace Nethermind.AccountAbstraction.Test
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
             
-            public void SendUserOperation(UserOperation userOperation)
+            public void SendUserOperation(Address entryPoint, UserOperation userOperation)
             {
-                ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool.AddUserOperation(userOperation);
+                ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
                 resultOfUserOperation.GetData().Should().Be(userOperation.Hash);
             }
