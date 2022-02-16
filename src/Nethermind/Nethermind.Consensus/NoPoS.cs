@@ -40,6 +40,8 @@ public class NoPoS : IPoSSwitcher
 #pragma warning restore 67
     
     public UInt256? TerminalTotalDifficulty => null;
+    public long? TerminalBlockNumber => null;
+    public Keccak? TerminalBlockHash => null;
 
     public bool TryUpdateTerminalBlock(BlockHeader header, BlockHeader? parent = null)
     {

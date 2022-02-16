@@ -18,6 +18,7 @@
 #nullable enable
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -97,7 +98,11 @@ namespace Nethermind.Api
         IGasPriceOracle? GasPriceOracle { get; set; }
         
         IEthSyncingInfo? EthSyncingInfo { get; set; }
+
+        CompositePruningTrigger PruningTrigger { get; }
         
         IBlockConfirmationManager BlockConfirmationManager { get; set; }
+        
+        IBlockProductionPolicy BlockProductionPolicy { get; set; }
     }
 }

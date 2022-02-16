@@ -30,6 +30,7 @@
       <Project>{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}</Project>
       <Name>Nethermind.Core.Test</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Specs.Test\Nethermind.Specs.Test.csproj" />

@@ -19,13 +19,21 @@ using System;
 
 namespace Nethermind.Trie
 {
-    [Flags]
-    public enum VisitingOptions
+    /// <summary>
+    /// Options to run <see cref="ITreeVisitor"/> on trie.
+    /// </summary>
+    public class VisitingOptions
     {
-        None = 0,
-        ExpectAccounts = 1,
-        Parallel = 2,
-        All = ExpectAccounts | Parallel,
-        Default = ExpectAccounts
+        public static readonly VisitingOptions Default = new();
+        
+        /// <summary>
+        /// Should visit accounts.
+        /// </summary>
+        public bool ExpectAccounts { get; init; } = true;
+        
+        /// <summary>
+        /// Maximum number of threads that will be used to visit the trie.
+        /// </summary>
+        public int MaxDegreeOfParallelism { get; init; } = 1; 
     }
 }

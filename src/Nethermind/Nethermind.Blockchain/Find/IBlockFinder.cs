@@ -138,5 +138,10 @@ namespace Nethermind.Blockchain.Find
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")
             };
         }
+        
+        /// <summary>
+        /// Highest state persisted
+        /// </summary>
+        long? BestPersistedState { get; set; }
     }
 }

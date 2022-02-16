@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net6.0</TargetFramework>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+      <WarningsAsErrors />
+    </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyMergePluginOnBuildOrPublish" AfterTargets="AfterBuild;AfterPublish">
+    <Copy SourceFiles="$(OutDir)Nethermind.AccountAbstraction.dll" DestinationFolder="$(SolutionDir)Nethermind.Runner\bin\$(Configuration)\$(TargetFramework)\plugins" Condition="Exists('$(OutDir)Nethermind.AccountAbstraction.dll')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(OutDir)Nethermind.AccountAbstraction.pdb" DestinationFolder="$(SolutionDir)Nethermind.Runner\bin\$(Configuration)\$(TargetFramework)\plugins" Condition="Exists('$(OutDir)Nethermind.AccountAbstraction.pdb')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <ItemGroup>
+    <None Remove="Contracts\EntryPoint.json" />
+    <EmbeddedResource Include="Contracts\EntryPoint.json" />
+  </ItemGroup>
+
+</Project>

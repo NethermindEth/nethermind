@@ -24,7 +24,7 @@ using NUnit.Framework;
 namespace Ethereum.Transition.Test
 {
     [TestFixture]
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.None)]
     public class BerlinToLondonTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
@@ -33,7 +33,7 @@ namespace Ethereum.Transition.Test
             await RunTest(test);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcBerlinToLondon");
+        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcBerlinToLondon");
             return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
     }
 }

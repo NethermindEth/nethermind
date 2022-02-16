@@ -24,6 +24,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
+      <ProjectReference Include="..\Nethermind.Specs.Test\Nethermind.Specs.Test.csproj" />
     </ItemGroup>
 
 </Project>

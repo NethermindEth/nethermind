@@ -42,7 +42,9 @@ namespace Nethermind.Merge.Plugin
         {
             if (_mergeConfig.Enabled)
             {
-                IBlockProducer blockProducer = await consensusPlugin.InitBlockProducer();
+                IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
+                    ? await consensusPlugin.InitBlockProducer()
+                    : null;
                 _miningConfig = _api.Config<IMiningConfig>();
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
@@ -57,9 +59,8 @@ namespace Nethermind.Merge.Plugin
                 if (_api.ReadOnlyTrieStore == null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
                 if (_api.BlockchainProcessor == null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
                 if (_api.HeaderValidator == null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
-
-                ILogger logger = _api.LogManager.GetClassLogger();
-                if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");
+                
+                if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
                 _manualTimestamper ??= new ManualTimestamper();
                 _idealBlockProductionContext.Init(_api.BlockProducerEnvFactory);

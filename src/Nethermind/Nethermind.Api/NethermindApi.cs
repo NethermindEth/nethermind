@@ -22,9 +22,9 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -49,7 +49,6 @@ using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
@@ -91,8 +90,7 @@ namespace Nethermind.Api
                 LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
-            ISyncConfig syncConfig = ConfigProvider.GetConfig<ISyncConfig>();
-
+            
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
                 TxPool,
@@ -206,6 +204,7 @@ namespace Nethermind.Api
 
         public IEthSyncingInfo EthSyncingInfo { get; set; }
         public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
+        public IBlockProductionPolicy BlockProductionPolicy { get; set; }
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
@@ -221,5 +220,6 @@ namespace Nethermind.Api
         public DisposableStack DisposeStack { get; } = new();
         public IReadOnlyList<INethermindPlugin> Plugins { get; } = new List<INethermindPlugin>();
         public IList<IPublisher> Publishers { get; } = new List<IPublisher>(); // this should be called publishers
+        public CompositePruningTrigger PruningTrigger { get; } = new();
     }
 }

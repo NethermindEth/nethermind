@@ -22,7 +22,7 @@ namespace Nethermind.Network.Dns;
 
 public interface IDnsClient
 {
-    Task<string[][]> Lookup(string query);
+    Task<IEnumerable<string>> Lookup(string query);
 }
 
 public class DnsClient : IDnsClient
@@ -36,11 +36,16 @@ public class DnsClient : IDnsClient
         _client = new();
     }
     
-    public async Task<string[][]> Lookup(string query)
+    public async Task<IEnumerable<string>> Lookup(string query)
     {
-        string queryString = (string.IsNullOrWhiteSpace(query) ? string.Empty : (query + ".")) + _domain;
+        if (_client.NameServers.Count == 0)
+        {
+            return Enumerable.Empty<string>();
+        }
+        
+        string queryString = $"{(string.IsNullOrWhiteSpace(query) ? string.Empty : (query + "."))}{_domain}";
         DnsQuestion rootQuestion = new(queryString, QueryType.TXT);
         IDnsQueryResponse response = await _client.QueryAsync(rootQuestion, CancellationToken.None);
-        return response.Answers.OfType<TxtRecord>().Select(txt => txt.Text.ToArray()).ToArray();
+        return response.Answers.OfType<TxtRecord>().Select(txt => string.Join(string.Empty, txt.Text));
     }
 }

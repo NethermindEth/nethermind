@@ -54,7 +54,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ISynchronizer _synchronizer;
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
-        private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
         private bool synced = false;
@@ -79,15 +78,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _synchronizer = synchronizer;
             _syncConfig = syncConfig;
             _logger = logManager.GetClassLogger();
-            _blockValidationSemaphore = new SemaphoreSlim(0);
-            _processor.BlockProcessed += (s, e) =>
-            {
-                _blockValidationSemaphore.Release(1);
-            };
-            _processor.BlockInvalid += (s, e) =>
-            {
-                _blockValidationSemaphore.Release(1);
-            };
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(BlockRequestResult request)

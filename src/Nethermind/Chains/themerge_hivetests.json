@@ -1,11 +1,20 @@
 {
   "version": "1",
   "engine": {
-    "clique": {
+    "Ethash": {
       "params": {
-        "period": 1,
-        "epoch": 30000,
-        "blockReward": "0x0"
+        "minimumDifficulty": "0x20000",
+        "difficultyBoundDivisor": "0x800",
+        "durationLimit": "0x0d",
+        "homesteadTransition": "0x0",
+        "eip100bTransition": "0x0",
+        "daoHardforkBeneficiary": "0xbf4ed7b27f1d666546e30d74d50d173d20bca754",
+        "blockReward": {
+          "0x0": "0x1BC16D674EC80000"
+        },
+        "difficultyBombDelays": {
+          "0x0": 700000
+        }
       }
     }
   },
@@ -15,7 +24,7 @@
     "eip161abcTransition": "0x0",
     "eip161dTransition": "0x0",
     "eip155Transition": "0x0",
-    "maxCodeSizeTransition": 10,
+    "maxCodeSizeTransition": "0x0",
     "maxCodeSize": 24576,
     "eip140Transition": "0x0",
     "eip211Transition": "0x0",
@@ -25,7 +34,6 @@
     "eip1014Transition": "0x0",
     "eip1052Transition": "0x0",
     "eip1283Transition": "0x0",
-    "eip1283DisableTransition": "0x0",
     "eip1283DisableTransition": "0x0",
     "eip152Transition": "0x0",
     "eip1108Transition": "0x0",
@@ -42,10 +50,8 @@
     "eip3529Transition": "0x0",
     "eip3541Transition": "0x0",
     "eip3198Transition": "0x0",
-    "MergeForkIdTransition": "0x64",
     "networkID": "0x7",
-    "chainID": "0x7",
-    "maximumExtraDataSize": "0x20"
+    "chainID": "0x7"
   },
   "genesis": {
     "seal": {
@@ -53,7 +59,7 @@
         "nonce": "0x0000000000000000"
       }
     },
-    "difficulty": "0x0",
+    "difficulty": "0x30000",
     "author": "0x0000000000000000000000000000000000000000",
     "timestamp": "0x1234",
     "extraData": "0x0000000000000000000000000000000000000000000000000000000000000000658bdf435d810c91414ec09147daa6db624063790000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
@@ -93,7 +99,7 @@
     },
     "0x0000000000000000000000000000000000000317": {
       "balance": "0x0",
-      "code": "0x60206000600037326020526001604060002055"
+      "code": "0x600160003555"
     },
     "0x0000000000000000000000000000000000000001": {
       "builtin": {

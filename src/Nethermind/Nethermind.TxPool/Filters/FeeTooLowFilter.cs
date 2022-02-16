@@ -26,7 +26,7 @@ namespace Nethermind.TxPool.Filters
     /// <summary>
     /// Filters out transactions where gas fee properties were set too low or where the sender has not enough balance.
     /// </summary>
-    internal class FeeToLowFilter : IIncomingTxFilter
+    internal class FeeTooLowFilter : IIncomingTxFilter
     {
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IChainHeadInfoProvider _headInfo;
@@ -34,7 +34,7 @@ namespace Nethermind.TxPool.Filters
         private readonly TxDistinctSortedPool _txs;
         private readonly ILogger _logger;
 
-        public FeeToLowFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
+        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;
@@ -49,10 +49,12 @@ namespace Nethermind.TxPool.Filters
             Account account = _accounts.GetAccount(tx.SenderAddress!);
             UInt256 balance = account.Balance;
             UInt256 affordableGasPrice = tx.CalculateAffordableGasPrice(spec.IsEip1559Enabled, _headInfo.CurrentBaseFee, balance);
+            bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) != TxHandlingOptions.PersistentBroadcast;
             
             if (_txs.IsFull()
                 && _txs.TryGetLast(out Transaction? lastTx)
-                && affordableGasPrice <= lastTx?.GasBottleneck)
+                && affordableGasPrice <= lastTx?.GasBottleneck
+                && isNotLocal)
             {
                 Metrics.PendingTransactionsTooLowFee++;
                 if (_logger.IsTrace)

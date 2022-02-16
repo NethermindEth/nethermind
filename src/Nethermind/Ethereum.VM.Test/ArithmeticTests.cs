@@ -16,17 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+using Ethereum.Test.Base;
 using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
     [TestFixture]
-    public class ArithmeticTests : VMTestBase
+    [Parallelizable(ParallelScope.All)]
+    public class ArithmeticTests : GeneralStateTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] {"ArithmeticTest"})]
-        public void Test(VirtualMachineTest test)
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(GeneralStateTest test)
         {
-            RunTest(test);
+            Assert.True(RunTest(test).Pass);
+        }
+        
+        public static IEnumerable<GeneralStateTest> LoadTests() 
+        { 
+            var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmArithmeticTest");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); 
         }
     }
 }

@@ -66,7 +66,6 @@ namespace Nethermind.Abi.Test.Json
                 
                 yield return new TestCaseData(GetTestData("tuple", new AbiTuple<CustomAbiType>(), 
                     new {name = "c", type = "int32"}));
-
                 yield return new TestCaseData(GetTestDataWithException("int1", new ArgumentException()));
                 yield return new TestCaseData(GetTestDataWithException("int9", new ArgumentException()));
                 yield return new TestCaseData(GetTestDataWithException("int300", new ArgumentException()));
@@ -102,7 +101,6 @@ namespace Nethermind.Abi.Test.Json
                 }
             }
         }
-
         public struct CustomAbiType
         {
             public int C { get; set; }

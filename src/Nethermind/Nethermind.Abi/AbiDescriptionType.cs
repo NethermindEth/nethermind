@@ -22,6 +22,7 @@ namespace Nethermind.Abi
         Constructor,
         Receive,
         Fallback,
-        Event
+        Event,
+        Error
     }
 }

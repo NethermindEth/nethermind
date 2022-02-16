@@ -19,7 +19,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Logging;
@@ -38,8 +37,7 @@ namespace Nethermind.Init.Steps
 
         public async Task Execute(CancellationToken _)
         {
-            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
-            if (miningConfig.Enabled)
+            if (_api.BlockProductionPolicy.ShouldStartBlockProduction())
             {
                 _api.BlockProducer = await BuildProducer();
 

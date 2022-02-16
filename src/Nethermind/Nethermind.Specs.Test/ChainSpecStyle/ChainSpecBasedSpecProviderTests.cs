@@ -36,6 +36,27 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
     public class ChainSpecBasedSpecProviderTests
     {
         [Test]
+        public void Sepolia_loads_properly()
+        {
+            ChainSpecLoader loader = new(new EthereumJsonSerializer());
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/sepolia.json");
+            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+            chainSpec.Parameters.Eip2537Transition.Should().BeNull();
+
+            ChainSpecBasedSpecProvider provider = new(chainSpec);
+            SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
+
+            List<long> blockNumbersToTest = new()
+            {
+                120_000_000, // far in the future
+            };
+
+            CompareSpecProviders(sepolia, provider, blockNumbersToTest);
+            Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
+            Assert.AreEqual(long.MaxValue, provider.GenesisSpec.DifficultyBombDelay);
+        }
+
+        [Test]
         public void Rinkeby_loads_properly()
         {
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
@@ -59,7 +80,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 RinkebySpecProvider.LondonBlockNumber,
                 120_000_000, // far in the future
             };
-            
+
             CompareSpecProviders(rinkeby, provider, blockNumbersToTest);
             Assert.AreEqual(RinkebySpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
@@ -171,12 +192,14 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             PropertyInfo[] propertyInfos =
                 typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
             foreach (PropertyInfo propertyInfo in propertyInfos
-                .Where(p => p.Name != nameof(IReleaseSpec.Name))
-                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
-                .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
-                .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
-                .Where(p => isMainnet || checkDifficultyBomb || p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
-                .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock)))
+                         .Where(p => p.Name != nameof(IReleaseSpec.Name))
+                         .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.MaximumExtraDataSize))
+                         .Where(p => isMainnet || p.Name != nameof(IReleaseSpec.BlockReward))
+                         .Where(p => isMainnet || checkDifficultyBomb ||
+                                     p.Name != nameof(IReleaseSpec.DifficultyBombDelay))
+                         .Where(p => isMainnet || checkDifficultyBomb ||
+                                     p.Name != nameof(IReleaseSpec.DifficultyBoundDivisor))
+                         .Where(p => p.Name != nameof(IReleaseSpec.Eip1559TransitionBlock)))
             {
                 Assert.AreEqual(propertyInfo.GetValue(oldSpec), propertyInfo.GetValue(newSpec),
                     blockNumber + "." + propertyInfo.Name);
@@ -222,7 +245,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         [Test]
         public void Chain_id_is_set_correctly()
         {
-            ChainSpec chainSpec = new() {Parameters = new ChainParameters(), ChainId = 5};
+            ChainSpec chainSpec = new() { Parameters = new ChainParameters(), ChainId = 5 };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             Assert.AreEqual(5, provider.ChainId);
@@ -244,8 +267,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         {
             ChainSpec chainSpec = new()
             {
-                Parameters = new ChainParameters {GasLimitBoundDivisor = 17},
-                Ethash = new EthashParameters {DifficultyBoundDivisor = 19}
+                Parameters = new ChainParameters { GasLimitBoundDivisor = 17 },
+                Ethash = new EthashParameters { DifficultyBoundDivisor = 19 }
             };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
@@ -263,11 +286,11 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 {
                     DifficultyBombDelays = new Dictionary<long, long>
                     {
-                        {3, 100},
-                        {7, 200},
-                        {13, 300},
-                        {17, 400},
-                        {19, 500},
+                        { 3, 100 },
+                        { 7, 200 },
+                        { 13, 300 },
+                        { 17, 400 },
+                        { 19, 500 },
                     }
                 }
             };
@@ -303,7 +326,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         [Test]
         public void Eip2200_is_set_correctly_directly()
         {
-            ChainSpec chainSpec = new() {Parameters = new ChainParameters {Eip2200Transition = 5}};
+            ChainSpec chainSpec = new() { Parameters = new ChainParameters { Eip2200Transition = 5 } };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
@@ -313,7 +336,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
         public void Eip2200_is_set_correctly_indirectly()
         {
             ChainSpec chainSpec =
-                new() {Parameters = new ChainParameters {Eip1706Transition = 5, Eip1283Transition = 5}};
+                new() { Parameters = new ChainParameters { Eip1706Transition = 5, Eip1283Transition = 5 } };
 
             ChainSpecBasedSpecProvider provider = new(chainSpec);
             provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
@@ -360,7 +383,12 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
 
             ChainSpec chainSpec = new()
             {
-                Ethash = new EthashParameters {HomesteadTransition = 70, Eip100bTransition = 1000},
+                Ethash =
+                    new EthashParameters
+                    {
+                        HomesteadTransition = 70,
+                        Eip100bTransition = 1000
+                    },
                 ByzantiumBlockNumber = 1960,
                 ConstantinopleBlockNumber = 6490,
                 Parameters = new ChainParameters
@@ -434,8 +462,12 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 r.IsTimeAdjustmentPostOlympic = true;
                 r.MaximumUncleCount = 2;
             });
-            
-            TestTransitions(1L, r => { r.MaxCodeSize = maxCodeSize; r.IsEip170Enabled = true; });
+
+            TestTransitions(1L, r =>
+            {
+                r.MaxCodeSize = maxCodeSize;
+                r.IsEip170Enabled = true;
+            });
             TestTransitions(70L, r => { r.IsEip2Enabled = r.IsEip7Enabled = true; });
             TestTransitions(1000L, r => { r.IsEip100Enabled = true; });
             TestTransitions(1400L, r => { r.IsEip140Enabled = true; });
@@ -445,7 +477,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             TestTransitions(1550L, r => { r.IsEip155Enabled = true; });
             TestTransitions(1580L, r => { r.IsEip158Enabled = true; });
             TestTransitions(1600L, r => { r.IsEip160Enabled = true; });
-            TestTransitions(1960L, r => { r.IsEip196Enabled = r.IsEip197Enabled = r.IsEip198Enabled = r.IsEip649Enabled = true; });
+            TestTransitions(1960L,
+                r => { r.IsEip196Enabled = r.IsEip197Enabled = r.IsEip198Enabled = r.IsEip649Enabled = true; });
             TestTransitions(2110L, r => { r.IsEip211Enabled = true; });
             TestTransitions(2140L, r => { r.IsEip214Enabled = true; });
             TestTransitions(6580L, r => { r.IsEip658Enabled = r.IsEip1234Enabled = true; });
