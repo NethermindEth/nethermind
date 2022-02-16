@@ -27,6 +27,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -283,6 +284,7 @@ namespace Nethermind.Init.Steps
             IFilterStore? filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
+            setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
             
             InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
             
