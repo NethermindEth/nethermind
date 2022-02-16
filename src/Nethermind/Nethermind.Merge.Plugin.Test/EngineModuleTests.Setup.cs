@@ -71,15 +71,13 @@ namespace Nethermind.Merge.Plugin.Test
 
         private class MergeTestBlockchain : TestBlockchain
         {
-            public IBlockProducer EmptyBlockProducer { get; private set; }
-
-            public IMergeConfig MergeConfig { get; set; } 
+            public IMergeConfig MergeConfig { get; set; }
+            
+            public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
             
             public IPayloadPreparationService? PayloadPreparationService { get; set; }
 
-            public Eth2BlockProductionContext IdealBlockProductionContext { get; set; } = new();
-
-            public Eth2BlockProductionContext EmptyBlockProductionContext { get; set; } = new();
+            public IManualBlockProductionTrigger BlockProductionTrigger { get; set; } = new BuildBlocksWhenRequested();
 
             public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             {
@@ -103,7 +101,7 @@ namespace Nethermind.Merge.Plugin.Test
                 MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
                 EthSyncingInfo = new EthSyncingInfo(BlockTree);
-                Eth2BlockProducerFactory? blockProducerFactory = new Eth2BlockProducerFactory(
+                PostMergeBlockProducerFactory? blockProducerFactory = new PostMergeBlockProducerFactory(
                     SpecProvider,
                     SealEngine,
                     Timestamper,
@@ -124,19 +122,13 @@ namespace Nethermind.Merge.Plugin.Test
                     transactionComparerProvider,
                     miningConfig,
                     LogManager);
-                
-                EmptyBlockProductionContext.Init(blockProducerEnvFactory);
-                EmptyBlockProducer = blockProducerFactory.Create(
-                    EmptyBlockProductionContext,
-                    EmptyTxSource.Instance
-                );
-                
-                EmptyBlockProducer.Start();
-                IdealBlockProductionContext.Init(blockProducerEnvFactory);
-                Eth2BlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
-                    IdealBlockProductionContext);
-                IdealBlockProductionContext.BlockProducer = postMergeBlockProducer;
-                PayloadPreparationService ??= new PayloadPreparationService(IdealBlockProductionContext, SealEngine,
+
+
+                var blockProducerEnv = blockProducerEnvFactory.Create();
+                PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
+                    blockProducerEnv, BlockProductionTrigger);
+                PostMergeBlockProducer = postMergeBlockProducer;
+                PayloadPreparationService ??= new PayloadPreparationService(postMergeBlockProducer, BlockProductionTrigger, SealEngine,
                     MergeConfig, TimerFactory.Default, LogManager);
                 return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
             }
@@ -161,7 +153,7 @@ namespace Nethermind.Merge.Plugin.Test
                 PoSSwitcher = new PoSSwitcher(MergeConfig, new MemDb(), BlockTree, SpecProvider, LogManager);
                 Address feeRecipient = !string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero;
                 SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, feeRecipient, LogManager);
-                HeaderValidator = new PostMergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealEngine, LogManager);
+                HeaderValidator = new MergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealEngine, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),

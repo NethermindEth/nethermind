@@ -27,7 +27,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin
 {
-    public sealed class PostMergeHeaderValidator : HeaderValidator
+    public sealed class MergeHeaderValidator : HeaderValidator
     {
         // https://eips.ethereum.org/EIPS/eip-3675#constants
         private const int MaxExtraDataBytes = 32;
@@ -35,7 +35,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBlockTree _blockTree;
 
-        public PostMergeHeaderValidator(
+        public MergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
             IBlockTree blockTree,
             ISpecProvider specProvider,

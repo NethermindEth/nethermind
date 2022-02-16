@@ -242,7 +242,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
             using MergeTestBlockchain chain = await CreateBlockChain( mergeConfig);
-            chain.PayloadPreparationService = new PayloadPreparationService(chain.IdealBlockProductionContext,
+            chain.PayloadPreparationService = new PayloadPreparationService(chain.PostMergeBlockProducer!, chain.BlockProductionTrigger,
                 chain.SealEngine,
                 mergeConfig, TimerFactory.Default, chain.LogManager, 1);
             IEngineRpcModule rpc = CreateEngineModule(chain);

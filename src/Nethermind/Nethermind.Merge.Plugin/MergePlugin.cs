@@ -40,7 +40,7 @@ namespace Nethermind.Merge.Plugin
         private IMergeConfig _mergeConfig = null!;
         private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
-        private IMergeBlockProductionPolicy _mergeBlockProductionPolicy;
+        private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
 
         public string Name => "Merge";
         public string Description => "Merge plugin for ETH1-ETH2";
@@ -99,7 +99,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockProductionPolicy == null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
                 
 
-                _api.HeaderValidator = new PostMergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealEngine, _api.LogManager);
+                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealEngine, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
@@ -127,9 +127,11 @@ namespace Nethermind.Merge.Plugin
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+                if (_blockProducer is null) throw new ArgumentNullException(nameof(_blockProducer));
+                if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
                 
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
-                PayloadPreparationService payloadPreparationService = new (_idealBlockProductionContext, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
+                PayloadPreparationService payloadPreparationService = new (_blockProducer, _blockProductionTrigger, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),

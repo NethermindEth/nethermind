@@ -39,7 +39,8 @@ namespace Nethermind.Merge.Plugin.Handlers
     /// </summary>
     public class PayloadPreparationService : IPayloadPreparationService
     {
-        private readonly Eth2BlockProductionContext _idealBlockContext;
+        private readonly PostMergeBlockProducer _blockProducer;
+        private readonly IManualBlockProductionTrigger _blockProductionTrigger;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private readonly List<string> _payloadsToRemove = new();
@@ -54,14 +55,16 @@ namespace Nethermind.Merge.Plugin.Handlers
         private TaskQueue _taskQueue = new();
 
         public PayloadPreparationService(
-            Eth2BlockProductionContext idealBlockContext,
+            PostMergeBlockProducer blockProducer,
+            IManualBlockProductionTrigger blockProductionTrigger,
             ISealer sealer,
             IMergeConfig mergeConfig,
             ITimerFactory timerFactory,
             ILogManager logManager,
             int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup)
         {
-            _idealBlockContext = idealBlockContext;
+            _blockProducer = blockProducer;
+            _blockProductionTrigger = blockProductionTrigger;
             _sealer = sealer;
             _timeout = TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot);
 
@@ -95,7 +98,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             if (_logger.IsTrace)
                 _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
-            Block emptyBlock = _idealBlockContext.BlockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
+            Block emptyBlock = _blockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
             if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
             return emptyBlock;
         }
@@ -106,7 +109,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             if (_logger.IsTrace)
                 _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader}");
             BlockImprovementContext blockImprovementContext =
-                new(emptyBlock, _idealBlockContext.BlockProductionTrigger, _timeout);
+                new(emptyBlock, _blockProductionTrigger, _timeout);
             Task<Block?> idealBlockTask = blockImprovementContext.StartImprovingBlock(parentHeader, payloadAttributes)
                 .ContinueWith(LogProductionResult);
 

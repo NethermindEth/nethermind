@@ -125,14 +125,13 @@ namespace Nethermind.Mev.Test
                         new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
                 };
 
-                Eth2BlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
+                PostMergeBlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
                     ITxSource? txSource = null)
                 {
-                    Eth2BlockProductionContext? blockProductionContext = new Eth2BlockProductionContext();
-                    blockProductionContext.Init(blockProducerEnvFactory, txSource);
-                    return new Eth2BlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
+                    BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(txSource);
+                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
                         LogManager).Create(
-                        blockProductionContext, null, blockProductionTrigger);
+                        blockProducerEnv, blockProductionTrigger, txSource);
                 }
 
                 MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0,

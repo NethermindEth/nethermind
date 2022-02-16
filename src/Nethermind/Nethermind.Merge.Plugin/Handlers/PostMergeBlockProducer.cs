@@ -91,9 +91,9 @@ namespace Nethermind.Merge.Plugin.Handlers
         public event EventHandler<BlockEventArgs>? BlockProduced;
     }
     
-    public class Eth2BlockProducer : BlockProducerBase
+    public class PostMergeBlockProducer : BlockProducerBase
     {
-        public Eth2BlockProducer(
+        public PostMergeBlockProducer(
             ITxSource txSource,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
