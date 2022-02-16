@@ -98,11 +98,18 @@ public class VerkleTree
     // public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
     public byte[]? GetValue(Span<byte> rawKey)
     {
-        byte[]? result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, rawKey.ToArray());
+        byte[]? result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, rawKey);
+        return result;
+    }
+    
+    public byte[]? GetValue(byte[] rawKey)
+    {
+        byte[]? result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, rawKey);
         return result;
     }
     
     public Span<byte> GetValueSpan(byte[] rawKey) => RustVerkleLib.VerkleTrieGetSpan(_verkleTrieObj, rawKey);
+    public Span<byte> GetValueSpan(Span<byte> rawKey) => RustVerkleLib.VerkleTrieGetSpan(_verkleTrieObj, rawKey);
 
 
     [DebuggerStepThrough]
@@ -111,7 +118,7 @@ public class VerkleTree
         if (_logger.IsTrace)
             _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
         // TODO; error handling here? or at least a way to check if the operation was successful
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey.ToArray(), value);
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value);
     }
     
     [DebuggerStepThrough]
@@ -129,7 +136,7 @@ public class VerkleTree
         if (_logger.IsTrace)
             _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
         // TODO; error handling here? or at least a way to check if the operation was successful
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey.ToArray(), value.ToArray());
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value);
     }
     
     [DebuggerStepThrough]
@@ -138,7 +145,7 @@ public class VerkleTree
         if (_logger.IsTrace)
             _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
         // TODO; error handling here? or at least a way to check if the operation was successful
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value.ToArray());
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value);
     }
     
     [DebuggerStepThrough]
@@ -148,7 +155,7 @@ public class VerkleTree
             _logger.Trace($"{(value.Length == 0 ? $"Deleting {keyPrefix.ToHexString() + subIndex}" : $"Setting {keyPrefix.ToHexString() + + subIndex} = {value.ToHexString()}")}");
         // TODO; error handling here? or at least a way to check if the operation was successful
         keyPrefix[31] = subIndex;
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, keyPrefix.ToArray(), value);
+        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, keyPrefix, value);
     }
     
     [DebuggerStepThrough]
