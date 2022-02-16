@@ -18,53 +18,53 @@ configs = {
     # fast sync section
     "mainnet": {
         "url": "api.etherscan.io",
-        "blockReduced": 100,
-        "multiplierRequirement": 100
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
     },
     "goerli": {
         "url": "api-goerli.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000 
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
     },
     "ropsten": {
         "url": "api-ropsten.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     },
     "rinkeby": {
         "url": "api-rinkeby.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000
     },
     "kovan": {
         "url": "api-kovan.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     },     
     "poacore": {
         "url": "https://core.poa.network",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     },
     "xdai": {
         "url": "https://dai.poa.network",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     },
     "sokol": {
         "url": "https://sokol.poa.network",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     },
     "energyweb": {
         "url": "https://rpc.energyweb.org",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     },
     "volta": {
         "url": "https://volta-rpc.energyweb.org",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     },   
     # mev section
     "mainnet_mev": {
@@ -74,13 +74,13 @@ configs = {
     },
     "goerli_mev": {
         "url": "api-goerli.etherscan.io",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000 
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
     },
     "xdai_mev": {
         "url": "https://dai.poa.network",
-        "blockReduced": 1000,
-        "multiplierRequirement": 1000
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     }
 }
 
