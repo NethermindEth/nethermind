@@ -107,8 +107,8 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieInsert(trie, one, one32);
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
 
-            RustVerkleLib.VerkleTrieGetSpan(trie, one32).ToArray().Should().BeEquivalentTo(one.ToArray());
-            RustVerkleLib.VerkleTrieGetSpan(trie, one).ToArray().Should().BeEquivalentTo(one32.ToArray());
+            RustVerkleLib.VerkleTrieGetSpan(trie, one32).Should().BeEquivalentTo(one);
+            RustVerkleLib.VerkleTrieGetSpan(trie, one).Should().BeEquivalentTo(one32);
         }
         
         [Test]
@@ -128,8 +128,8 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieInsert(trie, one, one32);
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
 
-            RustVerkleLib.VerkleTrieGet(trie, one32).Should().BeEquivalentTo(one.ToArray());
-            RustVerkleLib.VerkleTrieGet(trie, one).Should().BeEquivalentTo(one32.ToArray());
+            RustVerkleLib.VerkleTrieGet(trie, one32).Should().BeEquivalentTo(one);
+            RustVerkleLib.VerkleTrieGet(trie, one).Should().BeEquivalentTo(one32);
         }
 
         [Test]
