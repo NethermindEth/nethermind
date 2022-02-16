@@ -169,6 +169,16 @@ public static class RustVerkleLib {
             return proofBytes;
         }
     }
+    
+    public static unsafe Span<byte> VerkleProofGetSpan(IntPtr verkleTrie, byte[] key)
+    {
+        fixed (byte* p = key)
+        {
+            IntPtr proofBox =  get_verkle_proof(verkleTrie, p);
+            Proof vp = (Proof)Marshal.PtrToStructure(proofBox, typeof(Proof));
+            return vp.ptr == IntPtr.Zero ? Span<byte>.Empty : new Span<byte>(vp.ptr.ToPointer(), vp.len);
+        }
+    }
 
     public static unsafe bool VerkleProofVerify(IntPtr verkleTrie, byte[] verkleProof, int proofLen, byte[] key, byte[] value)
     {
