@@ -108,6 +108,12 @@ namespace Nethermind.AccountAbstraction.Test
             return this;
         }
         
+        public UserOperationBuilder WithPreVerificationGas(UInt256 preVerificationGas)
+        {
+            TestObjectInternal.PreVerificationGas = preVerificationGas;
+            return this;
+        }
+        
         public UserOperationBuilder SignedAndResolved(PrivateKey? privateKey = null!, Address? entryPointAddress = null!, ulong? chainId = null!)
         {
             privateKey ??= TestItem.IgnoredPrivateKey;

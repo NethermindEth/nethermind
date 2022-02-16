@@ -171,8 +171,33 @@ namespace Nethermind.AccountAbstraction.Test
         }
         
         [Test]
-        public async Task Should_execute_well_formed_op_successfully()
+        public void Should_sign_correctly()
         {
+            UserOperation createOp = Build.A.UserOperation
+                .WithSender(new Address("0x65f1326ef62E7b63B2EdF41840E37eB2a0F97515"))
+                .WithNonce(7)
+                .WithCallData(Bytes.FromHexString("0x80c5c7d000000000000000000000000017e4493e5dc3e0bafdb68147cf15f52f669ef91d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000004278ddd3c00000000000000000000000000000000000000000000000000000000"))
+                .WithCallGas(29129)
+                .WithVerificationGas(100000)
+                .WithPreVerificationGas(21000)
+                .WithMaxFeePerGas(1000000007)
+                .WithMaxPriorityFeePerGas(1000000000)
+                .SignedAndResolved(
+                    new PrivateKey("0xa31e1f30394cba49bca6783cf25679abae1e5fd7f70a95ef794b73e041a8c864"),
+                    new Address("0x90f3E1105E63C877bF9587DE5388C23Cdb702c6B"), 
+                    5
+                    )
+                .TestObject;
+            
+            Assert.AreEqual(
+                Bytes.FromHexString("0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c"),
+                createOp.Signature,
+                "signatures are different"
+            );
+        }
+        
+        [Test]
+        public async Task Should_execute_well_formed_op_successfully() {
             var chain = await CreateChain();
             (Address entryPointAddress, Address? walletAddress, Address? counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
 
@@ -358,13 +383,13 @@ namespace Nethermind.AccountAbstraction.Test
             Keccak requestId = op.CalculateRequestId(entryPointAddress, chainId);
             
             Signer signer = new(1, privateKey, NullLogManager.Instance);
-            Signature signature = signer.Sign(Keccak.Compute(
-                    Bytes.Concat(
-                        Encoding.UTF8.GetBytes("\x19"),
-                        Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + requestId.Bytes.Length),
-                        requestId.Bytes)
-                    )
-                );
+            Keccak hashedRequestId = Keccak.Compute(
+                Bytes.Concat(
+                    Encoding.UTF8.GetBytes("\x19"),
+                    Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + requestId.Bytes.Length),
+                    requestId.Bytes)
+            );
+            Signature signature = signer.Sign(hashedRequestId);
 
             op.Signature = Bytes.FromHexString(signature.ToString());
         }
