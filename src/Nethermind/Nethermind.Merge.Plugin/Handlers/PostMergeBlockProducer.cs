@@ -26,8 +26,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
 using Nethermind.State;
 
