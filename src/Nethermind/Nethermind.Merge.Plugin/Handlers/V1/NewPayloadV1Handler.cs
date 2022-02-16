@@ -36,6 +36,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -52,8 +53,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IMergeSyncController _mergeSyncController;
+        private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBeaconPivot _beaconPivot;
+        private readonly IBlockCacheService _blockCacheService;
         private readonly ILogger _logger;
         private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
@@ -67,8 +69,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
             IPoSSwitcher poSSwitcher,
-            IMergeSyncController mergeSyncController,
+            IBeaconSyncStrategy beaconSyncStrategy,
             IBeaconPivot beaconPivot,
+            IBlockCacheService blockCacheService,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -77,8 +80,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
             _poSSwitcher = poSSwitcher;
-            _mergeSyncController = mergeSyncController;
+            _beaconSyncStrategy = beaconSyncStrategy;
             _beaconPivot = beaconPivot;
+            _blockCacheService = blockCacheService;
             _logger = logManager.GetClassLogger();
             _blockValidationSemaphore = new SemaphoreSlim(0);
             _processor.BlockProcessed += (s, e) =>
@@ -103,50 +107,43 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 return NewPayloadV1Result.InvalidBlockHash;
             }
-
-            // ToDo wait for final PostMerge sync
-            if (request.TryGetBlock(out Block? block) && block != null)
-            {
-                bool blockParentProcessed = _beaconPivot.IsPivotParentProcessed();
-                _logger.Info($"Adding {block} to blockTree, blockParentProcessed: {blockParentProcessed}");
-                if (blockParentProcessed)
-                {
-                    _blockTree.SuggestBlock(block);
-                }
-                else
-                {
-                    _beaconPivot.EnsurePivot(block.Header);
-                    _blockTree.Insert(block);
-                }
-
-                if (blockParentProcessed == false)
-                {
-                    return NewPayloadV1Result.Syncing;
-                }
-            }
-
-            if (_ethSyncingInfo.IsSyncing() && synced == false)
-            {
-                return NewPayloadV1Result.Syncing;
-            }
-            if (synced == false)
-            { 
-                bool pivotParentProcessed = _beaconPivot.IsPivotParentProcessed();
-                if (pivotParentProcessed)
-                {
-                    _mergeSyncController.SwitchToBeaconModeControl();
-                    if (_logger.IsInfo) _logger.Info("ExecutePayloadHandler switched to BeaconModeControl");
-                    synced = true;
-                    _beaconPivot.ResetPivot();
-                }
-            }
             
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
+                _blockTree.Insert(block);
+                block.Header.TotalDifficulty = 5000588874;
+                _blockTree.Insert(block.Header);
+                _blockCacheService.InsertBlockHeader(block.Header);
                 return NewPayloadV1Result.Syncing;
             }
 
+            bool beaconSyncCompleted = _beaconSyncStrategy.IsBeaconSyncHeadersFinished();
+            _logger.Info($"Adding {block} to blockTree, beaconSyncCompleted: {beaconSyncCompleted}");
+            if (!beaconSyncCompleted)
+            {
+                _blockTree.Insert(block);
+                block.Header.TotalDifficulty = 5000588874;
+                _blockTree.Insert(block.Header);
+                _blockCacheService.InsertBlockHeader(block.Header);
+                return NewPayloadV1Result.Syncing;
+            }
+
+            // if (_ethSyncingInfo.IsSyncing() && synced == false)
+            // {
+            //     return NewPayloadV1Result.Syncing;
+            // }
+            // if (synced == false)
+            // { 
+            //     bool pivotParentProcessed = _beaconPivot.IsPivotParentProcessed();
+            //     if (pivotParentProcessed)
+            //     {
+                    // _beaconSyncStrategy.SwitchToBeaconModeControl();
+                    // if (_logger.IsInfo) _logger.Info("ExecutePayloadHandler switched to BeaconModeControl");
+                //     synced = true;
+                //     _beaconPivot.ResetPivot();
+                // }
+            // }
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
@@ -171,7 +168,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             processedBlock.Header.IsPostMerge = true;
-            var addResult = _blockTree.SuggestBlock(processedBlock, false, false);
+            AddBlockResult addResult = _blockTree.SuggestBlock(processedBlock, false, false);
             _logger.Info($"{processedBlock} add result {addResult}");
             return NewPayloadV1Result.Valid(request.BlockHash);
         }

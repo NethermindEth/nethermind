@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain.Test.Producers
             dbProvider.RegisterDb(DbNames.Headers, new MemDb());
             dbProvider.RegisterDb(DbNames.State, new MemDb());
             dbProvider.RegisterDb(DbNames.Code, new MemDb());
+            dbProvider.RegisterDb(DbNames.Metadata, new MemDb());
 
             BlockTree blockTree = new(
                 dbProvider,

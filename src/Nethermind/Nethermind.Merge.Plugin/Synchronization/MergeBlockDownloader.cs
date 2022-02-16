@@ -50,8 +50,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _beaconPivot = beaconPivot;
         }
-
-
+        
         protected override long GetUpperDownloadBoundary(PeerInfo bestPeer, BlocksRequest blocksRequest)
         {
             long preMergeUpperDownloadBoundary = base.GetUpperDownloadBoundary(bestPeer, blocksRequest);

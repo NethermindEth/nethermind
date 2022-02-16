@@ -13,13 +13,17 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Synchronization.Test
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Merge.Plugin.Handlers;
+
+public interface IBlockCacheService
 {
-    public enum SynchronizerType
-    {
-        Full,
-        Fast,
-        Eth2Merge
-    }
+    BlockHeader? GetBlockHeader(Keccak blockHash);
+    bool InsertBlockHeader(BlockHeader header);
+
+    bool RemoveBlockHeader(Keccak blockHash);
 }

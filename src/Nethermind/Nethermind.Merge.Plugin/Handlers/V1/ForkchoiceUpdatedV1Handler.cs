@@ -30,6 +30,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -45,7 +46,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly IPayloadService _payloadService;
-        private readonly IMergeSyncController _mergeSyncController;
+        private readonly IBlockCacheService _blockCacheService;
+        private readonly IBeaconSyncStrategy _beaconSyncStrategy;
+        private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
         private bool synced = false;
 
@@ -56,7 +59,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IEthSyncingInfo ethSyncingInfo,
             IBlockConfirmationManager blockConfirmationManager,
             IPayloadService payloadService,
-            IMergeSyncController mergeSyncController,
+            IBlockCacheService blockCacheService,
+            IBeaconSyncStrategy beaconSyncStrategy,
+            IBeaconPivot beaconPivot,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -67,13 +72,32 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _blockConfirmationManager = blockConfirmationManager ??
                                         throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadService = payloadService;
-            _mergeSyncController = mergeSyncController;
+            _blockCacheService = blockCacheService;
+            _beaconSyncStrategy = beaconSyncStrategy;
+            _beaconPivot = beaconPivot;
             _logger = logManager.GetClassLogger();
         }
 
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState,
             PayloadAttributes? payloadAttributes)
         {
+            BlockHeader? blockHeader = _blockCacheService.GetBlockHeader(forkchoiceState.HeadBlockHash);
+            if (blockHeader is not null)
+            {
+                if (!_beaconPivot.BeaconPivotExists())
+                {
+                    _beaconPivot.EnsurePivot(blockHeader);
+                    return ForkchoiceUpdatedV1Result.Syncing;
+                }
+
+                if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+                {
+                    return ForkchoiceUpdatedV1Result.Syncing;
+                    
+                }
+                _blockCacheService.RemoveBlockHeader(forkchoiceState.HeadBlockHash);
+            }
+
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
                 return ForkchoiceUpdatedV1Result.Syncing;

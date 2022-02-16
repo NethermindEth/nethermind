@@ -13,13 +13,35 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.Synchronization.Test
+using System.Collections.Concurrent;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Merge.Plugin.Handlers;
+
+public class BlockCacheService : IBlockCacheService
 {
-    public enum SynchronizerType
+    private readonly ConcurrentDictionary<Keccak, BlockHeader> _blockHeaderCache = new();
+
+    public BlockHeader? GetBlockHeader(Keccak blockHash)
     {
-        Full,
-        Fast,
-        Eth2Merge
+        _blockHeaderCache.TryGetValue(blockHash, out BlockHeader? blockHeader);
+        return blockHeader;
+    }
+
+    public bool InsertBlockHeader(BlockHeader blockHeader)
+    {
+        if (blockHeader.Hash is null)
+        {
+            return false;
+        }
+        return _blockHeaderCache.TryAdd(blockHeader.Hash, blockHeader);
+    }
+
+    public bool RemoveBlockHeader(Keccak blockHash)
+    {
+        return _blockHeaderCache.TryRemove(blockHash, out _);
     }
 }

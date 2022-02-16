@@ -140,6 +140,7 @@ namespace Nethermind.Merge.Plugin
                 
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
                 PayloadService payloadService = new (_idealBlockProductionContext, _api.Sealer, _mergeConfig, _api.LogManager);
+                BlockCacheService blockCacheService = new();
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadService, _api.LogManager),
@@ -152,6 +153,7 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher,
                         _beaconSync,
                         _beaconPivot,
+                        blockCacheService,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
@@ -160,7 +162,9 @@ namespace Nethermind.Merge.Plugin
                         _api.EthSyncingInfo,
                         _api.BlockConfirmationManager,
                         payloadService,
+                        blockCacheService,
                         _beaconSync,
+                        _beaconPivot,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),

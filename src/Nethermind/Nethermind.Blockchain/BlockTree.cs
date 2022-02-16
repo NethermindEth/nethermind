@@ -598,7 +598,7 @@ namespace Nethermind.Blockchain
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
             {
                 if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}"); 
-              //  return AddBlockResult.UnknownParent;
+                return AddBlockResult.UnknownParent;
             }
 
             SetTotalDifficulty(header);

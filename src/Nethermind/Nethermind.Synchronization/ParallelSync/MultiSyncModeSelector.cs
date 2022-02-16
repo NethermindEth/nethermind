@@ -322,7 +322,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
 
-            bool result =
+             bool result =
                 postPivotPeerAvailable &&
                 // (catch up after node is off for a while
                 // OR standard fast sync)
@@ -464,7 +464,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           stateNotDownloadedYet &&
                           notHasJustStartedFullSync &&
                           notInAStickyFullSync;
-
+            
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("STATE",
