@@ -22,7 +22,6 @@ using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.EthStats.Messages;
 using Nethermind.EthStats.Messages.Models;
 using Nethermind.Facade.Eth;
