@@ -18,10 +18,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 
@@ -33,6 +35,7 @@ namespace Nethermind.TxPool
     internal class TxBroadcaster : IDisposable
     {
         private readonly ITxPoolConfig _txPoolConfig;
+        private readonly IChainHeadInfoProvider _headInfo;
 
         /// <summary>
         /// Notification threshold randomizer seed
@@ -75,9 +78,11 @@ namespace Nethermind.TxPool
         public TxBroadcaster(IComparer<Transaction> comparer,
             ITimerFactory timerFactory,
             ITxPoolConfig txPoolConfig,
+            IChainHeadInfoProvider chainHeadInfoProvider,
             ILogManager? logManager)
         {
             _txPoolConfig = txPoolConfig;
+            _headInfo = chainHeadInfoProvider;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
             _accumulatedTemporaryTxs = new ConcurrentBag<Transaction>();
@@ -91,13 +96,25 @@ namespace Nethermind.TxPool
 
         internal Transaction[] GetSnapshot() => _persistentTxs.GetSnapshot();
 
-        public void StartBroadcast(Transaction tx)
+        public void Broadcast(Transaction tx, bool isPersistent)
+        {
+            if (isPersistent)
+            {
+                StartBroadcast(tx);
+            }
+            else
+            {
+                BroadcastOnce(tx);
+            }
+        }
+
+        private void StartBroadcast(Transaction tx)
         {
             NotifyPeersAboutLocalTx(tx);
             _persistentTxs.TryInsert(tx.Hash, tx);
         }
-      
-        public void BroadcastOnce(Transaction tx)
+
+        private void BroadcastOnce(Transaction tx)
         {
             _accumulatedTemporaryTxs.Add(tx);
         }
@@ -111,11 +128,22 @@ namespace Nethermind.TxPool
         {
             if (_persistentTxs.Count != 0)
             {
-                bool wasIncluded = _persistentTxs.TryRemove(txHash, out Transaction _);
-                if (wasIncluded)
+                bool hasBeenRemoved = _persistentTxs.TryRemove(txHash, out Transaction _);
+                if (hasBeenRemoved)
                 {
                     if (_logger.IsTrace) _logger.Trace(
-                        $"Transaction {txHash} removed from broadcaster after block inclusion");
+                        $"Transaction {txHash} removed from broadcaster");
+                }
+            }
+        }
+
+        public void EnsureStopBroadcastUpToNonce(Address address, UInt256 nonce)
+        {
+            if (_persistentTxs.Count != 0)
+            {
+                foreach (Transaction tx in _persistentTxs.TakeWhile(address, t => t.Nonce <= nonce))
+                {
+                    StopBroadcast(tx.Hash!);
                 }
             }
         }
@@ -124,15 +152,13 @@ namespace Nethermind.TxPool
         {
             void NotifyPeers()
             {
-                Transaction[] persistentTxs = _persistentTxs.GetSnapshot();
-
                 _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
             
                 if (_logger.IsDebug) _logger.Debug($"Broadcasting transactions to all peers");
 
                 foreach ((_, ITxPoolPeer peer) in _peers)
                 {
-                    Notify(peer, GetTxsToSend(peer, persistentTxs, _txsToSend));
+                    Notify(peer, GetTxsToSend(peer, _txsToSend));
                 }
 
                 _txsToSend.Clear();
@@ -142,13 +168,31 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
-        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IReadOnlyList<Transaction> persistentTxs, IEnumerable<Transaction> txsToSend)
+        internal IEnumerable<(Transaction Tx, bool IsPersistent)> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
         {
-            for (int i = 0; i < persistentTxs.Count; i++)
+            if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
-                if (_txPoolConfig.PeerNotificationThreshold >= Random.Value.Next(1, 100))
+                // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast,
+                // which will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to
+                // PeerNotificationThreshold multiplication by number of transactions in persistent broadcast, rounded up.
+                int numberOfPersistentTxsToBroadcast =
+                    Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
+                        _persistentTxs.Count);
+
+                foreach (Transaction tx in _persistentTxs.GetFirsts())
                 {
-                    yield return persistentTxs[i];
+                    if (numberOfPersistentTxsToBroadcast > 0)
+                    {
+                        if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
+                        {
+                            numberOfPersistentTxsToBroadcast--;
+                            yield return (tx, true);
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -156,12 +200,15 @@ namespace Nethermind.TxPool
             {
                 if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
                 {
-                    yield return tx;
+                    yield return (tx, false);
                 }
             }
         }
 
-        private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs)
+        private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs) =>
+            Notify(peer, txs.Select(t => (t, false)));
+        
+        private void Notify(ITxPoolPeer peer, IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
         {
             try
             {

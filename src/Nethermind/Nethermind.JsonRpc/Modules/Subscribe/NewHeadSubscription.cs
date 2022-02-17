@@ -19,6 +19,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
@@ -28,14 +29,16 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         private readonly IBlockTree _blockTree;
         private readonly bool _includeTransactions;
+        private readonly ISpecProvider _specProvider;
 
 
-        public NewHeadSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager, Filter? filter = null) 
+        public NewHeadSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager, ISpecProvider specProvider, Filter? filter = null) 
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = filter?.IncludeTransactions ?? false;
+            _specProvider = specProvider;
 
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
             if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
@@ -45,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             ScheduleAction(() =>
             {
-                JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions));
+                JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
                 
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");

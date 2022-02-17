@@ -146,6 +146,21 @@ namespace Nethermind.TxPool.Collections
         }
         
         /// <summary>
+        /// Returns best element of each bucket in supplied comparer order.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public IEnumerable<TValue> GetFirsts()
+        {
+            SortedSet<TValue> sortedValues = new(_sortedComparer);
+            foreach (KeyValuePair<TGroupKey, SortedSet<TValue>> bucket in _buckets)
+            {
+                sortedValues.Add(bucket.Value.Max!);
+            }
+
+            return sortedValues;
+        }
+        
+        /// <summary>
         /// Gets last element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -209,6 +224,36 @@ namespace Nethermind.TxPool.Collections
         
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key) => TryRemove(key, out _, out _);
+
+        /// <summary>
+        /// Tries to get elements matching predicated criteria, iterating through SortedSet with break on first mismatch.
+        /// </summary>
+        /// <param name="groupKey">Given GroupKey, which elements are checked.</param>
+        /// <param name="where">Predicated criteria.</param>
+        /// <returns>Elements matching predicated criteria.</returns>
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public IEnumerable<TValue> TakeWhile(TGroupKey groupKey, Predicate<TValue> where)
+        {
+            if (_buckets.TryGetValue(groupKey, out SortedSet<TValue>? bucket))
+            {
+                using SortedSet<TValue>.Enumerator enumerator = bucket!.GetEnumerator();
+                List<TValue>? list = null;
+
+                while (enumerator.MoveNext())
+                {
+                    if (!where(enumerator.Current))
+                    {
+                        break;
+                    }
+
+                    list ??= new List<TValue>();
+                    list.Add(enumerator.Current);
+                }
+                
+                return list ?? Enumerable.Empty<TValue>();
+            }
+            return Enumerable.Empty<TValue>();
+        }
 
         /// <summary>
         /// Tries to get element.

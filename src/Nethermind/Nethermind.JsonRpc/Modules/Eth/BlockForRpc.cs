@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             
         }
         
-        public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider? specProvider = null)
+        public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
         {
             _isAuRaBlock = block.Header.AuRaSignature != null;
             Author = block.Author ?? block.Beneficiary;

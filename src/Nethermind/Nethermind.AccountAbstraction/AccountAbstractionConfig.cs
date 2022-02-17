@@ -24,7 +24,6 @@ namespace Nethermind.AccountAbstraction
         public bool Enabled { get; set; }
         public int UserOperationPoolSize { get; set; } = 200;
         public int MaximumUserOperationPerSender { get; set; } = 10;
-        // public string EntryPointContractAddress { get; set; } = "";
         public string EntryPointContractAddresses {get; set;} = "";
         public string Create2FactoryAddress { get; set; } = "";
         public UInt256 MinimumGasPrice { get; set; } = 1;

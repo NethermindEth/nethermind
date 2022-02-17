@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
@@ -33,7 +34,7 @@ namespace Nethermind.Config.Test
     [Parallelizable(ParallelScope.All)]
     public abstract class ConfigFileTestsBase
     {
-        private readonly IDictionary<string, ConfigProvider> _cachedProviders = new ConcurrentDictionary<string, ConfigProvider>();
+        private readonly IDictionary<string, TestConfigProvider> _cachedProviders = new ConcurrentDictionary<string, TestConfigProvider>();
         private readonly Dictionary<string, IEnumerable<string>> _configGroups = new();
         
         [OneTimeSetUp]
@@ -45,7 +46,7 @@ namespace Nethermind.Config.Test
 
             Parallel.ForEach(Resolve("*"), configFile =>
             {
-                ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+                TestConfigProvider configProvider = GetConfigProviderFromFile(configFile);
                 foreach (Type configType in configTypes)
                 {
                     configProvider.GetConfig(configType);
@@ -180,25 +181,50 @@ namespace Nethermind.Config.Test
 
         protected void Test<T, TProperty>(string configWildcard, Expression<Func<T, TProperty>> getter, Action<string, TProperty> expectedValue) where T : IConfig
         {
+            foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
+            {
+                T config = configProvider.GetConfig<T>();
+                expectedValue(configProvider.FileName, getter.Compile()(config));
+            }
+        }
+
+        protected IEnumerable<TestConfigProvider> GetConfigProviders(string configWildcard)
+        {
             foreach (string configFile in Resolve(configWildcard))
             {
                 Console.WriteLine("Testing " + configFile);
-                if (!_cachedProviders.TryGetValue(configFile, out ConfigProvider? configProvider))
+                if (!_cachedProviders.TryGetValue(configFile, out TestConfigProvider? configProvider))
                 {
                     configProvider = GetConfigProviderFromFile(configFile);
                 }
-
-                T config = configProvider.GetConfig<T>();
-                expectedValue(configFile, getter.Compile()(config));
+                
+                yield return configProvider;
             }
         }
-        
-        private static ConfigProvider GetConfigProviderFromFile(string configFile)
+
+        protected class TestConfigProvider : ConfigProvider
         {
-            ConfigProvider configProvider = new();
-            string configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
-            configProvider.AddSource(new JsonConfigSource(configPath));
-            return configProvider;
+            public string FileName { get; }
+
+            public TestConfigProvider(string fileName)
+            {
+                FileName = fileName;
+            }
+        }
+
+        private static TestConfigProvider GetConfigProviderFromFile(string configFile)
+        {
+            try
+            {
+                TestConfigProvider configProvider = new(configFile);
+                string configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
+                configProvider.AddSource(new JsonConfigSource(configPath));
+                return configProvider;
+            }
+            catch (Exception e)
+            {
+                throw new ConfigurationErrorsException($"Cannot load config file {configFile}", e);
+            }
         }
         
         private Dictionary<string, IEnumerable<string>> BuildConfigGroups()

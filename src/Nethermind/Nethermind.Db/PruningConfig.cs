@@ -35,8 +35,8 @@ namespace Nethermind.Db
             }
         }
 
-        public PruningMode Mode { get; set; } = PruningMode.None;
-        public long CacheMb { get; set; } = 512;
+        public PruningMode Mode { get; set; } = PruningMode.Hybrid;
+        public long CacheMb { get; set; } = 1024;
         public long PersistenceInterval { get; set; } = 8192;
         public long FullPruningThresholdMb { get; set; } = 256000;
         public FullPruningTrigger FullPruningTrigger { get; set; } = FullPruningTrigger.Manual;
