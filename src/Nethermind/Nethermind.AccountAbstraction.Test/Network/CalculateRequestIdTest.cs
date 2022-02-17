@@ -17,7 +17,9 @@ namespace Nethermind.AccountAbstraction.Test.Network
             {
                 Sender = new Address("0x05c022028ef3e2c61b3babe0fbc8f658bc4b431f"),
                 Nonce = 5,
-                CallData = Bytes.FromHexString("0x2b311337000000000000000000000000000000000000000000000000000000000000012c"),
+                CallData =
+                    Bytes.FromHexString(
+                        "0x2b311337000000000000000000000000000000000000000000000000000000000000012c"),
                 InitCode = Bytes.Empty,
                 CallGas = 21000,
                 VerificationGas = 21000,
@@ -36,7 +38,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             Assert.AreEqual(idFromTransaction, idFromUserOperation,
                 "Request IDs do not match.");
         }
-        
+
         [Test]
         public void Calculates_RequestId_Correctly_With_Signature()
         {
@@ -44,7 +46,9 @@ namespace Nethermind.AccountAbstraction.Test.Network
             {
                 Sender = new Address("0x65f1326ef62E7b63B2EdF41840E37eB2a0F97515"),
                 Nonce = 7,
-                CallData = Bytes.FromHexString("0x80c5c7d000000000000000000000000017e4493e5dc3e0bafdb68147cf15f52f669ef91d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000004278ddd3c00000000000000000000000000000000000000000000000000000000"),
+                CallData =
+                    Bytes.FromHexString(
+                        "0x80c5c7d000000000000000000000000017e4493e5dc3e0bafdb68147cf15f52f669ef91d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000004278ddd3c00000000000000000000000000000000000000000000000000000000"),
                 InitCode = Bytes.Empty,
                 CallGas = 29129,
                 VerificationGas = 100000,
@@ -53,15 +57,21 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 MaxPriorityFeePerGas = 1000000000,
                 Paymaster = new Address("0x0000000000000000000000000000000000000000"),
                 PaymasterData = Bytes.Empty,
-                Signature = Bytes.FromHexString("0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c")
+                Signature = Bytes.FromHexString(
+                    "0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c")
             });
 
-            Address entryPointId = new Address("90f3e1105e63c877bf9587de5388c23cdb702c6b");
+            Keccak userOpHash = new Keccak("0x383a961ee4330d90fb5dbe90dc6fb6fceaf173201e29e0204476abca2a9f9571");
+            Assert.AreEqual(userOpHash, userOperation2.CalculateHash(), "user op hashes do not match");
+            
+            Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
             ulong chainId = 5;
-            Keccak idFromTransaction2 = new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
+            Keccak idFromTransaction2 =
+                new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
             Keccak idFromUserOperation2 = userOperation2.CalculateRequestId(entryPointId, chainId);
             Assert.AreEqual(idFromTransaction2, idFromUserOperation2,
                 "Request IDs do not match.");
         }
     }
 }
+

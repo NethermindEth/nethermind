@@ -189,6 +189,14 @@ namespace Nethermind.AccountAbstraction.Test
                     )
                 .TestObject;
             
+            Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
+            ulong chainId = 5;
+            Keccak idFromTransaction =
+                new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
+            Keccak idFromUserOperation = createOp.CalculateRequestId(entryPointId, chainId);
+            Assert.AreEqual(idFromTransaction, idFromUserOperation,
+                "Request IDs do not match.");
+            
             Assert.AreEqual(
                 Bytes.FromHexString("0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c"),
                 createOp.Signature,
@@ -382,7 +390,7 @@ namespace Nethermind.AccountAbstraction.Test
         {
             Keccak requestId = op.CalculateRequestId(entryPointAddress, chainId);
             
-            Signer signer = new(1, privateKey, NullLogManager.Instance);
+            Signer signer = new(chainId, privateKey, NullLogManager.Instance);
             Keccak hashedRequestId = Keccak.Compute(
                 Bytes.Concat(
                     Encoding.UTF8.GetBytes("\x19"),
