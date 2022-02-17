@@ -894,6 +894,30 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreEqual(0, currentHeader.Nonce);
             Assert.AreEqual(random, currentHeader.MixHash);
         }
+        
+        [Test]
+        public async Task Correctly_calculate_best_header_and_best_body_and_head_after_creating_sidechain()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            
+            IReadOnlyList<BlockRequestResult> branch1 =
+                await ProduceBranchV1(rpc, chain, 5, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+            IReadOnlyList<BlockRequestResult> branch2 =
+                await ProduceBranchV1(rpc, chain, 1, branch1[1], false, TestItem.KeccakC);
+            
+            Assert.AreEqual(5, chain.BlockTree.BestSuggestedBody.Number);
+            Assert.AreEqual(5, chain.BlockTree.BestSuggestedHeader!.Number);
+            Assert.AreEqual(5, chain.BlockTree.Head!.Number);
+
+            Keccak newSideChainHeadHash = branch2[0].BlockHash;
+            await rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(newSideChainHeadHash, newSideChainHeadHash, newSideChainHeadHash), null);
+            
+            Assert.AreEqual(5, chain.BlockTree.BestSuggestedBody.Number);
+            Assert.AreEqual(5, chain.BlockTree.BestSuggestedHeader!.Number);
+            Assert.AreEqual(3, chain.BlockTree.Head!.Number);
+        }
 
 
         private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranchV1(IEngineRpcModule rpc,
