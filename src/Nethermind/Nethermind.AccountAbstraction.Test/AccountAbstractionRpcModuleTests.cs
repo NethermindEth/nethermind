@@ -342,21 +342,12 @@ namespace Nethermind.AccountAbstraction.Test
                 _encoder.Encode(
                     AbiEncodingStyle.None,
                     _contracts.TokenPaymasterAbi.Constructors[0].GetCallInfo().Signature, "tst", 
-                    new Address("0xdb8b5f6080a8e466b64a8d7458326cb650b3353f")));
+                    chain.EntryPointAddress));
             
             (Address entryPointAddress, Address? walletAddress, Address? paymasterAddress) = await _contracts.Deploy(chain, paymasterBytecode);
 
             byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress);
             Address accountAddress = _contracts.GetAccountAddress(chain, entryPointAddress, walletConstructor, 0);
-            
-            UserOperation createOp = Build.A.UserOperation
-                .WithPaymaster(paymasterAddress!)
-                .WithSender(accountAddress)
-                .WithInitCode(walletConstructor)
-                .WithCallGas(10_000_000)
-                .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
-                .TestObject;
 
             byte[] addStakeCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TokenPaymasterAbi.Functions["addStake"].GetCallInfo().Signature, 0);
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -365,8 +356,8 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithGasPrice(2)
                 .WithValue(2.Ether())
                 .WithData(addStakeCallData)
-                .WithNonce(0)
-                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+                .WithNonce(chain.State.GetNonce(Contracts.ContractCreatorPrivateKey.Address))
+                .SignedAndResolved(Contracts.ContractCreatorPrivateKey).TestObject;
             await chain.AddBlock(true, fundTransaction);
 
             byte[] mintTokensCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TokenPaymasterAbi.Functions["mintTokens"].GetCallInfo().Signature, accountAddress, 1.Ether());
@@ -380,6 +371,14 @@ namespace Nethermind.AccountAbstraction.Test
                 .SignedAndResolved(Contracts.ContractCreatorPrivateKey).TestObject;
             await chain.AddBlock(true, mintTokensTransaction);
             
+            UserOperation createOp = Build.A.UserOperation
+                .WithPaymaster(paymasterAddress!)
+                .WithSender(accountAddress)
+                .WithInitCode(walletConstructor)
+                .WithCallGas(10_000_000)
+                .WithVerificationGas(2_000_000)
+                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .TestObject;
             chain.SendUserOperation(createOp);
             await chain.AddBlock(true);
 
