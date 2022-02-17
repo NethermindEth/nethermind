@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using NUnit.Framework;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
@@ -252,6 +253,24 @@ namespace Nethermind.AccountAbstraction.Test
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
                 resultOfUserOperation.GetData().Should().Be(userOperation.CalculateRequestId(entryPoint, SpecProvider.ChainId));
+            }
+
+            public void SupportedEntryPoints()
+            {
+                ResultWrapper<Address[]> resultOfEntryPoints= AccountAbstractionRpcModule.eth_supportedEntryPoints();
+                resultOfEntryPoints.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfEntryPoints.Result.Error);
+                IList<Address> entryPointContractAddresses = new List<Address>();
+                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string _addressString in _entryPointContractAddressesString){
+                    bool parsed = Address.TryParse(
+                        _addressString,
+                        out Address? entryPointContractAddress);
+                    entryPointContractAddresses.Add(entryPointContractAddress!);
+                }
+
+                Address[] eps = entryPointContractAddresses.ToArray();
+                Address[] recieved_eps = (Address[])(resultOfEntryPoints.GetData());
+                Assert.AreEqual(eps, recieved_eps);
             }
         }
     }

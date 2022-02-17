@@ -254,6 +254,14 @@ namespace Nethermind.AccountAbstraction.Test
             countAfter.Should().Be(1);
 
         }
+
+        [Test]
+        public async Task Should_display_the_list_of_supported_entry_points()
+        {
+            var chain = await CreateChain();
+            (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
+            chain.SupportedEntryPoints();
+        }
         
         [Test]
         public async Task Should_execute_well_formed_op_successfully_for_all_entry_points() {
