@@ -27,6 +27,18 @@ public class Proof
     public int len;
 }
 
+public enum DatabaseScheme
+{
+    MemoryDb,
+    RocksDb,
+}
+    
+public enum CommitScheme
+{
+    TestCommitment,
+    PrecomputeLagrange,
+}
+
 public static class RustVerkleLib {
     
     static RustVerkleLib()
@@ -35,7 +47,7 @@ public static class RustVerkleLib {
     }
     
     [DllImport("rust_verkle")]
-    private static extern IntPtr verkle_trie_new(byte databaseScheme, byte commitScheme);
+    private static extern IntPtr verkle_trie_new(DatabaseScheme databaseScheme, CommitScheme commitScheme, [MarshalAs(UnmanagedType.LPUTF8Str)] string pathname);
 
     [DllImport("rust_verkle")]
     private static extern unsafe IntPtr verkle_trie_get(IntPtr verkleTrie, byte *  key);
@@ -60,10 +72,13 @@ public static class RustVerkleLib {
 
     [DllImport("rust_verkle")]
     private static extern unsafe byte verify_verkle_proof_multiple(IntPtr verkleTrie, byte * verkleProof, int proofLen, byte * keys, byte * values, int len);
-
-    public static IntPtr VerkleTrieNew(byte databaseScheme = 0, byte commitScheme = 0)
+    public static IntPtr VerkleTrieNew(
+        DatabaseScheme databaseScheme = DatabaseScheme.MemoryDb,
+        CommitScheme commitScheme = CommitScheme.TestCommitment,
+        string pathname = "./db/verkle_db"
+    )
     {
-        return verkle_trie_new(databaseScheme, commitScheme);
+        return verkle_trie_new(databaseScheme, commitScheme, pathname);
     }
     
     public static unsafe void VerkleTrieInsert(IntPtr verkleTrie, Span<byte> key, Span<byte> value)
