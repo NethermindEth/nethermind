@@ -195,7 +195,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
 
                 byte[] countCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
-                byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, counterAddress!, 0, countCallData);
+                byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, counterAddress[i]!, 0, countCallData);
                 
                 UserOperation op = Build.A.UserOperation
                     .WithSender(walletAddress[i]!)
@@ -208,7 +208,7 @@ namespace Nethermind.AccountAbstraction.Test
                     .WithGasLimit(1_000_000)
                     .WithGasPrice(2)
                     .WithValue(1.Ether())
-                    .WithNonce(0)
+                    .WithNonce((UInt256)(i + 1))
                     .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
                 await chain.AddBlock(true, fundTransaction);
 

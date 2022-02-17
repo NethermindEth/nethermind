@@ -95,7 +95,7 @@ namespace Nethermind.AccountAbstraction.Test
             private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
                 {
                     Enabled = true, 
-                    EntryPointContractAddresses = "0xdb8b5f6080a8e466b64a8d7458326cb650b3353f,0x90f3e1105e63c877bf9587de5388c23cdb702c6b",
+                    EntryPointContractAddresses = "0xdb8b5f6080a8e466b64a8d7458326cb650b3353f,0xb0894727fe4ff102e1f1c8a16f38afc7b859f215",
                     Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
                     UserOperationPoolSize = 200
                 };
