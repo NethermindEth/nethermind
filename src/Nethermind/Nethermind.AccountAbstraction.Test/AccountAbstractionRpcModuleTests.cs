@@ -230,7 +230,7 @@ namespace Nethermind.AccountAbstraction.Test
             UserOperation op = Build.A.UserOperation
                 .WithSender(walletAddress[0]!)
                 .WithCallData(execCounterCountFromEntryPoint)
-                .SignedAndResolved(TestItem.PrivateKeyA)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
 
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -270,7 +270,7 @@ namespace Nethermind.AccountAbstraction.Test
                 UserOperation op = Build.A.UserOperation
                     .WithSender(walletAddress[i]!)
                     .WithCallData(execCounterCountFromEntryPoint)
-                    .SignedAndResolved(TestItem.PrivateKeyA)
+                    .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[i], chain.SpecProvider.ChainId)
                     .TestObject;
 
                 Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -310,7 +310,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithInitCode(walletConstructor)
                 .WithCallGas(10_000_000)
                 .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
 
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -341,7 +341,7 @@ namespace Nethermind.AccountAbstraction.Test
             UserOperation op = Build.A.UserOperation
                 .WithSender(walletAddress[0]!)
                 .WithCallData(execCounterCountFromEntryPoint)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
             
             byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress[0]);
@@ -353,7 +353,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithCallData(execCounterCountFromEntryPoint)
                 .WithCallGas(10_000_000)
                 .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
             
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -442,7 +442,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithInitCode(walletConstructor)
                 .WithCallGas(10_000_000)
                 .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
             chain.SendUserOperation(entryPointAddress[0], createOp);
             await chain.AddBlock(true);

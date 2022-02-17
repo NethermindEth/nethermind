@@ -79,9 +79,7 @@ namespace Nethermind.AccountAbstraction.Test
             public AbiDefinition EntryPointContractAbi { get; private set; } = null!;
             public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = new Dictionary<Address, UserOperationTxBuilder>();
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
-
-            public Address EntryPointAddress { get; private set; } = null!;
-
+            
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
                 Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
