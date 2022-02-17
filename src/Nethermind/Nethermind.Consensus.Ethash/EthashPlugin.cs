@@ -74,12 +74,7 @@ namespace Nethermind.Consensus.Ethash
         {
             return Task.CompletedTask;
         }
-
-        public void AfterHeaderValidator()
-        {
-            
-        }
-
+        
         public string SealEngineType => Core.SealEngineType.Ethash;
 
         public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi!.ManualBlockProductionTrigger;

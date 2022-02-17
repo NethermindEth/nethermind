@@ -26,7 +26,7 @@ namespace Nethermind.Abi
     {
         private const int MaxSize = 256;
         private const int MinSize = 0;
-
+        
         public static new readonly AbiUInt UInt8 = new(8);
         public static new readonly AbiUInt UInt16 = new(16);
         public static new readonly AbiUInt UInt32 = new(32);

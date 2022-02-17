@@ -33,7 +33,7 @@ namespace Ethereum.Blockchain.Block.Test
             string[] directories =
                 Directory.GetDirectories(AppDomain.CurrentDomain.BaseDirectory)
                 .Select(Path.GetFileName)
-                .Where(d =>d.StartsWith("bc") || d.StartsWith("vm"))
+                .Where(d =>d.StartsWith("bc"))
                 .ToArray();
             
             Type[] types = GetType().Assembly.GetTypes();

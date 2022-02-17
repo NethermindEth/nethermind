@@ -60,11 +60,6 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public void AfterHeaderValidator()
-        {
-            
-        }
-
         public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi is not null)

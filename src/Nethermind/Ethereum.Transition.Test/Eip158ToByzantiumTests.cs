@@ -32,7 +32,7 @@ namespace Ethereum.Transition.Test
             await RunTest(test);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadLegacyBlockchainTestsStrategy(), "bcEIP158ToByzantium");
+        public static IEnumerable<BlockchainTest> LoadTests() { var loader = new TestsSourceLoader(new LoadBlockchainTestsStrategy(), "bcEIP158ToByzantium");
         return (IEnumerable<BlockchainTest>)loader.LoadTests(); }
     }
 }

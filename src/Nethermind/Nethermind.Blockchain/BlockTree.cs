@@ -82,6 +82,7 @@ namespace Nethermind.Blockchain
         private long? _beaconSyncDestinationNumber;
         
         private long? _lowestInsertedReceiptBlock;
+        private long? _highestPersistedState;
 
         public long? LowestInsertedBodyNumber
         {
@@ -624,7 +625,7 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if (header.IsGenesis || TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0))
+            if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
             {
                 if (header.IsGenesis)
                 {
@@ -632,7 +633,7 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
-                if (block is not null && (BestSuggestedBody?.Number ?? 0) < block.Number && block.IsPostMerge)
+                if (block is not null && block.IsPostMerge)
                     BestSuggestedBody = block;
                 
                 if (block is not null && shouldProcess)
@@ -1260,7 +1261,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Block added to main {block}");
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
-            if (forceUpdateHeadBlock || block.IsGenesis || TotalDifficultyRequirementSatisfied(block.Header, Head?.TotalDifficulty ?? 0))
+            if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
             {
                 if (block.Number == 0)
                 {
@@ -1280,6 +1281,17 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
         }
+        
+        private bool HeadImprovementRequirementsSatisfied(BlockHeader header)
+        {
+            return TotalDifficultyRequirementSatisfied(header, Head?.TotalDifficulty ?? 0);
+        }
+
+        private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+        {
+            return BestSuggestedHeader?.Number <= header.Number 
+                   && TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
+        }
 
         private bool TotalDifficultyRequirementSatisfied(BlockHeader header, UInt256 totalDifficultyToCheck)
         {
@@ -1290,7 +1302,7 @@ namespace Nethermind.Blockchain
             
             // after the merge, we will accept only the blocks with Difficulty = 0. However, during the transition process
             // we can have terminal PoW blocks with Difficulty > 0. That is why we accept everything greater or equal
-            // than current head and header.TD >= TTD. The validity of blocks is verified in block validators classes.
+            // than current head and header.TD >= TTD.
             bool postMergeImprovementRequirementSatisfied = header.TotalDifficulty >= totalDifficultyToCheck &&
                                                             _specProvider.TerminalTotalDifficulty != null &&
                                                             header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty;
@@ -1301,7 +1313,8 @@ namespace Nethermind.Blockchain
         {
             Block? startBlock = null;
             byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
-            long? persistedNumber = persistedNumberData is null ? (long?) null : new RlpStream(persistedNumberData).DecodeLong();
+            BestPersistedState = persistedNumberData is null ? null : new RlpStream(persistedNumberData).DecodeLong();
+            long? persistedNumber = BestPersistedState;
             if (persistedNumber is not null)
             {
                 startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
@@ -1722,9 +1735,18 @@ namespace Nethermind.Blockchain
 
         private Task WaitForReadinessToAcceptNewBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
-        public void SavePruningReorganizationBoundary(long blockNumber)
+        /// <inheritdoc />
+        public long? BestPersistedState
         {
-            _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(blockNumber).Bytes);
+            get => _highestPersistedState;
+            set
+            {
+                _highestPersistedState = value;
+                if (value.HasValue)
+                {
+                    _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
+                }
+            }
         }
     }
 }

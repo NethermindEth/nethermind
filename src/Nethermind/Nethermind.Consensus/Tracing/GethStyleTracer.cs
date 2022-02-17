@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.Tracing
             Block block = _blockTree.FindBlock(blockParameter);
             if (block is null) throw new InvalidOperationException($"Cannot find block {blockParameter}");
             tx.Hash ??= tx.CalculateHash();
-            block = block.WithReplacedBody(BlockBody.WithOneTransactionOnly(tx));
+            block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
             ITransactionProcessorAdapter currentAdapter = _transactionProcessorAdapter.CurrentAdapter;
             _transactionProcessorAdapter.CurrentAdapter = new TraceTransactionProcessorAdapter(_transactionProcessorAdapter.TransactionProcessor);
             
@@ -117,7 +117,7 @@ namespace Nethermind.Consensus.Tracing
             if (block == null) throw new InvalidOperationException("Only historical blocks");
             if (tx.Hash == null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
             
-            block = block.WithReplacedBody(BlockBody.WithOneTransactionOnly(tx));
+            block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
             GethLikeBlockTracer blockTracer = new(tx.Hash, options);
             _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
             return blockTracer.BuildResult().SingleOrDefault();

@@ -59,11 +59,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void AddOrUpdateClientsBag(Subscription subscription)
         {
+            void OnJsonRpcDuplexClientClosed(object? sender, EventArgs e)
+            {
+                IJsonRpcDuplexClient jsonRpcDuplexClient = (IJsonRpcDuplexClient)sender;
+                RemoveClientSubscriptions(jsonRpcDuplexClient!);
+                jsonRpcDuplexClient.Closed -= OnJsonRpcDuplexClientClosed;
+            }
+            
             _subscriptionsByJsonRpcClient.AddOrUpdate(subscription.JsonRpcDuplexClient.Id,
                 k =>
                 {
                     if (_logger.IsTrace) _logger.Trace($"Created client's subscriptions bag and added client's first subscription {subscription.Id} to it.");
-                    subscription.JsonRpcDuplexClient.Closed += RemoveClientSubscriptions;
+                    subscription.JsonRpcDuplexClient.Closed += OnJsonRpcDuplexClientClosed;
                     return new HashSet<Subscription>() {subscription};
                 },
                 (k, b) =>
@@ -111,17 +118,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionId} from dictionary _subscriptions.");
         }
 
-        public void RemoveClientSubscriptions(object? sender, EventArgs e)
+        public void RemoveClientSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient)
         {
-            IJsonRpcDuplexClient jsonRpcDuplexClient = (IJsonRpcDuplexClient)sender;
-
-            if (jsonRpcDuplexClient != null
-                && _subscriptionsByJsonRpcClient.TryRemove(jsonRpcDuplexClient.Id, out var subscriptionsBag))
+            string clientId = jsonRpcDuplexClient.Id;
+            if (_subscriptionsByJsonRpcClient.TryRemove(clientId, out HashSet<Subscription> subscriptionsBag))
             {
                 DisposeAndRemoveFromDictionary(subscriptionsBag);
-                if (_logger.IsTrace) _logger.Trace($"Client {jsonRpcDuplexClient.Id} removed from dictionary _subscriptionsByJsonRpcClient.");
+                if (_logger.IsTrace) _logger.Trace($"Client {clientId} removed from dictionary _subscriptionsByJsonRpcClient.");
             }
-            else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove client {jsonRpcDuplexClient?.Id} from dictionary _subscriptionsByJsonRpcClient.");
+            else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove client {clientId} from dictionary _subscriptionsByJsonRpcClient.");
         }
 
         private void DisposeAndRemoveFromDictionary(HashSet<Subscription> subscriptionsBag)

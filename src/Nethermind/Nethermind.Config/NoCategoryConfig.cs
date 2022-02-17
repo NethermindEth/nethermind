@@ -12,7 +12,7 @@ namespace Nethermind.Config
         public string DataDir { get; set; }
         public string ConfigsDirectory { get; set; }
         public string BaseDbPath { get; set; }
-        public string LogLevel { get; set; }
+        public string Log { get; set; }
         public string LoggerConfigSource { get; set; }
         public string PluginsDirectory { get; set; }
         public string MonitoringJob { get; set; }

@@ -25,6 +25,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
@@ -48,6 +49,7 @@ namespace Nethermind.Merge.Plugin
         private BeaconSync? _beaconSync;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
+        private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
 
         public string Name => "Merge";
         public string Description => "Merge plugin for ETH1-ETH2";
@@ -66,7 +68,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
-                
+
 
                 _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
                 _poSSwitcher = new PoSSwitcher(_mergeConfig,
@@ -105,14 +107,17 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
+                if (_api.BlockProductionPolicy == null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
                 
 
-                _api.HeaderValidator = new PostMergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealEngine, _api.LogManager);
+                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealEngine, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
                 _api.HealthHintService =
                     new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
+                _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
+                _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
 
                 _api.FinalizationManager = new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
             }
@@ -137,13 +142,15 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
+                if (_blockProducer is null) throw new ArgumentNullException(nameof(_blockProducer));
+                if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
                 
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
-                PayloadService payloadService = new (_idealBlockProductionContext, _api.Sealer, _mergeConfig, _api.LogManager);
                 BlockCacheService blockCacheService = new();
+                PayloadPreparationService payloadPreparationService = new (_blockProducer, _blockProductionTrigger, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new GetPayloadV1Handler(payloadService, _api.LogManager),
+                    new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
                     new NewPayloadV1Handler(
                         _api.BlockValidator,
                         _api.BlockTree,
@@ -161,7 +168,7 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher,
                         _api.EthSyncingInfo,
                         _api.BlockConfirmationManager,
-                        payloadService,
+                        payloadPreparationService,
                         blockCacheService,
                         _beaconSync,
                         _beaconPivot,
@@ -169,6 +176,7 @@ namespace Nethermind.Merge.Plugin
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
                     new GetPayloadBodiesV1Handler(_api.BlockTree, _api.LogManager),
+                    new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                     _api.LogManager);
 
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
@@ -192,7 +200,7 @@ namespace Nethermind.Merge.Plugin
                 _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _api.SyncProgressResolver);
 
                 // ToDo strange place for validators initialization
-                _api.HeaderValidator = new PostMergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider,
+                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider,
                     Always.Valid, _api.LogManager);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
                     _api.SpecProvider, _api.LogManager);

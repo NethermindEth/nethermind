@@ -82,6 +82,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.DoesNotThrowAsync(async () => await _consensusPlugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
+            Assert.DoesNotThrowAsync(async () => await _plugin.InitSynchronization());
             Assert.DoesNotThrowAsync(async () => await _plugin.InitBlockProducer(_consensusPlugin));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
             Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
@@ -92,6 +93,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             Assert.DoesNotThrowAsync(async () => await _consensusPlugin.Init(_context));
             await _plugin.Init(_context);
+            await _plugin.InitSynchronization();
             await _plugin.InitNetworkProtocol();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             Assert.IsTrue(syncConfig.NetworkingEnabled);

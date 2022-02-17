@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.IO.Abstractions;
 using FluentAssertions;
+using Nethermind.Db.FullPruning;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
@@ -35,7 +37,6 @@ namespace Nethermind.Db.Test.Rpc
                 foreach (IDb db in dbs)
                 {
                     db.Should().BeAssignableTo<T>(db.Name);
-                    db.Innermost.Should().BeAssignableTo<RpcDb>(db.Name);
                 }
             }
             
@@ -44,7 +45,7 @@ namespace Nethermind.Db.Test.Rpc
             IMemDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), null, jsonSerializer, jsonRpcClient, LimboLogs.Instance);
 
             IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
-            StandardDbInitializer standardDbInitializer = new(memDbProvider, null, rpcDbFactory, LimboLogs.Instance);
+            StandardDbInitializer standardDbInitializer = new(memDbProvider, null, rpcDbFactory, Substitute.For<IFileSystem>());
             standardDbInitializer.InitStandardDbs(true);
 
             ValidateDb<ReadOnlyDb>(
@@ -55,8 +56,10 @@ namespace Nethermind.Db.Test.Rpc
                 memDbProvider.BlockInfosDb);
 
             ValidateDb<ReadOnlyDb>(
-                memDbProvider.StateDb,
                 memDbProvider.CodeDb);
+            
+            ValidateDb<FullPruningDb>(
+                memDbProvider.StateDb);
         }
     }
 }

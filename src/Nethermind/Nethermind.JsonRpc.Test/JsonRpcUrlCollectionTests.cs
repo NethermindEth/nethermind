@@ -124,7 +124,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRPCUrls = new [] { "https://localhost:1234|https;wss|admin;debug" }
+                AdditionalRpcUrls = new [] { "https://localhost:1234|https;wss|admin;debug" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
@@ -142,7 +142,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRPCUrls = new [] { "http://localhost:1234|ws|admin;debug" }
+                AdditionalRpcUrls = new [] { "http://localhost:1234|ws|admin;debug" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
@@ -159,7 +159,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRPCUrls = new [] { "http://localhost:1234|http;ws|admin;debug" }
+                AdditionalRpcUrls = new [] { "http://localhost:1234|http;ws|admin;debug" }
             };
 
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
@@ -178,7 +178,7 @@ namespace Nethermind.JsonRpc.Test
                 Enabled = true,
                 EnabledModules = _enabledModules,
                 WebSocketsPort = 9876,
-                AdditionalRPCUrls = new []
+                AdditionalRpcUrls = new []
                 {
                     "http://localhost:8545|http;ws|admin;debug",
                     "https://127.0.0.1:1234|https;wss|eth;web3",
@@ -203,7 +203,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 Enabled = true,
                 EnabledModules = _enabledModules,
-                AdditionalRPCUrls = new []
+                AdditionalRpcUrls = new []
                 {
                     string.Empty,
                     "test",

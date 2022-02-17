@@ -45,7 +45,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockConfirmationManager _blockConfirmationManager;
-        private readonly IPayloadService _payloadService;
+        private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly IBlockCacheService _blockCacheService;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBeaconPivot _beaconPivot;
@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IPoSSwitcher poSSwitcher,
             IEthSyncingInfo ethSyncingInfo,
             IBlockConfirmationManager blockConfirmationManager,
-            IPayloadService payloadService,
+            IPayloadPreparationService payloadPreparationService,
             IBlockCacheService blockCacheService,
             IBeaconSyncStrategy beaconSyncStrategy,
             IBeaconPivot beaconPivot,
@@ -71,7 +71,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _blockConfirmationManager = blockConfirmationManager ??
                                         throw new ArgumentNullException(nameof(blockConfirmationManager));
-            _payloadService = payloadService;
+            _payloadPreparationService = payloadPreparationService;
             _blockCacheService = blockCacheService;
             _beaconSyncStrategy = beaconSyncStrategy;
             _beaconPivot = beaconPivot;
@@ -150,7 +150,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             // In future safeBlockHash will be added to JSON-RPC
             _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
-            byte[]? payloadId = null;
+            string? payloadId = null;
 
             bool headUpdated = false;
             bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
@@ -172,10 +172,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (payloadAttributes != null)
             {
-                payloadId = await _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
+                payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
             }
 
-            return ForkchoiceUpdatedV1Result.Valid(payloadId?.ToHexString(true), forkchoiceState.HeadBlockHash);
+            return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
         }
 
         // This method will detect reorg in terminal PoW block
@@ -223,7 +223,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             BlockHeader? blockHeader = _blockTree.FindHeader(confirmedBlockHash, BlockTreeLookupOptions.None);
             if (blockHeader is null)
             {
-                errorMsg = $"Syncing... Block {confirmedBlockHash} not found for confirmation.";
+                errorMsg = $"Block {confirmedBlockHash} not found for confirmation.";
                 if (_logger.IsWarn) _logger.Warn(errorMsg);
             }
 
@@ -241,7 +241,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (!TryGetBranch(newHeadBlock, out Block[] branchOfBlocks))
             {
                 errorMsg =
-                    $"Syncing... Block's {newHeadBlock} main chain predecessor cannot be found and it will not be set as head.";
+                    $"Block's {newHeadBlock} main chain predecessor cannot be found and it will not be set as head.";
                 if (_logger.IsWarn) _logger.Warn(errorMsg);
             }
 

@@ -58,12 +58,12 @@ namespace Nethermind.State
             _tree = new StateTree(trieStore, logManager);
         }
 
-        public void Accept(ITreeVisitor? visitor, Keccak? stateRoot)
+        public void Accept(ITreeVisitor? visitor, Keccak? stateRoot, VisitingOptions? visitingOptions = null)
         {
             if (visitor is null) throw new ArgumentNullException(nameof(visitor));
             if (stateRoot is null) throw new ArgumentNullException(nameof(stateRoot));
 
-            _tree.Accept(visitor, stateRoot, visitor.GetSupportedOptions());
+            _tree.Accept(visitor, stateRoot, visitingOptions);
         }
 
         public void CommitCode()
