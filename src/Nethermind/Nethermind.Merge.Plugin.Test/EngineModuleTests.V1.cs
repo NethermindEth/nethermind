@@ -795,7 +795,7 @@ namespace Nethermind.Merge.Plugin.Test
                 (_, UInt256 toBalanceAfter) =
                     AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
 
-                UInt256 fromBalance = chain.StateReader.GetBalance(parentHeader.StateRoot, from.Address);
+                UInt256 fromBalance = chain.StateReader.GetBalance(parentHeader.StateRoot!, from.Address);
                 executionPayload.GasUsed = GasCostOf.Transaction * count;
                 executionPayload.StateRoot =
                     new Keccak("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
@@ -971,7 +971,7 @@ namespace Nethermind.Merge.Plugin.Test
             Address feeRecipient = TestItem.AddressC;
             string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                     new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, Random = random }).Result.Data
-                .PayloadId;
+                .PayloadId!;
             (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!.FeeRecipient.Should()
                 .Be(TestItem.AddressB);
         }

@@ -1231,7 +1231,7 @@ namespace Nethermind.Blockchain
             
             // after the merge, we will accept only the blocks with Difficulty = 0. However, during the transition process
             // we can have terminal PoW blocks with Difficulty > 0. That is why we accept everything greater or equal
-            // than current head and header.TD >= TTD. The validity of blocks is verified in block validators classes.
+            // than current head and header.TD >= TTD.
             bool postMergeImprovementRequirementSatisfied = header.TotalDifficulty >= totalDifficultyToCheck &&
                                                             _specProvider.TerminalTotalDifficulty != null &&
                                                             header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty;
