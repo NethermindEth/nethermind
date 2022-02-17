@@ -80,6 +80,8 @@ namespace Nethermind.AccountAbstraction.Test
             public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = new Dictionary<Address, UserOperationTxBuilder>();
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
 
+            public Address EntryPointAddress { get; private set; } = null!;
+
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
                 Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
@@ -95,7 +97,7 @@ namespace Nethermind.AccountAbstraction.Test
             private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
                 {
                     Enabled = true, 
-                    EntryPointContractAddresses = "0xdb8b5f6080a8e466b64a8d7458326cb650b3353f,0xb0894727fe4ff102e1f1c8a16f38afc7b859f215",
+                    EntryPointContractAddress = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x0002",
                     Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
                     UserOperationPoolSize = 200
                 };
@@ -151,6 +153,7 @@ namespace Nethermind.AccountAbstraction.Test
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
                 Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
+                EntryPointAddress = entryPointContractAddress!;
                 
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
@@ -250,7 +253,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(userOperation.Hash);
+                resultOfUserOperation.GetData().Should().Be(userOperation.CalculateRequestId(new Address(_accountAbstractionConfig.EntryPointContractAddress), SpecProvider.ChainId));
             }
         }
     }

@@ -62,7 +62,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly UserOperationBroadcaster _broadcaster;
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
-
+        private readonly ulong _chainId;
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
             IBlockTree blockTree,
@@ -74,7 +74,9 @@ namespace Nethermind.AccountAbstraction.Source
             IStateProvider stateProvider,
             ITimestamper timestamper,
             IUserOperationSimulator userOperationSimulator,
-            UserOperationSortedPool userOperationSortedPool)
+            UserOperationSortedPool userOperationSortedPool,
+            ulong chainId
+            )
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
@@ -87,7 +89,8 @@ namespace Nethermind.AccountAbstraction.Source
             _accountAbstractionConfig = accountAbstractionConfig;
             _userOperationSortedPool = userOperationSortedPool;
             _userOperationSimulator = userOperationSimulator;
-                
+            _chainId = chainId;
+
             // topic hash emitted by a successful user operation
             _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
 
@@ -171,9 +174,8 @@ namespace Nethermind.AccountAbstraction.Source
                     Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
-                    
                     _broadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));
-                    return ResultWrapper<Keccak>.Success(userOperation.Hash);
+                    return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, _chainId));
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} failed to be inserted into pool");
@@ -200,14 +202,14 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 foreach (var userOperationHash in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperationHash);
             }
-            
+
             BlockParameter currentBlockParameter = new BlockParameter(block.Number);
             AddressFilter entryPointAddressFilter = new AddressFilter(_entryPointAddress);
-            IEnumerable<FilterLog> foundLogs = _logFinder.FindLogs(new LogFilter(0, 
-                currentBlockParameter, 
+            IEnumerable<FilterLog> foundLogs = _logFinder.FindLogs(new LogFilter(0,
+                currentBlockParameter,
                 currentBlockParameter,
                 entryPointAddressFilter,
-                new SequenceTopicsFilter(new TopicExpression[] {new SpecificTopic(_userOperationEventTopic)})));
+                new SequenceTopicsFilter(new TopicExpression[] { new SpecificTopic(_userOperationEventTopic) })));
 
             // find any userOps included on chain submitted by this miner, delete from the pool
             foreach (FilterLog log in foundLogs)

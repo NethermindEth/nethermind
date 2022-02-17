@@ -36,19 +36,6 @@ namespace Nethermind.AccountAbstraction.Data
 
         }
 
-        public Rlp Encode(UserOperation? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item is null)
-            {
-                return Rlp.OfEmptySequence;
-            }
-            
-            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
-            Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data!);
-
-        }
-        
         public void Encode(RlpStream stream, UserOperationWithEntryPoint? opWithEntryPoint, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (opWithEntryPoint is null)
@@ -137,11 +124,6 @@ namespace Nethermind.AccountAbstraction.Data
         }
 
         public int GetLength(UserOperationWithEntryPoint item, RlpBehaviors rlpBehaviors)
-        {
-            return Rlp.LengthOfSequence(GetContentLength(item));
-        }
-
-        public int GetLength(UserOperation item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOfSequence(GetContentLength(item));
         }

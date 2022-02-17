@@ -98,7 +98,8 @@ namespace Nethermind.AccountAbstraction
                 _nethermindApi.StateProvider!,
                 _nethermindApi.Timestamper,
                 UserOperationSimulator(entryPoint),
-                userOperationSortedPool);
+                userOperationSortedPool,
+                _nethermindApi.SpecProvider!.ChainId);
 
             return _userOperationPools[entryPoint];
             //     if (_userOperationPool is null)
