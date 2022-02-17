@@ -277,4 +277,10 @@ public class DebugRpcModule : IDebugRpcModule
 
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
+
+    public ResultWrapper<Block[]> debug_getBadBlocks()
+    {
+        Block[] badBlocks = _debugBridge.GetBadBlocks();
+        return ResultWrapper<Block[]>.Success(badBlocks);
+    }
 }

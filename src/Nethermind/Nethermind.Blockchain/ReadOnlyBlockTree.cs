@@ -151,6 +151,10 @@ namespace Nethermind.Blockchain
             add { }
             remove { }
         }
+        public Block[] GetInvalidBlocks()
+        {
+            throw new NotImplementedException();
+        }
 
         public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
