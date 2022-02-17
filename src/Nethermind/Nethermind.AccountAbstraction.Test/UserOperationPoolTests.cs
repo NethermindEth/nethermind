@@ -319,7 +319,7 @@ namespace Nethermind.AccountAbstraction.Test
         // {
         //     _userOperationPool = GenerateUserOperationPool(100);
         //     IList<IUserOperationPoolPeer> peers = GetPeers();
-
+        //
         //     foreach (IUserOperationPoolPeer peer in peers)
         //     {
         //         _userOperationPool.AddPeer(peer);
@@ -366,25 +366,7 @@ namespace Nethermind.AccountAbstraction.Test
         //     _userOperationPool.AddUserOperation(op);
         //     uopPoolPeer.Received().SendNewUserOperation(op);
         // }
-
-        // private IList<IUserOperationPoolPeer> GetPeers(int limit = 100)
-        // {
-        //     IList<IUserOperationPoolPeer> peers = new List<IUserOperationPoolPeer>();
-        //     for (int i = 0; i < limit; i++)
-        //     {
-        //         PrivateKey privateKey = new((i + 1).ToString("x64"));
-        //         peers.Add(GetPeer(privateKey.PublicKey));
-        //     }
-
-        //     return peers;
-        // }
-        // private IUserOperationPoolPeer GetPeer(PublicKey publicKey)
-        // {
-        //     IUserOperationPoolPeer peer = Substitute.For<IUserOperationPoolPeer>();
-        //     peer.Id.Returns(publicKey);
-            
-        //     return peer;
-        // }
+        
 
         private static IEnumerable<UserOperation> BadOperations
         {

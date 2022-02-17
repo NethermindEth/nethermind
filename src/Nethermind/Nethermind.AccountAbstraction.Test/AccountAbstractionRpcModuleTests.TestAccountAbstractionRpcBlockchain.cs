@@ -97,7 +97,7 @@ namespace Nethermind.AccountAbstraction.Test
             private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
                 {
                     Enabled = true, 
-                    EntryPointContractAddress = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x0002",
+                    EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
                     Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
                     UserOperationPoolSize = 200
                 };
@@ -153,8 +153,7 @@ namespace Nethermind.AccountAbstraction.Test
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
                 Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
-                EntryPointAddress = entryPointContractAddress!;
-                
+
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
                     SpecProvider,
@@ -213,7 +212,8 @@ namespace Nethermind.AccountAbstraction.Test
                             _accountAbstractionConfig.UserOperationPoolSize, 
                             new CompareUserOperationsByDecreasingGasPrice(), 
                             LogManager, 
-                            _accountAbstractionConfig.MaximumUserOperationPerSender));
+                            _accountAbstractionConfig.MaximumUserOperationPerSender),
+                        SpecProvider.ChainId);
                 }
                 
                 return blockProcessor;
@@ -253,7 +253,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(userOperation.CalculateRequestId(new Address(_accountAbstractionConfig.EntryPointContractAddress), SpecProvider.ChainId));
+                resultOfUserOperation.GetData().Should().Be(userOperation.CalculateRequestId(entryPoint, SpecProvider.ChainId));
             }
         }
     }
