@@ -379,7 +379,7 @@ namespace Nethermind.Merge.Plugin.Test
             ForkchoiceStateV1? forkchoiceStateV1 = new(currentHead, currentHead, currentHead);
             ResultWrapper<ForkchoiceUpdatedV1Result>? forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, payloadAttributes);
-            byte[] payloadId = Bytes.FromHexString(forkchoiceUpdatedResult.Data.PayloadId);
+            byte[] payloadId = Bytes.FromHexString(forkchoiceUpdatedResult.Data.PayloadId!);
             ResultWrapper<BlockRequestResult?> getPayloadResult = await rpc.engine_getPayloadV1(payloadId);
             return getPayloadResult.Data!;
         }

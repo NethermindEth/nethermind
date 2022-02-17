@@ -565,7 +565,7 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if (header.IsGenesis || TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0))
+            if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
             {
                 if (header.IsGenesis)
                 {
@@ -573,7 +573,7 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
-                if (block is not null && (BestSuggestedBody?.Number ?? 0) < block.Number && block.IsPostMerge)
+                if (block is not null && block.IsPostMerge)
                     BestSuggestedBody = block;
                 
                 if (block is not null && shouldProcess)
@@ -1201,7 +1201,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Block added to main {block}");
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
-            if (forceUpdateHeadBlock || block.IsGenesis || TotalDifficultyRequirementSatisfied(block.Header, Head?.TotalDifficulty ?? 0))
+            if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
             {
                 if (block.Number == 0)
                 {
@@ -1220,6 +1220,17 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
+        }
+        
+        private bool HeadImprovementRequirementsSatisfied(BlockHeader header)
+        {
+            return TotalDifficultyRequirementSatisfied(header, Head?.TotalDifficulty ?? 0);
+        }
+
+        private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+        {
+            return BestSuggestedHeader?.Number <= header.Number 
+                   && TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
         }
 
         private bool TotalDifficultyRequirementSatisfied(BlockHeader header, UInt256 totalDifficultyToCheck)
