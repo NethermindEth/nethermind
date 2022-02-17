@@ -233,14 +233,16 @@ namespace Nethermind.AccountAbstraction.Test
                 .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
 
+            /*
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
                 .WithTo(walletAddress[0]!)
                 .WithGasLimit(1_000_000)
                 .WithGasPrice(2)
                 .WithValue(1.Ether())
-                .WithNonce((UInt256)(0 + 1))
+                .WithNonce((UInt256)(0))
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             await chain.AddBlock(true, fundTransaction);
+            */
 
             UInt256 countBefore = _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!);
             countBefore.Should().Be(0);
@@ -273,18 +275,20 @@ namespace Nethermind.AccountAbstraction.Test
                     .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[i], chain.SpecProvider.ChainId)
                     .TestObject;
 
+                /*
                 Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
                     .WithTo(walletAddress[i]!)
                     .WithGasLimit(1_000_000)
                     .WithGasPrice(2)
                     .WithValue(1.Ether())
-                    .WithNonce((UInt256)(1 + i))
+                    .WithNonce((UInt256)(i))
                     .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
                 await chain.AddBlock(true, fundTransaction);
+                */
 
                 UInt256 countBefore = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
                 countBefore.Should().Be(0);
-
+                
                 chain.SendUserOperation(entryPointAddress[i], op);
                 await chain.AddBlock(true);
 
