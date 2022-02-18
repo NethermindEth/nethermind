@@ -89,11 +89,16 @@ public unsafe partial struct Blake2fHashState : IBlake2Incremental
 					mixSse41(sh, m);
 				else
 #endif
-					mixScalar(sh, m, Rounds);
+				//	mixScalar(sh, m, Rounds);
 
                     pin += inc;
             } while (pin < end);
         }
+    }
+
+    public void MixScalar(ulong* sh, ulong* m)
+    {
+        mixScalar(sh, m, Rounds);
     }
 
     internal void Init(int digestLength = HashBytes, ReadOnlySpan<byte> key = default)

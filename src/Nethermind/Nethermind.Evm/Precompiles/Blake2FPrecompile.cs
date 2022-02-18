@@ -19,7 +19,7 @@ using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Blake2Fast;
+using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -29,6 +29,7 @@ namespace Nethermind.Evm.Precompiles
         
         public static readonly IPrecompile Instance = new Blake2FPrecompile();
 
+        private Blake2Compression _blake = new();
         public Address Address { get; } = Address.FromNumber(9);
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
@@ -65,10 +66,7 @@ namespace Nethermind.Evm.Precompiles
             }
 
             byte[] result = new byte[64];
-            uint rounds = BinaryPrimitives.ReadUInt32BigEndian(inputData.Span);
-            
-            Blake2f.ComputeAndWriteHash(rounds, inputData[4..].Span, result);
-            // _blake.Compress(inputData.Span, result);
+            _blake.Compress(inputData.Span, result);
 
             return (result, true);
         }

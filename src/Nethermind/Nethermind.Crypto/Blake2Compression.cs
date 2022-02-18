@@ -47,9 +47,10 @@ namespace Nethermind.Crypto
             0x1f83d9abfb41bd6bul, 0x5be0cd19137e2179ul
         };
         
-        public void Compress(ReadOnlySpan<byte> input, Span<byte> output)
+        public unsafe void Compress(ReadOnlySpan<byte> input, Span<byte> output)
         {
-            Span<ulong> v = stackalloc ulong[16];
+            // Span<ulong> v = stackalloc ulong[16];
+            ulong* sh = stackalloc ulong[11];
 
             uint rounds = BinaryPrimitives.ReadUInt32BigEndian(input);
             ReadOnlySpan<ulong> h = MemoryMarshal.Cast<byte, ulong>(input.Slice(4, 64));
@@ -57,35 +58,63 @@ namespace Nethermind.Crypto
             ReadOnlySpan<ulong> t = MemoryMarshal.Cast<byte, ulong>(input.Slice(196, 16));
             bool f = input[212] != 0;
             
-            h.CopyTo(v.Slice(0, 8));
-            IV.AsSpan().CopyTo(v.Slice(8, 8));
-
-            v[12] ^= t[0];
-            v[13] ^= t[1];
-
+            // h.CopyTo(v.Slice(0, 8));
+            sh[0] = h[0];
+            sh[1] = h[1];
+            sh[2] = h[2];
+            sh[3] = h[3];
+            sh[4] = h[4];
+            sh[5] = h[5];
+            sh[6] = h[6];
+            sh[7] = h[7];
+            sh[8] = t[0];
+            sh[9] = t[1];
             if (f)
             {
-                v[14] ^= 0xfffffffffffffffful;
+                sh[10] = 0xfffffffffffffffful;
             }
 
-            for (uint i = 0; i < rounds; ++i)
+            ulong* m1 = stackalloc ulong[16];
+            for (int i = 0; i < 16; i++)
             {
-                byte[] s = Precomputed[i % 10];
-                Compute(v, m[s[0]], m[s[4]], 0, 4, 8, 12);
-                Compute(v, m[s[1]], m[s[5]], 1, 5, 9, 13);
-                Compute(v, m[s[2]], m[s[6]], 2, 6, 10, 14);
-                Compute(v, m[s[3]], m[s[7]], 3, 7, 11, 15);
-                Compute(v, m[s[8]], m[s[12]], 0, 5, 10, 15);
-                Compute(v, m[s[9]], m[s[13]], 1, 6, 11, 12);
-                Compute(v, m[s[10]], m[s[14]], 2, 7, 8, 13);
-                Compute(v, m[s[11]], m[s[15]], 3, 4, 9, 14);
+                m1[i] = m[i];
             }
+            
+            // IV.AsSpan().CopyTo(v.Slice(8, 8));
+            //
+            // v[12] ^= t[0];
+            // v[13] ^= t[1];
+            //
+            // if (f)
+            // {
+            //     v[14] ^= 0xfffffffffffffffful;
+            // }
 
+            var hs = Blake2Fast.Blake2f.CreateIncrementalHasher();
+            hs.Rounds = rounds;
+            hs.MixScalar(sh, m1);
+
+
+            // for (uint i = 0; i < rounds; ++i)
+            // {
+            //     byte[] s = Precomputed[i % 10];
+            //     Compute(v, m[s[0]], m[s[4]], 0, 4, 8, 12);
+            //     Compute(v, m[s[1]], m[s[5]], 1, 5, 9, 13);
+            //     Compute(v, m[s[2]], m[s[6]], 2, 6, 10, 14);
+            //     Compute(v, m[s[3]], m[s[7]], 3, 7, 11, 15);
+            //     Compute(v, m[s[8]], m[s[12]], 0, 5, 10, 15);
+            //     Compute(v, m[s[9]], m[s[13]], 1, 6, 11, 12);
+            //     Compute(v, m[s[10]], m[s[14]], 2, 7, 8, 13);
+            //     Compute(v, m[s[11]], m[s[15]], 3, 4, 9, 14);
+            // }
+            //
+            
+            
             MemoryMarshal.Cast<ulong, byte>(h).CopyTo(output);
             Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(output);
             for (int offset = 0; offset < h.Length; offset++)
             {
-                outputUlongs[offset] = h[offset] ^ v[offset] ^ v[offset + 8];
+                outputUlongs[offset] = sh[offset];
             }
         }
 
