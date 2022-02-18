@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2022 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,11 +17,11 @@
 
 using System.Runtime.CompilerServices;
 
-namespace Nethermind.Crypto.Blake2Fast;
+namespace Nethermind.Crypto.Blake2;
 
-public unsafe struct Blake2fScalar
+public unsafe partial class Blake2Compression
 {
-    public static void ComputeScalar(ulong* sh, ulong* m, uint rounds)
+    private static void ComputeScalar(ulong* sh, ulong* m, uint rounds)
     {
         ulong m00 = m[00];
         ulong m01 = m[01];

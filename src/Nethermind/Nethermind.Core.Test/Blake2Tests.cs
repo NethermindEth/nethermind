@@ -16,7 +16,7 @@
 
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
+using Nethermind.Crypto.Blake2;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

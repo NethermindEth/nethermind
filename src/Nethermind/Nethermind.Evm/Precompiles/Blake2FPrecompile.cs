@@ -15,11 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+using Nethermind.Crypto.Blake2;
 
 namespace Nethermind.Evm.Precompiles
 {
