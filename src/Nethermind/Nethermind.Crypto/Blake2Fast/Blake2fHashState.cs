@@ -60,6 +60,8 @@ public unsafe partial struct Blake2fHashState : IBlake2Incremental
 
     /// <inheritdoc />
     public int DigestLength => (int)outlen;
+    
+    public uint Rounds { get; set; }
 
     private void compress(ref byte input, uint offs, uint cb)
     {
@@ -87,7 +89,7 @@ public unsafe partial struct Blake2fHashState : IBlake2Incremental
 					mixSse41(sh, m);
 				else
 #endif
-					mixScalar(sh, m);
+					mixScalar(sh, m, Rounds);
 
                     pin += inc;
             } while (pin < end);
