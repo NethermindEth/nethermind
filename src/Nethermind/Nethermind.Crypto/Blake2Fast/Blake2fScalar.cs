@@ -19,9 +19,9 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Crypto.Blake2Fast;
 
-public unsafe partial struct Blake2fHashState
+public unsafe struct Blake2fScalar
 {
-    private static void mixScalar(ulong* sh, ulong* m, uint rounds)
+    public static void ComputeScalar(ulong* sh, ulong* m, uint rounds)
     {
         ulong m00 = m[00];
         ulong m01 = m[01];

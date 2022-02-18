@@ -90,11 +90,8 @@ namespace Nethermind.Crypto
             //     v[14] ^= 0xfffffffffffffffful;
             // }
 
-            var hs = Blake2Fast.Blake2f.CreateIncrementalHasher();
-            hs.Rounds = rounds;
-            hs.MixScalar(sh, m1);
-
-
+            Blake2Fast.Blake2fScalar.ComputeScalar(sh, m1, rounds);
+            
             // for (uint i = 0; i < rounds; ++i)
             // {
             //     byte[] s = Precomputed[i % 10];
