@@ -59,17 +59,17 @@ namespace Nethermind.Crypto.Blake2
                 m[i] = MemoryMarshal.Cast<byte, ulong>(input.Slice(StartOfMWords + i * NumberOfBytesInUlong, NumberOfBytesInUlong)).GetPinnableReference();
             }
 
-            if (Avx2.IsSupported)
+   //          if (Avx2.IsSupported)
+   //          {
+   //              ComputeAvx2(sh, m, rounds);
+   //          }
+   //		   else if (Sse41.IsSupported)
+   //          {
+   //              // mixSse41(sh, m);
+   //          }
+   //          else
             {
-                ComputeAvx2(sh, m, rounds);
-            }
-			else if (Sse41.IsSupported)
-            {
-                // mixSse41(sh, m);
-            }
-            else
-            {
-                // ComputeScalar(sh, m, rounds);
+                ComputeScalar(sh, m, rounds);
             }
             
             Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(output);
