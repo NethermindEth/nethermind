@@ -19,6 +19,9 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Crypto.Blake2;
 
+/// <summary>
+///     Code adapted from Blake2Fast (https://github.com/saucecontrol/Blake2Fast)
+/// </summary>
 public unsafe partial class Blake2Compression
 {
     private static void ComputeScalar(ulong* sh, ulong* m, uint rounds)

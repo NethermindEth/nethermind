@@ -17,6 +17,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 
 namespace Nethermind.Crypto.Blake2
 {
@@ -58,7 +59,18 @@ namespace Nethermind.Crypto.Blake2
                 m[i] = MemoryMarshal.Cast<byte, ulong>(input.Slice(StartOfMWords + i * NumberOfBytesInUlong, NumberOfBytesInUlong)).GetPinnableReference();
             }
 
-            ComputeScalar(sh, m, rounds);
+            if (Avx2.IsSupported)
+            {
+                ComputeAvx2(sh, m, rounds);
+            }
+			else if (Sse41.IsSupported)
+            {
+                // mixSse41(sh, m);
+            }
+            else
+            {
+                // ComputeScalar(sh, m, rounds);
+            }
             
             Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(output);
             for (int offset = 0; offset < NumberOfHWords; offset++)
