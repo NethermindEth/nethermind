@@ -1289,8 +1289,11 @@ namespace Nethermind.Blockchain
 
         private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
-            return BestSuggestedHeader?.Number <= header.Number 
-                   && TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
+            bool ttdRequirementSatisfied =
+                TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
+            bool preMergeRequirementSatisfied = ttdRequirementSatisfied && !header.IsPostMerge;
+            bool postMergeRequirementSatisfied = ttdRequirementSatisfied && BestSuggestedHeader?.Number <= header.Number && header.IsPostMerge;
+            return preMergeRequirementSatisfied || postMergeRequirementSatisfied;
         }
 
         private bool TotalDifficultyRequirementSatisfied(BlockHeader header, UInt256 totalDifficultyToCheck)
