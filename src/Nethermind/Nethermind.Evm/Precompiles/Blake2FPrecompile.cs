@@ -26,9 +26,10 @@ namespace Nethermind.Evm.Precompiles
     {
         private const int RequiredInputLength = 213;
         
+        private Blake2Compression _blake = new();
+
         public static readonly IPrecompile Instance = new Blake2FPrecompile();
 
-        private Blake2Compression _blake = new();
         public Address Address { get; } = Address.FromNumber(9);
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
