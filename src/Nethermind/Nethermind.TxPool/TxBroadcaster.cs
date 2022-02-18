@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -95,13 +96,25 @@ namespace Nethermind.TxPool
 
         internal Transaction[] GetSnapshot() => _persistentTxs.GetSnapshot();
 
-        public void StartBroadcast(Transaction tx)
+        public void Broadcast(Transaction tx, bool isPersistent)
+        {
+            if (isPersistent)
+            {
+                StartBroadcast(tx);
+            }
+            else
+            {
+                BroadcastOnce(tx);
+            }
+        }
+
+        private void StartBroadcast(Transaction tx)
         {
             NotifyPeersAboutLocalTx(tx);
             _persistentTxs.TryInsert(tx.Hash, tx);
         }
-      
-        public void BroadcastOnce(Transaction tx)
+
+        private void BroadcastOnce(Transaction tx)
         {
             _accumulatedTemporaryTxs.Add(tx);
         }
@@ -155,7 +168,7 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
-        internal IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
+        internal IEnumerable<(Transaction Tx, bool IsPersistent)> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
         {
             if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
@@ -173,7 +186,7 @@ namespace Nethermind.TxPool
                         if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
                         {
                             numberOfPersistentTxsToBroadcast--;
-                            yield return tx;
+                            yield return (tx, true);
                         }
                     }
                     else
@@ -187,12 +200,15 @@ namespace Nethermind.TxPool
             {
                 if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
                 {
-                    yield return tx;
+                    yield return (tx, false);
                 }
             }
         }
 
-        private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs)
+        private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs) =>
+            Notify(peer, txs.Select(t => (t, false)));
+        
+        private void Notify(ITxPoolPeer peer, IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
         {
             try
             {

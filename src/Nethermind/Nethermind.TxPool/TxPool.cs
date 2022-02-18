@@ -320,14 +320,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            if (isPersistentBroadcast)
-            {
-                _broadcaster.StartBroadcast(tx);
-            }
-            else
-            {
-                _broadcaster.BroadcastOnce(tx);
-            }
+            _broadcaster.Broadcast(tx, isPersistentBroadcast);
 
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));

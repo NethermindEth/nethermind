@@ -35,6 +35,8 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
+using Nethermind.Init;
+using Nethermind.Logging;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -113,7 +115,7 @@ namespace Nethermind.Runner.Test
             Test<IEthStatsConfig, string>(configWildcard, c => c.Contact, "hello@nethermind.io");
         }
 
-        [TestCase("aura", false)]
+        [TestCase("aura ^archive", false)]
         [TestCase("ethhash", true)]
         [TestCase("clique", true)]
         public void Geth_limits_configs_are_correct(string configWildcard, bool useGethLimitsInFastSync)
@@ -246,13 +248,9 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
         }
 
-        [TestCase("mainnet xdai", 2048)]
+        [TestCase("mainnet xdai poacore energy", 2048)]
         [TestCase("^baseline ^mainnet ^spaceneth ^volta ^energy ^sokol ^poacore ^xdai", 1024)]
-        [TestCase("baseline", 512)]
-        [TestCase("energy", 2048)]
-        [TestCase("volta", 2048)]
-        [TestCase("sokol", 512)]
-        [TestCase("poacore", 512)]
+        [TestCase("baseline volta sokol", 512)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
@@ -405,9 +403,7 @@ namespace Nethermind.Runner.Test
         [TestCase("^mainnet ^goerli", false)]
         [TestCase("^pruned ^goerli.cfg ^mainnet.cfg", false)]
         [TestCase("mainnet.cfg", true)]
-        [TestCase("mainnet_pruned.cfg", true)]
         [TestCase("goerli.cfg", true)]
-        [TestCase("goerli_pruned.cfg", true)]
         public void Witness_defaults_are_correct(string configWildcard, bool witnessProtocolEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.WitnessProtocolEnabled, witnessProtocolEnabled);
@@ -437,14 +433,22 @@ namespace Nethermind.Runner.Test
             }
         }
 
-        private static ConfigProvider GetConfigProviderFromFile(string configFile)
+        [TestCase("*")]
+        public void Memory_hint_is_enough(string configWildcard)
         {
-            ConfigProvider configProvider = new ConfigProvider();
-            var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
-            configProvider.AddSource(new JsonConfigSource(configPath));
-            return configProvider;
+            foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
+            {
+                MemoryHintMan memoryHintMan = new(LimboLogs.Instance);
+                memoryHintMan.SetMemoryAllowances(
+                    configProvider.GetConfig<IDbConfig>(),
+                    configProvider.GetConfig<IInitConfig>(),
+                    configProvider.GetConfig<INetworkConfig>(),
+                    configProvider.GetConfig<ISyncConfig>(),
+                    configProvider.GetConfig<ITxPoolConfig>(),
+                    (uint)Environment.ProcessorCount);
+            }
         }
-
+            
         protected override IEnumerable<string> Configs { get; } = new HashSet<string>
         {
             "ropsten_archive.cfg",
