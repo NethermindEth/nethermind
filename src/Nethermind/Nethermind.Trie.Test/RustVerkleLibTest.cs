@@ -20,12 +20,21 @@ using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using NUnit.Framework;
+using System.IO;
 
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
     public class RustVerkleLibTest
     {
+        static object[] Variants =
+        {
+            new object[] {DatabaseScheme.MemoryDb, CommitScheme.TestCommitment},
+            // new object[] {DatabaseScheme.MemoryDb, CommitScheme.PrecomputeLagrange},
+            new object[] {DatabaseScheme.RocksDb, CommitScheme.TestCommitment},
+            // new object[] {DatabaseScheme.RocksDb, CommitScheme.PrecomputeLagrange}
+        };
+
         private readonly byte[] treeKeyVersion =
         {
             121, 85, 7, 198, 131, 230, 143, 90, 165, 129, 173, 81, 186, 89, 19, 191, 13, 107, 197, 120, 243, 229,
@@ -74,9 +83,28 @@ namespace Nethermind.Trie.Test
             0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
         };
 
+        [TearDown]
+        public void CleanTestData()
+        {
+            string tempDir = Path.GetTempPath();
+            string dbname = "VerkleTrie_TestID_" + TestContext.CurrentContext.Test.ID;
+            string pathname = Path.Combine(tempDir, dbname);
+            if (Directory.Exists(pathname))
+            {
+                Directory.Delete(pathname,true);
+            }
+        }
+        
+        private IntPtr _verkleTrieNew(DatabaseScheme databaseScheme, CommitScheme commitScheme)
+        {
+            string tempDir = Path.GetTempPath();
+            string dbname = "VerkleTrie_TestID_" + TestContext.CurrentContext.Test.ID;
+            string pathname = Path.Combine(tempDir, dbname);
+            return RustVerkleLib.VerkleTrieNew(databaseScheme, commitScheme, pathname);
+        }
 
-        [Test]
-        public void TestInsertByteGet()
+        [TestCaseSource(nameof(Variants))]
+        public void TestInsertByteGet(DatabaseScheme databaseScheme, CommitScheme commitScheme)
         {
             byte[] one = 
             {
@@ -87,7 +115,7 @@ namespace Nethermind.Trie.Test
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
             };
 
-            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            IntPtr trie = _verkleTrieNew(databaseScheme, commitScheme);
 
             RustVerkleLib.VerkleTrieInsert(trie, one, one32);
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
@@ -96,13 +124,13 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieGet(trie, one).Should().BeEquivalentTo(one32);
         }
         
-        [Test]
-        public void TestInsertSpanGetSpan()
+        [TestCaseSource(nameof(Variants))]
+        public void TestInsertSpanGetSpan(DatabaseScheme databaseScheme, CommitScheme commitScheme)
         {
             Span<byte> one = new byte[]{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
             Span<byte> one32 = new byte[]{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
-            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            IntPtr trie = _verkleTrieNew(databaseScheme, commitScheme);
 
             RustVerkleLib.VerkleTrieInsert(trie, one, one32);
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
@@ -110,9 +138,9 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieGetSpan(trie, one32).Should().BeEquivalentTo(one);
             RustVerkleLib.VerkleTrieGetSpan(trie, one).Should().BeEquivalentTo(one32);
         }
-        
-        [Test]
-        public void TestInsertStackAllocGet()
+
+        [TestCaseSource(nameof(Variants))]
+        public void TestInsertStackAllocGet(DatabaseScheme databaseScheme, CommitScheme commitScheme)
         {
             Span<byte> one = stackalloc byte[]
             {
@@ -123,7 +151,7 @@ namespace Nethermind.Trie.Test
                 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
             };
 
-            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            IntPtr trie = _verkleTrieNew(databaseScheme, commitScheme);
 
             RustVerkleLib.VerkleTrieInsert(trie, one, one32);
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
@@ -132,10 +160,10 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieGet(trie, one).Should().BeEquivalentTo(one32);
         }
 
-        [Test]
-        public void TestInsertRawAccountValues()
+        [TestCaseSource(nameof(Variants))]
+        public void TestInsertRawAccountValues(DatabaseScheme databaseScheme, CommitScheme commitScheme)
         {
-            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            IntPtr trie = _verkleTrieNew(databaseScheme, commitScheme);
             UInt256 version = UInt256.Zero;
             UInt256 balance = new (2);
             UInt256 nonce = UInt256.Zero;
@@ -155,12 +183,11 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieGet(trie, treeKeyCodeSize).Should().BeEquivalentTo(codeSize.ToBigEndian());
             
         }
-
-
-        [Test]
-        public void TestInsertAccount()
+        
+        [TestCaseSource(nameof(Variants))]
+        public void TestInsertAccount(DatabaseScheme databaseScheme, CommitScheme commitScheme)
         {
-            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            IntPtr trie = _verkleTrieNew(databaseScheme, commitScheme);
             RustVerkleLib.VerkleTrieInsert(trie, treeKeyVersion, value0);
             RustVerkleLib.VerkleTrieInsert(trie, treeKeyBalance, value2);
             RustVerkleLib.VerkleTrieInsert(trie, treeKeyNonce, value0);
@@ -175,8 +202,8 @@ namespace Nethermind.Trie.Test
 
         }
 
-        [Test]
-        public void TestGetStateRoot()
+        [TestCaseSource(nameof(Variants))]
+        public void TestGetStateRoot(DatabaseScheme databaseScheme, CommitScheme commitScheme)
         {
             byte[] expectedHash =
             {
@@ -187,7 +214,7 @@ namespace Nethermind.Trie.Test
             byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
             byte[] one32 = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
-            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            IntPtr trie = _verkleTrieNew(databaseScheme, commitScheme);
             RustVerkleLib.VerkleTrieGetStateRoot(trie).Should().BeEquivalentTo(zero);
             
             RustVerkleLib.VerkleTrieInsert(trie, one, one);
@@ -195,13 +222,12 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleTrieGetStateRoot(trie).Should().BeEquivalentTo(expectedHash);
         }
         
-        [Test]
-        public void TestProofVerify(){
+        [TestCaseSource(nameof(Variants))]
+        public void TestProofVerify(DatabaseScheme databaseScheme, CommitScheme commitScheme){
             byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
             byte[] one32 = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
-            IntPtr trie = RustVerkleLib.VerkleTrieNew();
-
+            IntPtr trie = _verkleTrieNew(databaseScheme, commitScheme);
             RustVerkleLib.VerkleTrieInsert(trie, one, one32);
             RustVerkleLib.VerkleTrieInsert(trie, one32, one);
 
@@ -210,13 +236,13 @@ namespace Nethermind.Trie.Test
             RustVerkleLib.VerkleProofVerify(trie, proof, proof.Length, one32, one32).Should().BeFalse();
         }
 
-        [Test]
-        public void MultipleValueOperations()
+        [TestCaseSource(nameof(Variants))]
+        public void MultipleValueOperations(DatabaseScheme databaseScheme, CommitScheme commitScheme)
         {
             byte[] one = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
             byte[] one32 = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1};
 
-            IntPtr trie = RustVerkleLib.VerkleTrieNew();
+            IntPtr trie = _verkleTrieNew(databaseScheme, commitScheme);
 
             byte[,] keys = {
                 {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, 
