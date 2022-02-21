@@ -21,7 +21,7 @@ using BenchmarkDotNet.Running;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
+using Nethermind.Crypto.Blake2;
 
 namespace Nethermind.Benchmarks.Evm
 {
