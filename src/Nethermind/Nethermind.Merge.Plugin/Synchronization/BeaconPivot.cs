@@ -33,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     public class BeaconPivot : IBeaconPivot
     {
         private readonly ISyncConfig _syncConfig;
+        private readonly IMergeConfig _mergeConfig;
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -42,11 +43,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public BeaconPivot(
             ISyncConfig syncConfig,
+            IMergeConfig mergeConfig,
             IDb metadataDb,
             IBlockTree blockTree,
             ILogManager logManager)
         {
             _syncConfig = syncConfig;
+            _mergeConfig = mergeConfig;
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
@@ -57,7 +60,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public Keccak PivotHash => _currentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed;
 
-        public UInt256? PivotTotalDifficulty => _currentBeaconPivot?.TotalDifficulty;
+        public UInt256? PivotTotalDifficulty => _currentBeaconPivot is null ?
+            _syncConfig.PivotTotalDifficultyParsed : _mergeConfig.FinalTotalDifficultyParsed;
         
         public long PivotDestinationNumber { get; private set; }
 

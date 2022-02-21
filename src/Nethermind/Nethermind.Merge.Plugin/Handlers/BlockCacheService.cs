@@ -16,6 +16,8 @@
 // 
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -23,25 +25,57 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class BlockCacheService : IBlockCacheService
 {
-    private readonly ConcurrentDictionary<Keccak, BlockHeader> _blockHeaderCache = new();
+    private readonly ConcurrentDictionary<Keccak, BlockHeader> _blockHeadersCache = new();
+    private readonly ConcurrentQueue<BlockHeader> _blockHeadersQueue = new();
 
+    public int Count => _blockHeadersQueue.Count;
+    
+    public bool Contains(Keccak blockHash)
+    {
+        return _blockHeadersCache.ContainsKey(blockHash);
+    }
+    
     public BlockHeader? GetBlockHeader(Keccak blockHash)
     {
-        _blockHeaderCache.TryGetValue(blockHash, out BlockHeader? blockHeader);
+        _blockHeadersCache.TryGetValue(blockHash, out BlockHeader? blockHeader);
         return blockHeader;
     }
-
-    public bool InsertBlockHeader(BlockHeader blockHeader)
+    
+    public IEnumerable<BlockHeader> GetBlockHeadersUpToNumber(long blockNumber)
+    {
+        return _blockHeadersCache.Values.Where(h => h.Number < blockNumber);
+    }
+    
+    public bool EnqueueBlockHeader(BlockHeader blockHeader)
     {
         if (blockHeader.Hash is null)
         {
             return false;
         }
-        return _blockHeaderCache.TryAdd(blockHeader.Hash, blockHeader);
+        _blockHeadersQueue.Enqueue(blockHeader);
+        return _blockHeadersCache.TryAdd(blockHeader.Hash, blockHeader);
     }
 
-    public bool RemoveBlockHeader(Keccak blockHash)
+    public BlockHeader? DequeueBlockHeader()
     {
-        return _blockHeaderCache.TryRemove(blockHash, out _);
+        _blockHeadersQueue.TryDequeue(out BlockHeader? blockHeader);
+        if (blockHeader != null)
+        {
+            _blockHeadersCache.TryRemove(blockHeader.Hash, out blockHeader);
+            return blockHeader;
+        }
+
+        return null;
+    }
+    
+    public void RemoveBlockHeadersUpToNumber(long blockNumber)
+    {
+        IEnumerable<Keccak> hashes = _blockHeadersCache
+            .Where(x => x.Value.Number <= blockNumber)
+            .Select(x => x.Key);
+        foreach (Keccak hash in hashes)
+        {
+            _blockHeadersCache.TryRemove(hash, out _);
+        }
     }
 }

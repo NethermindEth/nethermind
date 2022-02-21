@@ -17,6 +17,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,6 +34,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 public class BeaconHeadersSyncFeed : HeadersSyncFeed
 {
     private readonly IPivot _pivot;
+    private readonly long _levelRequestSize = 20000;
     
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
     protected override long HeadersDestinationBlockNumber => _pivot.PivotDestinationNumber;
@@ -69,5 +71,34 @@ public class BeaconHeadersSyncFeed : HeadersSyncFeed
         _nextHeaderDiff = startTotalDifficulty;
         
         _lowestRequestedHeaderNumber = startNumber + 1;   
+    }
+
+    protected override void PostFinishCleanUp()
+    {
+        base.PostFinishCleanUp();
+        // set total difficulty as beacon pivot does not provide total difficulty
+        _blockTree.BackFillTotalDifficulty(HeadersDestinationBlockNumber, _pivotNumber);
+    }
+    
+    protected override AddBlockResult InsertToBlockTree(BlockHeader header)
+    {
+        BlockTreeInsertOptions options = _nextHeaderDiff is null
+            ? BlockTreeInsertOptions.TotalDifficultyNotNeeded
+            : BlockTreeInsertOptions.All;
+        AddBlockResult insertOutcome = _blockTree.Insert(header, options);
+        if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
+        {
+            _nextHeaderHash = header.ParentHash!;
+            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out ulong nextHeaderDiff) == true)
+            {
+                _nextHeaderDiff = nextHeaderDiff;
+            }
+            else
+            {
+                _nextHeaderDiff = header.TotalDifficulty != null ? header.TotalDifficulty - header.Difficulty : null;
+            }
+        }
+
+        return insertOutcome;
     }
 }

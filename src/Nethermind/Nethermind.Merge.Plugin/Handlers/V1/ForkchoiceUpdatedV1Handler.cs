@@ -25,6 +25,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -81,23 +82,30 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState,
             PayloadAttributes? payloadAttributes)
         {
-            BlockHeader? blockHeader = _blockCacheService.GetBlockHeader(forkchoiceState.HeadBlockHash);
-            if (blockHeader is not null)
+            if (!synced)
             {
-                if (!_beaconPivot.BeaconPivotExists())
+                BlockHeader? blockHeader = _blockCacheService.GetBlockHeader(forkchoiceState.HeadBlockHash);
+                if (blockHeader is not null)
                 {
-                    _beaconPivot.EnsurePivot(blockHeader);
+                    if (!_beaconPivot.BeaconPivotExists())
+                    {
+                        _beaconPivot.EnsurePivot(blockHeader);
+                        
+                    }
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
 
-                if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+                blockHeader = _blockTree.FindHeader(forkchoiceState.HeadBlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (blockHeader != null)
                 {
-                    return ForkchoiceUpdatedV1Result.Syncing;
-                    
+                    if (_blockTree.WasProcessed(blockHeader.Number, blockHeader.Hash))
+                    {
+                        _beaconPivot.ResetPivot();
+                        synced = true;
+                    }   
                 }
-                _blockCacheService.RemoveBlockHeader(forkchoiceState.HeadBlockHash);
             }
-
+            
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
                 return ForkchoiceUpdatedV1Result.Syncing;

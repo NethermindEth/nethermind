@@ -16,6 +16,11 @@
 // 
 
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Evm.Tracing;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 
@@ -26,16 +31,25 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
         private readonly ISyncProgressResolver _syncProgressResolver;
+        private readonly IBlockCacheService _blockCacheService;
+        private readonly IBlockValidator _blockValidator;
+        private readonly IBlockchainProcessor _processor;
         private bool _isInBeaconModeControl = false;
 
         public BeaconSync(
             IBeaconPivot beaconPivot,
             IBlockTree blockTree,
-            ISyncProgressResolver syncProgressResolver)
+            ISyncProgressResolver syncProgressResolver,
+            IBlockCacheService blockCacheService,
+            IBlockValidator blockValidator,
+            IBlockchainProcessor processor)
         {
             _beaconPivot = beaconPivot;
             _blockTree = blockTree;
             _syncProgressResolver = syncProgressResolver;
+            _blockCacheService = blockCacheService;
+            _blockValidator = blockValidator;
+            _processor = processor;
         }
 
         public void SwitchToBeaconModeControl()
@@ -46,6 +60,46 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public void InitSyncing()
         {
             _isInBeaconModeControl = false;
+            
+            while (_blockCacheService.Count > 0)
+            {
+                BlockHeader blockHeader = _blockCacheService.DequeueBlockHeader();
+                _blockTree.Insert(blockHeader);
+                long state = _syncProgressResolver.FindBestFullState();
+                if (state >= blockHeader.Number || state == 0)
+                {
+                    continue;
+                } 
+                BlockHeader? parentHeader = _blockTree.FindHeader(blockHeader.ParentHash, BlockTreeLookupOptions.None);
+                if (parentHeader == null)
+                {
+                    continue;
+                }
+
+                Block? block = _blockTree.FindBlock(blockHeader.Hash);
+                if (block == null)
+                {
+                    continue;
+                }
+
+                block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
+                if (!_blockValidator.ValidateSuggestedBlock(block))
+                {
+                    // rejected block
+                    continue;
+                }
+
+                Block? processedBlock =
+                    _processor.Process(block, ProcessingOptions.EthereumMerge, NullBlockTracer.Instance);
+                if (processedBlock == null)
+                {
+                    // not processed and not accepted
+                    continue;
+                }
+
+                processedBlock.Header.IsPostMerge = true;
+                _blockTree.SuggestBlock(processedBlock, false, false);
+            }
         }
 
         public bool ShouldBeInBeaconHeaders()
@@ -61,7 +115,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool ShouldBeInBeaconModeControl() => _isInBeaconModeControl;
         // TODO: beaconsync use parent hash to check if finished
-        public bool IsBeaconSyncHeadersFinished() => (_blockTree.LowestInsertedBeaconHeader?.Number ??
+        public bool IsBeaconSyncHeadersFinished() => !_beaconPivot.BeaconPivotExists() || (_blockTree.LowestInsertedBeaconHeader?.Number ??
             _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber;
     }
 

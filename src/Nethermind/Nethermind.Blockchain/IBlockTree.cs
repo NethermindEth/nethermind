@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -71,15 +72,16 @@ namespace Nethermind.Blockchain
         /// Inserts a disconnected block header (without body)
         /// </summary>
         /// <param name="header">Header to add</param>
+        /// <param name="options"></param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(BlockHeader header);
+        AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options = BlockTreeInsertOptions.All);
 
         /// <summary>
         /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(Block block, bool saveHeader = false);
+        AddBlockResult Insert(Block block, bool saveHeader = false, BlockTreeInsertOptions options = BlockTreeInsertOptions.All);
 
         void Insert(IEnumerable<Block> blocks);
 
@@ -138,6 +140,8 @@ namespace Nethermind.Blockchain
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
+        void BackFillTotalDifficulty(long startNumber, long endNumber, UInt256? startingTotalDifficulty = null);
+            
         ChainLevelInfo? FindLevel(long number);
 
         BlockInfo FindCanonicalBlockInfo(long blockNumber);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,31 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
+using System;
 
-namespace Nethermind.Core
+namespace Nethermind.Blockchain
 {
-    public class BlockInfo
+    [Flags]
+    public enum BlockTreeInsertOptions
     {
-        public BlockInfo(Keccak blockHash, in UInt256 totalDifficulty)
-        {
-            BlockHash = blockHash;
-            TotalDifficulty = totalDifficulty;
-        }
-        
-        public UInt256 TotalDifficulty { get; set; }
-        
-        public bool WasProcessed { get; set; }
-        
-        public Keccak BlockHash { get; }
-        
-        public bool IsFinalized { get; set; }
-        
-        /// <summary>
-        /// This property is not serialized
-        /// </summary>
-        public long BlockNumber { get; set; }
+        All = 0,
+        TotalDifficultyNotNeeded = 1
     }
 }

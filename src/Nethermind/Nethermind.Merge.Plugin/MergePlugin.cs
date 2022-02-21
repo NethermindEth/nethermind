@@ -46,6 +46,7 @@ namespace Nethermind.Merge.Plugin
         private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
+        private IBlockCacheService _blockCacheService;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
 
@@ -68,10 +69,11 @@ namespace Nethermind.Merge.Plugin
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
                 
 
-                _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
+                _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
                 _poSSwitcher = new PoSSwitcher(_mergeConfig,
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
+                _blockCacheService = new BlockCacheService();
 
                 Address feeRecipient;
                 if (string.IsNullOrWhiteSpace(_mergeConfig.FeeRecipient))
@@ -140,8 +142,7 @@ namespace Nethermind.Merge.Plugin
                 
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
                 PayloadService payloadService = new (_idealBlockProductionContext, _api.Sealer, _mergeConfig, _api.LogManager);
-                BlockCacheService blockCacheService = new();
-                
+
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadService, _api.LogManager),
                     new NewPayloadV1Handler(
@@ -153,7 +154,7 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher,
                         _beaconSync,
                         _beaconPivot,
-                        blockCacheService,
+                        _blockCacheService,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
@@ -162,7 +163,7 @@ namespace Nethermind.Merge.Plugin
                         _api.EthSyncingInfo,
                         _api.BlockConfirmationManager,
                         payloadService,
-                        blockCacheService,
+                        _blockCacheService,
                         _beaconSync,
                         _beaconPivot,
                         _api.LogManager),
@@ -187,15 +188,16 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
+                if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
                 if (_api.SyncProgressResolver is null)
                     throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
-                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _api.SyncProgressResolver);
 
                 // ToDo strange place for validators initialization
                 _api.HeaderValidator = new PostMergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider,
                     Always.Valid, _api.LogManager);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
                     _api.SpecProvider, _api.LogManager);
+                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _api.SyncProgressResolver, _blockCacheService,  _api.BlockValidator, _api.BlockchainProcessor);
                 
                 _api.SyncModeSelector = new MultiSyncModeSelector(_api.SyncProgressResolver, _api.SyncPeerPool,
                     _syncConfig,
@@ -222,6 +224,7 @@ namespace Nethermind.Merge.Plugin
                     _syncConfig,
                     _api.BlockDownloaderFactory,
                     _api.Pivot,
+                    _beaconSync,
                     _api.LogManager);
             }
 

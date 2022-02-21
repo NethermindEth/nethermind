@@ -107,25 +107,35 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 return NewPayloadV1Result.InvalidBlockHash;
             }
-            
+
+            if (synced == false)
+            {
+                if (_blockCacheService.Contains(block.Hash))
+                {
+                    return NewPayloadV1Result.Syncing;
+                }
+                
+                if (IsParentProcessed(block.Header))
+                {
+                    _beaconPivot.ResetPivot();
+                    synced = true;
+                }
+
+                if (_beaconPivot.BeaconPivotExists())
+                {
+                    // TODO: beaconsync difficulty from merge config
+                    _blockTree.Insert(block);
+                    _blockCacheService.EnqueueBlockHeader(block.Header);
+                    return NewPayloadV1Result.Syncing;
+                }
+            }
+
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
+                _logger.Info($"parent header not found for {request.BlockNumber}, {request.BlockHash}");
                 _blockTree.Insert(block);
-                block.Header.TotalDifficulty = 5000588874;
-                _blockTree.Insert(block.Header);
-                _blockCacheService.InsertBlockHeader(block.Header);
-                return NewPayloadV1Result.Syncing;
-            }
-
-            bool beaconSyncCompleted = _beaconSyncStrategy.IsBeaconSyncHeadersFinished();
-            _logger.Info($"Adding {block} to blockTree, beaconSyncCompleted: {beaconSyncCompleted}");
-            if (!beaconSyncCompleted)
-            {
-                _blockTree.Insert(block);
-                block.Header.TotalDifficulty = 5000588874;
-                _blockTree.Insert(block.Header);
-                _blockCacheService.InsertBlockHeader(block.Header);
+                _blockCacheService.EnqueueBlockHeader(block.Header);
                 return NewPayloadV1Result.Syncing;
             }
 

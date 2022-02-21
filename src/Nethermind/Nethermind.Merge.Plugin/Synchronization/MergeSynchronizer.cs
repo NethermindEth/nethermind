@@ -19,6 +19,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -33,6 +34,8 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class MergeSynchronizer : Synchronizer
 {
+    private readonly IMergeSyncController _mergeSync;
+    
     public MergeSynchronizer(
         IDbProvider dbProvider,
         ISpecProvider specProvider,
@@ -44,9 +47,11 @@ public class MergeSynchronizer : Synchronizer
         ISyncConfig syncConfig,
         IBlockDownloaderFactory blockDownloaderFactory,
         IPivot pivot,
+        IMergeSyncController mergeSync,
         ILogManager logManager) : base(dbProvider, specProvider, blockTree, receiptStorage, peerPool, nodeStatsManager,
         syncModeSelector, syncConfig, blockDownloaderFactory, pivot, logManager)
     {
+        _mergeSync = mergeSync;
     }
 
     public override void Start()
@@ -72,6 +77,6 @@ public class MergeSynchronizer : Synchronizer
             {
                 if (_logger.IsInfo) _logger.Info("Beacon headers task completed.");
             }
-        });
+        }).ContinueWith((x) => _mergeSync.InitSyncing());
     }
 }

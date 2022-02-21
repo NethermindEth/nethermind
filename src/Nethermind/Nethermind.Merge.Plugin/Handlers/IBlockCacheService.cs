@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -22,8 +23,13 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public interface IBlockCacheService
 {
+    int Count { get; }
+    bool Contains(Keccak blockHash);
     BlockHeader? GetBlockHeader(Keccak blockHash);
-    bool InsertBlockHeader(BlockHeader header);
+    IEnumerable<BlockHeader> GetBlockHeadersUpToNumber(long blockNumber);
+    bool EnqueueBlockHeader(BlockHeader header);
 
-    bool RemoveBlockHeader(Keccak blockHash);
+    BlockHeader DequeueBlockHeader();
+
+    void RemoveBlockHeadersUpToNumber(long blockNumber);
 }

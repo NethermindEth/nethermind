@@ -164,7 +164,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return true;
         }
 
-        private void PostFinishCleanUp()
+        protected virtual void PostFinishCleanUp()
         {
             // if block 0 is requested, it not included in the sync report
             long lowestHeaderNumberInclusive = _lowestRequestedHeaderNumber == 0 ? 0 : 1;
@@ -534,7 +534,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
         }
 
-        private readonly IDictionary<long, ulong>? _expectedDifficultyOverride;
+        protected readonly IDictionary<long, ulong>? _expectedDifficultyOverride;
 
         private AddBlockResult InsertHeader(BlockHeader header)
         {
@@ -543,6 +543,11 @@ namespace Nethermind.Synchronization.FastBlocks
                 return AddBlockResult.AlreadyKnown;
             }
 
+            return InsertToBlockTree(header);
+        }
+
+        protected virtual AddBlockResult InsertToBlockTree(BlockHeader header)
+        {
             AddBlockResult insertOutcome = _blockTree.Insert(header);
             if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
             {
