@@ -34,6 +34,20 @@ namespace Nethermind.Crypto.Blake2
         const byte StartOfTWords = 196;
         const byte ByteOfFWord = 212;
 
+        private static ReadOnlySpan<byte> Ivle => new byte[]
+        {
+            0x08, 0xC9, 0xBC, 0xF3, 0x67, 0xE6, 0x09, 0x6A, 0x3B, 0xA7, 0xCA, 0x84, 0x85, 0xAE, 0x67, 0xBB, 0x2B,
+            0xF8, 0x94, 0xFE, 0x72, 0xF3, 0x6E, 0x3C, 0xF1, 0x36, 0x1D, 0x5F, 0x3A, 0xF5, 0x4F, 0xA5, 0xD1, 0x82,
+            0xE6, 0xAD, 0x7F, 0x52, 0x0E, 0x51, 0x1F, 0x6C, 0x3E, 0x2B, 0x8C, 0x68, 0x05, 0x9B, 0x6B, 0xBD, 0x41,
+            0xFB, 0xAB, 0xD9, 0x83, 0x1F, 0x79, 0x21, 0x7E, 0x13, 0x19, 0xCD, 0xE0, 0x5B
+        };
+
+        private static ReadOnlySpan<byte> Rormask => new byte[]
+        {
+            3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10, //r24
+            2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9 //r16
+        };
+
         public unsafe void Compress(ReadOnlySpan<byte> input, Span<byte> output)
         {
             // sh length = h words length + t[0] + t[1] + f[0]
@@ -59,23 +73,28 @@ namespace Nethermind.Crypto.Blake2
                 m[i] = MemoryMarshal.Cast<byte, ulong>(input.Slice(StartOfMWords + i * NumberOfBytesInUlong, NumberOfBytesInUlong)).GetPinnableReference();
             }
 
+            Compute(sh, m, rounds);
+
+            Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(output);
+            for (int offset = 0; offset < NumberOfHWords; offset++)
+            {
+                outputUlongs[offset] = sh[offset];
+            }
+        }
+
+        private unsafe void Compute(ulong* sh, ulong* m, uint rounds)
+        {
             if (Avx2.IsSupported)
             {
                 ComputeAvx2(sh, m, rounds);
             }
             else if (Sse41.IsSupported)
             {
-                ComputeScalar(sh, m, rounds);
+                ComputeSse41(sh, m, rounds);
             }
             else
             {
                 ComputeScalar(sh, m, rounds);
-            }
-            
-            Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(output);
-            for (int offset = 0; offset < NumberOfHWords; offset++)
-            {
-                outputUlongs[offset] = sh[offset];
             }
         }
     }

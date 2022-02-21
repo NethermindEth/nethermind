@@ -31,7 +31,7 @@ public unsafe partial class Blake2Compression
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ComputeSse41(ulong* sh, ulong* m, uint rounds)
     {
-        ref byte rrm = ref MemoryMarshal.GetReference(rormask);
+        ref byte rrm = ref MemoryMarshal.GetReference(Rormask);
         var r24 = Unsafe.As<byte, Vector128<byte>>(ref rrm);
         var r16 = Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref rrm, Vector128<byte>.Count));
 
@@ -40,7 +40,7 @@ public unsafe partial class Blake2Compression
         var row2l = Sse2.LoadVector128(sh + 4);
         var row2h = Sse2.LoadVector128(sh + 6);
 
-        ref byte riv = ref MemoryMarshal.GetReference(ivle);
+        ref byte riv = ref MemoryMarshal.GetReference(Ivle);
         var row3l = Unsafe.As<byte, Vector128<ulong>>(ref riv);
         var row3h = Unsafe.As<byte, Vector128<ulong>>(ref Unsafe.Add(ref riv, 16));
         var row4l = Unsafe.As<byte, Vector128<ulong>>(ref Unsafe.Add(ref riv, 32));

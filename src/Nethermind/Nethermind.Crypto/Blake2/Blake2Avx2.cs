@@ -28,34 +28,20 @@ namespace Nethermind.Crypto.Blake2;
 /// </summary>
 public unsafe partial class Blake2Compression
 {
-    private static ReadOnlySpan<byte> ivle => new byte[]
-    {
-        0x08, 0xC9, 0xBC, 0xF3, 0x67, 0xE6, 0x09, 0x6A, 0x3B, 0xA7, 0xCA, 0x84, 0x85, 0xAE, 0x67, 0xBB, 0x2B, 0xF8,
-        0x94, 0xFE, 0x72, 0xF3, 0x6E, 0x3C, 0xF1, 0x36, 0x1D, 0x5F, 0x3A, 0xF5, 0x4F, 0xA5, 0xD1, 0x82, 0xE6, 0xAD,
-        0x7F, 0x52, 0x0E, 0x51, 0x1F, 0x6C, 0x3E, 0x2B, 0x8C, 0x68, 0x05, 0x9B, 0x6B, 0xBD, 0x41, 0xFB, 0xAB, 0xD9,
-        0x83, 0x1F, 0x79, 0x21, 0x7E, 0x13, 0x19, 0xCD, 0xE0, 0x5B
-    };
-
-    private static ReadOnlySpan<byte> rormask => new byte[]
-    {
-        3, 4, 5, 6, 7, 0, 1, 2, 11, 12, 13, 14, 15, 8, 9, 10, //r24
-        2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9 //r16
-    };
-
     // SIMD algorithm described in https://eprint.iacr.org/2012/275.pdf
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void ComputeAvx2(ulong* sh, ulong* m, uint rounds)
     {
         // Rotate shuffle masks. We can safely convert the ref to a pointer because the compiler guarantees the
         // data is in a fixed location, and the ref itself is converted from a pointer. Same for the IV below.
-        byte* prm = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(rormask));
+        byte* prm = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Rormask));
         var r24 = Avx2.BroadcastVector128ToVector256(prm);
         var r16 = Avx2.BroadcastVector128ToVector256(prm + Vector128<byte>.Count);
 
         var row1 = Avx.LoadVector256(sh);
         var row2 = Avx.LoadVector256(sh + Vector256<ulong>.Count);
 
-        ulong* piv = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(ivle));
+        ulong* piv = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Ivle));
         var row3 = Avx.LoadVector256(piv);
         var row4 = Avx.LoadVector256(piv + Vector256<ulong>.Count);
 
