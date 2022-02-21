@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -101,57 +100,16 @@ public unsafe partial class Blake2Compression
         {
             switch (round)
             {
-                case 0:
-                {
-                    ComputeRound1();
-                    break;
-                }
-                case 1:
-                {
-                    ComputeRound2();
-                    break;
-                }
-                case 2:
-                {
-                    ComputeRound3();
-                    break;
-                }
-                case 3:
-                {
-                    ComputeRound4();
-                    break;
-                }
-                case 4:
-                {
-                    ComputeRound5();
-                    break;
-                }
-                case 5:
-                {
-                    ComputeRound6();
-                    break;
-                }
-                case 6:
-                {
-                    ComputeRound7();
-                    break;
-                }
-                case 7:
-                {
-                    ComputeRound8();
-                    break;
-                }
-                case 8:
-                {
-                    ComputeRound9();
-                    break;
-                }
-                case 9:
-                {
-                    ComputeRound10();
-                    break;
-                }
-                default: break;
+                case 0: { ComputeRound1(); break; }
+                case 1: { ComputeRound2(); break; }
+                case 2: { ComputeRound3(); break; }
+                case 3: { ComputeRound4(); break; }
+                case 4: { ComputeRound5(); break; }
+                case 5: { ComputeRound6(); break; }
+                case 6: { ComputeRound7(); break; }
+                case 7: { ComputeRound8(); break; }
+                case 8: { ComputeRound9(); break; }
+                case 9: { ComputeRound10(); break; }
             }
         }
 
