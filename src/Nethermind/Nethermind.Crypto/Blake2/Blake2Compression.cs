@@ -63,10 +63,10 @@ namespace Nethermind.Crypto.Blake2
             {
                 ComputeAvx2(sh, m, rounds);
             }
-            // else if (Sse41.IsSupported)
-            // {
-            //     // mixSse41(sh, m);
-            // }
+            else if (Sse41.IsSupported)
+            {
+                ComputeScalar(sh, m, rounds);
+            }
             else
             {
                 ComputeScalar(sh, m, rounds);

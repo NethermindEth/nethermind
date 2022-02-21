@@ -61,7 +61,7 @@ public unsafe partial class Blake2Compression
         Vector128<ulong> t1;
         Vector128<ulong> b0;
         Vector128<ulong> b1;
-        
+
         uint fullRounds = rounds / 10;
         uint partialRounds = rounds % 10;
 
@@ -74,7 +74,7 @@ public unsafe partial class Blake2Compression
         {
             ComputePartialRound(i % 10);
         }
-        
+
         row1l = Sse2.Xor(row1l, row3l);
         row1h = Sse2.Xor(row1h, row3h);
         row1l = Sse2.Xor(row1l, Sse2.LoadVector128(sh));
@@ -88,8 +88,8 @@ public unsafe partial class Blake2Compression
         row2h = Sse2.Xor(row2h, Sse2.LoadVector128(sh + 6));
         Sse2.Store(sh + 4, row2l);
         Sse2.Store(sh + 6, row2h);
-        
-        
+
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeFullRound()
         {
@@ -104,7 +104,7 @@ public unsafe partial class Blake2Compression
             ComputeRound9();
             ComputeRound10();
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputePartialRound(uint round)
         {
@@ -163,7 +163,7 @@ public unsafe partial class Blake2Compression
                 default: break;
             }
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound1()
         {
@@ -285,7 +285,7 @@ public unsafe partial class Blake2Compression
             row4l = t1;
             row4h = t0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound2()
         {
@@ -407,7 +407,7 @@ public unsafe partial class Blake2Compression
             row4l = t1;
             row4h = t0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound3()
         {
@@ -529,7 +529,7 @@ public unsafe partial class Blake2Compression
             row4l = t1;
             row4h = t0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound4()
         {
@@ -651,7 +651,7 @@ public unsafe partial class Blake2Compression
             row4l = t1;
             row4h = t0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound5()
         {
@@ -773,7 +773,7 @@ public unsafe partial class Blake2Compression
             row4l = t1;
             row4h = t0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound6()
         {
@@ -895,7 +895,7 @@ public unsafe partial class Blake2Compression
             row4l = t1;
             row4h = t0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound7()
         {
@@ -1017,7 +1017,7 @@ public unsafe partial class Blake2Compression
             row4l = t1;
             row4h = t0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound8()
         {
@@ -1139,7 +1139,7 @@ public unsafe partial class Blake2Compression
             row4l = t1;
             row4h = t0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound9()
         {
@@ -1261,7 +1261,7 @@ public unsafe partial class Blake2Compression
             row4l = t1;
             row4h = t0;
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound10()
         {

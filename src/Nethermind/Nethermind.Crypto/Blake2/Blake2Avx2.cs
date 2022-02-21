@@ -72,7 +72,7 @@ public unsafe partial class Blake2Compression
         Vector256<ulong> t0;
         Vector256<ulong> t1;
         Vector256<ulong> b0;
-        
+
         uint fullRounds = rounds / 10;
         uint partialRounds = rounds % 10;
 
@@ -93,8 +93,8 @@ public unsafe partial class Blake2Compression
 
         Avx.Store(sh, row1);
         Avx.Store(sh + Vector256<ulong>.Count, row2);
-        
-        
+
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeFullRound()
         {
@@ -109,7 +109,7 @@ public unsafe partial class Blake2Compression
             ComputeRound9();
             ComputeRound10();
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputePartialRound(uint round)
         {
@@ -168,7 +168,7 @@ public unsafe partial class Blake2Compression
                 default: break;
             }
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound1()
         {
@@ -239,7 +239,7 @@ public unsafe partial class Blake2Compression
             row4 = Avx2.Permute4x64(row4, 0b_01_00_11_10);
             row3 = Avx2.Permute4x64(row3, 0b_10_01_00_11);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound2()
         {
@@ -305,7 +305,7 @@ public unsafe partial class Blake2Compression
             row4 = Avx2.Permute4x64(row4, 0b_01_00_11_10);
             row3 = Avx2.Permute4x64(row3, 0b_10_01_00_11);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound3()
         {
@@ -371,7 +371,7 @@ public unsafe partial class Blake2Compression
             row4 = Avx2.Permute4x64(row4, 0b_01_00_11_10);
             row3 = Avx2.Permute4x64(row3, 0b_10_01_00_11);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound4()
         {
@@ -437,7 +437,7 @@ public unsafe partial class Blake2Compression
             row4 = Avx2.Permute4x64(row4, 0b_01_00_11_10);
             row3 = Avx2.Permute4x64(row3, 0b_10_01_00_11);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound5()
         {
@@ -503,7 +503,7 @@ public unsafe partial class Blake2Compression
             row4 = Avx2.Permute4x64(row4, 0b_01_00_11_10);
             row3 = Avx2.Permute4x64(row3, 0b_10_01_00_11);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound6()
         {
@@ -569,7 +569,7 @@ public unsafe partial class Blake2Compression
             row4 = Avx2.Permute4x64(row4, 0b_01_00_11_10);
             row3 = Avx2.Permute4x64(row3, 0b_10_01_00_11);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound7()
         {
@@ -635,7 +635,7 @@ public unsafe partial class Blake2Compression
             row4 = Avx2.Permute4x64(row4, 0b_01_00_11_10);
             row3 = Avx2.Permute4x64(row3, 0b_10_01_00_11);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound8()
         {
@@ -701,7 +701,7 @@ public unsafe partial class Blake2Compression
             row4 = Avx2.Permute4x64(row4, 0b_01_00_11_10);
             row3 = Avx2.Permute4x64(row3, 0b_10_01_00_11);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound9()
         {
@@ -767,7 +767,7 @@ public unsafe partial class Blake2Compression
             row4 = Avx2.Permute4x64(row4, 0b_01_00_11_10);
             row3 = Avx2.Permute4x64(row3, 0b_10_01_00_11);
         }
-        
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         void ComputeRound10()
         {
