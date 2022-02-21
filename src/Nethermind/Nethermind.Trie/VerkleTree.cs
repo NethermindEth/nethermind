@@ -486,7 +486,7 @@ public class VerkleTree
         RootHash = new Keccak(rootHash);
     }
     
-    public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions visitingOptions = VisitingOptions.ExpectAccounts)
+    public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null)
     {
         if (visitor is null) throw new ArgumentNullException(nameof(visitor));
         if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
