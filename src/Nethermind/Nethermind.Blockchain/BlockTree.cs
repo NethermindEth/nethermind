@@ -1614,9 +1614,9 @@ namespace Nethermind.Blockchain
         {
             IList<Block> blockList = new List<Block>(); 
             IDictionary<long, HashSet<Keccak>> tempDict = _invalidBlocks.Clone();
-            foreach (HashSet<Keccak> temp in tempDict.Values)
+            foreach (HashSet<Keccak> invalidBlockHashes in tempDict.Values)
             {
-                foreach (var hash in temp)
+                foreach (var hash in invalidBlockHashes)
                 {
                     blockList.Add(FindBlock(hash, BlockTreeLookupOptions.None));
                 }

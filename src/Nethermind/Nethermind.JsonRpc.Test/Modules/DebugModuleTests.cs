@@ -7,17 +7,26 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Processing;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Db.Blooms;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -29,6 +38,10 @@ public class DebugModuleTests
 {
     private IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
     private IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+    private MemDb _blocksInfosDb;
+    private MemDb _headersDb;
+    private MemDb _blocksDb;
+    private ChainLevelInfoRepository _chainLevelInfoRepository;
 
     [Test]
     public void Get_from_db()
@@ -36,6 +49,7 @@ public class DebugModuleTests
         byte[] key = new byte[] { 1, 2, 3 };
         byte[] value = new byte[] { 4, 5, 6 };
         debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
+
 
         IConfigProvider configProvider = Substitute.For<IConfigProvider>();
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
@@ -206,6 +220,45 @@ public class DebugModuleTests
         string response = await RpcTest.TestSerializedRequest<IDebugRpcModule>(DebugModuleFactory.Converters, rpcModule, "debug_traceTransaction", TestItem.KeccakA.ToString(true), "{disableStack : true}");
 
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"gas\":\"0x0\",\"failed\":false,\"returnValue\":\"0xa2\",\"structLogs\":[{\"pc\":0,\"op\":\"STOP\",\"gas\":22000,\"gasCost\":1,\"depth\":1,\"error\":null,\"stack\":[],\"memory\":[\"0000000000000000000000000000000000000000000000000000000000000005\",\"0000000000000000000000000000000000000000000000000000000000000006\"],\"storage\":{\"0000000000000000000000000000000000000000000000000000000000000001\":\"0000000000000000000000000000000000000000000000000000000000000002\",\"0000000000000000000000000000000000000000000000000000000000000003\":\"0000000000000000000000000000000000000000000000000000000000000004\"}}]},\"id\":67}"));
+    }
+
+    private BlockTree BuildBlockTree()
+    {
+        _blocksDb = new MemDb();
+        _headersDb = new MemDb();
+        _blocksInfosDb = new MemDb();
+        _chainLevelInfoRepository = new ChainLevelInfoRepository(_blocksInfosDb);
+        return new BlockTree(_blocksDb, _headersDb, _blocksInfosDb, _chainLevelInfoRepository, MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+    }
+
+    [Test]
+    public void debug_getBadBlocks_test()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+        Block block3 = Build.A.Block.WithNumber(2).WithDifficulty(4).WithParent(block2).TestObject;
+
+        blockTree.SuggestBlock(block0);
+        blockTree.SuggestBlock(block1);
+        blockTree.SuggestBlock(block2);
+        blockTree.SuggestBlock(block3);
+        
+        blockTree.DeleteInvalidBlock(block1);
+        BlockDecoder decoder = new();
+        _blocksDb.Set(block1.Hash, decoder.Encode(block1).Bytes);
+        debugBridge.GetBadBlocks().Returns(blockTree.GetInvalidBlocks());
+        AddBlockResult result = blockTree.SuggestBlock(block1);
+        Assert.AreEqual(AddBlockResult.InvalidBlock, result);
+
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig);
+
+        ResultWrapper<Block[]> blocks = rpcModule.debug_getBadBlocks();
+        Assert.AreEqual(1, blocks.Data.Length);
+        Assert.AreEqual(block1.Hash, blocks.Data[0].Hash);
+        Assert.AreEqual(new UInt256(2), blocks.Data[0].Difficulty);
     }
 
     [Test]
