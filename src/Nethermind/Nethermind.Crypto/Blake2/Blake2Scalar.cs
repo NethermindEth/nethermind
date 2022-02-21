@@ -24,6 +24,8 @@ namespace Nethermind.Crypto.Blake2;
 /// </summary>
 public unsafe partial class Blake2Compression
 {
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    [SkipLocalsInit]
     private static void ComputeScalar(ulong* sh, ulong* m, uint rounds)
     {
         ulong m00 = m[00];
@@ -65,65 +67,9 @@ public unsafe partial class Blake2Compression
         v13 ^= sh[9]; // t[1]
         v14 ^= sh[10]; // f[0]
 
-        uint fullRounds = rounds / 10;
-        uint partialRounds = rounds % 10;
-
-        for (int i = 0; i < fullRounds; i++)
+        for (uint i = 0; i < rounds; i++)
         {
-            ComputeFullRound();
-        }
-
-        for (uint i = 0; i < partialRounds; i++)
-        {
-            ComputePartialRound(i % 10);
-        }
-
-        sh[0] ^= v00 ^ v08;
-        sh[1] ^= v01 ^ v09;
-        sh[2] ^= v02 ^ v10;
-        sh[3] ^= v03 ^ v11;
-        sh[4] ^= v04 ^ v12;
-        sh[5] ^= v05 ^ v13;
-        sh[6] ^= v06 ^ v14;
-        sh[7] ^= v07 ^ v15;
-
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeFullRound()
-        {
-            ComputeRound1();
-            ComputeRound2();
-            ComputeRound3();
-            ComputeRound4();
-            ComputeRound5();
-            ComputeRound6();
-            ComputeRound7();
-            ComputeRound8();
-            ComputeRound9();
-            ComputeRound10();
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputePartialRound(uint round)
-        {
-            switch (round)
-            {
-                case 0: { ComputeRound1(); break; }
-                case 1: { ComputeRound2(); break; }
-                case 2: { ComputeRound3(); break; }
-                case 3: { ComputeRound4(); break; }
-                case 4: { ComputeRound5(); break; }
-                case 5: { ComputeRound6(); break; }
-                case 6: { ComputeRound7(); break; }
-                case 7: { ComputeRound8(); break; }
-                case 8: { ComputeRound9(); break; }
-                case 9: { ComputeRound10(); break; }
-            }
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound1()
-        {
+            //ROUND 1
             v00 += m00;
             v00 += v04;
             v12 ^= v00;
@@ -251,11 +197,10 @@ public unsafe partial class Blake2Compression
             v11 += v12;
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound2()
-        {
+            if (++i == rounds) break;
+
+            //ROUND 2
             v00 += m14;
             v00 += v04;
             v12 ^= v00;
@@ -383,11 +328,10 @@ public unsafe partial class Blake2Compression
             v11 += v12;
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound3()
-        {
+            if (++i == rounds) break;
+
+            //ROUND 3
             v00 += m11;
             v00 += v04;
             v12 ^= v00;
@@ -515,11 +459,10 @@ public unsafe partial class Blake2Compression
             v11 += v12;
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound4()
-        {
+            if (++i == rounds) break;
+
+            //ROUND 4
             v00 += m07;
             v00 += v04;
             v12 ^= v00;
@@ -647,11 +590,10 @@ public unsafe partial class Blake2Compression
             v11 += v12;
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound5()
-        {
+            if (++i == rounds) break;
+
+            //ROUND 5
             v00 += m09;
             v00 += v04;
             v12 ^= v00;
@@ -779,11 +721,10 @@ public unsafe partial class Blake2Compression
             v11 += v12;
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound6()
-        {
+            if (++i == rounds) break;
+
+            //ROUND 6
             v00 += m02;
             v00 += v04;
             v12 ^= v00;
@@ -911,11 +852,10 @@ public unsafe partial class Blake2Compression
             v11 += v12;
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound7()
-        {
+            if (++i == rounds) break;
+
+            //ROUND 7
             v00 += m12;
             v00 += v04;
             v12 ^= v00;
@@ -1043,11 +983,10 @@ public unsafe partial class Blake2Compression
             v11 += v12;
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound8()
-        {
+            if (++i == rounds) break;
+
+            //ROUND 8
             v00 += m13;
             v00 += v04;
             v12 ^= v00;
@@ -1175,11 +1114,10 @@ public unsafe partial class Blake2Compression
             v11 += v12;
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound9()
-        {
+            if (++i == rounds) break;
+
+            //ROUND 9
             v00 += m06;
             v00 += v04;
             v12 ^= v00;
@@ -1307,11 +1245,10 @@ public unsafe partial class Blake2Compression
             v11 += v12;
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
-        }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        void ComputeRound10()
-        {
+            if (++i == rounds) break;
+
+            //ROUND 10
             v00 += m10;
             v00 += v04;
             v12 ^= v00;
@@ -1440,5 +1377,14 @@ public unsafe partial class Blake2Compression
             v06 ^= v11;
             v06 = (v06 >> 63) ^ (v06 << 1);
         }
+
+        sh[0] ^= v00 ^ v08;
+        sh[1] ^= v01 ^ v09;
+        sh[2] ^= v02 ^ v10;
+        sh[3] ^= v03 ^ v11;
+        sh[4] ^= v04 ^ v12;
+        sh[5] ^= v05 ^ v13;
+        sh[6] ^= v06 ^ v14;
+        sh[7] ^= v07 ^ v15;
     }
 }
