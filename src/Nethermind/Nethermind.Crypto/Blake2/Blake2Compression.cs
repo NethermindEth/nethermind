@@ -23,6 +23,7 @@ namespace Nethermind.Crypto.Blake2
 {
     /// <summary>
     ///     Code adapted from pantheon (https://github.com/PegaSysEng/pantheon)
+    ///     and from Blake2Fast (https://github.com/saucecontrol/Blake2Fast)
     /// </summary>
     public partial class Blake2Compression
     {
