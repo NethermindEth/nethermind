@@ -216,7 +216,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return false;
             }
-
+            
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             if (processedBlock == null)
             {

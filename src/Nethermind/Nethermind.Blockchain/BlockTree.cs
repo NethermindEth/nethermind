@@ -1347,8 +1347,7 @@ namespace Nethermind.Blockchain
                                                                || _specProvider.TerminalTotalDifficulty == null);
 
             // after the merge, we will accept only the blocks with Difficulty = 0. However, during the transition process
-            // we can have terminal PoW blocks with Difficulty > 0. That is why we accept everything greater or equal
-            // than current head and header.TD >= TTD.
+            // we can have terminal PoW blocks with Difficulty > 0.
             bool postMergeImprovementRequirementSatisfied = _specProvider.TerminalTotalDifficulty != null &&
                                                             header.TotalDifficulty >=
                                                             _specProvider.TerminalTotalDifficulty &&
