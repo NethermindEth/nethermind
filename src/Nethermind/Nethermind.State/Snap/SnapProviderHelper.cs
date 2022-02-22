@@ -14,7 +14,7 @@ namespace Nethermind.State.Snap
 {
     internal static class SnapProviderHelper
     {
-        public static (Keccak? rootHash, bool moreChildrenToRight) AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+        public static (Keccak? rootHash, bool moreChildrenToRight, IList<PathWithAccount> storageRoots) AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
@@ -25,12 +25,20 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = accounts.Last().AddressHash;
 
-            (bool success, bool moreChildrenToRight) = FillBoundaryTree_2(tree, expectedRootHash, startingHash, lastHash, proofs);
+            (bool success, bool moreChildrenToRight) = FillBoundaryTree(tree, expectedRootHash, startingHash, lastHash, proofs);
 
+            IList<PathWithAccount> accountsWithStorage = null;
             if (success)
             {
+                accountsWithStorage = new List<PathWithAccount>();
+
                 foreach (var account in accounts)
                 {
+                    if(account.Account.HasStorage)
+                    {
+                        accountsWithStorage.Add(account);
+                    }
+
                     tree.Set(account.AddressHash, account.Account);
                 }
 
@@ -39,28 +47,28 @@ namespace Nethermind.State.Snap
                 if (tree.RootHash != expectedRootHash)
                 {
                     // TODO: log incorrect range
-                    return (Keccak.EmptyTreeHash, true);
+                    return (Keccak.EmptyTreeHash, true, null);
                 }
 
                 tree.Commit(blockNumber);
             }
 
-            return (tree.RootHash, moreChildrenToRight);
+            return (tree.RootHash, moreChildrenToRight, accountsWithStorage);
         }
 
-        public static Keccak? AddStorageRange(StorageTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
+        public static Keccak? AddStorageRange(StorageTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
         {
             // TODO: Check the slots boundaries and sorting
 
-            Keccak lastHash = slots.Last().KeyHash;
+            Keccak lastHash = slots.Last().Path;
 
-            (bool success, bool moreChildrenToRight) = FillBoundaryTree_2(tree, expectedRootHash, startingHash, lastHash, proofs);
+            (bool success, bool moreChildrenToRight) = FillBoundaryTree(tree, expectedRootHash, startingHash, lastHash, proofs);
 
             if (success)
             {
                 foreach (var slot in slots)
                 {
-                    tree.Set(slot.KeyHash, slot.SlotValue);
+                    tree.Set(slot.Path, slot.SlotValue, false);
                 }
 
                 tree.UpdateRootHash();
@@ -77,25 +85,7 @@ namespace Nethermind.State.Snap
             return tree.RootHash;
         }
 
-        private static bool ProcessProofs(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak lastHash, byte[][] proofs = null)
-        {
-            if (proofs != null && proofs.Length > 0)
-            {
-                //(bool proved, _) = ProofVerifier.VerifyMultipleProofs(proofs, expectedRootHash);
-
-                //if (!proved)
-                //{
-                //    //TODO: log incorrect proofs
-                //    return false;
-                //}
-
-                //FillBoundaryTree_2(tree, expectedRootHash, proofs, startingHash, lastHash);
-            }
-
-            return true;
-        }
-
-        private static (bool success, bool moreChildrenToRight) FillBoundaryTree_2(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak endHash, byte[][] proofs = null)
+        private static (bool success, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak endHash, byte[][] proofs = null)
         {
             if (proofs is null || proofs.Length == 0)
             {
@@ -161,7 +151,7 @@ namespace Nethermind.State.Snap
                     {
                         Keccak? childKeccak = node.GetChildHash(ci);
 
-                        moreChildrenToRight = ci > right && childKeccak is not null;
+                        moreChildrenToRight |= ci > right && childKeccak is not null;
 
                         if (ci >= left && ci <= right)
                         {
@@ -208,7 +198,7 @@ namespace Nethermind.State.Snap
             return dict;
         }
 
-        private static void FillBoundaryTree(PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
+        private static void FillBoundaryTree_old(PatriciaTree tree, Keccak expectedRootHash, byte[][] proofs, Keccak startingHash, Keccak endHash)
         {
             if (tree == null)
             {

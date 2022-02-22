@@ -1560,13 +1560,13 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? 1 : 33;
         }
 
-        public static int LengthOf(Keccak[] keccaks, bool includeSequenceStart = false)
+        public static int LengthOf(Keccak[] keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Length * LengthOfKeccakRlp ?? 0;
             
-            if (includeSequenceStart)
+            if (includeLengthOfSequenceStart)
             {
-                value += LengthOfSequence(value);
+                value = LengthOfSequence(value);
             }
 
             return value;

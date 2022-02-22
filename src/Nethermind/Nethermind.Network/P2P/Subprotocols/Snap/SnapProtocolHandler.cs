@@ -41,6 +41,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
+        private const int BYTES_LIMIT = 1000_000;
+
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
 
@@ -48,16 +50,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public override string ProtocolCode => Protocol.Snap;
         public override int MessageIdSpaceSize => 8;
 
-        private readonly MessageQueue<GetAccountRangeMessage, AccountRangeMessage> _getAccountsRequests;
+        private readonly MessageQueue<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
+        private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
 
-
-        public SnapProtocolHandler(ISession session, 
-            INodeStatsManager nodeStats, 
-            IMessageSerializationService serializer, 
-            ILogManager logManager) 
+        public SnapProtocolHandler(ISession session,
+            INodeStatsManager nodeStats,
+            IMessageSerializationService serializer,
+            ILogManager logManager)
             : base(session, nodeStats, serializer, logManager)
         {
-            _getAccountsRequests = new(Send);
+            _getAccountRangeRequests = new(Send);
+            _getStorageRangeRequests = new(Send);
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -75,7 +78,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public override void Dispose()
         {
         }
-        
+
         public override void HandleMessage(ZeroPacket message)
         {
             int size = message.Content.ReadableBytes;
@@ -93,14 +96,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(accountRangeMessage, size);
                     break;
                 case SnapMessageCode.GetStorageRanges:
-                    GetStorageRangesMessage getStorageRangesMessage = Deserialize<GetStorageRangesMessage>(message.Content);
+                    GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
                     ReportIn(getStorageRangesMessage);
                     //Handle(msg);
                     break;
                 case SnapMessageCode.StorageRanges:
-                    StorageRangesMessage storageRangesMessage = Deserialize<StorageRangesMessage>(message.Content);
+                    StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
                     ReportIn(storageRangesMessage);
-                    //Handle(msg);
+                    Handle(storageRangesMessage, size);
                     break;
                 case SnapMessageCode.GetByteCodes:
                     GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
@@ -127,8 +130,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private void Handle(AccountRangeMessage msg, long size)
         {
-            Metrics.Eth63NodeDataReceived++;
-            _getAccountsRequests.Handle(msg, size);
+            Metrics.SnapAccountRangeReceived++;
+            _getAccountRangeRequests.Handle(msg, size);
+        }
+
+        private void Handle(StorageRangeMessage msg, long size)
+        {
+            Metrics.SnapStorageRangesReceived++;
+            _getStorageRangeRequests.Handle(msg, size);
         }
 
         private void Handle(GetAccountRangeMessage msg)
@@ -146,20 +155,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             var request = new GetAccountRangeMessage()
             {
                 AccountRange = range,
-                ResponseBytes = 1000_000
+                ResponseBytes = BYTES_LIMIT
             };
 
-            AccountRangeMessage response = await SendRequest(request, token);
+            AccountRangeMessage response = await SendRequest(request, _getAccountRangeRequests, token);
 
-            return new AccountsAndProofs() { PathAndAccounts = response.PathsWithAccounts, Proofs = response.Proofs};
+            return new AccountsAndProofs() { PathAndAccounts = response.PathsWithAccounts, Proofs = response.Proofs };
         }
 
-        private async Task<AccountRangeMessage> SendRequest(GetAccountRangeMessage msg, CancellationToken token)
+        public async Task<SlotsAndProofs> GetStoragetRange(StorageRange range, CancellationToken token)
         {
-            Request<GetAccountRangeMessage, AccountRangeMessage> batch = new(msg);
-            _getAccountsRequests.Send(batch);
+            var request = new GetStorageRangeMessage()
+            {
+                StoragetRange = range,
+                ResponseBytes = BYTES_LIMIT
+            };
 
-            Task<AccountRangeMessage> task = batch.CompletionSource.Task;
+            StorageRangeMessage response = await SendRequest(request, _getStorageRangeRequests, token);
+
+            return new SlotsAndProofs() { PathsAndSlots = response.Slots, Proofs = response.Proofs };
+        }
+
+        private async Task<Tout> SendRequest<Tin, Tout>(Tin msg, MessageQueue<Tin, Tout> _requestQueue, CancellationToken token)
+            where Tin : SnapMessageBase
+            where Tout : SnapMessageBase
+        {
+            Request<Tin, Tout> batch = new(msg);
+
+            _requestQueue.Send(batch);
+
+            Task<Tout> task = batch.CompletionSource.Task;
 
             using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation
@@ -174,16 +199,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             {
                 delayCancellation.Cancel();
                 long elapsed = batch.FinishMeasuringTime();
-                long bytesPerMillisecond = (long) ((decimal)batch.ResponseSize / Math.Max(1, elapsed));
+                long bytesPerMillisecond = (long)((decimal)batch.ResponseSize / Math.Max(1, elapsed));
                 if (Logger.IsTrace)
                     Logger.Trace($"{this} speed is {batch.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, bytesPerMillisecond);
 
                 return task.Result;
             }
-            
+
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, 0L);
-            throw new TimeoutException($"{Session} Request timeout in {nameof(GetAccountRangeMessage)}");
+            throw new TimeoutException($"{Session} Request timeout in {nameof(Tin)}");
         }
     }
 }

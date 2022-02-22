@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -27,10 +29,14 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed : SyncFeed<AccountsSyncBatch?>, IDisposable
+    public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
+        private const int STORAGE_BATCH_SIZE = 2;
+
+        private int _accountResponsesCount;
+        private int _storageResponsesCount;
+
         private BlockHeader _bestHeader;
-        private int _responsesCount;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly SnapProvider _snapProvider;
 
@@ -49,28 +55,53 @@ namespace Nethermind.Synchronization.SnapSync
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
         
-        public override async Task<AccountsSyncBatch?> PrepareRequest()
+        public override async Task<SnapSyncBatch?> PrepareRequest()
         {
             try
             {
-                AccountsSyncBatch request = new AccountsSyncBatch();
-                request.Request = new(_bestHeader.StateRoot, _snapProvider.NextStartingHash, Keccak.MaxValue, _bestHeader.Number);
+                SnapSyncBatch request = new SnapSyncBatch();
 
-                if (_responsesCount == 1 || _responsesCount > 0 && _responsesCount % 10 == 0)
+                // TODO: optimize this
+                List<PathWithAccount> accounts = new(STORAGE_BATCH_SIZE);
+                for (int i = 0; i < STORAGE_BATCH_SIZE && _snapProvider.StoragesToRetrieve.TryDequeue(out PathWithAccount account); i++)
                 {
-                    _logger.Info($"SNAP - Responses:{_responsesCount}, next request:{request.Request.RootHash}:{request.Request.StartingHash}:{request.Request.LimitHash}");
+                    accounts.Add(account);
                 }
+
+                if (accounts.Count >0)
+                {
+                    request.StorageRangeRequest = new(_bestHeader.StateRoot, accounts.ToArray(), blockNumber: _bestHeader.Number);
+
+                    if (_storageResponsesCount == 1 || _storageResponsesCount > 0 && _storageResponsesCount % 10 == 0)
+                    {
+                        _logger.Info($"SNAP - Responses:{_storageResponsesCount}, Slots:{Metrics.SyncedStorageSlots}");
+                    }
+                }
+                else
+                {
+                    // some contract hardcoded
+                    //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
+                    // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
+
+                    request.AccountRangeRequest = new(_bestHeader.StateRoot, _snapProvider.NextStartingHash, Keccak.MaxValue, _bestHeader.Number);
+
+                    if (_accountResponsesCount == 1 || _accountResponsesCount > 0 && _accountResponsesCount % 10 == 0)
+                    {
+                        _logger.Info($"SNAP - Responses:{_accountResponsesCount}, Accounts:{Metrics.SyncedAccounts}, next request:{request.AccountRangeRequest.RootHash}:{request.AccountRangeRequest.StartingHash}:{request.AccountRangeRequest.LimitHash}");
+                    }
+                }
+
 
                 return await Task.FromResult(request);
             }
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult<AccountsSyncBatch>(null);
+                return await Task.FromResult<SnapSyncBatch>(null);
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(AccountsSyncBatch? batch)
+        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch)
         {
             if (batch == null)
             {
@@ -78,15 +109,59 @@ namespace Nethermind.Synchronization.SnapSync
                 return SyncResponseHandlingResult.InternalError;
             }
 
-            if(batch.Response is null)
+            if(batch.AccountRangeResponse is not null)
+            {
+                if (batch.AccountRangeResponse.PathAndAccounts.Length == 0 && batch.AccountRangeResponse.Proofs.Length == 0)
+                {
+                    _logger.Warn($"GetAccountRange: Requested expired RootHash:{batch.AccountRangeRequest.RootHash}");
+                }
+                else
+                {
+                    _snapProvider.AddAccountRange(batch.AccountRangeRequest.BlockNumber.Value, batch.AccountRangeRequest.RootHash, batch.AccountRangeRequest.StartingHash, batch.AccountRangeResponse.PathAndAccounts, batch.AccountRangeResponse.Proofs);
+
+                    if (batch.AccountRangeResponse.PathAndAccounts.Length > 0)
+                    {
+                        Interlocked.Add(ref Metrics.SyncedAccounts, batch.AccountRangeResponse.PathAndAccounts.Length);
+                    }
+                }
+
+                _accountResponsesCount++;
+            }
+            else if(batch.StorageRangeResponse is not null)
+            {
+                if (batch.StorageRangeResponse.PathsAndSlots.Length == 0 && batch.AccountRangeResponse.Proofs.Length == 0)
+                {
+                    _logger.Warn($"GetAccountRange: Requested expired RootHash:{batch.AccountRangeRequest.RootHash}");
+                }
+                else
+                {
+                    int slotCount = 0;
+
+                    int length = batch.StorageRangeResponse.PathsAndSlots.Length;
+
+                    for (int i = 0; i < length; i++)
+                    {
+
+                        // only the last can have proofs
+                        byte[][] proofs = (i == length - 1) ? batch.StorageRangeResponse.Proofs : null;
+                        _snapProvider.AddStorageRange(batch.StorageRangeRequest.BlockNumber.Value, batch.StorageRangeRequest.Accounts[i].Account.StorageRoot, batch.StorageRangeRequest.StartingHash, batch.StorageRangeResponse.PathsAndSlots[i], proofs);
+
+                        slotCount += batch.StorageRangeResponse.PathsAndSlots[i].Length;
+                    }
+
+                    if (slotCount > 0)
+                    {
+                        Interlocked.Add(ref Metrics.SyncedStorageSlots, slotCount);
+                    }
+                }
+
+                _storageResponsesCount++;
+            }
+            else
             {
                 //if (_logger.IsInfo) _logger.Info("SNAP peer not assigned to handle request");
                 return SyncResponseHandlingResult.NoProgress;
             }
-
-            _responsesCount++;
-            _snapProvider.AddAccountRange(batch.Request.BlockNumber.Value, batch.Request.RootHash, batch.Request.StartingHash, batch.Response.PathAndAccounts, batch.Response.Proofs);
-
 
             return SyncResponseHandlingResult.OK;
         }

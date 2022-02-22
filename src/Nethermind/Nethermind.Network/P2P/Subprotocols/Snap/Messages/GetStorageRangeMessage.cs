@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,33 +18,16 @@
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
-    public class GetStorageRangesMessage : SnapMessageBase
+    public class GetStorageRangeMessage : SnapMessageBase
     {
         public override int PacketType => SnapMessageCode.GetStorageRanges;
-        
-        /// <summary>
-        /// Root hash of the account trie to serve
-        /// </summary>
-        public Keccak RootHash { get; set; }
 
-        /// <summary>
-        /// Account hashes of the storage tries to serve
-        /// </summary>
-        public Keccak[] AccountHashes { get; set; }
-        
-        /// <summary>
-        /// Storage slot hash of the first to retrieve
-        /// </summary>
-        public Keccak StartingHash { get; set; }
-        
-        /// <summary>
-        /// Storage slot hash after which to stop serving
-        /// </summary>
-        public Keccak LimitHash { get; set; }
-        
+        public StorageRange StoragetRange { get; set; }
+
         /// <summary>
         /// Soft limit at which to stop returning data
         /// </summary>

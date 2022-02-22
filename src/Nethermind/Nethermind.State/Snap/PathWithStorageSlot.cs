@@ -7,15 +7,15 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Snap
 {
-    public class SlotWithKeyHash
+    public class PathWithStorageSlot
     {
-        public SlotWithKeyHash(Keccak keyHash, byte[] slotValue)
+        public PathWithStorageSlot(Keccak keyHash, byte[] slotValue)
         {
-            KeyHash = keyHash;
+            Path = keyHash;
             SlotValue = slotValue;
         }
 
-        public Keccak KeyHash { get; set; }
+        public Keccak Path { get; set; }
         public byte[] SlotValue { get; set; }
     }
 }

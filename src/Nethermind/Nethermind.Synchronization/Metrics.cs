@@ -44,6 +44,12 @@ namespace Nethermind.Synchronization
         [Description("Synced bytecodes")]
         public static long SyncedCodes;
 
+        [Description("Synced accounts via SNAP SYNC")]
+        public static long SyncedAccounts;
+
+        [Description("Synced storage slots via SNAP SYNC")]
+        public static long SyncedStorageSlots;
+
         [Description("Number of sync peers.")]
         public static long SyncPeers;
         
