@@ -31,7 +31,7 @@ namespace Nethermind.Merge.Plugin
     public partial class MergePlugin
     {
         private IMiningConfig _miningConfig = null!;
-        private PostMergeBlockProducer _blockProducer = null!;
+        private PostMergeBlockProducer _postMergeBlockProducer = null!;
         private IManualBlockProductionTrigger? _blockProductionTrigger = null;
         private ManualTimestamper? _manualTimestamper;
 
@@ -79,12 +79,12 @@ namespace Nethermind.Merge.Plugin
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, feeRecipient, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
                 PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
-                _blockProducer = blockProducerFactory.Create(blockProducerEnv, _blockProductionTrigger);
+                _postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, _blockProductionTrigger);
                 
-                _api.BlockProducer = new MergeBlockProducer(blockProducer, _blockProducer, _poSSwitcher);
+                _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
             }
 
-            return _blockProducer;
+            return _api.BlockProducer;
         }
 
         public bool Enabled => _mergeConfig.Enabled;

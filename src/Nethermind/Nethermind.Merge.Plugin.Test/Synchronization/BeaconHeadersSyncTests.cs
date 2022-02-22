@@ -25,6 +25,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
@@ -97,7 +98,7 @@ public class BeaconHeadersSyncTests
 
     private IBeaconPivot PreparePivot(long blockNumber, ISyncConfig syncConfig, IBlockTree blockTree)
     {
-        IBeaconPivot pivot = new BeaconPivot(syncConfig, Substitute.For<IDb>(), blockTree, LimboLogs.Instance);
+        IBeaconPivot pivot = new BeaconPivot(syncConfig, new MergeConfig() { Enabled = true }, new MemDb(), blockTree, LimboLogs.Instance);
         BlockHeader pivotHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
         pivot.EnsurePivot(pivotHeader);
         return pivot;

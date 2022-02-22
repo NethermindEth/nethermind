@@ -61,8 +61,9 @@ namespace Nethermind.Merge.Plugin.Test
         {
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             IBeaconPivot beaconPivot = new BeaconPivot(new SyncConfig(),  chain.MergeConfig, new MemDb(), chain.BlockTree, chain.LogManager);
-            BeaconSync beaconSync = new(beaconPivot, chain.BlockTree, syncProgressResolver);
             BlockCacheService blockCacheService = new();
+            BeaconSync beaconSync = new(beaconPivot, chain.BlockTree, syncProgressResolver, blockCacheService, chain.BlockValidator, chain.BlockchainProcessor);
+
 
             return new EngineRpcModule(
                 new GetPayloadV1Handler(chain.PayloadPreparationService!, chain.LogManager),
