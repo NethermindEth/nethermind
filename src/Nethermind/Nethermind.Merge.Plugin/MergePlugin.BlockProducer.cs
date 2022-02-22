@@ -40,7 +40,6 @@ namespace Nethermind.Merge.Plugin
         {
             if (_mergeConfig.Enabled)
             {
-
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
                 if (_api.BlockTree == null) throw new ArgumentNullException(nameof(_api.BlockTree));
@@ -55,6 +54,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockchainProcessor == null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
                 if (_api.HeaderValidator == null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
                 if (_mergeBlockProductionPolicy == null) throw new ArgumentNullException(nameof(_mergeBlockProductionPolicy));
+                if (_api.SealValidator == null) throw new ArgumentNullException(nameof(_api.SealValidator));
                 
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
@@ -65,6 +65,20 @@ namespace Nethermind.Merge.Plugin
                 _manualTimestamper ??= new ManualTimestamper();
                 _blockProductionTrigger = new BuildBlocksWhenRequested();
                 BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
+                Address feeRecipient;
+                if (string.IsNullOrWhiteSpace(_mergeConfig.FeeRecipient))
+                {
+                    feeRecipient = Address.Zero;
+                    if (_logger.IsInfo) _logger.Info("FeeRecipient will be set based on PayloadAttributes.SuggestedFeeRecipient field from CL");
+                }
+                else
+                {
+                    feeRecipient = new Address(_mergeConfig.FeeRecipient);
+                    if (_logger.IsInfo) _logger.Info($"FeeRecipient: {feeRecipient}");
+                }
+                
+                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, feeRecipient, _api.SealValidator, _api.LogManager);
+                _api.Sealer = _api.SealEngine;
                 PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
                 _blockProducer = blockProducerFactory.Create(blockProducerEnv, _blockProductionTrigger);
                 
