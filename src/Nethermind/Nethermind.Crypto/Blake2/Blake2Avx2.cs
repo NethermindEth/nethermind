@@ -30,7 +30,7 @@ public unsafe partial class Blake2Compression
     // SIMD algorithm described in https://eprint.iacr.org/2012/275.pdf
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     [SkipLocalsInit]
-    private static void ComputeAvx2(ulong* sh, ulong* m, uint rounds)
+    internal void ComputeAvx2(ulong* sh, ulong* m, uint rounds)
     {
         // Rotate shuffle masks. We can safely convert the ref to a pointer because the compiler guarantees the
         // data is in a fixed location, and the ref itself is converted from a pointer. Same for the IV below.
