@@ -115,11 +115,11 @@ namespace Nethermind.Merge.Plugin
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-                if (_blockProducer is null) throw new ArgumentNullException(nameof(_blockProducer));
+                if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
                 if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
                 
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
-                PayloadPreparationService payloadPreparationService = new (_blockProducer, _blockProductionTrigger, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
+                PayloadPreparationService payloadPreparationService = new (_postMergeBlockProducer, _blockProductionTrigger, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
