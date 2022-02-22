@@ -26,7 +26,7 @@ public unsafe partial class Blake2Compression
 {
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     [SkipLocalsInit]
-    internal void ComputeScalar(ulong* sh, ulong* m, uint rounds)
+    private static void ComputeScalar(ulong* sh, ulong* m, uint rounds)
     {
         ulong m00 = m[00];
         ulong m01 = m[01];

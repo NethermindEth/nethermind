@@ -14,8 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto.Blake2;
@@ -39,152 +38,56 @@ namespace Nethermind.Core.Test
             string? result = blake2Result.ToHexString();
             result.Should().BeEquivalentTo(output);
         }
-        
-        [TestCase(0, "08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b")]
-        [TestCase(1, "b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421")]
-        [TestCase(2, "2c96ff1bd7926f1b8bcd7824d808fdde9cf850920b625c59f1558bc608fb66a50070f53367230679e4949e7d32baac94f33af05175b7abf3b4972425a7b068ca")]
-        [TestCase(3, "b70b167bd40e83abf720fa83d014b07db1f64ae0a7c0b4d74eace08cd2515ca7927a6d6268d80043628698e31ea7d4a4f69dac2cf3ce6746825f5cff08b401cc")]
-        [TestCase(4, "0d2c9a214539ea7898029c0c95681cab88a360f633fd94ff5fae7d1e184bfab0a598296b7b046dd346ce75add0a457e3076fbc0a72ceff7eb9d4ed790d9356e9")]
-        [TestCase(5, "021e4bc08df8b11f90392a07fc4e86b0d0159d2ff06f5c329a793847e4f0c848c6aefce2d2e11ee7a73dfaadbeebfb33e3a4ad083bfd3b4e93e7b23621a97960")]
-        [TestCase(6, "a12a6af6b6d84ace0a8fcff0ae165e91b7de3bf70d9f19405e8701f2ea69ef1ed9e0206d78e61aa7867536b6982938c361e6a84ee1be15bc13b14adcd38459a1")]
-        [TestCase(7, "125dd3e4baa7f300be309deab1181db034967cc20ebecc3c0de038b0a714afaa744cea00cd843042b75c25b1d2e3931d2203111e871f35723741418117efe781")]
-        [TestCase(8, "59d8d7cbf70b0336e6f4f7a20d2ebd05f9b27ad7bb278faff380c206b68962ae630e8a4d2af1dce8a853cd722ad174e259c7ca284137fe52b61524fb5fe327f7")]
-        [TestCase(9, "69fbbdf42d5f5f2eb657faaa82862c9a492237cbb93ffd9938ff7b757671fac0a19b9f27d130b78180d070f9b9b96ee1bb1d69e2edae0c1b7602f2f2e0977614")]
-        [TestCase(10, "5a4308e0e1daede181b47775d926a6b4b6a0adf86d05bfea696fac45f08419623976bd3c786f61500b9f94a043b9dcf397e38ee237f3c273a7d812be20874f5a")]
-        [TestCase(11, "60faa8f91624b2b718210df242b788c7ae887e953dce3c7f80862bc5e4f88d827cada4d95d2c4ac41eb66b84fcdc0e12ab0c66f4d9d546ff8a0d712f324e1845")]
-        [TestCase(12, "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923")]
-        [TestCase(10_000_000, "5b6d1ca8ee5370f08008240579096021dcf8860de693cc8f5a1476ba70c3b32ba8f93c62a0b2fbcd305caaa22bc96e0dbab199a65fcd234e31404ca4b1766252")]
-        public unsafe void avx2_should_compute_correct_values(int rounds, string output)
+
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void avx2_should_compute_correct_values((int Rounds, string Output) testCase)
         {
-            const byte numberOfShWords = 11;
-            const byte numberOfMWords = 16;
-            const byte numberOfBytesInUlong = 8;
-            byte[] shBytes = Bytes.FromHexString("48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b03000000000000000000000000000000");
-            byte[] mBytes = Bytes.FromHexString("6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+            (int rounds, string output) = testCase;
+            Test(rounds, output, Blake2CompressMethod.Avx2);
+        }
 
-            ulong* sh = stackalloc ulong[numberOfShWords];
-            ulong* m = stackalloc ulong[numberOfMWords];
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void sse41_should_compute_correct_values((int Rounds, string Output) testCase)
+        {
+            (int rounds, string output) = testCase;
+            Test(rounds, output, Blake2CompressMethod.Sse41);
+        }
+        
+        [TestCaseSource(nameof(TestCaseSource))]
+        public void scalar_should_compute_correct_values((int Rounds, string Output) testCase)
+        {
+            (int rounds, string output) = testCase;
+            Test(rounds, output, Blake2CompressMethod.Scalar);
+        }
+        
+        private static void Test(int rounds, string output, Blake2CompressMethod method)
+        {
+            const string inputExceptRounds = "48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001";
+            string input = string.Concat(rounds.ToString("x8"), inputExceptRounds);
             
-            for (int i = 0; i < numberOfShWords - 1; i++)
-            {
-                sh[i] = MemoryMarshal.Cast<byte, ulong>(shBytes.Slice(i * numberOfBytesInUlong, numberOfBytesInUlong)).GetPinnableReference();
-            }
-            sh[10] = ulong.MaxValue;
-
-            for (int i = 0; i < numberOfMWords; i++)
-            {
-                m[i] = MemoryMarshal.Cast<byte, ulong>(mBytes.Slice(i * numberOfBytesInUlong, numberOfBytesInUlong)).GetPinnableReference();
-            }
-
-
             Blake2Compression? blake2Optimized = new();
             byte[] blake2Result = new byte[64];
-            blake2Optimized.ComputeAvx2(sh, m, (uint)rounds);
-            Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(blake2Result);
-            for (int offset = 0; offset < 8; offset++)
-            {
-                outputUlongs[offset] = sh[offset];
-            }
+            blake2Optimized.Compress(Bytes.FromHexString(input), blake2Result, method);
             string result = blake2Result.ToHexString();
             result.Should().BeEquivalentTo(output);
         }
         
-        [TestCase(0, "08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b")]
-        [TestCase(1, "b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421")]
-        [TestCase(2, "2c96ff1bd7926f1b8bcd7824d808fdde9cf850920b625c59f1558bc608fb66a50070f53367230679e4949e7d32baac94f33af05175b7abf3b4972425a7b068ca")]
-        [TestCase(3, "b70b167bd40e83abf720fa83d014b07db1f64ae0a7c0b4d74eace08cd2515ca7927a6d6268d80043628698e31ea7d4a4f69dac2cf3ce6746825f5cff08b401cc")]
-        [TestCase(4, "0d2c9a214539ea7898029c0c95681cab88a360f633fd94ff5fae7d1e184bfab0a598296b7b046dd346ce75add0a457e3076fbc0a72ceff7eb9d4ed790d9356e9")]
-        [TestCase(5, "021e4bc08df8b11f90392a07fc4e86b0d0159d2ff06f5c329a793847e4f0c848c6aefce2d2e11ee7a73dfaadbeebfb33e3a4ad083bfd3b4e93e7b23621a97960")]
-        [TestCase(6, "a12a6af6b6d84ace0a8fcff0ae165e91b7de3bf70d9f19405e8701f2ea69ef1ed9e0206d78e61aa7867536b6982938c361e6a84ee1be15bc13b14adcd38459a1")]
-        [TestCase(7, "125dd3e4baa7f300be309deab1181db034967cc20ebecc3c0de038b0a714afaa744cea00cd843042b75c25b1d2e3931d2203111e871f35723741418117efe781")]
-        [TestCase(8, "59d8d7cbf70b0336e6f4f7a20d2ebd05f9b27ad7bb278faff380c206b68962ae630e8a4d2af1dce8a853cd722ad174e259c7ca284137fe52b61524fb5fe327f7")]
-        [TestCase(9, "69fbbdf42d5f5f2eb657faaa82862c9a492237cbb93ffd9938ff7b757671fac0a19b9f27d130b78180d070f9b9b96ee1bb1d69e2edae0c1b7602f2f2e0977614")]
-        [TestCase(10, "5a4308e0e1daede181b47775d926a6b4b6a0adf86d05bfea696fac45f08419623976bd3c786f61500b9f94a043b9dcf397e38ee237f3c273a7d812be20874f5a")]
-        [TestCase(11, "60faa8f91624b2b718210df242b788c7ae887e953dce3c7f80862bc5e4f88d827cada4d95d2c4ac41eb66b84fcdc0e12ab0c66f4d9d546ff8a0d712f324e1845")]
-        [TestCase(12, "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923")]
-        [TestCase(10_000_000, "5b6d1ca8ee5370f08008240579096021dcf8860de693cc8f5a1476ba70c3b32ba8f93c62a0b2fbcd305caaa22bc96e0dbab199a65fcd234e31404ca4b1766252")]
-        public unsafe void sse41_should_compute_correct_values(int rounds, string output)
+        public static IEnumerable<(int, string)> TestCaseSource()
         {
-            const byte numberOfShWords = 11;
-            const byte numberOfMWords = 16;
-            const byte numberOfBytesInUlong = 8;
-            byte[] shBytes = Bytes.FromHexString("48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b03000000000000000000000000000000");
-            byte[] mBytes = Bytes.FromHexString("6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
-
-            ulong* sh = stackalloc ulong[numberOfShWords];
-            ulong* m = stackalloc ulong[numberOfMWords];
-            
-            for (int i = 0; i < numberOfShWords - 1; i++)
-            {
-                sh[i] = MemoryMarshal.Cast<byte, ulong>(shBytes.Slice(i * numberOfBytesInUlong, numberOfBytesInUlong)).GetPinnableReference();
-            }
-            sh[10] = ulong.MaxValue;
-
-            for (int i = 0; i < numberOfMWords; i++)
-            {
-                m[i] = MemoryMarshal.Cast<byte, ulong>(mBytes.Slice(i * numberOfBytesInUlong, numberOfBytesInUlong)).GetPinnableReference();
-            }
-
-
-            Blake2Compression? blake2Optimized = new();
-            byte[] blake2Result = new byte[64];
-            blake2Optimized.ComputeSse41(sh, m, (uint)rounds);
-            Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(blake2Result);
-            for (int offset = 0; offset < 8; offset++)
-            {
-                outputUlongs[offset] = sh[offset];
-            }
-            string result = blake2Result.ToHexString();
-            result.Should().BeEquivalentTo(output);
-        }
-        
-        [TestCase(0, "08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b")]
-        [TestCase(1, "b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421")]
-        [TestCase(2, "2c96ff1bd7926f1b8bcd7824d808fdde9cf850920b625c59f1558bc608fb66a50070f53367230679e4949e7d32baac94f33af05175b7abf3b4972425a7b068ca")]
-        [TestCase(3, "b70b167bd40e83abf720fa83d014b07db1f64ae0a7c0b4d74eace08cd2515ca7927a6d6268d80043628698e31ea7d4a4f69dac2cf3ce6746825f5cff08b401cc")]
-        [TestCase(4, "0d2c9a214539ea7898029c0c95681cab88a360f633fd94ff5fae7d1e184bfab0a598296b7b046dd346ce75add0a457e3076fbc0a72ceff7eb9d4ed790d9356e9")]
-        [TestCase(5, "021e4bc08df8b11f90392a07fc4e86b0d0159d2ff06f5c329a793847e4f0c848c6aefce2d2e11ee7a73dfaadbeebfb33e3a4ad083bfd3b4e93e7b23621a97960")]
-        [TestCase(6, "a12a6af6b6d84ace0a8fcff0ae165e91b7de3bf70d9f19405e8701f2ea69ef1ed9e0206d78e61aa7867536b6982938c361e6a84ee1be15bc13b14adcd38459a1")]
-        [TestCase(7, "125dd3e4baa7f300be309deab1181db034967cc20ebecc3c0de038b0a714afaa744cea00cd843042b75c25b1d2e3931d2203111e871f35723741418117efe781")]
-        [TestCase(8, "59d8d7cbf70b0336e6f4f7a20d2ebd05f9b27ad7bb278faff380c206b68962ae630e8a4d2af1dce8a853cd722ad174e259c7ca284137fe52b61524fb5fe327f7")]
-        [TestCase(9, "69fbbdf42d5f5f2eb657faaa82862c9a492237cbb93ffd9938ff7b757671fac0a19b9f27d130b78180d070f9b9b96ee1bb1d69e2edae0c1b7602f2f2e0977614")]
-        [TestCase(10, "5a4308e0e1daede181b47775d926a6b4b6a0adf86d05bfea696fac45f08419623976bd3c786f61500b9f94a043b9dcf397e38ee237f3c273a7d812be20874f5a")]
-        [TestCase(11, "60faa8f91624b2b718210df242b788c7ae887e953dce3c7f80862bc5e4f88d827cada4d95d2c4ac41eb66b84fcdc0e12ab0c66f4d9d546ff8a0d712f324e1845")]
-        [TestCase(12, "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923")]
-        [TestCase(10_000_000, "5b6d1ca8ee5370f08008240579096021dcf8860de693cc8f5a1476ba70c3b32ba8f93c62a0b2fbcd305caaa22bc96e0dbab199a65fcd234e31404ca4b1766252")]
-        public unsafe void scalar_should_compute_correct_values(int rounds, string output)
-        {
-            const byte numberOfShWords = 11;
-            const byte numberOfMWords = 16;
-            const byte numberOfBytesInUlong = 8;
-            byte[] shBytes = Bytes.FromHexString("48c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b03000000000000000000000000000000");
-            byte[] mBytes = Bytes.FromHexString("6162630000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
-
-            ulong* sh = stackalloc ulong[numberOfShWords];
-            ulong* m = stackalloc ulong[numberOfMWords];
-            
-            for (int i = 0; i < numberOfShWords - 1; i++)
-            {
-                sh[i] = MemoryMarshal.Cast<byte, ulong>(shBytes.Slice(i * numberOfBytesInUlong, numberOfBytesInUlong)).GetPinnableReference();
-            }
-            sh[10] = ulong.MaxValue;
-
-            for (int i = 0; i < numberOfMWords; i++)
-            {
-                m[i] = MemoryMarshal.Cast<byte, ulong>(mBytes.Slice(i * numberOfBytesInUlong, numberOfBytesInUlong)).GetPinnableReference();
-            }
-
-
-            Blake2Compression? blake2Optimized = new();
-            byte[] blake2Result = new byte[64];
-            blake2Optimized.ComputeScalar(sh, m, (uint)rounds);
-            Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(blake2Result);
-            for (int offset = 0; offset < 8; offset++)
-            {
-                outputUlongs[offset] = sh[offset];
-            }
-            string result = blake2Result.ToHexString();
-            result.Should().BeEquivalentTo(output);
+            yield return (0, "08c9bcf367e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d282e6ad7f520e511f6c3e2b8c68059b9442be0454267ce079217e1319cde05b");
+            yield return (1, "b63a380cb2897d521994a85234ee2c181b5f844d2c624c002677e9703449d2fba551b3a8333bcdf5f2f7e08993d53923de3d64fcc68c034e717b9293fed7a421");
+            yield return (2, "2c96ff1bd7926f1b8bcd7824d808fdde9cf850920b625c59f1558bc608fb66a50070f53367230679e4949e7d32baac94f33af05175b7abf3b4972425a7b068ca");
+            yield return (3, "b70b167bd40e83abf720fa83d014b07db1f64ae0a7c0b4d74eace08cd2515ca7927a6d6268d80043628698e31ea7d4a4f69dac2cf3ce6746825f5cff08b401cc");
+            yield return (4, "0d2c9a214539ea7898029c0c95681cab88a360f633fd94ff5fae7d1e184bfab0a598296b7b046dd346ce75add0a457e3076fbc0a72ceff7eb9d4ed790d9356e9");
+            yield return (5, "021e4bc08df8b11f90392a07fc4e86b0d0159d2ff06f5c329a793847e4f0c848c6aefce2d2e11ee7a73dfaadbeebfb33e3a4ad083bfd3b4e93e7b23621a97960");
+            yield return (6, "a12a6af6b6d84ace0a8fcff0ae165e91b7de3bf70d9f19405e8701f2ea69ef1ed9e0206d78e61aa7867536b6982938c361e6a84ee1be15bc13b14adcd38459a1");
+            yield return (7, "125dd3e4baa7f300be309deab1181db034967cc20ebecc3c0de038b0a714afaa744cea00cd843042b75c25b1d2e3931d2203111e871f35723741418117efe781");
+            yield return (8, "59d8d7cbf70b0336e6f4f7a20d2ebd05f9b27ad7bb278faff380c206b68962ae630e8a4d2af1dce8a853cd722ad174e259c7ca284137fe52b61524fb5fe327f7");
+            yield return (9, "69fbbdf42d5f5f2eb657faaa82862c9a492237cbb93ffd9938ff7b757671fac0a19b9f27d130b78180d070f9b9b96ee1bb1d69e2edae0c1b7602f2f2e0977614");
+            yield return (10, "5a4308e0e1daede181b47775d926a6b4b6a0adf86d05bfea696fac45f08419623976bd3c786f61500b9f94a043b9dcf397e38ee237f3c273a7d812be20874f5a");
+            yield return (11, "60faa8f91624b2b718210df242b788c7ae887e953dce3c7f80862bc5e4f88d827cada4d95d2c4ac41eb66b84fcdc0e12ab0c66f4d9d546ff8a0d712f324e1845");
+            yield return (12, "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923");
+            yield return (10_000_000, "5b6d1ca8ee5370f08008240579096021dcf8860de693cc8f5a1476ba70c3b32ba8f93c62a0b2fbcd305caaa22bc96e0dbab199a65fcd234e31404ca4b1766252");
         }
     }
 }

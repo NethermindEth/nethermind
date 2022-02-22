@@ -16,11 +16,8 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
-
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
 
 namespace Nethermind.Crypto.Blake2
 {
@@ -52,7 +49,7 @@ namespace Nethermind.Crypto.Blake2
             2, 3, 4, 5, 6, 7, 0, 1, 10, 11, 12, 13, 14, 15, 8, 9 //r16
         };
 
-        public unsafe void Compress(ReadOnlySpan<byte> input, Span<byte> output)
+        public unsafe void Compress(ReadOnlySpan<byte> input, Span<byte> output, Blake2CompressMethod method = Blake2CompressMethod.Optimal)
         {
             // sh length = h words length + t[0] + t[1] + f[0]
             ulong* sh = stackalloc ulong[NumberOfHWords + 3];
@@ -77,28 +74,25 @@ namespace Nethermind.Crypto.Blake2
                 m[i] = MemoryMarshal.Cast<byte, ulong>(input.Slice(StartOfMWords + i * NumberOfBytesInUlong, NumberOfBytesInUlong)).GetPinnableReference();
             }
 
-            Compute(sh, m, rounds);
+            switch (method)
+            {
+                case Blake2CompressMethod.Optimal when Avx2.IsSupported:
+                case Blake2CompressMethod.Avx2:
+                    ComputeAvx2(sh, m, rounds);
+                    break;
+                case Blake2CompressMethod.Optimal when Sse41.IsSupported:
+                case Blake2CompressMethod.Sse41:
+                    ComputeSse41(sh, m, rounds);
+                    break;
+                default:
+                    ComputeScalar(sh, m, rounds);
+                    break;
+            }
 
             Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(output);
             for (int offset = 0; offset < NumberOfHWords; offset++)
             {
                 outputUlongs[offset] = sh[offset];
-            }
-        }
-
-        private unsafe void Compute(ulong* sh, ulong* m, uint rounds)
-        {
-            if (Avx2.IsSupported)
-            {
-                ComputeAvx2(sh, m, rounds);
-            }
-            else if (Sse41.IsSupported)
-            {
-                ComputeSse41(sh, m, rounds);
-            }
-            else
-            {
-                ComputeScalar(sh, m, rounds);
             }
         }
     }

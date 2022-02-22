@@ -30,7 +30,7 @@ public unsafe partial class Blake2Compression
     // SIMD algorithm described in https://eprint.iacr.org/2012/275.pdf
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     [SkipLocalsInit]
-    internal void ComputeSse41(ulong* sh, ulong* m, uint rounds)
+    private static void ComputeSse41(ulong* sh, ulong* m, uint rounds)
     {
         ref byte rrm = ref MemoryMarshal.GetReference(Rormask);
         var r24 = Unsafe.As<byte, Vector128<byte>>(ref rrm);
