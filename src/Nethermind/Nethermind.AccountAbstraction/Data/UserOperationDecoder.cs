@@ -85,7 +85,7 @@ namespace Nethermind.AccountAbstraction.Data
                     PaymasterData = rlpStream.DecodeByteArray(),
                     Signature = rlpStream.DecodeByteArray()
                 };
-            
+
             return new UserOperation(userOperationRpc);
         }
 

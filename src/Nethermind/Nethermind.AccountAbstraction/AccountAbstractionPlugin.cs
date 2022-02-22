@@ -94,7 +94,8 @@ namespace Nethermind.AccountAbstraction
                         _nethermindApi.StateProvider!,
                         _nethermindApi.Timestamper,
                         UserOperationSimulator,
-                        userOperationSortedPool);
+                        userOperationSortedPool,
+                        _nethermindApi.SpecProvider!.ChainId);
                 }
 
                 return _userOperationPool;
