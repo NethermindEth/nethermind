@@ -180,7 +180,7 @@ namespace Nethermind.AuRa.Test
             (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
         
-        [Test, Retry(3)]
+        [Test, Retry(9)]
         public async Task Produces_block_when_ForceSealing_is_false_and_there_are_transactions()
         {
             Context context = new();

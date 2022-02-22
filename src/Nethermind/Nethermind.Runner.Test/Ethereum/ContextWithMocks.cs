@@ -129,7 +129,9 @@ namespace Nethermind.Runner.Test.Ethereum
                 EthSyncingInfo = Substitute.For<IEthSyncingInfo>(),
                 HealthHintService = Substitute.For<IHealthHintService>(),
                 TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId),
-                UnclesValidator = Substitute.For<IUnclesValidator>()
+                UnclesValidator = Substitute.For<IUnclesValidator>(),
+                BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
+                SyncProgressResolver = Substitute.For<ISyncProgressResolver>()
             };
     }
 }

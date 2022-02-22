@@ -16,14 +16,10 @@
 // 
 
 using System;
-using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -39,6 +35,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
         private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
         private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
+        private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
         private readonly TimeSpan Timeout = TimeSpan.FromSeconds(100);
         private readonly ILogger _logger;
@@ -49,6 +46,7 @@ namespace Nethermind.Merge.Plugin
             IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
             IHandler<ExecutionStatusResult> executionStatusHandler,
             IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> executionPayloadBodiesHandler,
+            IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
             ILogManager logManager)
         {
             _getPayloadHandlerV1 = getPayloadHandlerV1;
@@ -56,6 +54,7 @@ namespace Nethermind.Merge.Plugin
             _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
             _executionStatusHandler = executionStatusHandler;
             _executionPayloadBodiesHandler = executionPayloadBodiesHandler;
+            _transitionConfigurationHandler = transitionConfigurationHandler;
             _logger = logManager.GetClassLogger();
         }
 
@@ -93,7 +92,6 @@ namespace Nethermind.Merge.Plugin
         }
 
 
-
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(
             ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         {
@@ -119,6 +117,12 @@ namespace Nethermind.Merge.Plugin
         public async Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesV1(Keccak[] blockHashes)
         {
             return await _executionPayloadBodiesHandler.HandleAsync(blockHashes);
+        }
+
+        public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
+            TransitionConfigurationV1 beaconTransitionConfiguration)
+        {
+            return _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
         }
     }
 }

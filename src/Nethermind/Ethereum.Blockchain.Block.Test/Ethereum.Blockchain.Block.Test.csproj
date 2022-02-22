@@ -24,14 +24,10 @@
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\..\tests\BlockchainTests\ValidBlocks\VMTests\vm*\*.*">
+    <Content Include="..\..\tests\BlockchainTests\InvalidBlocks\bc*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-<!--    <Content Include="..\..\tests\BlockchainTests\InvalidBlocks\bc*\*.*">-->
-<!--      <Link>InvalidBlocks\%(RecursiveDir)%(FileName)%(Extension)</Link>-->
-<!--      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>-->
-<!--    </Content>-->
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />

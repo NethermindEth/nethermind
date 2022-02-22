@@ -33,6 +33,11 @@ namespace Nethermind.Abi
             }
             else if (type.IsArray)
             {
+                if (type == typeof(byte[]))
+                {
+                    return DynamicBytes;
+                }
+                
                 Type elementType = type.GetElementType()!;
                 return new AbiArray(GetForCSharpType(elementType));
             }
@@ -56,6 +61,16 @@ namespace Nethermind.Abi
         protected static void RegisterMapping<T>(AbiType abiType)
         {
             _typeMappings[typeof(T)] = abiType;
+        }
+
+        static AbiType()
+        {
+            AbiType type = AbiAddress.Instance;
+            type = AbiBool.Instance;
+            type = AbiDynamicBytes.Instance;
+            type = AbiInt.Int8;
+            type = AbiString.Instance;
+            type = AbiUInt.UInt8;
         }
     }
 }

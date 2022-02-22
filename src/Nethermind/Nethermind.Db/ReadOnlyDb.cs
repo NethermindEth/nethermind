@@ -89,7 +89,6 @@ namespace Nethermind.Db
             return _memDb.KeyExists(key) || _wrappedDb.KeyExists(key);
         }
 
-        public IDb Innermost => _wrappedDb.Innermost;
         public void Flush()
         {
             _wrappedDb.Flush();

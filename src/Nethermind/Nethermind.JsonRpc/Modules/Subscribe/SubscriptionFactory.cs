@@ -19,6 +19,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -34,6 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IReceiptStorage _receiptStorage;
         private readonly IFilterStore _filterStore;
         private readonly IEthSyncingInfo _ethSyncingInfo;
+        private readonly ISpecProvider _specProvider;
 
         public SubscriptionFactory(
             ILogManager? logManager,
@@ -41,7 +43,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ITxPool? txPool,
             IReceiptStorage? receiptStorage,
             IFilterStore? filterStore,
-            IEthSyncingInfo ethSyncingInfo)
+            IEthSyncingInfo ethSyncingInfo,
+            ISpecProvider specProvider)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -49,13 +52,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
         public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter)
         {
             switch (subscriptionType)
             {
                 case SubscriptionType.NewHeads: 
-                    return new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, filter);
+                    return new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, filter);
                 case SubscriptionType.Logs:
                     return new LogsSubscription(jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
                 case SubscriptionType.NewPendingTransactions:

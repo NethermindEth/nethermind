@@ -57,7 +57,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockCacheService _blockCacheService;
         private readonly ILogger _logger;
-        private SemaphoreSlim _blockValidationSemaphore;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
         private bool synced = false;
@@ -84,15 +83,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
             _logger = logManager.GetClassLogger();
-            _blockValidationSemaphore = new SemaphoreSlim(0);
-            _processor.BlockProcessed += (s, e) =>
-            {
-                _blockValidationSemaphore.Release(1);
-            };
-            _processor.BlockInvalid += (s, e) =>
-            {
-                _blockValidationSemaphore.Release(1);
-            };
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(BlockRequestResult request)
@@ -126,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     // TODO: beaconsync difficulty from merge config
                     _blockTree.Insert(block);
                     _blockCacheService.EnqueueBlockHeader(block.Header);
-                    return NewPayloadV1Result.Syncing;
+                    return NewPayloadV1Result.Accepted;
                 }
             }
 
@@ -236,7 +226,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return false;
             }
-
+            
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             if (processedBlock == null)
             {

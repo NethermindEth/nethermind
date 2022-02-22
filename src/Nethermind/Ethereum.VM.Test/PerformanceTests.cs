@@ -16,16 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+using Ethereum.Test.Base;
 using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    public class PerformanceTests : VMTestBase
+    [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    // ReSharper disable once InconsistentNaming
+    public class PerformanceTests : GeneralStateTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] {"Performance"})]
-        public void Test(VirtualMachineTest test)
-        {
-            RunTest(test);
+        [TestCaseSource(nameof(LoadTests))]
+        [Retry(3)]
+        public void Test(GeneralStateTest test)
+        {    
+            Assert.True(RunTest(test).Pass);
         }
+        
+        public static IEnumerable<GeneralStateTest> LoadTests() { var loader = new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmPerformance");
+            return (IEnumerable<GeneralStateTest>)loader.LoadTests(); }
     }
 }

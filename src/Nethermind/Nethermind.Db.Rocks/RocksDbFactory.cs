@@ -34,14 +34,12 @@ namespace Nethermind.Db.Rocks
             _basePath = basePath;
         }
 
-        public IDb CreateDb(RocksDbSettings rocksDbSettings)
-        { 
-            return new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager);
-        }
+        public IDb CreateDb(RocksDbSettings rocksDbSettings) => 
+            new DbOnTheRocks(_basePath, rocksDbSettings, _dbConfig, _logManager);
 
-        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull
-        {
-            return new ColumnsDb<T>(_basePath, rocksDbSettings, _dbConfig, _logManager);
-        }
+        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull => 
+            new ColumnsDb<T>(_basePath, rocksDbSettings, _dbConfig, _logManager);
+        
+        public string GetFullDbPath(RocksDbSettings rocksDbSettings) => DbOnTheRocks.GetFullDbPath(rocksDbSettings.DbPath, _basePath);
     }
 }

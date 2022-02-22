@@ -60,7 +60,7 @@ namespace Nethermind.Facade.Eth
             long headNumberOrZero = _blockFinder.Head?.Number ?? 0;
             bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
             
-            return isSyncing || headNumberOrZero <= 7051;
+            return isSyncing;
         }
     }
 }

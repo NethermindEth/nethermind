@@ -131,5 +131,12 @@ namespace Nethermind.Core
             Short,
             FullHashAndNumber
         }
+
+        public BlockHeader Clone()
+        {
+            BlockHeader header = (BlockHeader)MemberwiseClone();
+            header.Bloom = Bloom.Clone();
+            return header;
+        }
     }
 }

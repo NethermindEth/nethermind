@@ -63,7 +63,7 @@ namespace Nethermind.Mev
 
         public Task InitNetworkProtocol() => Task.CompletedTask;
 
-        private BundlePool BundlePool
+        public BundlePool BundlePool
         {
             get
             {
@@ -147,11 +147,6 @@ namespace Nethermind.Mev
             }
 
             return Task.CompletedTask;
-        }
-
-        public void AfterHeaderValidator()
-        {
-            
         }
 
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)

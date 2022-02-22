@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -96,8 +97,7 @@ namespace Nethermind.Trie.Pruning
                 return trieNode;
             }
 
-            public bool 
-                IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash);
+            public bool IsNodeCached(Keccak hash) => _objectsCache.ContainsKey(hash);
 
             public ConcurrentDictionary<Keccak, TrieNode> AllNodes => _objectsCache;
 
@@ -722,46 +722,86 @@ namespace Nethermind.Trie.Pruning
 
         private void PersistOnShutdown()
         {
-            // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
-            // and we need to speed up the standard announcement procedure so we persists a block
-            // from the past (by going max reorg back)
-
-            BlockCommitSet? persistenceCandidate = null;
-            bool firstCandidateFound = false;
-            while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
+            // If we are in archive mode, we don't need to change reorg boundaries.
+            if (_pruningStrategy.PruningEnabled)
             {
-                if (blockCommitSet is not null)
+                // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
+                // and we need to speed up the standard announcement procedure so we persists a block
+                // from the past (by going max reorg back)
+                
+                BlockCommitSet? persistenceCandidate = null;
+                bool firstCandidateFound = false;
+                while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
                 {
-                    if (firstCandidateFound == false)
+                    if (blockCommitSet is not null)
                     {
-                        persistenceCandidate = blockCommitSet;
-                        if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
-                        firstCandidateFound = true;
-                        continue;
-                    }
+                        if (firstCandidateFound == false)
+                        {
+                            persistenceCandidate = blockCommitSet;
+                            if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
+                            firstCandidateFound = true;
+                            continue;
+                        }
 
-                    if (blockCommitSet.BlockNumber <= LatestCommittedBlockNumber - Reorganization.MaxDepth)
+                        if (blockCommitSet.BlockNumber <= LatestCommittedBlockNumber - Reorganization.MaxDepth)
+                        {
+                            persistenceCandidate = blockCommitSet;
+                            if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
+                        }
+                    }
+                    else
                     {
-                        persistenceCandidate = blockCommitSet;
-                        if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
+                        if (_logger.IsDebug) _logger.Debug("Block commit was null...");
                     }
                 }
-                else
-                {
-                    if (_logger.IsDebug) _logger.Debug("Block commit was null...");
-                }
-            }
 
-            if (_logger.IsDebug)
-                _logger.Debug(
-                    $"Persisting on disposal {persistenceCandidate} (cache memory at {MemoryUsedByDirtyCache})");
-            if (persistenceCandidate is not null)
-            {
-                Persist(persistenceCandidate);
-                AnnounceReorgBoundaries();
+                if (_logger.IsDebug)
+                    _logger.Debug(
+                        $"Persisting on disposal {persistenceCandidate} (cache memory at {MemoryUsedByDirtyCache})");
+                if (persistenceCandidate is not null)
+                {
+                    Persist(persistenceCandidate);
+                    AnnounceReorgBoundaries();
+                }
             }
         }
 
         #endregion
+
+        public void PersistCache(IKeyValueStore store, CancellationToken cancellationToken)
+        {
+            Task.Run(() =>
+            {
+                const int million = 1_000_000;
+                int persistedNodes = 0;
+                Stopwatch stopwatch = Stopwatch.StartNew();
+
+                void PersistNode(TrieNode n)
+                {
+                    Keccak? hash = n.Keccak;
+                    if (hash?.Bytes != null)
+                    {
+                        store[hash.Bytes] = n.FullRlp;
+                        int persistedNodesCount = Interlocked.Increment(ref persistedNodes);
+                        if (_logger.IsInfo && persistedNodesCount % million == 0)
+                        {
+                            _logger.Info($"Full Pruning Persist Cache in progress: {stopwatch.Elapsed} {persistedNodesCount / million:N} mln nodes persisted.");
+                        }
+                    }
+                }
+                
+                if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
+                KeyValuePair<Keccak, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
+                Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
+                {
+                    if (!cancellationToken.IsCancellationRequested)
+                    {
+                        nodesCopy[i].Value.CallRecursively(PersistNode, this, false, _logger, false);
+                    }
+                });
+
+                if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
+            });
+        }
     }
 }

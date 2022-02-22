@@ -311,15 +311,22 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
         {
-            int nibblesCount = 2 * rawKey.Length;
-            byte[] array = null;
-            Span<byte> nibbles = rawKey.Length <= 64
-                ? stackalloc byte[nibblesCount]
-                : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
-            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
-            if (array != null) ArrayPool<byte>.Shared.Return(array);
-            return result;
+            try
+            {
+                int nibblesCount = 2 * rawKey.Length;
+                byte[] array = null;
+                Span<byte> nibbles = rawKey.Length <= 64
+                    ? stackalloc byte[nibblesCount]
+                    : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                var result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash);
+                if (array != null) ArrayPool<byte>.Shared.Return(array);
+                return result;
+            }
+            catch (TrieException e)
+            {
+                throw new TrieException($"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+            }
         }
 
         [DebuggerStepThrough]
@@ -928,39 +935,6 @@ namespace Nethermind.Trie
             return commonPrefixLength;
         }
 
-        public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions visitingOptions = VisitingOptions.ExpectAccounts)
-        {
-            if (visitor is null) throw new ArgumentNullException(nameof(visitor));
-            if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
-
-            TrieVisitContext trieVisitContext = new()
-            {
-                // hacky but other solutions are not much better, something nicer would require a bit of thinking
-                // we introduced a notion of an account on the visit context level which should have no knowledge of account really
-                // but we know that we have multiple optimizations and assumptions on trees
-                ExpectAccounts = (visitingOptions & VisitingOptions.ExpectAccounts) != VisitingOptions.None,
-                Parallel = (visitingOptions & VisitingOptions.Parallel) != VisitingOptions.None
-            };
-
-            TrieNode rootRef = null;
-            if (!rootHash.Equals(Keccak.EmptyTreeHash))
-            {
-                rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash);
-                try
-                {
-                    rootRef!.ResolveNode(TrieStore);
-                }
-                catch (TrieException)
-                {
-                    visitor.VisitMissingNode(rootHash, trieVisitContext);
-                    return;
-                }
-            }
-
-            visitor.VisitTree(rootHash, trieVisitContext);
-            rootRef?.Accept(visitor, TrieStore, trieVisitContext);
-        }
-
         private ref struct TraverseContext
         {
             public Span<byte> UpdatePath { get; }
@@ -1016,6 +990,40 @@ namespace Nethermind.Trie
             {
                 return $"{PathIndex} {Node}";
             }
+        }
+
+        public void Accept(ITreeVisitor visitor, Keccak rootHash, VisitingOptions? visitingOptions = null)
+        {
+            if (visitor is null) throw new ArgumentNullException(nameof(visitor));
+            if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
+            visitingOptions ??= VisitingOptions.Default;
+
+            using TrieVisitContext trieVisitContext = new()
+            {
+                // hacky but other solutions are not much better, something nicer would require a bit of thinking
+                // we introduced a notion of an account on the visit context level which should have no knowledge of account really
+                // but we know that we have multiple optimizations and assumptions on trees
+                ExpectAccounts = visitingOptions.ExpectAccounts,
+                MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism
+            };
+
+            TrieNode rootRef = null;
+            if (!rootHash.Equals(Keccak.EmptyTreeHash))
+            {
+                rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash);
+                try
+                {
+                    rootRef!.ResolveNode(TrieStore);
+                }
+                catch (TrieException)
+                {
+                    visitor.VisitMissingNode(rootHash, trieVisitContext);
+                    return;
+                }
+            }
+
+            visitor.VisitTree(rootHash, trieVisitContext);
+            rootRef?.Accept(visitor, TrieStore, trieVisitContext);
         }
     }
 }

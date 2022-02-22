@@ -194,7 +194,7 @@ namespace Nethermind.Mev.Test
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
             MevRpcModuleTests.SuccessfullySendBundle(chain, 3, coinbaseTx);
-            
+
             await chain.AddBlock(true);
             
             MevRpcModuleTests.GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(MevRpcModuleTests.GetHashes(new []{coinbaseTx}));

@@ -112,11 +112,6 @@ namespace Nethermind.HealthChecks
             return Task.CompletedTask;
         }
 
-        public void AfterHeaderValidator()
-        {
-            
-        }
-
         private string BuildEndpointForUi()
         {
             string host = _jsonRpcConfig.Host.Replace("0.0.0.0", "localhost");
