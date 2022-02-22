@@ -91,12 +91,12 @@ namespace Nethermind.State
             SetInternal(key, value);
         }
 
-        public void Set(Keccak key, byte[] value)
+        public void Set(Keccak key, byte[] value, bool rlpEncode = true)
         {
-            SetInternal(key.Bytes, value);
+            SetInternal(key.Bytes, value, rlpEncode);
         }
 
-        private void SetInternal(Span<byte> rawKey, byte[] value)
+        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
         {
             if (value.IsZero())
             {
@@ -104,7 +104,8 @@ namespace Nethermind.State
             }
             else
             {
-                Set(rawKey, Rlp.Encode(value));
+                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
+                Set(rawKey, rlpEncoded);
             }
         }
 

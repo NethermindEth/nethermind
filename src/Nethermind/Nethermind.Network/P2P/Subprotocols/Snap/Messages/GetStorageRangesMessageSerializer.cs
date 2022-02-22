@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,48 +15,54 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Linq;
 using DotNetty.Buffers;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
-    public class GetStorageRangesMessageSerializer : SnapSerializerBase<GetStorageRangesMessage>
+    public class GetStorageRangesMessageSerializer : SnapSerializerBase<GetStorageRangeMessage>
     {
-                
-        public override void Serialize(IByteBuffer byteBuffer, GetStorageRangesMessage message)
+
+        public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message)
         {
             NettyRlpStream rlpStream = GetRlpStreamAndStartSequence(byteBuffer, message);
-            
+
             rlpStream.Encode(message.RequestId);
-            rlpStream.Encode(message.AccountHashes);
-            rlpStream.Encode(message.RootHash);
-            rlpStream.Encode(message.StartingHash);
-            rlpStream.Encode(message.LimitHash);
+            rlpStream.Encode(message.StoragetRange.RootHash);
+            rlpStream.Encode(message.StoragetRange.Accounts.Select(a => a.AddressHash).ToArray()); // TODO: optimize this
+            rlpStream.Encode(message.StoragetRange.StartingHash);
+            rlpStream.Encode(message.StoragetRange.LimitHash);
             rlpStream.Encode(message.ResponseBytes);
+
+            //var bytes = rlpStream.Data[..rlpStream.Length];
+            //var rlpString = Bytes.ToHexString(bytes);
         }
         
-        protected override GetStorageRangesMessage Deserialize(RlpStream rlpStream)
+        protected override GetStorageRangeMessage Deserialize(RlpStream rlpStream)
         {
-            GetStorageRangesMessage message = new ();
+            GetStorageRangeMessage message = new ();
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();
-            message.AccountHashes = rlpStream.DecodeArray(_ => rlpStream.DecodeKeccak());
-            message.RootHash = rlpStream.DecodeKeccak();
-            message.StartingHash = rlpStream.DecodeKeccak();
-            message.LimitHash = rlpStream.DecodeKeccak();
+            //message.AccountHashes = rlpStream.DecodeArray(_ => rlpStream.DecodeKeccak());
+            //message.RootHash = rlpStream.DecodeKeccak();
+            //message.StartingHash = rlpStream.DecodeKeccak();
+            //message.LimitHash = rlpStream.DecodeKeccak();
             message.ResponseBytes = rlpStream.DecodeLong();
 
             return message;
         }
 
-        public override int GetLength(GetStorageRangesMessage message, out int contentLength)
+        public override int GetLength(GetStorageRangeMessage message, out int contentLength)
         {
             contentLength = Rlp.LengthOf(message.RequestId);
-            contentLength += Rlp.LengthOf(message.AccountHashes, true);
-            contentLength += Rlp.LengthOf(message.RootHash);
-            contentLength += Rlp.LengthOf(message.StartingHash);
-            contentLength += Rlp.LengthOf(message.LimitHash);
+            contentLength += Rlp.LengthOf(message.StoragetRange.RootHash);
+            contentLength += Rlp.LengthOf(message.StoragetRange.Accounts.Select(a => a.AddressHash).ToArray(), true); // TODO: optimize this
+            contentLength += Rlp.LengthOf(message.StoragetRange.StartingHash);
+            contentLength += Rlp.LengthOf(message.StoragetRange.LimitHash);
             contentLength += Rlp.LengthOf(message.ResponseBytes);
 
             return Rlp.LengthOfSequence(contentLength);

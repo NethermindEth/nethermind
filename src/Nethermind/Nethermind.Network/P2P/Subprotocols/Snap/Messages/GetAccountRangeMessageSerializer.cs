@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.Encode(message.AccountRange.StartingHash);
 
             rlpStream.Encode(message.AccountRange.LimitHash ?? Keccak.MaxValue);
-            rlpStream.Encode(message.ResponseBytes == 0 ? 1000 : message.ResponseBytes);
+            rlpStream.Encode(message.ResponseBytes == 0 ? 1000_000 : message.ResponseBytes);
         }
 
         public override int GetLength(GetAccountRangeMessage message, out int contentLength)
