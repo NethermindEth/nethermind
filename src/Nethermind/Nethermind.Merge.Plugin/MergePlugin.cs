@@ -69,6 +69,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
+                if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
 
 
                 _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
@@ -77,23 +78,10 @@ namespace Nethermind.Merge.Plugin
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _blockCacheService = new BlockCacheService();
 
-                Address feeRecipient;
-                if (string.IsNullOrWhiteSpace(_mergeConfig.FeeRecipient))
-                {
-                    feeRecipient = Address.Zero;
-                    if (_logger.IsInfo) _logger.Info("FeeRecipient will be set based on PayloadAttributes.SuggestedFeeRecipient field from CL");
-                }
-                else
-                {
-                    feeRecipient = new Address(_mergeConfig.FeeRecipient);
-                    if (_logger.IsInfo) _logger.Info($"FeeRecipient: {feeRecipient}");
-                }
-
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
                    _api.RewardCalculatorSource ?? NoBlockRewards.Instance,  _poSSwitcher);
-                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, feeRecipient, _api.LogManager);
-                _api.SealValidator = _api.SealEngine;
-                _api.Sealer = _api.SealEngine;
+                _api.SealValidator = new MergeSealValidator(_poSSwitcher, _api.SealValidator);
+
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockFinalizationManager);
                 
                 _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
@@ -110,9 +98,9 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
                 if (_api.BlockProductionPolicy == null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
+                if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 
-
-                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealEngine, _api.LogManager);
+                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);

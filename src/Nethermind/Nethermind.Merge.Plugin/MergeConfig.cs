@@ -24,10 +24,10 @@ namespace Nethermind.Merge.Plugin
     {
         public bool Enabled { get; set; }
 
-        public string FeeRecipient { get; set; } = Address.Zero.ToString();
-        
+        public string? FeeRecipient { get; set; }
+
         public string? FinalTotalDifficulty { get; set; }
- 
+
         public string? TerminalTotalDifficulty { get; set; }
         
         public Keccak TerminalBlockHash { get; set; } = Keccak.Zero;
