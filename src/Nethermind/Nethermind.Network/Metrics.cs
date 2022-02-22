@@ -209,6 +209,12 @@ namespace Nethermind.Network
         [Description("Number of eth.66 PooledTransactions messages received")]
         public static long Eth66PooledTransactionsReceived { get; set; }
 
+        [Description("Number of SNAP AccountRange messages received")]
+        public static long SnapAccountRangeReceived { get; set; }
+
+        [Description("Number of SNAP StorageRanges messages received")]
+        public static long SnapStorageRangesReceived { get; set; }
+
         [Description("Number of bytes sent through P2P (TCP).")]
         public static long P2PBytesSent;
 

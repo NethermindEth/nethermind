@@ -27,40 +27,64 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncDispatcher : SyncDispatcher<AccountsSyncBatch>
+    public class SnapSyncDispatcher : SyncDispatcher<SnapSyncBatch>
     {
         private readonly IBlockTree _blockTree;
 
-        public SnapSyncDispatcher(ISyncFeed<AccountsSyncBatch>? syncFeed, ISyncPeerPool? syncPeerPool, IPeerAllocationStrategyFactory<AccountsSyncBatch>? peerAllocationStrategy, IBlockTree blockTree, ILogManager? logManager) 
+        public SnapSyncDispatcher(ISyncFeed<SnapSyncBatch>? syncFeed, ISyncPeerPool? syncPeerPool, IPeerAllocationStrategyFactory<SnapSyncBatch>? peerAllocationStrategy, IBlockTree blockTree, ILogManager? logManager) 
             : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
             _blockTree = blockTree;
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, AccountsSyncBatch batch, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
 
             //TODO: replace with a constant "snap"
             if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
             {
-                Task<AccountsAndProofs> task = handler.GetAccountRange(batch.Request, cancellationToken);
 
-                await task.ContinueWith(
-                    (t, state) =>
-                    {
-                        if (t.IsFaulted)
-                        {
-                            if (Logger.IsTrace)
-                                Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
-                        }
+                if (batch.StorageRangeRequest is not null)
+                {
+                    Task<SlotsAndProofs> task = handler.GetStoragetRange(batch.StorageRangeRequest, cancellationToken);
 
-                        AccountsSyncBatch batchLocal = (AccountsSyncBatch)state!;
-                        if (t.IsCompletedSuccessfully)
+                    await task.ContinueWith(
+                        (t, state) =>
                         {
-                            batchLocal.Response = t.Result;
-                        }
-                    }, batch);
+                            if (t.IsFaulted)
+                            {
+                                if (Logger.IsTrace)
+                                    Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
+                            }
+
+                            SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
+                            if (t.IsCompletedSuccessfully)
+                            {
+                                batchLocal.StorageRangeResponse = t.Result;
+                            }
+                        }, batch);
+                }
+                else if (batch.AccountRangeRequest is not null)
+                {
+                    Task<AccountsAndProofs> task = handler.GetAccountRange(batch.AccountRangeRequest, cancellationToken);
+
+                    await task.ContinueWith(
+                        (t, state) =>
+                        {
+                            if (t.IsFaulted)
+                            {
+                                if (Logger.IsTrace)
+                                    Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
+                            }
+
+                            SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
+                            if (t.IsCompletedSuccessfully)
+                            {
+                                batchLocal.AccountRangeResponse = t.Result;
+                            }
+                        }, batch);
+                }
             }
 
             await Task.CompletedTask;

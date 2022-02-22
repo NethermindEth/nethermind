@@ -19,9 +19,12 @@ using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class AccountsSyncBatch
+    public class SnapSyncBatch
     {
-        public AccountRange Request { get; set; }
-        public AccountsAndProofs Response { get; set; }
+        public AccountRange AccountRangeRequest { get; set; }
+        public AccountsAndProofs AccountRangeResponse { get; set; }
+
+        public StorageRange StorageRangeRequest { get; set; }
+        public SlotsAndProofs StorageRangeResponse { get; set; }
     }
 }

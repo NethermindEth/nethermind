@@ -11,5 +11,6 @@ namespace Nethermind.Blockchain.Synchronization
     public interface ISnapSyncPeer
     {
         Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token);
+        Task<SlotsAndProofs> GetStoragetRange(StorageRange range, CancellationToken token);
     }
 }

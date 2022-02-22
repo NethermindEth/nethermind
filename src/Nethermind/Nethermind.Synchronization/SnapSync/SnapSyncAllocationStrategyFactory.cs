@@ -22,7 +22,7 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<AccountsSyncBatch>
+    public class SnapSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<SnapSyncBatch>
     {
         
         private static readonly IPeerAllocationStrategy DefaultStrategy = 
