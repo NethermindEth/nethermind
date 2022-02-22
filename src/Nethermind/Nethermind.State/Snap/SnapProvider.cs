@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -20,6 +21,8 @@ namespace Nethermind.State.Snap
         private readonly ILogManager _logManager;
 
         public Keccak NextStartingHash { get; private set; } = Keccak.Zero;
+        public ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; private set; } = new ConcurrentQueue<PathWithAccount>();
+
         public bool MoreChildrenToRight { get; set; } = true;
 
         public SnapProvider(ITrieStore store, ILogManager logManager)
@@ -32,12 +35,17 @@ namespace Nethermind.State.Snap
         public bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             StateTree tree = new(_store, _logManager);
-            (Keccak? calculatedRootHash, bool moreChildrenToRight) = SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
+            (Keccak? calculatedRootHash, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage) = SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
 
             bool success = expectedRootHash == calculatedRootHash;
 
             if(success)
             {
+                foreach (var item in accountsWithStorage)
+                {
+                    StoragesToRetrieve.Enqueue(item);
+                }
+                
                 NextStartingHash = accounts[accounts.Length - 1].AddressHash;
                 MoreChildrenToRight = moreChildrenToRight;
             }
@@ -45,10 +53,12 @@ namespace Nethermind.State.Snap
             return success;
         }
 
-        public Keccak? AddStorageRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, SlotWithKeyHash[] slots, byte[][] proofs = null)
+        public Keccak? AddStorageRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
         {
             StorageTree tree = new(_store, _logManager);
-            return SnapProviderHelper.AddStorageRange(tree, blockNumber, expectedRootHash, startingHash, slots, proofs);
+            Keccak result =  SnapProviderHelper.AddStorageRange(tree, blockNumber, expectedRootHash, startingHash, slots, proofs);
+
+            return result;
         }
     }
 }

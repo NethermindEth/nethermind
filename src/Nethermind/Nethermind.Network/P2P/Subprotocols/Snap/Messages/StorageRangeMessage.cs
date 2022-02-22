@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,22 +18,23 @@
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
-    public class StorageRangesMessage : SnapMessageBase
+    public class StorageRangeMessage : SnapMessageBase
     {
         public override int PacketType => SnapMessageCode.StorageRanges;
 
         /// <summary>
         /// List of list of consecutive slots from the trie (one list per account)
         /// </summary>
-        public MeasuredArray<MeasuredArray<Slot>> Slots { get; set; }
+        public PathWithStorageSlot[][] Slots { get; set; }
 
         /// <summary>
         /// List of trie nodes proving the slot range
         /// </summary>
-        public MeasuredArray<byte[]> Proof { get; set; }
+        public byte[][] Proofs { get; set; }
     }
 
     public class Slot

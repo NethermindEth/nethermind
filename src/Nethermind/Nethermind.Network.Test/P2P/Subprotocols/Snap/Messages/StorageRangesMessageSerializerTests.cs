@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,11 +45,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_NoSlotsNoProofs()
         {
-            StorageRangesMessage msg = new()
+            StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(), 
-                Slots = new MeasuredArray<MeasuredArray<Slot>>(Array.Empty<MeasuredArray<Slot>>()) ,
-                Proof = new MeasuredArray<byte[]>(Array.Empty<byte[]>())
+                //Slots = new MeasuredArray<MeasuredArray<Slot>>(Array.Empty<MeasuredArray<Slot>>()) ,
+                //Proof = new MeasuredArray<byte[]>(Array.Empty<byte[]>())
             };
             StorageRangesMessageSerializer serializer = new();
 
@@ -59,11 +59,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_OneProof()
         {
-            StorageRangesMessage msg = new()
+            StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Slots = new MeasuredArray<MeasuredArray<Slot>>(Array.Empty<MeasuredArray<Slot>>()) ,
-                Proof = new MeasuredArray<byte[]>(new []{TestItem.RandomDataA})
+                //Slots = new MeasuredArray<MeasuredArray<Slot>>(Array.Empty<MeasuredArray<Slot>>()) ,
+                //Proof = new MeasuredArray<byte[]>(new []{TestItem.RandomDataA})
             };
 
             StorageRangesMessageSerializer serializer = new();
@@ -77,15 +77,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_OneSlot()
         {
-            StorageRangesMessage msg = new()
+            StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Slots = new MeasuredArray<MeasuredArray<Slot>>(new MeasuredArray<Slot>[]
-                {
-                    new(
-                        new[] { new Slot { Hash = new Keccak("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataA } })
-                }),
-                Proof = new MeasuredArray<byte[]>(Array.Empty<byte[]>())
+                //Slots = new MeasuredArray<MeasuredArray<Slot>>(new MeasuredArray<Slot>[]
+                //{
+                //    new(
+                //        new[] { new Slot { Hash = new Keccak("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataA } })
+                //}),
+                //Proof = new MeasuredArray<byte[]>(Array.Empty<byte[]>())
             };
 
             StorageRangesMessageSerializer serializer = new();
@@ -96,24 +96,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_Many()
         {
-            StorageRangesMessage msg = new()
+            StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Slots = new MeasuredArray<MeasuredArray<Slot>>(
-                    new MeasuredArray<Slot>[]
-                    {
-                        new(new[]
-                        {
-                            new Slot { Hash = new Keccak("0x11d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataA },
-                            new Slot { Hash = new Keccak("0x12d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataB }
-                        }),
-                        new(new[]
-                        {
-                            new Slot { Hash = new Keccak("0x21d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataB },
-                            new Slot { Hash = new Keccak("0x22d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataC }
-                        })
-                    }),
-                Proof = new MeasuredArray<byte[]>(new[] { TestItem.RandomDataA, TestItem.RandomDataB })
+                //Slots = new MeasuredArray<MeasuredArray<Slot>>(
+                //    new MeasuredArray<Slot>[]
+                //    {
+                //        new(new[]
+                //        {
+                //            new Slot { Hash = new Keccak("0x11d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataA },
+                //            new Slot { Hash = new Keccak("0x12d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataB }
+                //        }),
+                //        new(new[]
+                //        {
+                //            new Slot { Hash = new Keccak("0x21d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataB },
+                //            new Slot { Hash = new Keccak("0x22d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataC }
+                //        })
+                //    }),
+                //Proof = new MeasuredArray<byte[]>(new[] { TestItem.RandomDataA, TestItem.RandomDataB })
             };
 
             StorageRangesMessageSerializer serializer = new();

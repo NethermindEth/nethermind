@@ -52,14 +52,14 @@ namespace Nethermind.Core.Test.Builders
                 new PathWithAccount(new Keccak("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
                 };
 
-            public static SlotWithKeyHash[] SlotsWithPaths = new SlotWithKeyHash[]
+            public static PathWithStorageSlot[] SlotsWithPaths = new PathWithStorageSlot[]
             {
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001101234"), Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001112345"), Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001113456"), Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001114567"), Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001123456"), Bytes.FromHexString("0xab90000000000000000000000000000000000000000000000000000000000000000000000000000000")),
-                new SlotWithKeyHash(new Keccak("0000000000000000000000000000000000000000000000000000000001123457"), Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001101234"), Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001112345"), Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001113456"), Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001114567"), Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001123456"), Bytes.FromHexString("0xab90000000000000000000000000000000000000000000000000000000000000000000000000000000")),
+                new PathWithStorageSlot(new Keccak("0000000000000000000000000000000000000000000000000000000001123457"), Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")),
             };
 
             public static StateTree GetStateTree(ITrieStore? store)
@@ -90,12 +90,12 @@ namespace Nethermind.Core.Test.Builders
 
                 var storageTree = new StorageTree(store, LimboLogs.Instance);
 
-                storageTree.Set(SlotsWithPaths[0].KeyHash, SlotsWithPaths[0].SlotValue);
-                storageTree.Set(SlotsWithPaths[1].KeyHash, SlotsWithPaths[1].SlotValue);
-                storageTree.Set(SlotsWithPaths[2].KeyHash, SlotsWithPaths[2].SlotValue);
-                storageTree.Set(SlotsWithPaths[3].KeyHash, SlotsWithPaths[3].SlotValue);
-                storageTree.Set(SlotsWithPaths[4].KeyHash, SlotsWithPaths[4].SlotValue);
-                storageTree.Set(SlotsWithPaths[5].KeyHash, SlotsWithPaths[5].SlotValue);
+                storageTree.Set(SlotsWithPaths[0].Path, SlotsWithPaths[0].SlotValue);
+                storageTree.Set(SlotsWithPaths[1].Path, SlotsWithPaths[1].SlotValue);
+                storageTree.Set(SlotsWithPaths[2].Path, SlotsWithPaths[2].SlotValue);
+                storageTree.Set(SlotsWithPaths[3].Path, SlotsWithPaths[3].SlotValue);
+                storageTree.Set(SlotsWithPaths[4].Path, SlotsWithPaths[4].SlotValue);
+                storageTree.Set(SlotsWithPaths[5].Path, SlotsWithPaths[5].SlotValue);
 
                 storageTree.Commit(0);
 

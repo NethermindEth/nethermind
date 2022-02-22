@@ -26,14 +26,14 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class AccountsSyncDispatcher : SyncDispatcher<AccountsSyncBatch>
+    public class AccountsSyncDispatcher : SyncDispatcher<SnapSyncBatch>
     {
-        public AccountsSyncDispatcher(ISyncFeed<AccountsSyncBatch>? syncFeed, ISyncPeerPool? syncPeerPool, IPeerAllocationStrategyFactory<AccountsSyncBatch>? peerAllocationStrategy, ILogManager? logManager) 
+        public AccountsSyncDispatcher(ISyncFeed<SnapSyncBatch>? syncFeed, ISyncPeerPool? syncPeerPool, IPeerAllocationStrategyFactory<SnapSyncBatch>? peerAllocationStrategy, ILogManager? logManager) 
             : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
         }
 
-        protected override Task Dispatch(PeerInfo peerInfo, AccountsSyncBatch batch, CancellationToken cancellationToken)
+        protected override Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             // var getNodeDataTask = peer.GetAccountRange(batch.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
