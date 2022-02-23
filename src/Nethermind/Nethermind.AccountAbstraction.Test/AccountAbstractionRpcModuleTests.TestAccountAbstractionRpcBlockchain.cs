@@ -152,7 +152,6 @@ namespace Nethermind.AccountAbstraction.Test
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
                 Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
-
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
                     SpecProvider,
