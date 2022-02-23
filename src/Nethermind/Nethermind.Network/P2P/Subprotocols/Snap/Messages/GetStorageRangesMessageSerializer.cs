@@ -20,6 +20,7 @@ using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
@@ -36,9 +37,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.Encode(message.StoragetRange.StartingHash);
             rlpStream.Encode(message.StoragetRange.LimitHash);
             rlpStream.Encode(message.ResponseBytes);
-
-            //var bytes = rlpStream.Data[..rlpStream.Length];
-            //var rlpString = Bytes.ToHexString(bytes);
         }
         
         protected override GetStorageRangeMessage Deserialize(RlpStream rlpStream)
@@ -47,13 +45,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             message.RequestId = rlpStream.DecodeLong();
-            //message.AccountHashes = rlpStream.DecodeArray(_ => rlpStream.DecodeKeccak());
-            //message.RootHash = rlpStream.DecodeKeccak();
-            //message.StartingHash = rlpStream.DecodeKeccak();
-            //message.LimitHash = rlpStream.DecodeKeccak();
+
+            message.StoragetRange = new();
+            message.StoragetRange.RootHash = rlpStream.DecodeKeccak();
+            message.StoragetRange.Accounts = rlpStream.DecodeArray(DecodePathWithRlpData);
+            message.StoragetRange.StartingHash = rlpStream.DecodeKeccak();
+            message.StoragetRange.LimitHash = rlpStream.DecodeKeccak();
             message.ResponseBytes = rlpStream.DecodeLong();
 
             return message;
+        }
+
+        private PathWithAccount DecodePathWithRlpData(RlpStream stream)
+        {
+            return new() { AddressHash = stream.DecodeKeccak() };
         }
 
         public override int GetLength(GetStorageRangeMessage message, out int contentLength)

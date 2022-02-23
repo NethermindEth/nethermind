@@ -36,18 +36,4 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// </summary>
         public byte[][] Proofs { get; set; }
     }
-
-    public class Slot
-    {
-        /// <summary>
-        /// Hash of the storage slot key (trie path)
-        /// </summary>
-        public Keccak Hash { get; set; }
-        /// <summary>
-        /// Data content of the slot
-        /// </summary>
-        public byte[] Data { get; set; }
-        
-        public int? RlpLength { get; set; }
-    }
 }
