@@ -10,6 +10,8 @@ namespace Nethermind.State.Snap
 {
     public class PathWithAccount
     {
+        public PathWithAccount() { }
+
         public PathWithAccount(Keccak addressHash, Account account)
         {
             AddressHash = addressHash;

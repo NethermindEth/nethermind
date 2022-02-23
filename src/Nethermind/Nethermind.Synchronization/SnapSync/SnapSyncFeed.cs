@@ -70,7 +70,12 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (accounts.Count >0)
                 {
-                    request.StorageRangeRequest = new(_bestHeader.StateRoot, accounts.ToArray(), blockNumber: _bestHeader.Number);
+                    request.StorageRangeRequest = new()
+                    {
+                        RootHash = _bestHeader.StateRoot,
+                        Accounts = accounts.ToArray(),
+                        BlockNumber = _bestHeader.Number
+                    };
 
                     if (_storageResponsesCount == 1 || _storageResponsesCount > 0 && _storageResponsesCount % 10 == 0)
                     {

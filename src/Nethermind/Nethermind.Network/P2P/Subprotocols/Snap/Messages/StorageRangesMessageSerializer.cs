@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -26,48 +28,55 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
         {
-            //int contentLength = CalculateLengths(message);
-            //byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
-            //NettyRlpStream stream = new (byteBuffer);
-            //stream.StartSequence(contentLength);
+            (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) = CalculateLengths(message);
+
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
+            NettyRlpStream stream = new(byteBuffer);
+
+            stream.StartSequence(contentLength);
+
+            stream.Encode(message.RequestId);
+
+            if (message.Slots == null || message.Slots.Length == 0)
+            {
+                stream.EncodeNullObject();
+            }
+            else
+            {
+                stream.StartSequence(allSlotsLength);
+
+                for (int i = 0; i < message.Slots.Length; i++)
+                {                
+                    stream.StartSequence(accountSlotsLengths[i]);
+
+                    PathWithStorageSlot[] accountSlots = message.Slots[i];
+
+                    for (int j = 0; j < accountSlots.Length; j++)
+                    {
+                        var slot = accountSlots[j];
+
+                        int itemLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
+
+                        stream.StartSequence(itemLength);
+                        stream.Encode(slot.Path);
+                        stream.Encode(slot.SlotRlpValue); 
+                    }
+
+                }
+            }
             
-            //stream.Encode(message.RequestId);
-            
-            //if (message.Slots == null || message.Slots.Length == 0)
-            //{
-            //    stream.EncodeNullObject();
-            //}
-            //else
-            //{
-            //    stream.StartSequence(message.Slots.RlpLength.Value);
-            //    for (int i = 0; i < message.Slots.Length; i++)
-            //    {
-            //        var accountSlots = message.Slots.Array[i];
-            //        stream.StartSequence(accountSlots.RlpLength.Value);
-            //        for (int j = 0; j < accountSlots.Length; j++)
-            //        {
-            //            var slot = accountSlots.Array[j];
-                        
-            //            stream.StartSequence(slot.RlpLength.Value);
-            //            stream.Encode(slot.Hash);
-            //            stream.Encode(slot.Data);
-            //        }
-                    
-            //    }
-            //}
-            
-            //if (message.Proof == null || message.Proof.Length == 0)
-            //{
-            //    stream.EncodeNullObject();
-            //}
-            //else
-            //{
-            //    stream.StartSequence(message.Proof.RlpLength.Value);
-            //    for (int i = 0; i < message.Proof.Length; i++)
-            //    {
-            //        stream.Encode(message.Proof.Array[i]);
-            //    }
-            //}
+            if (message.Proofs == null || message.Proofs.Length == 0)
+            {
+                stream.EncodeNullObject();
+            }
+            else
+            {
+                stream.StartSequence(proofsLength);
+                for (int i = 0; i < message.Proofs.Length; i++)
+                {
+                    stream.Encode(message.Proofs[i]);
+                }
+            }
         }
 
         public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
@@ -78,13 +87,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.ReadSequenceLength();
 
             message.RequestId = stream.DecodeLong();
-            message.Slots = stream.DecodeArray(s => s.DecodeArray(DecodeAccountSlots));
+            message.Slots = stream.DecodeArray(s => s.DecodeArray(DecodeSlot));
             message.Proofs = stream.DecodeArray(s => s.DecodeByteArray());
 
             return message;
         }
 
-        private PathWithStorageSlot DecodeAccountSlots(RlpStream stream)
+        private PathWithStorageSlot DecodeSlot(RlpStream stream)
         {
             stream.ReadSequenceLength();
             Keccak path = stream.DecodeKeccak();
@@ -94,47 +103,57 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             return data;
         }
-        
-        //private int CalculateLengths(StorageRangeMessage message)
-        //{
-        //    int contentLength = Rlp.LengthOf(message.RequestId);
 
-        //    int allSlotsLength = 0;
-        //    if (message.Slots != null)
-        //    {
-        //        for (var i = 0; i < message.Slots.Length; i++)
-        //        {
-        //            int accountLength = 0;
-        //            MeasuredArray<Slot> accountSlots = message.Slots.Array[i];
-        //            foreach (Slot slot in accountSlots.Array)
-        //            {
-        //                int slotLength = Rlp.LengthOf(slot.Hash) + Rlp.LengthOf(slot.Data);
-        //                slot.RlpLength = slotLength;
-        //                accountLength += Rlp.LengthOfSequence(slotLength);
-        //            }
+        private (int contentLength, int allSlotsLength, int[] accountSlotsLengths, int proofsLength) CalculateLengths(StorageRangeMessage message)
+        {
+            int contentLength = Rlp.LengthOf(message.RequestId);
 
-        //            accountSlots.RlpLength = accountLength;
-        //            allSlotsLength += Rlp.LengthOfSequence(accountLength);
-        //        }
+            int allSlotsLength = 0;
+            int[] accountSlotsLengths = new int[message.Slots.Length];
 
-        //        message.Slots.RlpLength = allSlotsLength;
-        //    }
+            if (message.Slots == null || message.Slots.Length == 0)
+            {
+                allSlotsLength = 1;
+            }
+            else 
+            {
+                for (var i = 0; i < message.Slots.Length; i++)
+                {
+                    int accountSlotsLength = 0;
 
-        //    contentLength += Rlp.LengthOfSequence(allSlotsLength);
+                    var accountSlots = message.Slots[i];
+                    foreach (PathWithStorageSlot slot in accountSlots)
+                    {
+                        int slotLength = Rlp.LengthOf(slot.Path) + Rlp.LengthOf(slot.SlotRlpValue);
+                        accountSlotsLength += Rlp.LengthOfSequence(slotLength);
+                    }
 
-        //    int proofLength = 0;
-        //    if (message.Proof != null)
-        //    {
-        //        for (int i = 0; i < message.Proof.Length; i++)
-        //        {
-        //            message.Proof.RlpLength = Rlp.LengthOf(message.Proof.Array[i]);
-        //            proofLength += message.Proof.RlpLength.Value;
-        //        }
-        //    }
+                    accountSlotsLengths[i] = accountSlotsLength;
+                    allSlotsLength += Rlp.LengthOfSequence(accountSlotsLength);
+                }
+            }
 
-        //    contentLength += Rlp.LengthOfSequence(proofLength);
+            contentLength += Rlp.LengthOfSequence(allSlotsLength);
+
+            int proofsLength = 0;
+            if (message.Proofs == null || message.Proofs.Length == 0)
+            {
+                proofsLength = 1;
+                contentLength++;
+            }
+            else
+            {
+                for (int i = 0; i < message.Proofs.Length; i++)
+                {
+                    proofsLength += Rlp.LengthOf(message.Proofs[i]);
+                }
+
+                contentLength += Rlp.LengthOfSequence(proofsLength);
+            }
+
             
-        //    return contentLength;
-        //}
+
+            return (contentLength, allSlotsLength, accountSlotsLengths, proofsLength);
+        }
     }
 }

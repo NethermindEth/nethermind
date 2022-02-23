@@ -6,6 +6,6 @@ namespace Nethermind.State.Snap
     {
         public bool MoreChildrenToRight { get; set; }
 
-        bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null);
+        //bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null);
     }
 }
