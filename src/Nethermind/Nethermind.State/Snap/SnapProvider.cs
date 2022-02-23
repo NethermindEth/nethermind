@@ -53,12 +53,19 @@ namespace Nethermind.State.Snap
             return success;
         }
 
-        public Keccak? AddStorageRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
+        public bool AddStorageRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
         {
             StorageTree tree = new(_store, _logManager);
-            Keccak result =  SnapProviderHelper.AddStorageRange(tree, blockNumber, expectedRootHash, startingHash, slots, proofs);
+            (Keccak? calculatedRootHash, bool moreChildrenToRight) =  SnapProviderHelper.AddStorageRange(tree, blockNumber, expectedRootHash, startingHash, slots, proofs);
 
-            return result;
+            bool success = expectedRootHash == calculatedRootHash;
+
+            if (success)
+            {
+                // TODO: set next starting hash and more children info
+            }
+
+            return success;
         }
     }
 }

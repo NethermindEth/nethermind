@@ -56,7 +56,7 @@ namespace Nethermind.State.Snap
             return (tree.RootHash, moreChildrenToRight, accountsWithStorage);
         }
 
-        public static Keccak? AddStorageRange(StorageTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
+        public static (Keccak? rootHash, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
         {
             // TODO: Check the slots boundaries and sorting
 
@@ -68,7 +68,7 @@ namespace Nethermind.State.Snap
             {
                 foreach (var slot in slots)
                 {
-                    tree.Set(slot.Path, slot.SlotValue, false);
+                    tree.Set(slot.Path, slot.SlotRlpValue, false);
                 }
 
                 tree.UpdateRootHash();
@@ -76,13 +76,13 @@ namespace Nethermind.State.Snap
                 if (tree.RootHash != expectedRootHash)
                 {
                     // TODO: log incorrect range
-                    return Keccak.EmptyTreeHash;
+                    return (Keccak.EmptyTreeHash, true); ;
                 }
 
                 tree.Commit(blockNumber);
             }
 
-            return tree.RootHash;
+            return (tree.RootHash, moreChildrenToRight);
         }
 
         private static (bool success, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak endHash, byte[][] proofs = null)
