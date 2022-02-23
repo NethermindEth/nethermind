@@ -108,10 +108,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 for (int i = 0; i < message.PathsWithAccounts.Length; i++)
                 {
                     PathWithAccount pwa = message.PathsWithAccounts[i];
-                    int pwaLength = Rlp.LengthOf(pwa.AddressHash);
-                    pwaLength += _decoder.GetLength(pwa.Account);
+                    int itemLength = Rlp.LengthOf(pwa.AddressHash);
+                    itemLength += _decoder.GetLength(pwa.Account);
 
-                    pwasLength += Rlp.LengthOfSequence(pwaLength);
+                    pwasLength += Rlp.LengthOfSequence(itemLength);
                 }
             }
 

@@ -21,6 +21,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Snap;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
@@ -28,28 +30,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class StorageRangesMessageSerializerTests
     {
-        // [Test]
-        // public void Roundtrip_NullSlotsNullProofs()
-        // {
-        //     StorageRangesMessage msg = new()
-        //     {
-        //         RequestId = MessageConstants.Random.NextLong(), 
-        //         Slots = null,
-        //         Proof = null
-        //     };
-        //     StorageRangesMessageSerializer serializer = new();
-        //
-        //     SerializerTester.TestZero(serializer, msg);
-        // }
-        
+
         [Test]
         public void Roundtrip_NoSlotsNoProofs()
         {
             StorageRangeMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(), 
-                //Slots = new MeasuredArray<MeasuredArray<Slot>>(Array.Empty<MeasuredArray<Slot>>()) ,
-                //Proof = new MeasuredArray<byte[]>(Array.Empty<byte[]>())
+                RequestId = MessageConstants.Random.NextLong(),
+                Slots = Array.Empty<PathWithStorageSlot[]>(),
+                Proofs = Array.Empty<byte[]>()
             };
             StorageRangesMessageSerializer serializer = new();
 
@@ -62,8 +51,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                //Slots = new MeasuredArray<MeasuredArray<Slot>>(Array.Empty<MeasuredArray<Slot>>()) ,
-                //Proof = new MeasuredArray<byte[]>(new []{TestItem.RandomDataA})
+                Slots = Array.Empty<PathWithStorageSlot[]>(),
+                Proofs = new[] { TestItem.RandomDataA }
             };
 
             StorageRangesMessageSerializer serializer = new();
@@ -80,12 +69,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                //Slots = new MeasuredArray<MeasuredArray<Slot>>(new MeasuredArray<Slot>[]
-                //{
-                //    new(
-                //        new[] { new Slot { Hash = new Keccak("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataA } })
-                //}),
-                //Proof = new MeasuredArray<byte[]>(Array.Empty<byte[]>())
+                Slots = new[] { new PathWithStorageSlot[] { new PathWithStorageSlot(new Keccak("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), TestItem.RandomDataA) } },
+                Proofs = Array.Empty<byte[]>()
             };
 
             StorageRangesMessageSerializer serializer = new();
@@ -99,21 +84,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                //Slots = new MeasuredArray<MeasuredArray<Slot>>(
-                //    new MeasuredArray<Slot>[]
-                //    {
-                //        new(new[]
-                //        {
-                //            new Slot { Hash = new Keccak("0x11d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataA },
-                //            new Slot { Hash = new Keccak("0x12d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataB }
-                //        }),
-                //        new(new[]
-                //        {
-                //            new Slot { Hash = new Keccak("0x21d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataB },
-                //            new Slot { Hash = new Keccak("0x22d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Data = TestItem.RandomDataC }
-                //        })
-                //    }),
-                //Proof = new MeasuredArray<byte[]>(new[] { TestItem.RandomDataA, TestItem.RandomDataB })
+                Slots = new[] { 
+                    new PathWithStorageSlot[] { 
+                        new PathWithStorageSlot(new Keccak("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataA).Bytes) ,
+                        new PathWithStorageSlot(new Keccak("0x12d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataB).Bytes)
+                    },
+                    new PathWithStorageSlot[] {
+                        new PathWithStorageSlot(new Keccak("0x21d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataB).Bytes) ,
+                        new PathWithStorageSlot(new Keccak("0x22d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataC).Bytes)
+                    }
+                },
+                Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
             StorageRangesMessageSerializer serializer = new();
