@@ -16,17 +16,13 @@
 // 
 
 using System;
+using Nethermind.AccountAbstraction.Data;
+using Nethermind.AccountAbstraction.Source;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using System.Threading.Tasks;
-using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Nethermind.TxPool;
-using Nethermind.AccountAbstraction.Data;
 
-namespace Nethermind.AccountAbstraction.Source;
-
+namespace Nethermind.AccountAbstraction.Subscribe;
 public class NewPendingUserOpsSubscription : Subscription
 {
     private readonly IUserOperationPool _userOperationPool;
