@@ -97,7 +97,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 return NewPayloadV1Result.InvalidBlockHash;
             }
-
+            
             if (synced == false)
             {
                 if (_blockCacheService.Contains(block.Hash))
@@ -105,45 +105,33 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return NewPayloadV1Result.Syncing;
                 }
                 
-                if (IsParentProcessed(block.Header))
+                if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
                 {
-                    _beaconPivot.ResetPivot();
-                    synced = true;
-                }
-
-                if (_beaconPivot.BeaconPivotExists())
-                {
-                    // TODO: beaconsync difficulty from merge config
                     _blockTree.Insert(block);
                     _blockCacheService.EnqueueBlockHeader(block.Header);
-                    return NewPayloadV1Result.Accepted;
+                    return NewPayloadV1Result.Syncing;
                 }
             }
 
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
-                _logger.Info($"parent header not found for {request.BlockNumber}, {request.BlockHash}");
                 _blockTree.Insert(block);
                 _blockCacheService.EnqueueBlockHeader(block.Header);
-                return NewPayloadV1Result.Syncing;
+                return NewPayloadV1Result.Accepted;
             }
 
-            // if (_ethSyncingInfo.IsSyncing() && synced == false)
-            // {
-            //     return NewPayloadV1Result.Syncing;
-            // }
-            // if (synced == false)
-            // { 
-            //     bool pivotParentProcessed = _beaconPivot.IsPivotParentProcessed();
-            //     if (pivotParentProcessed)
-            //     {
-                    // _beaconSyncStrategy.SwitchToBeaconModeControl();
-                    // if (_logger.IsInfo) _logger.Info("ExecutePayloadHandler switched to BeaconModeControl");
-                //     synced = true;
-                //     _beaconPivot.ResetPivot();
-                // }
-            // }
+            if (synced == false)
+            {
+                bool wasProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash ?? parentHeader.CalculateHash());
+                if (!wasProcessed)
+                {
+                    _blockTree.Insert(block);
+                    _blockCacheService.EnqueueBlockHeader(block.Header);
+                    return NewPayloadV1Result.Syncing;
+                }
+                synced = true;
+            }
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)

@@ -90,7 +90,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (!_beaconPivot.BeaconPivotExists())
                     {
                         _beaconPivot.EnsurePivot(blockHeader);
-                        
                     }
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
@@ -102,7 +101,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     {
                         _beaconPivot.ResetPivot();
                         synced = true;
-                    }   
+                    }
+                    else
+                    {
+                        return ForkchoiceUpdatedV1Result.Syncing;
+                    }
                 }
             }
             

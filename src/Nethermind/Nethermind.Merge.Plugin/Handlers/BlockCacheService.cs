@@ -28,7 +28,7 @@ public class BlockCacheService : IBlockCacheService
     private readonly ConcurrentDictionary<Keccak, BlockHeader> _blockHeadersCache = new();
     private readonly ConcurrentQueue<BlockHeader> _blockHeadersQueue = new();
 
-    public int Count => _blockHeadersQueue.Count;
+    public bool IsEmpty => _blockHeadersQueue.IsEmpty;
     
     public bool Contains(Keccak blockHash)
     {
@@ -40,12 +40,7 @@ public class BlockCacheService : IBlockCacheService
         _blockHeadersCache.TryGetValue(blockHash, out BlockHeader? blockHeader);
         return blockHeader;
     }
-    
-    public IEnumerable<BlockHeader> GetBlockHeadersUpToNumber(long blockNumber)
-    {
-        return _blockHeadersCache.Values.Where(h => h.Number < blockNumber);
-    }
-    
+
     public bool EnqueueBlockHeader(BlockHeader blockHeader)
     {
         if (blockHeader.Hash is null)
@@ -67,15 +62,10 @@ public class BlockCacheService : IBlockCacheService
 
         return null;
     }
-    
-    public void RemoveBlockHeadersUpToNumber(long blockNumber)
+
+    public BlockHeader? Peek()
     {
-        IEnumerable<Keccak> hashes = _blockHeadersCache
-            .Where(x => x.Value.Number <= blockNumber)
-            .Select(x => x.Key);
-        foreach (Keccak hash in hashes)
-        {
-            _blockHeadersCache.TryRemove(hash, out _);
-        }
+        _blockHeadersQueue.TryPeek(out BlockHeader? blockHeader);
+        return blockHeader;
     }
 }

@@ -170,7 +170,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
             }
 
-            return _blockTree.FindHeader(blockHash)?.TotalDifficulty;
+            return _blockTree.FindHeader(blockHash)?.TotalDifficulty == 0 ? null : _blockTree.FindHeader(blockHash)?.TotalDifficulty;
         }
 
         public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (!_syncConfig.DownloadHeadersInFastSync ||

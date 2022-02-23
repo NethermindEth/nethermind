@@ -139,7 +139,6 @@ namespace Nethermind.Merge.Plugin
                 if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
                 
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
-                BlockCacheService blockCacheService = new();
                 PayloadPreparationService payloadPreparationService = new (_postMergeBlockProducer, _blockProductionTrigger, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
@@ -162,7 +161,7 @@ namespace Nethermind.Merge.Plugin
                         _api.EthSyncingInfo,
                         _api.BlockConfirmationManager,
                         payloadPreparationService,
-                        blockCacheService,
+                        _blockCacheService,
                         _beaconSync,
                         _beaconPivot,
                         _api.LogManager),
@@ -225,6 +224,10 @@ namespace Nethermind.Merge.Plugin
                     _api.BlockDownloaderFactory,
                     _api.Pivot,
                     _beaconSync,
+                    _mergeConfig,
+                    _blockCacheService,
+                    _api.SyncProgressResolver,
+                    _api.BlockValidator,
                     _api.LogManager);
             }
 

@@ -316,7 +316,7 @@ namespace Nethermind.Synchronization.Reporting
         {
             long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
             int paddingLength = numHeadersToDownload.ToString().Length;
-            _logger.Info($"Old Headers from block {_pivot.PivotNumber} to block {_pivot.PivotDestinationNumber} | "
+            _logger.Info($"Old Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
                          + $"{Pad(BeaconHeaders.CurrentValue, paddingLength)} / {Pad(numHeadersToDownload, paddingLength)} | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(BeaconHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(BeaconHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
             BeaconHeaders.SetMeasuringPoint();
         }

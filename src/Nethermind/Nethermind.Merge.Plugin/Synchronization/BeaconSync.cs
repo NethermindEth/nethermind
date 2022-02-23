@@ -60,46 +60,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public void InitSyncing()
         {
             _isInBeaconModeControl = false;
-            
-            while (_blockCacheService.Count > 0)
-            {
-                BlockHeader blockHeader = _blockCacheService.DequeueBlockHeader();
-                _blockTree.Insert(blockHeader);
-                long state = _syncProgressResolver.FindBestFullState();
-                if (state >= blockHeader.Number || state == 0)
-                {
-                    continue;
-                } 
-                BlockHeader? parentHeader = _blockTree.FindHeader(blockHeader.ParentHash, BlockTreeLookupOptions.None);
-                if (parentHeader == null)
-                {
-                    continue;
-                }
-
-                Block? block = _blockTree.FindBlock(blockHeader.Hash);
-                if (block == null)
-                {
-                    continue;
-                }
-
-                block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
-                if (!_blockValidator.ValidateSuggestedBlock(block))
-                {
-                    // rejected block
-                    continue;
-                }
-
-                Block? processedBlock =
-                    _processor.Process(block, ProcessingOptions.EthereumMerge, NullBlockTracer.Instance);
-                if (processedBlock == null)
-                {
-                    // not processed and not accepted
-                    continue;
-                }
-
-                processedBlock.Header.IsPostMerge = true;
-                _blockTree.SuggestBlock(processedBlock, false, false);
-            }
         }
 
         public bool ShouldBeInBeaconHeaders()

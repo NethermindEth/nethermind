@@ -61,7 +61,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public Keccak PivotHash => _currentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed;
 
         public UInt256? PivotTotalDifficulty => _currentBeaconPivot is null ?
-            _syncConfig.PivotTotalDifficultyParsed : _mergeConfig.FinalTotalDifficultyParsed;
+            _syncConfig.PivotTotalDifficultyParsed : _currentBeaconPivot.TotalDifficulty;
         
         public long PivotDestinationNumber { get; private set; }
 

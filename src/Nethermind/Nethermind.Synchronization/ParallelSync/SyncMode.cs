@@ -74,7 +74,13 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary> 
         BeaconHeaders = 4096,
         
-        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | FastHeaders | FastBodies | FastReceipts | BeaconControlMode | BeaconHeaders
+        /// <summary>
+        /// Forward processing of blocks received during beacon sync
+        /// </summary>
+        BeaconFullSync = 8192,
+        
+        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | 
+              FastHeaders | FastBodies | FastReceipts | BeaconControlMode | BeaconHeaders | BeaconFullSync
     }
     
     public static class SyncModeExtensions

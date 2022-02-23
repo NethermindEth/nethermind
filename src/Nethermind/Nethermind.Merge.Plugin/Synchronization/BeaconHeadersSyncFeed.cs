@@ -34,6 +34,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 public class BeaconHeadersSyncFeed : HeadersSyncFeed
 {
     private readonly IPivot _pivot;
+    private readonly IMergeConfig _mergeConfig;
     private readonly long _levelRequestSize = 20000;
     
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
@@ -46,9 +47,11 @@ public class BeaconHeadersSyncFeed : HeadersSyncFeed
         ISyncConfig? syncConfig,
         ISyncReport? syncReport,
         IPivot? pivot,
+        IMergeConfig? mergeConfig,
         ILogManager? logManager) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager)
     {
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
+        _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
     }
     
     protected override SyncMode ActivationSyncModes { get; }
@@ -65,7 +68,8 @@ public class BeaconHeadersSyncFeed : HeadersSyncFeed
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
         Keccak? startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash;
-        UInt256? startTotalDifficulty = lowestInserted?.TotalDifficulty ?? _pivot.PivotTotalDifficulty;
+        UInt256? startTotalDifficulty = lowestInserted?.TotalDifficulty ?? _pivot.PivotTotalDifficulty 
+            ?? _mergeConfig.FinalTotalDifficultyParsed;
         
         _nextHeaderHash = startHeaderHash;
         _nextHeaderDiff = startTotalDifficulty;
@@ -76,8 +80,11 @@ public class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override void PostFinishCleanUp()
     {
         base.PostFinishCleanUp();
-        // set total difficulty as beacon pivot does not provide total difficulty
-        _blockTree.BackFillTotalDifficulty(HeadersDestinationBlockNumber, _pivotNumber);
+        if (_mergeConfig.FinalTotalDifficultyParsed == null)
+        {
+            // set total difficulty as beacon pivot does not provide total difficulty
+            _blockTree.BackFillTotalDifficulty(HeadersDestinationBlockNumber, _pivotNumber);   
+        }
     }
     
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)

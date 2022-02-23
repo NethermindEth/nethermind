@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(Block block, bool saveHeader = false, BlockTreeInsertOptions options = BlockTreeInsertOptions.All);
+        AddBlockResult Insert(Block block, bool saveHeader = false);
 
         void Insert(IEnumerable<Block> blocks);
 

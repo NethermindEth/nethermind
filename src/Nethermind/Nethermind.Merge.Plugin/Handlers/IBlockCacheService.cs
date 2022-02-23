@@ -23,13 +23,10 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public interface IBlockCacheService
 {
-    int Count { get; }
+    bool IsEmpty { get; }
     bool Contains(Keccak blockHash);
     BlockHeader? GetBlockHeader(Keccak blockHash);
-    IEnumerable<BlockHeader> GetBlockHeadersUpToNumber(long blockNumber);
     bool EnqueueBlockHeader(BlockHeader header);
-
-    BlockHeader DequeueBlockHeader();
-
-    void RemoveBlockHeadersUpToNumber(long blockNumber);
+    BlockHeader? DequeueBlockHeader();
+    BlockHeader? Peek();
 }

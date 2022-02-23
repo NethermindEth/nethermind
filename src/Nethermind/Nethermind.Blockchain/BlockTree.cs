@@ -524,7 +524,7 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        public AddBlockResult Insert(Block block, bool saveHeader = false, BlockTreeInsertOptions options = BlockTreeInsertOptions.All)
+        public AddBlockResult Insert(Block block, bool saveHeader = false)
         {
             if (!CanAcceptNewBlocks)
             {
@@ -548,7 +548,14 @@ namespace Nethermind.Blockchain
 
             if (saveHeader)
             {
-                Insert(block.Header, options);
+                BlockHeader header = block.Header!;
+                Rlp newHeaderRlp = _headerDecoder.Encode(header);
+                _headerDb.Set(header.Hash!, newHeaderRlp.Bytes);
+
+                BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+                ChainLevelInfo chainLevel = new(false, blockInfo);
+                _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
+                _bloomStorage.Store(header.Number, header.Bloom!);
             }
 
             return AddBlockResult.Added;
@@ -1726,7 +1733,7 @@ namespace Nethermind.Blockchain
                 while (current.TotalDifficulty is null)
                 {
                     (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
-                    if (level is null || blockInfo is null)
+                    if (level is null || blockInfo is null || blockInfo.TotalDifficulty == 0)
                     {
                         stack.Push(current);
                         if (_logger.IsTrace)
