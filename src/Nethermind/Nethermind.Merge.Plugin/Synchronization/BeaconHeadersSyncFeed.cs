@@ -46,7 +46,7 @@ public class BeaconHeadersSyncFeed : HeadersSyncFeed
         ISyncConfig? syncConfig,
         ISyncReport? syncReport,
         IPivot? pivot,
-        ILogManager? logManager) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport,logManager)
+        ILogManager? logManager) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager)
     {
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
     }
