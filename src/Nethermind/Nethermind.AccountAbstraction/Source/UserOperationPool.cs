@@ -164,6 +164,9 @@ namespace Nethermind.AccountAbstraction.Source
         {
             Metrics.UserOperationsReceived++;
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
+            
+            NewDiscovered?.Invoke(this,new UserOperationEventArgs(userOperation));
+            
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
             {
@@ -174,6 +177,9 @@ namespace Nethermind.AccountAbstraction.Source
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
                     _broadcaster.BroadcastOnce(userOperation);
+                    
+                    NewPending?.Invoke(this, new UserOperationEventArgs(userOperation));
+                    
                     return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, _chainId));
                 }
 
@@ -343,5 +349,9 @@ namespace Nethermind.AccountAbstraction.Source
             _blockTree.BlockAddedToMain -= OnBlockAdded;
             _headBlocksChannel.Writer.Complete();
         }
+
+        public event EventHandler<UserOperationEventArgs>? NewDiscovered;
+        public event EventHandler<UserOperationEventArgs>? NewPending;
+
     }
 }
