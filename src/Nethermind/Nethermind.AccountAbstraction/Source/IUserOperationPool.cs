@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
@@ -30,5 +31,7 @@ namespace Nethermind.AccountAbstraction.Source
         public IEnumerable<UserOperation> GetUserOperations();
         void AddPeer(IUserOperationPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
+        event EventHandler<UserOperationEventArgs> NewDiscovered;
+        event EventHandler<UserOperationEventArgs> NewPending;
     }
 }

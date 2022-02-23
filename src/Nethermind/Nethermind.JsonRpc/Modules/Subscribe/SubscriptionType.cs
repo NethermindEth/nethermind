@@ -23,6 +23,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         Logs,
         NewPendingTransactions,
         DroppedPendingTransactions,
-        Syncing
+        Syncing,
+        NewPendingUserOps //See UserOperations in EIP4337.
     }
 }

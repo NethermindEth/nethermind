@@ -16,7 +16,6 @@
 
 using System;
 using Nethermind.AccountAbstraction.Data;
-using Nethermind.Core;
 
 namespace Nethermind.AccountAbstraction.Source
 {
