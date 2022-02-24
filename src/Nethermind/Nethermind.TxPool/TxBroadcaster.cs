@@ -106,7 +106,7 @@ namespace Nethermind.TxPool
                 BroadcastOnce(tx);
             }
         }
-        
+
         private void StartBroadcast(Transaction tx)
         {
             NotifyPeersAboutLocalTx(tx);
