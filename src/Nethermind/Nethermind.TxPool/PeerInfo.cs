@@ -43,16 +43,16 @@ namespace Nethermind.TxPool
             }
         }
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs)
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
         {
-            Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs));
+            Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs, sendFullTx), sendFullTx);
         }
 
-        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs)
+        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             foreach (Transaction tx in txs)
             {
-                if (NotifiedTransactions.Set(tx.Hash))
+                if (sendFullTx || NotifiedTransactions.Set(tx.Hash))
                 {
                     yield return tx;
                 }
