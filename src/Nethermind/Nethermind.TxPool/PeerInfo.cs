@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
     {
         private ITxPoolPeer Peer { get; }
 
-        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(MemoryAllowance.MemPoolSize, "notifiedTransactions");
+        private LruKeyCache<Keccak> NotifiedTransactions { get; } = new(2 * MemoryAllowance.MemPoolSize, "notifiedTransactions");
 
         public PeerInfo(ITxPoolPeer peer)
         {
@@ -37,19 +37,22 @@ namespace Nethermind.TxPool
 
         public void SendNewTransaction(Transaction tx)
         {
-            Peer.SendNewTransaction(tx);
+            if (NotifiedTransactions.Set(tx.Hash))
+            {
+                Peer.SendNewTransaction(tx);
+            }
         }
 
-        public void SendNewTransactions(IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
+        public void SendNewTransactions(IEnumerable<Transaction> txs)
         {
             Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs));
         }
-        
-        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
+
+        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs)
         {
-            foreach ((Transaction tx, bool isPersistent) in txs)
+            foreach (Transaction tx in txs)
             {
-                if (isPersistent || NotifiedTransactions.Set(tx.Hash))
+                if (NotifiedTransactions.Set(tx.Hash))
                 {
                     yield return tx;
                 }

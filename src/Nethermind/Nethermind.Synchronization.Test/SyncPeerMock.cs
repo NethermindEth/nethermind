@@ -166,7 +166,7 @@ namespace Nethermind.Synchronization.Test
 
         public PublicKey Id => Node.Id;
         
-        public void SendNewTransactions(IEnumerable<(Transaction Tx, bool IsPersistent)> txs) { }
+        public void SendNewTransactions(IEnumerable<Transaction> txs) { }
 
         public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {
