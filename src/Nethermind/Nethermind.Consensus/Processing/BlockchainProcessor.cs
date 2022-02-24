@@ -496,7 +496,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
+        private ProcessingBranch  PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
         {
             BlockHeader branchingPoint = null;
             List<Block> blocksToBeAddedToMain = new();

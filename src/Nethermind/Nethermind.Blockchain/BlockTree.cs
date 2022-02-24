@@ -553,7 +553,7 @@ namespace Nethermind.Blockchain
                 _headerDb.Set(header.Hash!, newHeaderRlp.Bytes);
 
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-                ChainLevelInfo chainLevel = new(false, blockInfo);
+                ChainLevelInfo chainLevel = new(true, blockInfo);
                 _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
                 _bloomStorage.Store(header.Number, header.Bloom!);
             }

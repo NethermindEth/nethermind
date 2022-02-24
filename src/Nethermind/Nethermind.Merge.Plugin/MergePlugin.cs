@@ -186,10 +186,12 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SyncPeerPool is null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
-                if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
-                if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
                 if (_api.SyncProgressResolver is null)
                     throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
+                if (_api.BlockProcessingQueue is null)
+                    throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
+                if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
 
                 // ToDo strange place for validators initialization
                 _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider,
@@ -228,6 +230,7 @@ namespace Nethermind.Merge.Plugin
                     _blockCacheService,
                     _api.SyncProgressResolver,
                     _api.BlockValidator,
+                    _api.BlockProcessingQueue,
                     _api.LogManager);
             }
 

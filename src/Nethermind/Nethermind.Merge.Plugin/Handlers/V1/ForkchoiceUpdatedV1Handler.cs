@@ -187,7 +187,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
-        }
+         }
 
         // This method will detect reorg in terminal PoW block
         private void EnsureTerminalBlock(ForkchoiceStateV1 forkchoiceState, Block[]? blocks)

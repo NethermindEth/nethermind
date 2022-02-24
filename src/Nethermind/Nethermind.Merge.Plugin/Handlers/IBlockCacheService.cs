@@ -24,6 +24,7 @@ namespace Nethermind.Merge.Plugin.Handlers;
 public interface IBlockCacheService
 {
     bool IsEmpty { get; }
+    BlockHeader ProcessDestination { get; }
     bool Contains(Keccak blockHash);
     BlockHeader? GetBlockHeader(Keccak blockHash);
     bool EnqueueBlockHeader(BlockHeader header);

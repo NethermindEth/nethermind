@@ -29,6 +29,7 @@ public class BlockCacheService : IBlockCacheService
     private readonly ConcurrentQueue<BlockHeader> _blockHeadersQueue = new();
 
     public bool IsEmpty => _blockHeadersQueue.IsEmpty;
+    public BlockHeader? ProcessDestination { get; private set; }
     
     public bool Contains(Keccak blockHash)
     {
@@ -47,6 +48,7 @@ public class BlockCacheService : IBlockCacheService
         {
             return false;
         }
+        ProcessDestination = blockHeader;
         _blockHeadersQueue.Enqueue(blockHeader);
         return _blockHeadersCache.TryAdd(blockHeader.Hash, blockHeader);
     }

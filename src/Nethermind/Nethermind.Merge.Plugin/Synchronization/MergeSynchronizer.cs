@@ -19,6 +19,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -41,6 +42,7 @@ public class MergeSynchronizer : Synchronizer
     private readonly IBlockCacheService _blockCacheService;
     private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly IBlockValidator _blockValidator;
+    private readonly IBlockProcessingQueue _blockProcessingQueue;
     
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -58,6 +60,7 @@ public class MergeSynchronizer : Synchronizer
         IBlockCacheService blockCacheService,
         ISyncProgressResolver syncProgressResolver,
         IBlockValidator blockValidator,
+        IBlockProcessingQueue blockProcessingQueue,
         ILogManager logManager) : base(dbProvider, specProvider, blockTree, receiptStorage, peerPool, nodeStatsManager,
         syncModeSelector, syncConfig, blockDownloaderFactory, pivot, logManager)
     {
@@ -66,6 +69,7 @@ public class MergeSynchronizer : Synchronizer
         _blockCacheService = blockCacheService;
         _syncProgressResolver = syncProgressResolver;
         _blockValidator = blockValidator;
+        _blockProcessingQueue = blockProcessingQueue;
     }
 
     public override void Start()
@@ -100,7 +104,7 @@ public class MergeSynchronizer : Synchronizer
 
     private void StartBeaconFullSyncComponents()
     {
-        BeaconFullSyncFeed beaconFullSyncFeed = new (_syncMode, _blockCacheService, _blockTree, _syncProgressResolver, _blockValidator, _logManager);
+        BeaconFullSyncFeed beaconFullSyncFeed = new (_syncMode, _blockCacheService, _blockTree, _syncProgressResolver, _blockValidator, _blockProcessingQueue, _logManager);
         BeaconFullSyncDispatcher beaconFullSyncDispatcher =
             new (beaconFullSyncFeed!, _logManager);
         beaconFullSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
