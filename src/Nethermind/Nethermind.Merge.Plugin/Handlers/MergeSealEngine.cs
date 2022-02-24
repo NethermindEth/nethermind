@@ -30,21 +30,20 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ISealEngine _preMergeSealValidator;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly Address _feeRecipient;
-        private readonly ISigner _signer;
-        private readonly ILogger _logger;
+        private readonly ISealValidator _mergeSealValidator;
 
         public MergeSealEngine(
             ISealEngine preMergeSealEngine,
             IPoSSwitcher? poSSwitcher,
             Address feeRecipient,
+            ISealValidator mergeSealValidator,
             ILogManager? logManager)
         {
             _preMergeSealValidator =
                 preMergeSealEngine ?? throw new ArgumentNullException(nameof(preMergeSealEngine));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _feeRecipient = feeRecipient;
-            _logger = logManager?.GetClassLogger<MergeSealEngine>() ??
-                      throw new ArgumentNullException(nameof(logManager));
+            _mergeSealValidator = mergeSealValidator;
         }
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
@@ -69,24 +68,9 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public Address Address => _poSSwitcher.HasEverReachedTerminalBlock() ? _feeRecipient : _preMergeSealValidator.Address;
 
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
-        {
-            if (_poSSwitcher.IsPostMerge(header, parent))
-            {
-                return true;
-            }
-            
-            return _preMergeSealValidator.ValidateParams(parent, header);
-        }
+        public bool ValidateParams(BlockHeader parent, BlockHeader header) =>
+            _preMergeSealValidator.ValidateParams(parent, header);
 
-        public bool ValidateSeal(BlockHeader header, bool force)
-        {
-            if (_poSSwitcher.IsPostMerge(header))
-            {
-                return true;
-            }
-            
-            return _preMergeSealValidator.ValidateSeal(header, force);
-        }
+        public bool ValidateSeal(BlockHeader header, bool force) => _mergeSealValidator.ValidateSeal(header, force);
     }
 }

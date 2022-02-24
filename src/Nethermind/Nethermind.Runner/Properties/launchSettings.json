@@ -136,7 +136,7 @@
     },
     "TheMerge_Kinstugi_M2": {
       "commandName": "Project",
-      "commandLineArgs": "--config themerge_kiln_m2.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0"
+      "commandLineArgs": "--config themerge_kiln_m2.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 100"
     },
     "TheMerge_Kinstugi_Mev": {
       "commandName": "Project",
@@ -181,6 +181,10 @@
     "Goerli ShadowFork": {
       "commandName": "Project",
       "commandLineArgs": "--config goerli_shadowfork.cfg  --Init.DiagnosticMode MemDb --Merge.Enabled true"
+    },
+    "MergeDevnet4": {
+      "commandName": "Project",
+      "commandLineArgs": "--config merge_devnet_4.cfg  --Init.DiagnosticMode MemDb"
     }
   }
 }

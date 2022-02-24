@@ -28,8 +28,8 @@ namespace Nethermind.Merge.Plugin
             DefaultValue = "false")]
         bool Enabled { get; set; }
         
-        [ConfigItem(Description = "Account to be used by the block author. If it is not specified the address zero will be used.", DefaultValue = "0x0000000000000000000000000000000000000000")]
-        public string FeeRecipient { get; set; }
+        [ConfigItem(Description = "Account to be used by the block author. If it is not specified the address zero will be used.", DefaultValue = "null")]
+        public string? FeeRecipient { get; set; }
         
         [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "null")]
         public string? TerminalTotalDifficulty { get; set; }
