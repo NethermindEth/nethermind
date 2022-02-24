@@ -476,12 +476,12 @@ namespace Nethermind.Consensus.Processing
                 {
                     _loopCancellationSource?.Token.ThrowIfCancellationRequested();
 
-                    // if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
-                    // {
-                    //     if (_logger.IsInfo)
-                    //         _logger.Info(
-                    //             $"Rerunning block after reorg or pruning: {block.ToString(Block.Format.FullHashAndNumber)}");
-                    // }
+                    if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
+                    {
+                        if (_logger.IsInfo)
+                            _logger.Info(
+                                $"Rerunning block after reorg or pruning: {block.ToString(Block.Format.FullHashAndNumber)}");
+                    }
 
                     blocksToProcess.Add(block);
                 }
