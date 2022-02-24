@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Test
              */
             JsonRpcConfig configWithRecorder = new() {RpcRecorderState = RpcRecorderState.All};
 
-            _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, No.Authentication, LimboLogs.Instance);
+            _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), configWithRecorder, _fileSystem, LimboLogs.Instance);
             _context = new JsonRpcContext(RpcEndpoint.Http);
         }
 
@@ -328,7 +328,7 @@ namespace Nethermind.JsonRpc.Test
             Assert.Throws<ArgumentNullException>(() => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
                 Substitute.For<IJsonSerializer>(),
                 Substitute.For<IJsonRpcConfig>(),
-                null, No.Authentication, LimboLogs.Instance));
+                null, LimboLogs.Instance));
         }
     }
 }

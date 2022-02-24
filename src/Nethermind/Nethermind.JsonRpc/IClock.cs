@@ -15,9 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+
 namespace Nethermind.JsonRpc;
 
 public interface IClock
 {
-    
+    long GetCurrentTime();
+}
+
+public class ClockImpl : IClock
+{
+    public long GetCurrentTime()
+    {
+        return DateTimeOffset.Now.ToUnixTimeSeconds();
+    }
 }

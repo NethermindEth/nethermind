@@ -25,7 +25,6 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.Utils;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -39,21 +38,19 @@ namespace Nethermind.JsonRpc
     {
         private JsonSerializer _traceSerializer;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly IRpcAuthentication _rpcAuthentication;
         private readonly ILogger _logger;
         private readonly JsonSerializer _obsoleteBasicJsonSerializer = new();
         private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly Recorder _recorder;
 
-        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, IRpcAuthentication rpcAuthentication, ILogManager logManager)
+        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, IFileSystem fileSystem, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             if (fileSystem == null) throw new ArgumentNullException(nameof(fileSystem));
 
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
-            _rpcAuthentication = rpcAuthentication;
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
 
             if (_jsonRpcConfig.RpcRecorderState != RpcRecorderState.None)
@@ -136,7 +133,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private async IAsyncEnumerable<JsonRpcResult> ProcessJsonAsync(TextReader request, JsonRpcContext context)
+        public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(TextReader request, JsonRpcContext context)
         {
             request = await RecordRequest(request);
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -254,37 +251,6 @@ namespace Nethermind.JsonRpc
                     }
                 }
             } while (moveNext);
-        }
-
-        public async IAsyncEnumerable<JsonRpcResult> ProcessAsync(TextReader request, JsonRpcContext context)
-        {
-            string requestData = await request.ReadToEndAsync();
-            var decoded = DecodeJwtToken(requestData);
-            if (decoded.Item2)
-            {
-                context = new JsonRpcContext(context.RpcEndpoint, context.DuplexClient, context.Url, true);
-            }
-
-            request = decoded.Item1;
-            var result = ProcessJsonAsync(request, context);
-            var enumerator = result.GetAsyncEnumerator();
-            while (await enumerator.MoveNextAsync())
-            {
-                yield return enumerator.Current;
-            }
-        }
-
-        private (TextReader, bool) DecodeJwtToken(string token)
-        {
-            if (!token.StartsWith("Bearer "))
-            {
-                return (new StringReader(token), false);
-            }
-
-            token = token.Remove(0, "Bearer ".Length);
-            string? decoded = _rpcAuthentication.AuthenticateAndDecode(token);
-            if (decoded == null) return (new StringReader("bearer"), false);
-            return (new StringReader(decoded), true);
         }
 
         private JsonRpcResult RecordResponse(JsonRpcResult result)

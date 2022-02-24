@@ -37,6 +37,7 @@ using Nethermind.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -148,6 +149,20 @@ namespace Nethermind.Runner.JsonRpc
                     await ctx.Response.WriteAsync("Nethermind JSON RPC");
                 }
 
+                IRpcAuthentication auth = new JwtAuthentication(jsonRpcConfig, new ClockImpl());
+                if (!auth.Authenticate(ctx.Request.Headers["Authorization"]))
+                {
+                    // ctx.Response.ContentType = "application/json";
+                    // ctx.Response.StatusCode = StatusCodes.Status200OK;
+                    // ctx.Response.ContentLength = 0;
+                    // await ctx.Response.Body.WriteAsync(Encoding.ASCII.GetBytes("Error"), 0, 5);
+                    logger.Error("Error auth");
+                    return;
+                }
+                else
+                {
+                    logger.Error("Authenticated !!!!");
+                }
                 if (ctx.Request.Method == "POST" &&
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))

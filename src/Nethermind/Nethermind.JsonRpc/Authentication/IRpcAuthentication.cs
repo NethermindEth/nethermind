@@ -19,7 +19,7 @@ namespace Nethermind.JsonRpc.Authentication;
 
 public interface IRpcAuthentication
 {
-    string? AuthenticateAndDecode(string token);
+    bool Authenticate(string token);
 }
 
 public class NoAuthentication : IRpcAuthentication
@@ -28,5 +28,5 @@ public class NoAuthentication : IRpcAuthentication
 
     public static NoAuthentication Instance = new();
     
-    public string? AuthenticateAndDecode(string token) => token;
+    public bool Authenticate(string _) => true;
 }
