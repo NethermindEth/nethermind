@@ -68,9 +68,7 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// EVM tracing needs to process blocks without storing the data on chain.
         /// </summary>
-        Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
-
-        EthereumMerge = ForceProcessing | DoNotUpdateHead
+        Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation
     }
 
     public static class ProcessingOptionsExtensions
