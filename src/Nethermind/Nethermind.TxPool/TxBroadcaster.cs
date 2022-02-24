@@ -193,7 +193,7 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
-        internal IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
+        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
         {
             foreach (Transaction tx in txsToSend)
             {
