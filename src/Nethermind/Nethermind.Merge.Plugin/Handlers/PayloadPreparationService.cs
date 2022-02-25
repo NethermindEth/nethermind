@@ -193,7 +193,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             Span<byte> inputSpan = input.AsSpan();
             parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));
             payloadAttributes.Timestamp.ToBigEndian(inputSpan.Slice(32, 32));
-            payloadAttributes.Random.Bytes.CopyTo(inputSpan.Slice(64, 32));
+            payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
             payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
             Keccak inputHash = Keccak.Compute(input);
             return inputHash.Bytes.Slice(0, 8);
