@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Producers
     {
         public UInt256 Timestamp { get; set; }
         
-        public Keccak PrevRandao { get; set; }
+        public Keccak Random { get; set; }
         
         public Address SuggestedFeeRecipient { get; set; }
     }

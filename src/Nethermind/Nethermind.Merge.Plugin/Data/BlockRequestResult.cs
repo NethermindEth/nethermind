@@ -48,7 +48,7 @@ namespace Nethermind.Merge.Plugin.Data
             GasUsed = block.GasUsed;
             ReceiptsRoot = block.ReceiptsRoot!;
             LogsBloom = block.Bloom!;
-            PrevRandao = block.MixHash ?? Keccak.Zero;
+            Random = block.MixHash ?? Keccak.Zero;
             SetTransactions(block.Transactions);
             ExtraData = block.ExtraData!;
             Timestamp = (ulong)block.Timestamp; // Timestamp should be changed to ulong across entire Nethermind code?
@@ -68,7 +68,7 @@ namespace Nethermind.Merge.Plugin.Data
                     GasUsed = GasUsed,
                     BaseFeePerGas = BaseFeePerGas,
                     Nonce = 0,
-                    MixHash = PrevRandao,
+                    MixHash = Random,
                     Author = FeeRecipient
                 };
                 Transaction[] transactions = GetTransactions();
@@ -91,7 +91,7 @@ namespace Nethermind.Merge.Plugin.Data
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
-        public Keccak PrevRandao { get; set; } = Keccak.Zero;
+        public Keccak Random { get; set; } = Keccak.Zero;
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public long BlockNumber { get; set; }
