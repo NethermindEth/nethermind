@@ -175,7 +175,7 @@ namespace Nethermind.Blockchain
                              || (header.TotalDifficulty == Head?.TotalDifficulty &&
                                  ((Head?.Number ?? 0L).CompareTo(header.Number) > 0))
                             // || (header.TotalDifficulty == Head?.TotalDifficulty); // TODO: post merge but even before it may be safe
-                             || (header.Number >= Head?.Number && header.IsPostMerge);
+                             || (header.IsPostMerge);
                 }
             }
 

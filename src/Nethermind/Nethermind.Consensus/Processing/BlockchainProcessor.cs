@@ -454,7 +454,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (invalidBlockHash is not null)
                 {
-                    DeleteInvalidBlocks(invalidBlockHash);
+         //           DeleteInvalidBlocks(invalidBlockHash);
                 }
             }
 
