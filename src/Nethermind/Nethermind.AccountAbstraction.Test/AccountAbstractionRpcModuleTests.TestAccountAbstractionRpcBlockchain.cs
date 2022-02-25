@@ -138,7 +138,7 @@ namespace Nethermind.AccountAbstraction.Test
             
             private ProcessingOptions GetProcessingOptions()
             {
-                ProcessingOptions options = ProcessingOptions.EthereumMerge;
+                ProcessingOptions options = ProcessingOptions.None;
                 options |= ProcessingOptions.StoreReceipts;
                 return options;
             }

@@ -154,10 +154,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, false, parentHeader,
                     $"Processed block is null, request {request}"));
             }
-
-            processedBlock.Header.IsPostMerge = true;
-            AddBlockResult addResult = _blockTree.SuggestBlock(processedBlock, false, false);
-            _logger.Info($"{processedBlock} add result {addResult}");
+            
             return NewPayloadV1Result.Valid(request.BlockHash);
         }
 
@@ -204,6 +201,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             processedBlock = null;
+            block.Header.IsPostMerge = true;
             if (_blockValidator.ValidateSuggestedBlock(block) == false)
             {
                 if (_logger.IsWarn)
@@ -232,7 +230,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private ProcessingOptions GetProcessingOptions()
         {
-            ProcessingOptions options = ProcessingOptions.EthereumMerge;
+            ProcessingOptions options = ProcessingOptions.None;
             if (_initConfig.StoreReceipts)
             {
                 options |= ProcessingOptions.StoreReceipts;
