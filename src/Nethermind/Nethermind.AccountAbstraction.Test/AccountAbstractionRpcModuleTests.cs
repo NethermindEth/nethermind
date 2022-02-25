@@ -308,6 +308,55 @@ namespace Nethermind.AccountAbstraction.Test
         }
         
         [Test]
+        public async Task Should_execute_well_formed_op_successfully_for_all_entry_points_at_the_same_time() {
+            var chain = await CreateChain();
+            (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
+
+            for (int i = 0; i < entryPointNum; i++)
+            {
+
+                byte[] countCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature,
+                    _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
+                byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature,
+                    _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature,
+                    counterAddress[i]!, 0, countCallData);
+
+                UserOperation op = Build.A.UserOperation
+                    .WithSender(walletAddress[i]!)
+                    .WithCallData(execCounterCountFromEntryPoint)
+                    .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[i], chain.SpecProvider.ChainId)
+                    .TestObject;
+
+                /*
+                Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
+                    .WithTo(walletAddress[i]!)
+                    .WithGasLimit(1_000_000)
+                    .WithGasPrice(2)
+                    .WithValue(1.Ether())
+                    .WithNonce((UInt256)(i))
+                    .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+                await chain.AddBlock(true, fundTransaction);
+                */
+
+                UInt256 countBefore = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
+                countBefore.Should().Be(0);
+                
+                chain.SendUserOperation(entryPointAddress[i], op);
+            }
+            
+            
+            await chain.AddBlock(true);
+
+            for (int i = 0; i < entryPointNum; i++)
+            {
+                UInt256 countAfter = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
+                countAfter.Should().Be(1);
+            }
+            
+            Console.WriteLine("2");
+        }
+        
+        [Test]
         public async Task Should_succeed_at_creating_account_after_prefund()
         {
             var chain = await CreateChain();

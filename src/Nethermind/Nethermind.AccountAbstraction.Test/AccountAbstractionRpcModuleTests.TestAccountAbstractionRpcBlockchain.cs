@@ -124,7 +124,7 @@ namespace Nethermind.AccountAbstraction.Test
                     miningConfig,
                     LogManager);
                 
-                UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, LogManager.GetClassLogger());
+                UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, State, LogManager.GetClassLogger());
 
                 Eth2TestBlockProducerFactory producerFactory = new Eth2TestBlockProducerFactory(GasLimitCalculator, UserOperationTxSource);
                 Eth2BlockProducer blockProducer = producerFactory.Create(

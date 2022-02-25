@@ -202,6 +202,7 @@ namespace Nethermind.AccountAbstraction
                         _Pools,
                         _Simulators,
                         _nethermindApi.SpecProvider!,
+                        _nethermindApi.StateProvider!,
                         _logger
                     );
                 }
