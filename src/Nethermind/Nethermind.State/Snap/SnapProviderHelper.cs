@@ -15,6 +15,8 @@ namespace Nethermind.State.Snap
 {
     internal static class SnapProviderHelper
     {
+        private static object _syncCommit = new();
+
         private static int _accCommitInProgress = 0;
         private static int _slotCommitInProgress = 0;
 
@@ -57,7 +59,12 @@ namespace Nethermind.State.Snap
                 try
                 {
                     Interlocked.Exchange(ref _accCommitInProgress, 1);
-                    tree.Commit(blockNumber);
+
+                    lock (_syncCommit)
+                    {
+                        tree.Commit(blockNumber);
+                    }
+
                     Interlocked.Exchange(ref _accCommitInProgress, 0);
                 }
                 catch (Exception ex)
@@ -96,7 +103,12 @@ namespace Nethermind.State.Snap
                 try
                 {
                     Interlocked.Exchange(ref _slotCommitInProgress, 1);
-                    tree.Commit(blockNumber);
+
+                    lock (_syncCommit)
+                    {
+                        tree.Commit(blockNumber);
+                    }
+
                     Interlocked.Exchange(ref _slotCommitInProgress, 0);
                 }
                 catch (Exception ex)
