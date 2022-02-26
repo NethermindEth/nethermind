@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,6 +15,9 @@ namespace Nethermind.State.Snap
 {
     internal static class SnapProviderHelper
     {
+        private static int _accCommitInProgress = 0;
+        private static int _slotCommitInProgress = 0;
+
         public static (Keccak? rootHash, bool moreChildrenToRight, IList<PathWithAccount> storageRoots) AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
@@ -50,7 +54,17 @@ namespace Nethermind.State.Snap
                     return (Keccak.EmptyTreeHash, true, null);
                 }
 
-                tree.Commit(blockNumber);
+                try
+                {
+                    Interlocked.Exchange(ref _accCommitInProgress, 1);
+                    tree.Commit(blockNumber);
+                    Interlocked.Exchange(ref _accCommitInProgress, 0);
+                }
+                catch (Exception ex)
+                {
+
+                    throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
+                }
             }
 
             return (tree.RootHash, moreChildrenToRight, accountsWithStorage);
@@ -79,7 +93,16 @@ namespace Nethermind.State.Snap
                     return (Keccak.EmptyTreeHash, true); ;
                 }
 
-                tree.Commit(blockNumber);
+                try
+                {
+                    Interlocked.Exchange(ref _slotCommitInProgress, 1);
+                    tree.Commit(blockNumber);
+                    Interlocked.Exchange(ref _slotCommitInProgress, 0);
+                }
+                catch (Exception ex)
+                {
+                    throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
+                }
             }
 
             return (tree.RootHash, moreChildrenToRight);
