@@ -33,6 +33,7 @@ namespace Nethermind.JsonRpc
             Port = port;
             RpcEndpoint = rpcEndpoint;
             EnabledModules = enabledModules;
+            IsAuthenticated = enabledModules.Contains("Auth") || enabledModules.Contains("auth");
         }
 
         public static JsonRpcUrl Parse(string packedUrlValue)
@@ -73,6 +74,7 @@ namespace Nethermind.JsonRpc
             return new JsonRpcUrl(uri.Scheme, uri.Host, uri.Port, endpoint, enabledModules);
         }
 
+        public bool IsAuthenticated { get; }
         public string Scheme { get; set; }
         public string Host { get; set; }
         public int Port { get; set; }
