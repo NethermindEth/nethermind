@@ -49,8 +49,9 @@ namespace Nethermind.JsonRpc.Authentication
             LoadSecret();
         }
 
-        public bool Authenticate(string token)
+        public bool Authenticate(string? token)
         {
+            if (token == null) return false;
             if (Secret == null) return false;
             if (!token.StartsWith(JWT_MESSAGE_PREFIX)) return false;
             token = token.Remove(0, JWT_MESSAGE_PREFIX.Length);

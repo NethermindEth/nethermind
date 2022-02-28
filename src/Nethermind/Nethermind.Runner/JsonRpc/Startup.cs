@@ -148,20 +148,16 @@ namespace Nethermind.Runner.JsonRpc
                 {
                     await ctx.Response.WriteAsync("Nethermind JSON RPC");
                 }
-
-                IRpcAuthentication auth = new JwtAuthentication(jsonRpcConfig, new ClockImpl());
+                
+                IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication ? NoAuthentication.Instance : new JwtAuthentication(jsonRpcConfig, new ClockImpl());
                 if (!auth.Authenticate(ctx.Request.Headers["Authorization"]))
                 {
-                    // ctx.Response.ContentType = "application/json";
-                    // ctx.Response.StatusCode = StatusCodes.Status200OK;
-                    // ctx.Response.ContentLength = 0;
-                    // await ctx.Response.Body.WriteAsync(Encoding.ASCII.GetBytes("Error"), 0, 5);
-                    logger.Error("Error auth");
+                    var response = jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Authentication error");
+                    ctx.Response.ContentType = "application/json";
+                    ctx.Response.StatusCode = StatusCodes.Status200OK;
+                    jsonSerializer.Serialize(ctx.Response.Body, response);
+                    await ctx.Response.CompleteAsync();
                     return;
-                }
-                else
-                {
-                    logger.Error("Authenticated !!!!");
                 }
                 if (ctx.Request.Method == "POST" &&
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
