@@ -296,7 +296,7 @@ namespace Nethermind.Consensus.Producers
                 GetExtraData())
             {
                 Author = blockAuthor,
-                MixHash = payloadAttributes?.Random
+                MixHash = payloadAttributes?.PrevRandao
             };
             
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
