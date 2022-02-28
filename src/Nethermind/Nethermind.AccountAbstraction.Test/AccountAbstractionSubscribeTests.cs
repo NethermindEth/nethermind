@@ -36,13 +36,13 @@ namespace Nethermind.AccountAbstraction.Test;
 [TestFixture]
 public class AccountAbstractionSubscribeTests
 {
-    private ILogManager _logManager;
-    private IUserOperationPool _userOperationPool;
-    private IJsonRpcDuplexClient _jsonRpcDuplexClient;
-    private IJsonSerializer _jsonSerializer;
+    private ILogManager _logManager = null!;
+    private IUserOperationPool _userOperationPool = null!;
+    private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
+    private IJsonSerializer _jsonSerializer = null!;
     
-    private ISubscriptionManager _subscriptionManager;
-    private ISubscribeRpcModule _subscribeRpcModule;
+    private ISubscriptionManager _subscriptionManager = null!;
+    private ISubscribeRpcModule _subscribeRpcModule = null!;
     
     [SetUp]
     public void Setup()
@@ -91,28 +91,19 @@ public class AccountAbstractionSubscribeTests
         var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
         expectedResult.Should().Be(serialized);
     }
-    
+
     [Test]
     public void NewPendingUserOperationsSubscription_on_NewPending_event()
     {
         UserOperation userOperation = Build.A.UserOperation.TestObject;
         UserOperationEventArgs userOperationEventArgs = new(userOperation);
-        
+
         JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out var subscriptionId);
-        
+
         jsonRpcResult.Response.Should().NotBeNull();
         string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-        var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":\"", userOperation.Hash, "\"}}");
-        expectedResult.Should().Be(serialized);
-    }
+        var expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"sender\":\"0x0000000000000000000000000000000000000000\",\"nonce\":\"0x0\",\"callData\":\"0x\",\"initCode\":\"0x\",\"callGas\":\"0xf4240\",\"verificationGas\":\"0xf4240\",\"preVerificationGas\":\"0x33450\",\"maxFeePerGas\":\"0x1\",\"maxPriorityFeePerGas\":\"0x1\",\"paymaster\":\"0x0000000000000000000000000000000000000000\",\"signature\":\"0x\",\"paymasterData\":\"0x\"}}}";
 
-    [Test]
-    public void NewPendingUserOperationsSubscription_on_NewPending_event_with_null_user_operation()
-    {
-        UserOperationEventArgs userOperationEventArgs = new(null);
-        
-        JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out _);
-        
-        jsonRpcResult.Response.Should().BeNull();
+        expectedResult.Should().Be(serialized);
     }
 }
