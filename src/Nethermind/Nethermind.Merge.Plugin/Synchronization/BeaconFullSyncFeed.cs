@@ -21,6 +21,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization.ParallelSync;
@@ -36,7 +37,8 @@ public class BeaconFullSyncFeed : ActivatedSyncFeed<BlockHeader?>
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockProcessingQueue _blockProcessingQueue;
     private readonly ILogger _logger;
-
+    
+    private Keccak lastProcessedHead;
     public BeaconFullSyncFeed(
         ISyncModeSelector syncModeSelector,
         IBlockCacheService blockCacheService,
@@ -54,24 +56,10 @@ public class BeaconFullSyncFeed : ActivatedSyncFeed<BlockHeader?>
         _blockProcessingQueue = blockProcessingQueue;
         _logger = logManager.GetClassLogger();
     }
-
-    public override void InitializeFeed()
-    {
-        // BlockHeader? blockHeader = _blockCacheService.Peek();
-        // long header = _syncProgressResolver.FindBestHeader();
-        // while (blockHeader != null && header >= blockHeader.Number)
-        // {
-        //     blockHeader = _blockCacheService.DequeueBlockHeader();
-        // }
-    }
-
+    
     public override Task<BlockHeader?> PrepareRequest()
     {
-        // if (_blockCacheService.IsEmpty)
-        // {
-        //     Finish();
-        // }
-        return Task.FromResult(_blockCacheService.DequeueBlockHeader());
+        return Task.FromResult(_blockCacheService.ProcessDestination);
     }
 
     public override SyncResponseHandlingResult HandleResponse(BlockHeader? response)
@@ -80,12 +68,8 @@ public class BeaconFullSyncFeed : ActivatedSyncFeed<BlockHeader?>
         {
             return SyncResponseHandlingResult.Emptish;
         }
-          
-        if (_blockTree.BestSuggestedHeader?.Number >= response.Number)
-        {
-            return SyncResponseHandlingResult.OK;
-        }
-        
+
+        BlockHeader parentHeader = _blockTree.FindHeader(response.ParentHash);
         Block? block = _blockTree.FindBlock(response.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         if (block == null)
         {
@@ -95,23 +79,23 @@ public class BeaconFullSyncFeed : ActivatedSyncFeed<BlockHeader?>
             return SyncResponseHandlingResult.InternalError;
         }
         
-        BlockHeader parentHeader = _blockTree.FindHeader(response.ParentHash);
-        block.Header.TotalDifficulty = parentHeader?.TotalDifficulty + block.Difficulty;
-        if (!_blockValidator.ValidateSuggestedBlock(block))
+        if (parentHeader == null || parentHeader.TotalDifficulty == 0)
         {
-            if (_logger.IsWarn)
-                _logger.Warn(
-                    $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
-            return SyncResponseHandlingResult.InternalError;
+            _blockTree.BackFillTotalDifficulty(_blockCacheService.Peek()?.Number ?? 0, parentHeader.Number);
+            _blockTree.SuggestBlock(block, false);
+            return SyncResponseHandlingResult.OK;
         }
 
-        _blockTree.SuggestBlock(block, false);
-        
-        long state = _syncProgressResolver.FindBestFullState();
-        bool shouldProcess = response.Number > state && state != 0;
-        if (shouldProcess)
+        if (lastProcessedHead != response.Hash)
         {
-            _blockProcessingQueue.Enqueue(block, ProcessingOptions.None);
+            long state = _syncProgressResolver.FindBestFullState();
+            bool shouldProcess = response.Number > state && state != 0;
+            if (shouldProcess)
+            {
+                block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
+                _blockProcessingQueue.Enqueue(block, ProcessingOptions.None);
+                lastProcessedHead = response.Hash;
+            }   
         }
 
         return SyncResponseHandlingResult.OK;

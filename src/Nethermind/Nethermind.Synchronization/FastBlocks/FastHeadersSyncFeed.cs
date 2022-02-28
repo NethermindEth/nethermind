@@ -46,7 +46,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncPeerPool _syncPeerPool;
         protected readonly ISyncReport _syncReport;
         protected readonly IBlockTree _blockTree;
-        private readonly ISyncConfig _syncConfig;
+        protected readonly ISyncConfig _syncConfig;
 
         private readonly object _dummyObject = new();
         private readonly object _handlerLock = new();

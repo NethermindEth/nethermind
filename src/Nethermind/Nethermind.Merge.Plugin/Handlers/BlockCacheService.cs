@@ -30,7 +30,8 @@ public class BlockCacheService : IBlockCacheService
 
     public bool IsEmpty => _blockHeadersQueue.IsEmpty;
     public BlockHeader? ProcessDestination { get; private set; }
-    
+    public Keccak? SyncingHead { get; private set; }
+
     public bool Contains(Keccak blockHash)
     {
         return _blockHeadersCache.ContainsKey(blockHash);

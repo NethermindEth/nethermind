@@ -548,14 +548,8 @@ namespace Nethermind.Blockchain
 
             if (saveHeader)
             {
-                BlockHeader header = block.Header!;
-                Rlp newHeaderRlp = _headerDecoder.Encode(header);
-                _headerDb.Set(header.Hash!, newHeaderRlp.Bytes);
-
-                BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-                ChainLevelInfo chainLevel = new(true, blockInfo);
-                _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
-                _bloomStorage.Store(header.Number, header.Bloom!);
+                // TODO: beaconsync parameterize blocktree insert options
+                Insert(block.Header, BlockTreeInsertOptions.TotalDifficultyNotNeeded);
             }
 
             return AddBlockResult.Added;
@@ -1586,11 +1580,12 @@ namespace Nethermind.Blockchain
         public void BackFillTotalDifficulty(long startNumber, long endNumber, UInt256? startingTotalDifficulty = null)
         {
             long batchSize = 3000;
-            long currentNum = startNumber + batchSize;
+            long currentNum = Math.Min(endNumber, startNumber + batchSize);
 
             // TODO: beaconsync duplicate code
             BlockHeader GetParentHeader(BlockHeader current) =>
                 this.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
+                ?? FindBlock(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header
                 ?? throw new InvalidOperationException($"An orphaned block on the chain {current}");
             
             void BatchSetTotalDifficulty(BlockHeader current)
@@ -1606,11 +1601,7 @@ namespace Nethermind.Blockchain
                     else
                     {
                         (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
-                        if (blockInfo is null || level is null)
-                        {
-                            throw new InvalidOperationException($"Missing parent level for block ${current}");
-                        }
-                        if (blockInfo.TotalDifficulty == 0)
+                        if (blockInfo is null || level is null || blockInfo.TotalDifficulty == 0)
                         {
                             stack.Push(new ValueTuple<BlockHeader, ChainLevelInfo, BlockInfo>(current, level, blockInfo));
                             if (_logger.IsTrace) _logger.Trace($"Calculating total difficulty for {current.ToString(BlockHeader.Format.Short)}");
@@ -1627,7 +1618,16 @@ namespace Nethermind.Blockchain
                 while (stack.TryPop(out (BlockHeader child, ChainLevelInfo level, BlockInfo blockInfo) item))
                 {
                     item.child.TotalDifficulty = current.TotalDifficulty + item.child.Difficulty;
-                    item.blockInfo.TotalDifficulty = item.child.TotalDifficulty.Value;
+                    if (item.level == null)
+                    {
+                        item.blockInfo = new (item.child.Hash, item.child.TotalDifficulty.Value);
+                        item.level = new(false, item.blockInfo);
+                    }
+                    else
+                    {
+                        item.blockInfo.TotalDifficulty = item.child.TotalDifficulty.Value;
+                    }
+
                     _chainLevelInfoRepository.PersistLevel(item.child.Number, item.level, batch);
                     current = item.child;
                 }
@@ -1643,7 +1643,9 @@ namespace Nethermind.Blockchain
                         if (levelForBatch.BlockInfos[i].TotalDifficulty == 0)
                         {
                             BlockHeader? header = FindHeader(levelForBatch.BlockInfos[i].BlockHash,
-                                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                                                      BlockTreeLookupOptions.TotalDifficultyNotNeeded) ??
+                                                  FindBlock(levelForBatch.BlockInfos[i].BlockHash,
+                                                      BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header;
                             if (header != null)
                             {
                                 BatchSetTotalDifficulty(header);

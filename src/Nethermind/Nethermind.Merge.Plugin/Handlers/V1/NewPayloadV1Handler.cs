@@ -107,7 +107,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 
                 if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
                 {
-                    _blockTree.Insert(block);
+                    _blockTree.Insert(block, true);
                     _blockCacheService.EnqueueBlockHeader(block.Header);
                     return NewPayloadV1Result.Syncing;
                 }
@@ -116,6 +116,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
+                // TODO: beaconsync validation
                 _blockTree.Insert(block);
                 _blockCacheService.EnqueueBlockHeader(block.Header);
                 return NewPayloadV1Result.Accepted;
@@ -126,8 +127,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 bool wasProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash ?? parentHeader.CalculateHash());
                 if (!wasProcessed)
                 {
-                    _blockTree.Insert(block);
-                    _blockCacheService.EnqueueBlockHeader(block.Header);
+                    // if (_beaconPivot.BeaconPivotExists())
+                    // {
+                    //     _blockTree.SuggestBlock(block, false);
+                    // }
+                    // else
+                    // {
+                        _blockTree.Insert(block, true);
+                        _blockCacheService.EnqueueBlockHeader(block.Header);
+                    // }
                     return NewPayloadV1Result.Syncing;
                 }
                 synced = true;
@@ -195,6 +203,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _latestBlocks.Set(block.Hash!, validAndProcessed);
                 return (validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid, validationMessage);
             }
+        }
+
+        private bool ValidateAndInsert(Block block)
+        {
+            return false;
         }
 
         private bool ValidateAndProcess(Block block, BlockHeader parent, out Block? processedBlock)

@@ -35,7 +35,6 @@ public class BeaconHeadersSyncFeed : HeadersSyncFeed
 {
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
-    private readonly long _levelRequestSize = 20000;
     
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
     protected override long HeadersDestinationBlockNumber => _pivot.PivotDestinationNumber;
@@ -80,6 +79,7 @@ public class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override void PostFinishCleanUp()
     {
         base.PostFinishCleanUp();
+        // TODO: beaconsync additional checks on total difficulty
         if (_mergeConfig.FinalTotalDifficultyParsed == null)
         {
             // set total difficulty as beacon pivot does not provide total difficulty
