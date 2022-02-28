@@ -15,14 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.JsonRpc.Modules.Subscribe
+namespace Nethermind.AccountAbstraction.Subscribe
 {
     public enum SubscriptionType
     {
-        NewHeads,
-        Logs,
-        NewPendingTransactions,
-        DroppedPendingTransactions,
-        Syncing,
+        NewPendingUserOps,
+        NewReceivedUserOps
     }
 }

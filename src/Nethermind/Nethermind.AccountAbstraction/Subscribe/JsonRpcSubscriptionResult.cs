@@ -15,14 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.JsonRpc.Modules.Subscribe
+using Newtonsoft.Json;
+
+namespace Nethermind.AccountAbstraction.Subscribe
 {
-    public enum SubscriptionType
+    public class JsonRpcSubscriptionResult
     {
-        NewHeads,
-        Logs,
-        NewPendingTransactions,
-        DroppedPendingTransactions,
-        Syncing,
+        [JsonProperty(PropertyName = "result", Order = 1)]
+        public object Result { get; set; } = null!;
+
+        [JsonProperty(PropertyName = "subscription", Order = 0)]
+        public string Subscription { get; set; } = null!;
     }
 }

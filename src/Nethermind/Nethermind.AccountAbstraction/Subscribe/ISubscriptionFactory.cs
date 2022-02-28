@@ -15,14 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.JsonRpc.Modules.Subscribe
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Eth;
+
+namespace Nethermind.AccountAbstraction.Subscribe
 {
-    public enum SubscriptionType
+    public interface ISubscriptionFactory
     {
-        NewHeads,
-        Logs,
-        NewPendingTransactions,
-        DroppedPendingTransactions,
-        Syncing,
+        Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter);
     }
 }
