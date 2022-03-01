@@ -102,13 +102,13 @@ namespace Nethermind.Synchronization.FastSync
                     if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(10))
                     {
                         long allChecks = CheckWasInDependencies + CheckWasCached + StateWasThere + StateWasNotThere;
-                        if (logger.IsInfo) logger.Info($"OK {(decimal) OkCount / TotalRequestsCount:p2} | Emptish: {(decimal) EmptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal) BadQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal) InvalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal) NotAssignedCount / TotalRequestsCount:p2}");
+                        if (logger.IsDebug) logger.Debug($"OK {(decimal) OkCount / TotalRequestsCount:p2} | Emptish: {(decimal) EmptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal) BadQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal) InvalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal) NotAssignedCount / TotalRequestsCount:p2}");
                         if (RequestedNodesCount > 0)
                         {
                             decimal consumedRatio = (decimal) ConsumedNodesCount / RequestedNodesCount;
                             decimal saveRatio = (decimal) SavedNodesCount / RequestedNodesCount;
                             decimal dbCheckRatio = (decimal) DbChecks / RequestedNodesCount;
-                            if (logger.IsInfo) logger.Info(
+                            if (logger.IsDebug) logger.Debug(
                                 $"Consumed {consumedRatio:p2} | Saved {saveRatio:p2} | DB Reads : {dbCheckRatio:p2} | DB checks {StateWasThere}/{StateWasNotThere + StateWasThere} | Cached {(decimal) CheckWasCached / allChecks:P2} + {(decimal) CheckWasInDependencies / allChecks:P2}");
                         }
 
