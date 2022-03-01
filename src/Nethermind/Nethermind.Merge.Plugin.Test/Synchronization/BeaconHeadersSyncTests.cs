@@ -58,7 +58,7 @@ public class BeaconHeadersSyncTests
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree,
             Substitute.For<ISyncPeerPool>(), syncConfig, Substitute.For<ISyncReport>(),
-            pivot, LimboLogs.Instance);
+            pivot, new MergeConfig() {Enabled = true}, LimboLogs.Instance);
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -87,7 +87,7 @@ public class BeaconHeadersSyncTests
             PivotTotalDifficulty = "1000"
         };
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
-        BeaconHeadersSyncFeed feed = new (Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, LimboLogs.Instance);
+        BeaconHeadersSyncFeed feed = new (Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, new MergeConfig() {Enabled = true},  LimboLogs.Instance);
         await feed.PrepareRequest();
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1001).TestObject);
         HeadersSyncBatch? result = await feed.PrepareRequest();
