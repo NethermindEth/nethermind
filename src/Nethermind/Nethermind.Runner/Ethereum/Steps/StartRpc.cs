@@ -58,9 +58,6 @@ namespace Nethermind.Runner.Ethereum.Steps
                 JsonRpcService jsonRpcService = new(_api.RpcModuleProvider!, _api.LogManager);
 
                 IJsonSerializer jsonSerializer = CreateJsonSerializer(jsonRpcService);
-                _api.RpcAuthentication = jsonRpcConfig.UnsecureDevNoRpcAuthentication
-                    ? No.Authentication
-                    : new JwtAuthentication(jsonRpcConfig, new ClockImpl());
 
                 JsonRpcProcessor jsonRpcProcessor = new(
                     jsonRpcService,

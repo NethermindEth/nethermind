@@ -53,7 +53,6 @@ namespace Nethermind.Api
         IList<IPublisher> Publishers { get; }
         IRlpxHost? RlpxPeer { get; set; }
         IRpcModuleProvider? RpcModuleProvider { get; set; }
-        IRpcAuthentication? RpcAuthentication  { get; set; }
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; set; }

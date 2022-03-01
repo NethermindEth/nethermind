@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net.WebSockets;
+using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Sockets
@@ -22,7 +23,7 @@ namespace Nethermind.Sockets
     public interface IWebSocketsModule
     {
         string Name { get; }
-        ISocketsClient CreateClient(WebSocket webSocket, string client, int port);
+        ISocketsClient CreateClient(WebSocket webSocket, string client, int port, bool authenticated = false);
         void RemoveClient(string clientId);
         Task SendAsync(SocketsMessage message);
     }

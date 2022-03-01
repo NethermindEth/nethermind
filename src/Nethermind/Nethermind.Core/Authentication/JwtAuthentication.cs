@@ -28,25 +28,24 @@ namespace Nethermind.JsonRpc.Authentication
     public class JwtAuthentication : IRpcAuthentication
     {
         private IClock _clock;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
         public byte[]? Secret { private get; set; }
         private readonly IJwtDecoder _decoder;
 
         private const string JWT_MESSAGE_PREFIX = "Bearer ";
+        private const int JWT_TOKEN_TTL = 5;
         
         public JwtAuthentication(
-            IJsonRpcConfig jsonRpcConfig,
+            string hexSecret,
             IClock clock)
         {
             _clock = clock;
-            _jsonRpcConfig = jsonRpcConfig;
             IJsonSerializer serializer = new JsonNetSerializer(); // ToDo Niktia we should use our implementation of serializer
             IDateTimeProvider provider = new DateTimeProviderWrapper(_clock);
-            IJwtValidator validator = new JwtValidator(serializer, provider, 5);
+            IJwtValidator validator = new JwtValidator(serializer, provider, 0);
             IBase64UrlEncoder urlEncoder = new JwtBase64UrlEncoder();
             IJwtAlgorithm algorithm = new HMACSHA256Algorithm(); // ToDo Nikita what about IAT claims?
             _decoder = new JwtDecoder(serializer, validator, urlEncoder, algorithm);
-            LoadSecret();
+            LoadSecret(hexSecret);
         }
 
         public bool Authenticate(string? token)
@@ -60,7 +59,7 @@ namespace Nethermind.JsonRpc.Authentication
                 var decoded = _decoder.DecodeToObject<Dictionary<string, object>>(token, Secret, true);
                 long iat = (long)decoded["iat"];
                 long cur = _clock.GetCurrentTime();
-                return Math.Abs(iat - cur) <= 5;
+                return Math.Abs(iat - cur) <= JWT_TOKEN_TTL;
             }
             catch (Exception e)
             {
@@ -68,10 +67,8 @@ namespace Nethermind.JsonRpc.Authentication
             }
         }
 
-        private void LoadSecret()
+        private void LoadSecret(string hex)
         {
-            string hex = _jsonRpcConfig.Secret;
-
             Secret = Enumerable.Range(0, hex.Length)
                 .Where(x => x % 2 == 0)
                 .Select(x => Convert.ToByte(hex.Substring(x, 2), 16))
