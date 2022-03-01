@@ -20,6 +20,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
+using NSubstitute;
 using NUnit.Framework;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 
@@ -28,123 +29,30 @@ namespace Nethermind.Merge.Plugin.Test;
 public class JwtTest
 {
     [Test]
-    public void valid_token()
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.3MaCM_vL7Dl50v0FMEJeVWwYckxifqxGtA2dlZA9YHQ", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzV9.QRtFFE5NnbK_mMu-3qtPGPiAgTRCvb-Z1Ti_uwBjgDk", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5Njd9.lJP7Nw_Lio-gP78ZW-Uv3PVdLbuaIMVgU9uvLw1V1BY", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NDQ5OTQ5NzMsImlhdCI6MTY0NDk5NDk3MX0.1RVPaAjpjQWFqm33C87zdUThUbob96C5SHBVn_LDLDc", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJiYXIiOiJiYXoiLCJpYXQiOjE2NDQ5OTQ5NzF9.EU7c1vsCWHU9fCV888yf1IwJR7uczhk5pKCB6CAd_NI", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5Nzd9.r_MM-6TLGUtsf_EalbJKxgO-Vw6LOkTEqKjcEBSCRHw", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NjV9.sWMMjsne2hK0S20OL3lP_qVvnGIGvBc5fa7sUvJUiqM", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzV9.Av2ZI-xeXA8-VuSoYxCsnn0cCg_4St2zOSgFKbvsS1ObTZKLeltSV4CcTcraukYL_HNun3rI4iDjDxs6EJgbCA", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NDQ5OTQ5NzEsImlhdCI6MTY0NDk5NDk3MX0.Nc6fT-W8bknDUqnjEwHKLreTguYgzMBlbsPAMO2OOHM", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.t-IDcSemACt8x4iTMCda8Yhe3iZaWbvV5XKSTbuAn0M", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.tICF9zHKdMOwccLLA2LGqbA_P1X8WHD-KMe5R4GpgkE", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.JxoxCpDIzhNLqBCvSWJjddHQ87SynxgwTjJP0-PapA4", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.JxoxCpDIzhNLqBCvSWJjddHQ87SynxgwTjJP0-PapA4", "false")]
+    public void geth_tests(string token, bool expected)
     {
-        JwtAuthentication authentication = CreateRpcAuthentication("123");
-        string token =
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
-            "eyJqc29ucnBjIjoiMi4wIiwibWV0aG9kIjoiZW5naW5lX2dldFBheWxvYWRWMSIsInBhcmFtcyI6WyIweGEyNDcyNDM3NTJlYjEwYjQiXSwiaWQiOjY3fQ." +
-            "zdrxSPA1ZoeGb5_FXkd_rh62qeIMeb5i-HEliwhu3uw";
-        string? actual = authentication.AuthenticateAndDecode(token)!;
-        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"method\":\"engine_getPayloadV1\",\"params\":[\"0xa247243752eb10b4\"],\"id\":67}", actual);
+        var mock = Substitute.For<IClock>();
+        mock.GetCurrentTime().Returns(1644994971);
+        JwtAuthentication authentication = CreateRpcAuthentication("736563726574", mock);
+        bool actual = authentication.Authenticate(token);
+        Assert.AreEqual(expected, actual);
     }
     
-    [Test]
-    public void wrong_secret()
+    private JwtAuthentication CreateRpcAuthentication(string secret, IClock mock)
     {
-        JwtAuthentication authentication = CreateRpcAuthentication("12");
-        string token =
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
-            "eyJmaWVsZDEiOiJkYXRhMSIsImFycmF5IjpbImVsZW0xIiwiZWxlbTIiLG51bGxdfQ." +
-            "jzcbA6dAXbOU__NT7rrBwyGcBzTunxTKmQXzN4yU-2Y";
-        string? actual = authentication.AuthenticateAndDecode(token);
-        Assert.AreEqual(null, actual);
-    }
-    
-    [Test]
-    public void wrong_algorithm_in_token_header()
-    {
-        JwtAuthentication authentication = CreateRpcAuthentication("123");
-        string token =
-            "eyJhbGciOiJIUzM4NCIsInR5cCI6IkpXVCJ9." +
-            "eyJmaWVsZDEiOiJkYXRhMSIsImFycmF5IjpbImVsZW0xIiwiZWxlbTIiLG51bGxdfQ." +
-            "H6n9LMKu8VJ06n4pxMK-Kes2nXl8L_2AjJT-VVBwDhxcRHer7UU5hlXAUPawxVYe";
-        string? actual = authentication.AuthenticateAndDecode(token);
-        Assert.AreEqual(null, actual);
-    }
-
-    [Test]
-    public void empty_json()
-    {
-        JwtAuthentication authentication = CreateRpcAuthentication("1234");
-        string token =
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkoyV1QifQ." +
-            "e30." +
-            "02YnbaptBoWN-QbWUkp4aCdsNvwUk2__NqrRWzh97To";
-        string? actual = authentication.AuthenticateAndDecode(token)!;
-        Assert.AreEqual("{}", actual);
-    }
-
-    [Test]
-    [TestCase("eyJhbGciOiJIUzI1NiIsInR5cCI6IkoyV1QifQ.02YnbaptBoWN-QbWUkp4aCdsNvwUk2__NqrRWzh97To")]
-    [TestCase("")]
-    public async Task incorrect_token_structure(string token)
-    {
-        JwtAuthentication authentication = CreateRpcAuthentication("1234");
-        string? actual = authentication.AuthenticateAndDecode(token);
-        Assert.AreEqual(null, actual);
-    }
-
-    [Test]
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task method_have_to_be_authenticated(bool authenticated)
-    {
-        var api = Build.ContextWithMocks();
-        RpcModuleProvider rpcProvider = new(api.FileSystem, new JsonRpcConfig(), api.LogManager);
-        TestRpcModule testModule = new ();
-        rpcProvider.Register(new SingletonModulePool<ITestRpcModule>(testModule));
-        JsonRpcUrl url = new("http", "localhost", 8550, RpcEndpoint.Http, new string[] { });
-        JsonRpcContext context = new (RpcEndpoint.Http, url: url, authenticated: authenticated);
-        ModuleResolution expected = authenticated ? ModuleResolution.Disabled : ModuleResolution.NotAuthenticated;
-        Assert.AreEqual(expected, rpcProvider.Check("method_authenticated", context));
-    }
-
-    [Test]
-    [TestCase(true)]
-    [TestCase(false)]
-    public void method_have_not_to_be_authenticated(bool authenticated)
-    {
-        var api = Build.ContextWithMocks();
-        RpcModuleProvider rpcProvider = new(api.FileSystem, new JsonRpcConfig(), api.LogManager);
-        TestRpcModule testModule = new ();
-        rpcProvider.Register(new SingletonModulePool<ITestRpcModule>(testModule));
-        JsonRpcUrl url = new("http", "localhost", 8550, RpcEndpoint.Http, new string[] { });
-        JsonRpcContext context = new (RpcEndpoint.Http, url: url, authenticated: authenticated);
-        ModuleResolution expected = ModuleResolution.Disabled;
-        Assert.AreEqual(expected, rpcProvider.Check("method_notAuthenticated", context));
-    }
-
-    private JwtAuthentication CreateRpcAuthentication(string secret)
-    {
-        return new JwtAuthentication(new JsonRpcConfig() { Secret = secret });
-    }
-
-    [RpcModule("Test")]
-    private interface ITestRpcModule : IRpcModule
-    {
-        [JsonRpcMethod(
-            IsSharable = true,
-            IsImplemented = true,
-            Authenticate = true)]
-        ResultWrapper<ExecutionStatusResult> method_authenticated();
-
-        [JsonRpcMethod(
-            IsSharable = true,
-            IsImplemented = true,
-            Authenticate = false)]
-        ResultWrapper<ExecutionStatusResult> method_notAuthenticated();
-    }
-
-    private class TestRpcModule : ITestRpcModule
-    {
-        public ResultWrapper<ExecutionStatusResult> method_authenticated()
-        {
-            return ResultWrapper<ExecutionStatusResult>.Fail("");
-        }
-        public ResultWrapper<ExecutionStatusResult> method_notAuthenticated()
-        {
-            return ResultWrapper<ExecutionStatusResult>.Fail("");
-        }
+        return new JwtAuthentication(new JsonRpcConfig() { Secret = secret }, mock);
     }
 }

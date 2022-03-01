@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,18 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.JsonRpc.Authentication;
+using System;
 
-public interface IRpcAuthentication
+namespace Nethermind.JsonRpc;
+
+public interface IClock
 {
-    bool Authenticate(string token);
+    long GetCurrentTime();
 }
 
-public class NoAuthentication : IRpcAuthentication
+public class ClockImpl : IClock
 {
-    private NoAuthentication() {}
-
-    public static NoAuthentication Instance = new();
-    
-    public bool Authenticate(string _) => true;
+    public long GetCurrentTime()
+    {
+        return DateTimeOffset.Now.ToUnixTimeSeconds();
+    }
 }
