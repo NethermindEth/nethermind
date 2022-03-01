@@ -111,13 +111,22 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _blockCacheService.EnqueueBlockHeader(block.Header);
                     return NewPayloadV1Result.Syncing;
                 }
+                
+                // at this point beacon headers sync has been activated before and is completed
+                // we start suggesting blocks to update the best suggested body and header to trigger state sync
+                // after state sync we can start processing blocks
+                // TODO: beaconsync additional checks still needed to make sure the total difficulty backfill is finished
+                if (_beaconPivot.BeaconPivotExists())
+                {
+                    _blockTree.SuggestBlock(block, false);
+                }
             }
 
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
                 // TODO: beaconsync validation
-                _blockTree.Insert(block);
+                _blockTree.Insert(block, true);
                 _blockCacheService.EnqueueBlockHeader(block.Header);
                 return NewPayloadV1Result.Accepted;
             }
@@ -127,15 +136,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 bool wasProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash ?? parentHeader.CalculateHash());
                 if (!wasProcessed)
                 {
-                    // if (_beaconPivot.BeaconPivotExists())
-                    // {
-                    //     _blockTree.SuggestBlock(block, false);
-                    // }
-                    // else
-                    // {
-                        _blockTree.Insert(block, true);
-                        _blockCacheService.EnqueueBlockHeader(block.Header);
-                    // }
+                    _blockTree.Insert(block, true);
+                    _blockCacheService.EnqueueBlockHeader(block.Header);
+
                     return NewPayloadV1Result.Syncing;
                 }
                 synced = true;
@@ -225,6 +228,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return false;
             }
+            
+            var addResult = _blockTree.SuggestBlock(block, false, false);
+            _logger.Info($"{processedBlock} add result {addResult}");
             
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             if (processedBlock == null)
