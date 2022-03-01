@@ -40,16 +40,16 @@ namespace Nethermind.TxPool
             Peer.SendNewTransaction(tx);
         }
 
-        public void SendNewTransactions(IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
         {
-            Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs));
+            Peer.SendNewTransactions(GetTxsToSendAndMarkAsNotified(txs, sendFullTx), sendFullTx);
         }
-        
-        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
+
+        private IEnumerable<Transaction> GetTxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs, bool sendFullTx)
         {
-            foreach ((Transaction tx, bool isPersistent) in txs)
+            foreach (Transaction tx in txs)
             {
-                if (isPersistent || NotifiedTransactions.Set(tx.Hash))
+                if (sendFullTx || NotifiedTransactions.Set(tx.Hash))
                 {
                     yield return tx;
                 }
