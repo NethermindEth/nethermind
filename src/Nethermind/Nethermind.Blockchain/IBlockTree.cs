@@ -185,8 +185,8 @@ namespace Nethermind.Blockchain
                                  ((Head?.Hash ?? Keccak.Zero).CompareTo(header.Hash) > 0))
                              || (header.TotalDifficulty == Head?.TotalDifficulty &&
                                  ((Head?.Number ?? 0L).CompareTo(header.Number) > 0))
-                             || (header.TotalDifficulty == Head?.TotalDifficulty); // TODO: post merge but even before it may be safe
-                    // || (header.TotalDifficulty == Head?.TotalDifficulty && header.IsPostMerge);
+                            // || (header.TotalDifficulty == Head?.TotalDifficulty); // TODO: post merge but even before it may be safe
+                             || (header.IsPostMerge);
                 }
             }
 
