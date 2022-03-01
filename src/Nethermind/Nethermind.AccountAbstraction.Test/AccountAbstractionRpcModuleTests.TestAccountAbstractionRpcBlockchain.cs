@@ -112,14 +112,13 @@ namespace Nethermind.AccountAbstraction.Test
                     miningConfig,
                     LogManager);
                 
-                Eth2BlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
+                PostMergeBlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
                     ITxSource? txSource = null)
                 {
-                    Eth2BlockProductionContext? blockProductionContext = new Eth2BlockProductionContext();
-                    blockProductionContext.Init(blockProducerEnvFactory, txSource);
-                    return new Eth2BlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
+                    var blockProducerEnv  = blockProducerEnvFactory.Create(txSource);
+                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
                         LogManager).Create(
-                        blockProductionContext, null, blockProductionTrigger);
+                        blockProducerEnv, blockProductionTrigger);
                 }
                 
                 UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, LogManager.GetClassLogger());
@@ -139,7 +138,7 @@ namespace Nethermind.AccountAbstraction.Test
             
             private ProcessingOptions GetProcessingOptions()
             {
-                ProcessingOptions options = ProcessingOptions.EthereumMerge;
+                ProcessingOptions options = ProcessingOptions.None;
                 options |= ProcessingOptions.StoreReceipts;
                 return options;
             }

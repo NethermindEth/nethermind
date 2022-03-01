@@ -556,7 +556,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 string stateString = BuildStateString(best);
                 string errorMessage = $"Invalid best state calculation: {stateString}";
                 if (_logger.IsError) _logger.Error(errorMessage);
-            //    throw new InvalidAsynchronousStateException(errorMessage);
+                throw new InvalidAsynchronousStateException(errorMessage);
             }
         }
 

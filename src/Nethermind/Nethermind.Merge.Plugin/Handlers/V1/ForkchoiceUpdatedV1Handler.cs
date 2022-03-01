@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockConfirmationManager _blockConfirmationManager;
-        private readonly IPayloadService _payloadService;
+        private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly ISynchronizer _synchronizer;
         private readonly ISyncConfig _syncConfig;
         private readonly ILogger _logger;
@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IPoSSwitcher poSSwitcher,
             IEthSyncingInfo ethSyncingInfo,
             IBlockConfirmationManager blockConfirmationManager,
-            IPayloadService payloadService,
+            IPayloadPreparationService payloadPreparationService,
             ISynchronizer synchronizer,
             ISyncConfig syncConfig,
             ILogManager logManager)
@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _blockConfirmationManager = blockConfirmationManager ??
                                         throw new ArgumentNullException(nameof(blockConfirmationManager));
-            _payloadService = payloadService;
+            _payloadPreparationService = payloadPreparationService;
             _synchronizer = synchronizer;
             _syncConfig = syncConfig;
             _logger = logManager.GetClassLogger();
@@ -148,7 +148,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             // In future safeBlockHash will be added to JSON-RPC
             _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
-            byte[]? payloadId = null;
+            string? payloadId = null;
 
             bool headUpdated = false;
             bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
@@ -170,10 +170,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (payloadAttributes != null)
             {
-                payloadId = await _payloadService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
+                payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
             }
 
-            return ForkchoiceUpdatedV1Result.Valid(payloadId?.ToHexString(true), forkchoiceState.HeadBlockHash);
+            return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
         }
 
         // This method will detect reorg in terminal PoW block

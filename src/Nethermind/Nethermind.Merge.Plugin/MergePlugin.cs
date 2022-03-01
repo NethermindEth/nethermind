@@ -24,6 +24,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -40,6 +41,7 @@ namespace Nethermind.Merge.Plugin
         private IMergeConfig _mergeConfig = null!;
         private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
+        private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
 
         public string Name => "Merge";
         public string Description => "Merge plugin for ETH1-ETH2";
@@ -57,29 +59,17 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
-                
+                if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
+
 
                 _poSSwitcher = new PoSSwitcher(_mergeConfig,
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
-
-                Address feeRecipient;
-                if (string.IsNullOrWhiteSpace(_mergeConfig.FeeRecipient))
-                {
-                    feeRecipient = Address.Zero;
-                    if (_logger.IsInfo) _logger.Info("FeeRecipient will be set based on PayloadAttributes.SuggestedFeeRecipient field from CL");
-                }
-                else
-                {
-                    feeRecipient = new Address(_mergeConfig.FeeRecipient);
-                    if (_logger.IsInfo) _logger.Info($"FeeRecipient: {feeRecipient}");
-                }
-
+                
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
                    _api.RewardCalculatorSource ?? NoBlockRewards.Instance,  _poSSwitcher);
-                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, feeRecipient, _api.LogManager);
-                _api.SealValidator = _api.SealEngine;
-                _api.Sealer = _api.SealEngine;
+                _api.SealValidator = new MergeSealValidator(_poSSwitcher, _api.SealValidator);
+
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockFinalizationManager);
                 
                 _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
@@ -95,14 +85,17 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
+                if (_api.BlockProductionPolicy == null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
+                if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 
-
-                _api.HeaderValidator = new PostMergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealEngine, _api.LogManager);
+                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
                 _api.HealthHintService =
                     new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
+                _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
+                _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
 
                 _api.FinalizationManager = new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
             }
@@ -110,7 +103,7 @@ namespace Nethermind.Merge.Plugin
             return Task.CompletedTask;
         }
 
-        public async Task InitRpcModules()
+        public Task InitRpcModules()
         {
             if (_mergeConfig.Enabled)
             {
@@ -123,12 +116,14 @@ namespace Nethermind.Merge.Plugin
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+                if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
+                if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
                 
                 ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
-                PayloadService payloadService = new (_idealBlockProductionContext, _api.Sealer, _mergeConfig, _api.LogManager);
+                PayloadPreparationService payloadPreparationService = new (_postMergeBlockProducer, _blockProductionTrigger, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
                 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
-                    new GetPayloadV1Handler(payloadService, _api.LogManager),
+                    new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
                     new NewPayloadV1Handler(
                         _api.BlockValidator,
                         _api.BlockTree,
@@ -145,7 +140,7 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher,
                         _api.EthSyncingInfo,
                         _api.BlockConfirmationManager,
-                        payloadService,
+                        payloadPreparationService,
                         _api.Synchronizer,
                         syncConfig, 
                         _api.LogManager),
@@ -158,6 +153,8 @@ namespace Nethermind.Merge.Plugin
                 _api.RpcModuleProvider.RegisterSingle(engineRpcModule);
                 if (_logger.IsInfo) _logger.Info("Consensus Module has been enabled");
             }
+
+            return Task.CompletedTask;
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

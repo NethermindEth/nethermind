@@ -26,7 +26,7 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class Eth2BlockProducerFactory
+    public class PostMergeBlockProducerFactory
     {
         private readonly ISpecProvider _specProvider;
         private readonly ISealEngine _sealEngine;
@@ -35,7 +35,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         private readonly ILogManager _logManager;
         private readonly IGasLimitCalculator? _gasLimitCalculator;
 
-        public Eth2BlockProducerFactory(
+        public PostMergeBlockProducerFactory(
             ISpecProvider specProvider,
             ISealEngine sealEngine,
             ITimestamper timestamper,
@@ -51,18 +51,17 @@ namespace Nethermind.Merge.Plugin.Handlers
             _gasLimitCalculator = gasLimitCalculator;
         }
 
-        public Eth2BlockProducer Create(
-            Eth2BlockProductionContext eth2BlockProductionContext,
-            ITxSource? txSource = null,
-            IBlockProductionTrigger blockProductionTrigger = null) // ToDo temp hack with passing block production trigger for MEV & ETH2 
+        public PostMergeBlockProducer Create(
+            BlockProducerEnv producerEnv,
+            IBlockProductionTrigger blockProductionTrigger,
+            ITxSource? txSource = null)
         {
-            BlockProducerEnv producerEnv = eth2BlockProductionContext.BlockProducerEnv;
                 
-            return new Eth2BlockProducer(
+            return new PostMergeBlockProducer(
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 producerEnv.BlockTree,
-                blockProductionTrigger ?? eth2BlockProductionContext.BlockProductionTrigger,
+                blockProductionTrigger,
                 producerEnv.ReadOnlyStateProvider,
                 _gasLimitCalculator ?? new TargetAdjustedGasLimitCalculator(_specProvider, _miningConfig),
                 _sealEngine,

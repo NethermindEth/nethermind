@@ -15,31 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Consensus.Producers;
 
-namespace Nethermind.Merge.Plugin
+namespace Nethermind.Merge.Plugin;
+
+public class MergeBlockProductionPolicy : IMergeBlockProductionPolicy
 {
-    public class TaskQueue
+    private readonly IBlockProductionPolicy _preMergeBlockProductionPolicy;
+
+    public MergeBlockProductionPolicy(IBlockProductionPolicy preMergeBlockProductionPolicy)
     {
-        private readonly SemaphoreSlim _semaphore;
-        public TaskQueue()
-        {
-            _semaphore = new SemaphoreSlim(1);
-        }
-        
-        public async Task Enqueue(Func<Task> taskGenerator)
-        {
-            await _semaphore.WaitAsync();
-            try
-            {
-                await taskGenerator();
-            }
-            finally
-            {
-                _semaphore.Release();
-            }
-        }
+        _preMergeBlockProductionPolicy = preMergeBlockProductionPolicy;
     }
+
+    public bool ShouldStartBlockProduction() => true;
+
+    public bool ShouldInitPreMergeBlockProduction() => _preMergeBlockProductionPolicy.ShouldStartBlockProduction();
+}
+
+public interface IMergeBlockProductionPolicy : IBlockProductionPolicy
+{
+    public bool ShouldInitPreMergeBlockProduction();
 }

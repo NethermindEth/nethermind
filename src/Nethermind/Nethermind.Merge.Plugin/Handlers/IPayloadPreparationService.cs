@@ -15,25 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Consensus;
+using System;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
-using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Core;
 
-namespace Nethermind.Merge.Plugin.Data
+namespace Nethermind.Merge.Plugin.Handlers
 {
-    public class Eth2BlockProductionContext
+    public interface IPayloadPreparationService
     {
-        public void Init(IBlockProducerEnvFactory blockProducerEnvFactory, ITxSource? additionalTxSource = null)
-        {
-            BlockProductionTrigger = new BuildBlocksWhenRequested();
-            BlockProducerEnv = blockProducerEnvFactory.Create(additionalTxSource);
-        }
-        
-        public IManualBlockProductionTrigger BlockProductionTrigger { get; set; }
-        
-        public BlockProducerEnv BlockProducerEnv { get; set; }
-        
-        public Eth2BlockProducer BlockProducer { get; set; }
+        string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
+
+        Block? GetPayload(byte[] payloadId);
+
+        event EventHandler<BlockEventArgs>? BlockImproved;
     }
 }
