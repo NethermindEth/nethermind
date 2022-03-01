@@ -20,6 +20,7 @@ using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.JsonRpc.Modules.Subscribe;
 
 namespace Nethermind.AccountAbstraction.Subscribe;
 public class NewPendingUserOpsSubscription : Subscription
@@ -51,7 +52,7 @@ public class NewPendingUserOpsSubscription : Subscription
         return $"NewPendingUserOps subscription {Id}: Failed Task.Run after NewPending event.";
     }
         
-    public override SubscriptionType Type => SubscriptionType.NewPendingUserOps;
+    public override string Type => "NewPendingUserOps";
 
     public override void Dispose()
     {

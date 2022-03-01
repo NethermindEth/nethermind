@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         }
 
         public string Id { get; }
-        public abstract SubscriptionType Type { get; }
+        public abstract string Type { get; }
         public IJsonRpcDuplexClient JsonRpcDuplexClient { get; }
         private Channel<Action> SendChannel { get; } = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions() { SingleReader = true });
 

@@ -28,7 +28,7 @@ using NUnit.Framework;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.AccountAbstraction.Subscribe;
-using ISubscribeRpcModule = Nethermind.JsonRpc.Modules.Subscribe.ISubscribeRpcModule;
+using Nethermind.JsonRpc.Modules.Subscribe;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -51,7 +51,7 @@ namespace Nethermind.AccountAbstraction.Test
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
             
-            SubscriptionFactory subscriptionFactory = new(
+            UserOpSubscriptionFactory subscriptionFactory = new(
                 _logManager,
                 _userOperationPool
                 );
@@ -88,7 +88,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void NewPendingUserOperationsSubscription_creating_result()
         {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOps");
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "NewHeads");
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }
@@ -111,7 +111,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Wrong_subscription_name()
         {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "wrongSubscriptionType");
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "hfsdhjsfdju");
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Wrong subscription type: wrongSubscriptionType.\"},\"id\":67}";
             expectedResult.Should().Be(serialized);
         }
@@ -127,7 +127,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Eth_unsubscribe_success()
         {
-            string serializedSub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOps");
+            string serializedSub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "NewPendingUserOps");
             string subscriptionId = serializedSub.Substring(serializedSub.Length - 44, 34);
             string expectedSub = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
             expectedSub.Should().Be(serializedSub);
@@ -141,7 +141,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Subscriptions_remove_after_closing_websockets_client()
         {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOps");
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "NewPendingUserOps");
             string subscriptionId = serialized.Substring(serialized.Length - 44, 34);
             string expectedId = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
             expectedId.Should().Be(serialized);

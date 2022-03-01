@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter = null)
+        public string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, Filter? filter = null)
         {
             Subscription subscription = _subscriptionFactory.CreateSubscription(jsonRpcDuplexClient, subscriptionType, filter);
             AddToDictionary(subscription);

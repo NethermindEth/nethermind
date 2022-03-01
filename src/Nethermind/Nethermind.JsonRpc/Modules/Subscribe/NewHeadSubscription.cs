@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             return $"NewHeads subscription {Id}: Failed Task.Run after BlockAddedToMain event.";
         }
 
-        public override SubscriptionType Type => SubscriptionType.NewHeads;
+        public override string Type => SubscriptionType.NewHeads;
         
         public override void Dispose()
         {

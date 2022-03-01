@@ -147,7 +147,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
-        public override SubscriptionType Type => SubscriptionType.Logs;
+        public override string Type => SubscriptionType.Logs;
         public override void Dispose()
         {
             base.Dispose();

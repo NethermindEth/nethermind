@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             return $"DroppedPendingTransactions subscription {Id}: Failed Task.Run after EvictedPending event.";
         }
         
-        public override SubscriptionType Type => SubscriptionType.DroppedPendingTransactions;
+        public override string Type => SubscriptionType.DroppedPendingTransactions;
 
         public override void Dispose()
         {
