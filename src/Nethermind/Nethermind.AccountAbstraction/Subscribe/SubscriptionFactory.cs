@@ -45,5 +45,11 @@ namespace Nethermind.AccountAbstraction.Subscribe
                 default: throw new Exception("Unexpected SubscriptionType.");
             }
         }
+
+        public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, JsonRpc.Modules.Subscribe.SubscriptionType subscriptionType,
+            Filter? filter)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

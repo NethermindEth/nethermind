@@ -17,6 +17,8 @@
 
 using System;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Eth;
+using ISubscribeRpcModule = Nethermind.JsonRpc.Modules.Subscribe.ISubscribeRpcModule;
 
 namespace Nethermind.AccountAbstraction.Subscribe
 {
@@ -29,18 +31,18 @@ namespace Nethermind.AccountAbstraction.Subscribe
             _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         }
 
-        public ResultWrapper<string> eth_subscribe(string subscriptionName)
+        public ResultWrapper<string> eth_subscribe(string subscriptionName, Filter arguments = null!)
         {
             if (Enum.TryParse(typeof(SubscriptionType), subscriptionName, true, out var subscriptionType))
             {
-                return ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, (SubscriptionType)subscriptionType, arguments));
+                return ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient!, (SubscriptionType)subscriptionType!, arguments));
             }
             return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
         }
 
         public ResultWrapper<bool> eth_unsubscribe(string subscriptionId)
         {
-            bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient, subscriptionId);
+            bool unsubscribed = _subscriptionManager.RemoveSubscription(Context.DuplexClient!, subscriptionId);
             return unsubscribed
                 ? ResultWrapper<bool>.Success(true)
                 : ResultWrapper<bool>.Fail($"Failed to unsubscribe: {subscriptionId}.");

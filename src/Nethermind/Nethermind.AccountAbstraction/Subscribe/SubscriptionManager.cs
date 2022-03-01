@@ -21,7 +21,6 @@ using System.Collections.Generic;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-
 namespace Nethermind.AccountAbstraction.Subscribe
 {
     public class SubscriptionManager : ISubscriptionManager
@@ -31,7 +30,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
         
         private readonly ConcurrentDictionary<string, Subscription> _subscriptions =
             new();
-        private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
+        private readonly ConcurrentDictionary<string, HashSet<Subscription>?> _subscriptionsByJsonRpcClient =
             new();
         
         public SubscriptionManager(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
@@ -62,7 +61,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
         {
             void OnJsonRpcDuplexClientClosed(object? sender, EventArgs e)
             {
-                IJsonRpcDuplexClient jsonRpcDuplexClient = (IJsonRpcDuplexClient)sender;
+                IJsonRpcDuplexClient? jsonRpcDuplexClient = (IJsonRpcDuplexClient)sender!;
                 RemoveClientSubscriptions(jsonRpcDuplexClient!);
                 jsonRpcDuplexClient.Closed -= OnJsonRpcDuplexClientClosed;
             }
@@ -76,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
                 },
                 (k, b) =>
                 {
-                    b.Add(subscription);
+                    b!.Add(subscription);
                     if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} added to client's subscriptions bag.");
                     return b;
                 });
@@ -103,7 +102,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
             {
                 if (_logger.IsDebug) _logger.Debug($"Failed trying to find subscription {subscription.Id} in subscriptions bag of client {subscription.JsonRpcDuplexClient.Id}.");
             }
-            else if (!clientsSubscriptionsBag.Remove(subscription))
+            else if (!clientsSubscriptionsBag!.Remove(subscription))
             {
                 if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscription.Id} from client's subscriptions bag.");
             }
@@ -119,10 +118,10 @@ namespace Nethermind.AccountAbstraction.Subscribe
             else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionId} from dictionary _subscriptions.");
         }
 
-        public void RemoveClientSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient)
+        public void RemoveClientSubscriptions(IJsonRpcDuplexClient? jsonRpcDuplexClient)
         {
-            string clientId = jsonRpcDuplexClient.Id;
-            if (_subscriptionsByJsonRpcClient.TryRemove(clientId, out HashSet<Subscription> subscriptionsBag))
+            string clientId = jsonRpcDuplexClient!.Id;
+            if (_subscriptionsByJsonRpcClient.TryRemove(clientId, out HashSet<Subscription>? subscriptionsBag))
             {
                 DisposeAndRemoveFromDictionary(subscriptionsBag);
                 if (_logger.IsTrace) _logger.Trace($"Client {clientId} removed from dictionary _subscriptionsByJsonRpcClient.");
@@ -130,9 +129,9 @@ namespace Nethermind.AccountAbstraction.Subscribe
             else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove client {clientId} from dictionary _subscriptionsByJsonRpcClient.");
         }
 
-        private void DisposeAndRemoveFromDictionary(HashSet<Subscription> subscriptionsBag)
+        private void DisposeAndRemoveFromDictionary(HashSet<Subscription>? subscriptionsBag)
         {
-            foreach (var subscriptionInBag in subscriptionsBag)
+            foreach (var subscriptionInBag in subscriptionsBag!)
             {
                 if(_subscriptions.TryRemove(subscriptionInBag.Id, out var subscription)
                    && subscription != null)

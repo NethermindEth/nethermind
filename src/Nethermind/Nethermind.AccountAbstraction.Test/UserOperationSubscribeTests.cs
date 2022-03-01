@@ -16,14 +16,10 @@
 // 
 
 using System;
-using System.Linq;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
-using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -32,6 +28,7 @@ using NUnit.Framework;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.AccountAbstraction.Subscribe;
+using ISubscribeRpcModule = Nethermind.JsonRpc.Modules.Subscribe.ISubscribeRpcModule;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -45,8 +42,8 @@ namespace Nethermind.AccountAbstraction.Test
         private IJsonSerializer _jsonSerializer = null!;
         private ISubscriptionManager _subscriptionManager = null!;
         private ISubscribeRpcModule _subscribeRpcModule = null!;
-        [SetUp]
         
+        [SetUp]
         public void Setup()
         {
             _logManager = Substitute.For<ILogManager>();
@@ -130,7 +127,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Eth_unsubscribe_success()
         {
-            string serializedSub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads");
+            string serializedSub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOps");
             string subscriptionId = serializedSub.Substring(serializedSub.Length - 44, 34);
             string expectedSub = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
             expectedSub.Should().Be(serializedSub);
@@ -144,33 +141,18 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Subscriptions_remove_after_closing_websockets_client()
         {
-            string serializedLogs = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs");
-            string logsId = serializedLogs.Substring(serializedLogs.Length - 44, 34);
-            string expectedLogs = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", logsId, "\",\"id\":67}");
-            expectedLogs.Should().Be(serializedLogs);
-
-
-            string serializedNewPendingTx =
-                RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingTransactions");
-            string newPendingTxId = serializedNewPendingTx.Substring(serializedNewPendingTx.Length - 44, 34);
-            string expectedNewPendingTx =
-                string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", newPendingTxId, "\",\"id\":67}");
-            expectedNewPendingTx.Should().Be(serializedNewPendingTx);
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOps");
+            string subscriptionId = serialized.Substring(serialized.Length - 44, 34);
+            string expectedId = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
+            expectedId.Should().Be(serialized);
 
             _jsonRpcDuplexClient.Closed += Raise.Event();
 
-            string serializedLogsUnsub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", logsId);
+            string serializedLogsUnsub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", subscriptionId);
             string expectedLogsUnsub =
                 string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-                    logsId, ".\",\"data\":false},\"id\":67}");
+                    subscriptionId, ".\",\"data\":false},\"id\":67}");
             expectedLogsUnsub.Should().Be(serializedLogsUnsub);
-
-            string serializedNewPendingTxUnsub =
-                RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_unsubscribe", newPendingTxId);
-            string expectedNewPendingTxUnsub =
-                string.Concat("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Failed to unsubscribe: ",
-                    newPendingTxId, ".\",\"data\":false},\"id\":67}");
-            expectedNewPendingTxUnsub.Should().Be(serializedNewPendingTxUnsub);
         }
     }
 }

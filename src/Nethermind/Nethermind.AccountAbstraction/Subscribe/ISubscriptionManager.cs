@@ -24,6 +24,6 @@ namespace Nethermind.AccountAbstraction.Subscribe
     {
         string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, SubscriptionType subscriptionType, Filter? filter = null);
         bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId);
-        void RemoveClientSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient);
+        void RemoveClientSubscriptions(IJsonRpcDuplexClient? jsonRpcDuplexClient);
     }
 }

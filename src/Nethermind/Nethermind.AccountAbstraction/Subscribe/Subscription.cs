@@ -20,12 +20,12 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-
+using Nethermind.JsonRpc.Modules.Subscribe;
 namespace Nethermind.AccountAbstraction.Subscribe
 {
     public abstract class Subscription : IDisposable
     {
-        protected ILogger _logger;
+        protected ILogger _logger = null!;
         
         protected Subscription(IJsonRpcDuplexClient jsonRpcDuplexClient)
         {
@@ -70,7 +70,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
             {
                 while (await SendChannel.Reader.WaitToReadAsync())
                 {
-                    while (SendChannel.Reader.TryRead(out Action action))
+                    while (SendChannel.Reader.TryRead(out Action? action))
                     {
                         try
                         {

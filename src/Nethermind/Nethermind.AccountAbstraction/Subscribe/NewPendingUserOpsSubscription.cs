@@ -19,7 +19,6 @@ using System;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Logging;
 
 namespace Nethermind.AccountAbstraction.Subscribe;
