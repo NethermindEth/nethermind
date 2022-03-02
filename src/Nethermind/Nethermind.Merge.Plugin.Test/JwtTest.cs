@@ -53,6 +53,6 @@ public class JwtTest
     
     private JwtAuthentication CreateRpcAuthentication(string secret, IClock mock)
     {
-        return new JwtAuthentication(secret, mock);
+        return JwtAuthentication.FromHexSecret(secret, mock);
     }
 }

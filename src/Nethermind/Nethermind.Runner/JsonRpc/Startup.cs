@@ -111,7 +111,7 @@ namespace Nethermind.Runner.JsonRpc
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
             IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication
                 ? NoAuthentication.Instance
-                : new JwtAuthentication(jsonRpcConfig.Secret!, new ClockImpl());
+                : JwtAuthentication.ReadOrGenerateFromFile(jsonRpcConfig.Secret!, new ClockImpl(), logger);
 
             if (initConfig.WebSocketsEnabled)
             {
@@ -157,7 +157,6 @@ namespace Nethermind.Runner.JsonRpc
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
-                    Console.WriteLine("Auth: " + ctx.Request.Headers["Authorization"]);
                     if (jsonRpcUrl.IsAuthenticated && !auth.Authenticate(ctx.Request.Headers["Authorization"]))
                     {
                         var response = jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Authentication error");

@@ -17,11 +17,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using JWT;
 using JWT.Algorithms;
-using JWT.Builder;
-using JWT.Serializers; // ToDo Nikita I think we should use Micsoroft library
+using JWT.Serializers;
+using Nethermind.Logging; // ToDo Nikita I think we should use Micsoroft library
 
 namespace Nethermind.JsonRpc.Authentication
 {
@@ -33,9 +34,10 @@ namespace Nethermind.JsonRpc.Authentication
 
         private const string JWT_MESSAGE_PREFIX = "Bearer ";
         private const int JWT_TOKEN_TTL = 5;
+        private const int JWT_SECRET_LENGTH = 64;
         
         public JwtAuthentication(
-            string hexSecret,
+            byte[] secret,
             IClock clock)
         {
             _clock = clock;
@@ -45,7 +47,47 @@ namespace Nethermind.JsonRpc.Authentication
             IBase64UrlEncoder urlEncoder = new JwtBase64UrlEncoder();
             IJwtAlgorithm algorithm = new HMACSHA256Algorithm(); // ToDo Nikita what about IAT claims?
             _decoder = new JwtDecoder(serializer, validator, urlEncoder, algorithm);
-            LoadSecret(hexSecret);
+            Secret = secret;
+        }
+
+        public static JwtAuthentication FromHexSecret(string hexSecret, IClock clock)
+        {
+            byte[] decodedSecret = DecodeSecret(hexSecret);
+            return new JwtAuthentication(decodedSecret, clock);
+        }
+
+        public static JwtAuthentication ReadOrGenerateFromFile(string filePath, IClock clock, ILogger logger)
+        {
+            FileInfo fileInfo = new(filePath);
+            if (!fileInfo.Exists || fileInfo.Length == 0)
+            {
+                // Generate secret;
+                logger.Info("Generating jwt secret");
+                byte[] secret = new byte[JWT_SECRET_LENGTH / 2];
+                Random rnd = new();
+                rnd.NextBytes(secret);
+                StreamWriter writer = new(filePath);
+                string hexSecret = EncodeSecret(secret);
+                writer.Write(hexSecret);
+                writer.Close();
+                logger.Info($"Secret have been written to {fileInfo.FullName}");
+                return new JwtAuthentication(secret, clock);
+            }
+            else
+            {
+                // Secret exists read from file
+                logger.Info("Reading jwt secret from file");
+                StreamReader stream = new(filePath);
+                string hexSecret = stream.ReadToEnd();
+                hexSecret = hexSecret.TrimStart().TrimEnd();
+                if (hexSecret.Length != JWT_SECRET_LENGTH ||
+                    !System.Text.RegularExpressions.Regex.IsMatch(hexSecret, @"\A\b[0-9a-fA-F]+\b\Z"))
+                {
+                    throw new FormatException("Secret should be a 64 digit hexadecimal number");
+                }
+
+                return FromHexSecret(hexSecret, clock);
+            }
         }
 
         public bool Authenticate(string? token)
@@ -67,18 +109,17 @@ namespace Nethermind.JsonRpc.Authentication
             }
         }
 
-        private void LoadSecret(string hex)
+        private static byte[] DecodeSecret(string hexSecret)
         {
-            Secret = Enumerable.Range(0, hex.Length)
+            return Enumerable.Range(0, hexSecret.Length)
                 .Where(x => x % 2 == 0)
-                .Select(x => Convert.ToByte(hex.Substring(x, 2), 16))
+                .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
                 .ToArray();
+        }
 
-            // ToDo Nikita
-            // try to read from file first (add pathToFile to jsonRpcConfig)
-            // from config
-            // generate and store if not found:
-            // I suggest move the authenticate attribute to RpcModule (not method) and generate JWT secret if we found at least one RPC module with authentication
+        private static string EncodeSecret(byte[] secret)
+        {
+            return BitConverter.ToString(secret).Replace("-", "");
         }
 
         private class DateTimeProviderWrapper : IDateTimeProvider
