@@ -88,7 +88,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void NewPendingUserOperationsSubscription_creating_result()
         {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "NewHeads");
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
             expectedResult.Should().Be(serialized);
         }
@@ -112,7 +112,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void Wrong_subscription_name()
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "hfsdhjsfdju");
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Wrong subscription type: wrongSubscriptionType.\"},\"id\":67}";
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Wrong subscription type: hfsdhjsfdju.\"},\"id\":67}";
             expectedResult.Should().Be(serialized);
         }
 
@@ -127,7 +127,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Eth_unsubscribe_success()
         {
-            string serializedSub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "NewPendingUserOps");
+            string serializedSub = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
             string subscriptionId = serializedSub.Substring(serializedSub.Length - 44, 34);
             string expectedSub = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
             expectedSub.Should().Be(serializedSub);
@@ -141,7 +141,7 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Subscriptions_remove_after_closing_websockets_client()
         {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "NewPendingUserOps");
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
             string subscriptionId = serialized.Substring(serialized.Length - 44, 34);
             string expectedId = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", subscriptionId, "\",\"id\":67}");
             expectedId.Should().Be(serialized);

@@ -16,7 +16,7 @@
 // 
 
 using System;
-using System.Reflection;
+using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public ResultWrapper<string> eth_subscribe(string subscriptionName, Filter arguments = null)
         {
-            if (typeof(SubscriptionType).GetField(subscriptionName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Static) is not null)
+            if (_subscriptionManager.GetAllowedSubscriptionTypes().Contains(subscriptionName))
             {
                 return ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, arguments));
             }
@@ -48,5 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         }
 
         public JsonRpcContext Context { get; set; }
+        
+        
     }
 }

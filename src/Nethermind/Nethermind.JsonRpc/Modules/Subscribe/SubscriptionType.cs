@@ -19,7 +19,7 @@ using System;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public static class SubscriptionType
+    public struct SubscriptionType
     {
         public const string NewHeads = "newHeads";
         public const string Logs = "logs";

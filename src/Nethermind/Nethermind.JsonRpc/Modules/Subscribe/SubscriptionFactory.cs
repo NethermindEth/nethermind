@@ -16,9 +16,11 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -58,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             switch (subscriptionType)
             {
-                case SubscriptionType.NewHeads: 
+                case SubscriptionType.NewHeads:
                     return new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, filter);
                 case SubscriptionType.Logs:
                     return new LogsSubscription(jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
@@ -68,8 +70,19 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     return new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager);
                 case SubscriptionType.Syncing:
                     return new SyncingSubscription(jsonRpcDuplexClient, _blockTree, _ethSyncingInfo, _logManager);
-                default: throw new Exception("Unexpected SubscriptionType.");
+                default:
+                    throw new Exception("Unexpected SubscriptionType.");
             }
         }
+
+        public List<string> GetAllowedSubscriptionTypes() => new List<string>(new []
+            {
+                SubscriptionType.NewHeads,
+                SubscriptionType.Logs,
+                SubscriptionType.NewPendingTransactions,
+                SubscriptionType.DroppedPendingTransactions,
+                SubscriptionType.Syncing
+            }
+        );
     }
 }

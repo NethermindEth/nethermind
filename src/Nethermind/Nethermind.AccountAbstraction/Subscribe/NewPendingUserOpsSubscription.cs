@@ -34,7 +34,7 @@ public class NewPendingUserOpsSubscription : Subscription
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
         _userOperationPool.NewPending += OnNewPending;
-        if(_logger.IsTrace) _logger.Trace($"NewPendingUserOps subscription {Id} will track NewPendingUserOps");
+        if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will track NewPendingUserOps");
     }
     
     private void OnNewPending(object? sender, UserOperationEventArgs e)
@@ -43,16 +43,16 @@ public class NewPendingUserOpsSubscription : Subscription
         {
             JsonRpcResult result = CreateSubscriptionMessage(new UserOperationRpc(e.UserOperation));
             JsonRpcDuplexClient.SendJsonRpcResult(result);
-            if(_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");
+            if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} printed hash of newPendingUserOperations.");
         });
     }
     
     protected override string GetErrorMsg()
     {
-        return $"NewPendingUserOps subscription {Id}: Failed Task.Run after NewPending event.";
+        return $"newPendingUserOperations subscription {Id}: Failed Task.Run after NewPending event.";
     }
         
-    public override string Type => "NewPendingUserOps";
+    public override string Type => "newPendingUserOperations";
 
     public override void Dispose()
     {

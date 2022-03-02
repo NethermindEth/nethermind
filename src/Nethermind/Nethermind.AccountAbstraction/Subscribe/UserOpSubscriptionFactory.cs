@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -32,6 +33,11 @@ public class UserOpSubscriptionFactory : ISubscriptionFactory
 {
     private readonly ILogManager _logManager;
     private readonly IUserOperationPool _userOperationPool;
+    private readonly List<string> _allowedSubscriptionTypes = new List<string>(new[]
+        {
+            "newPendingUserOperations"
+        }
+    );
 
     public UserOpSubscriptionFactory(ILogManager? logManager, IUserOperationPool userOperationPool)
     {
@@ -41,8 +47,11 @@ public class UserOpSubscriptionFactory : ISubscriptionFactory
     public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType,
         Filter? filter)
     {
-        return (subscriptionType == "NewPendingUserOps"
+        return (subscriptionType == "newPendingUserOperations"
             ? new NewPendingUserOpsSubscription(jsonRpcDuplexClient, _userOperationPool, _logManager)
             : throw new Exception("Unexpected UserOperation SubscriptionType."));
     }
+
+    public List<string> GetAllowedSubscriptionTypes() => _allowedSubscriptionTypes;
+
 }

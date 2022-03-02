@@ -142,5 +142,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionInBag.Id} from dictionary _subscriptions.");
             }
         }
+        public List<string> GetAllowedSubscriptionTypes() => _subscriptionFactory.GetAllowedSubscriptionTypes();
     }
 }
