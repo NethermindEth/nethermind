@@ -17,7 +17,6 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,7 +30,7 @@ using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class BeaconHeadersSyncFeed : HeadersSyncFeed
+public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 {
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
