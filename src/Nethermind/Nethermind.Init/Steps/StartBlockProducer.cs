@@ -41,14 +41,16 @@ namespace Nethermind.Init.Steps
             {
                 _api.BlockProducer = await BuildProducer();
 
-                if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
-                if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
+                if (_api.BlockProducer != null)
+                {
+                    if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
 
-                ILogger logger = _api.LogManager.GetClassLogger();
-                if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
-                ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
-                _api.DisposeStack.Push(suggester);
-                await _api.BlockProducer.Start();
+                    ILogger logger = _api.LogManager.GetClassLogger();
+                    if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
+                    ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
+                    _api.DisposeStack.Push(suggester);
+                    await _api.BlockProducer.Start();
+                }
             }
         }
 
