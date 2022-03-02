@@ -64,24 +64,16 @@ namespace Nethermind.EthStats.Clients
                     uriBuilder = new UriBuilder(websocketUri)
                     {
                         Scheme = Uri.UriSchemeWs,
-                        Port = -1
+                        Port = websocketUri.IsDefaultPort ? -1 : websocketUri.Port
                     };
-                    if (!websocketUri.IsDefaultPort)
-                    {
-                        uriBuilder.Port = websocketUri.Port;
-                    }
                 }
                 else if (websocketUri.Scheme == Uri.UriSchemeHttps)
                 {
                     uriBuilder = new UriBuilder(websocketUri)
                     {
                         Scheme = Uri.UriSchemeWss,
-                        Port = -1
+                        Port = websocketUri.IsDefaultPort ? -1 : websocketUri.Port
                     };
-                    if (!websocketUri.IsDefaultPort)
-                    {
-                        uriBuilder.Port = websocketUri.Port;
-                    }
                 }
                 else
                 {
