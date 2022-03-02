@@ -101,7 +101,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             }
             else
             {
-                _nextHeaderDiff = header.TotalDifficulty != null ? header.TotalDifficulty - header.Difficulty : null;
+                _nextHeaderDiff = header.TotalDifficulty != null && header.TotalDifficulty >= header.Difficulty ? header.TotalDifficulty - header.Difficulty : null;
             }
         }
 
