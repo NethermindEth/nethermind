@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test
         {
             RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
             moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
-            _jsonRpcService = new JsonRpcService(moduleProvider, _logManager);
+            _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, new JsonRpcConfig());
             JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
             JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
             Assert.AreEqual(request.Id, response.Id);

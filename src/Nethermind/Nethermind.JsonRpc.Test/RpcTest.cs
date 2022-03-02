@@ -83,7 +83,7 @@ namespace Nethermind.JsonRpc.Test
             var moduleProvider = new TestRpcModuleProvider<T>(module);
 
             moduleProvider.Register(new SingletonModulePool<T>(new TestSingletonFactory<T>(module, converters), true));
-            IJsonRpcService service = new JsonRpcService(moduleProvider, LimboLogs.Instance);
+            IJsonRpcService service = new JsonRpcService(moduleProvider, LimboLogs.Instance, new JsonRpcConfig());
             return service;
         }
 
