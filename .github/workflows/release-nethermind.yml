@@ -9,8 +9,8 @@ on:
         default: 'master'
 
 permissions:
-  deployments: write
-  packages: write
+  deployments: write-all
+  packages: write-all
 
 jobs:
   build-nethermind:
