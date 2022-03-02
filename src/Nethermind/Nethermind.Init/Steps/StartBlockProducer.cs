@@ -41,7 +41,15 @@ namespace Nethermind.Init.Steps
             IMiningConfig miningConfig = _api.Config<IMiningConfig>();
             if (miningConfig.Enabled)
             {
-                if (_api.BlockProducer != null) _api.BlockProducer.Start();
+                if (_api.BlockProducer != null && _api.BlockTree != null)
+                {
+                    ILogger logger = _api.LogManager.GetClassLogger();
+                    if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
+                    ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
+                    _api.DisposeStack.Push(suggester);
+                
+                    _api.BlockProducer.Start();
+                }
             }
         }
     }
