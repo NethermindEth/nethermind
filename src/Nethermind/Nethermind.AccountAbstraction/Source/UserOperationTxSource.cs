@@ -23,6 +23,7 @@ using System;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -42,8 +43,9 @@ namespace Nethermind.AccountAbstraction.Source
     {
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-
         private readonly IStateProvider _stateProvider;
+        private readonly ISigner _signer;
+
         // private readonly IUserOperationTxBuilder _userOperationTxBuilder;
         // private readonly IUserOperationPool _userOperationPool;
         // private readonly IUserOperationSimulator _userOperationSimulator;
@@ -58,6 +60,7 @@ namespace Nethermind.AccountAbstraction.Source
             IDictionary<Address, UserOperationSimulator> userOperationSimulators,
             ISpecProvider specProvider,
             IStateProvider stateProvider,
+            ISigner signer,
             ILogger logger)
         {
             _userOperationTxBuilders = userOperationTxBuilders;
@@ -65,6 +68,7 @@ namespace Nethermind.AccountAbstraction.Source
             _userOperationSimulators = userOperationSimulators;
             _specProvider = specProvider;
             _stateProvider = stateProvider;
+            _signer = signer;
             _logger = logger;
         }
 
@@ -152,16 +156,10 @@ namespace Nethermind.AccountAbstraction.Source
                         usedAccessList[kv.Key] = kv.Value;
             }
 
-            if (userOperationsToIncludeByEntryPoint.Count == 0) return new List<Transaction>();
+            if (userOperationsToIncludeByEntryPoint.Count == 0) yield break;
 
-            IList<Transaction> userOperationTransactions = new List<Transaction>();
-
-
-            int snapshot = _stateProvider.TakeSnapshot();
-
-            ReadOnlyTxProcessingEnv txProcessingEnv = _userOperationSimulators.Values.First().CreateTxProcessingEnv();
-            ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
-            
+            UInt256 initialNonce = _stateProvider.GetNonce(_signer.Address);
+            UInt256 txsBuilt = 0;
             // build transaction for each entryPoint with ops to be included
             foreach(KeyValuePair<Address, UserOperationTxBuilder> kv in _userOperationTxBuilders)
             {
@@ -171,20 +169,28 @@ namespace Nethermind.AccountAbstraction.Source
                 bool foundUserOperations =
                     userOperationsToIncludeByEntryPoint.TryGetValue(entryPoint, out IList<UserOperation>? userOperationsToInclude);
                 if (!foundUserOperations) continue;
-                
+
+                long totalGasUsed = userOperationsToInclude!.Aggregate((long)0, 
+                    (sum, op) => 
+                        sum + 
+                        (long)op.CallGas +
+                        (long)op.PreVerificationGas +
+                        (long)op.VerificationGas);
+
                 // build test transaction to make sure it succeeds as a batch of ops
                 Transaction userOperationTransaction =
                     txBuilder.BuildTransactionFromUserOperations(
-                        userOperationsToInclude!, 
-                        parent, 
-                        1_000_000, // high gas to test
+                        userOperationsToInclude!,
+                        parent,
+                        totalGasUsed,
+                        initialNonce,
                         _specProvider.GetSpec(parent.Number + 1));
                 if (_logger.IsDebug)
                     _logger.Debug($"Constructed tx from {userOperationsToInclude!.Count} userOperations: {userOperationTransaction.Hash}");
                 // TODO: Remove logging, just for testing
                 _logger.Info($"Constructed tx from {userOperationsToInclude!.Count} userOperations: {userOperationTransaction.Hash}");
                 
-                BlockchainBridge.CallOutput callOutput = _userOperationSimulators[entryPoint].EstimateGas(txProcessingEnv, transactionProcessor, _stateProvider, parent, userOperationTransaction, CancellationToken.None);
+                BlockchainBridge.CallOutput callOutput = _userOperationSimulators[entryPoint].EstimateGas(parent, userOperationTransaction, CancellationToken.None);
                 FailedOp? failedOp = txBuilder.DecodeEntryPointOutputError(callOutput.OutputData);
                 if (failedOp is not null || callOutput.Error != null)
                 {
@@ -197,15 +203,13 @@ namespace Nethermind.AccountAbstraction.Source
                     _userOperationTxBuilders[entryPoint].BuildTransactionFromUserOperations(
                         userOperationsToInclude, 
                         parent, 
-                        callOutput.GasSpent,
+                        callOutput.GasSpent + 200000,
+                        initialNonce+txsBuilt,
                         _specProvider.GetSpec(parent.Number + 1));
 
-                userOperationTransactions.Add(updatedUserOperationTransaction);
+                txsBuilt++;
+                yield return updatedUserOperationTransaction;
             }
-            
-            _stateProvider.Restore(snapshot);
-
-            return userOperationTransactions;
         }
 
         private UInt256 CalculateUserOperationPremiumGasPrice(UserOperation op, UInt256 baseFeePerGas)

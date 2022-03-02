@@ -203,6 +203,7 @@ namespace Nethermind.AccountAbstraction
                         _Simulators,
                         _nethermindApi.SpecProvider!,
                         _nethermindApi.StateProvider!,
+                        _nethermindApi.EngineSigner!,
                         _logger
                     );
                 }
@@ -377,6 +378,13 @@ namespace Nethermind.AccountAbstraction
         public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
+
+            _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory =
+                new AABlockProducerTransactionsExecutorFactory(
+                    _nethermindApi.SpecProvider!, 
+                    _nethermindApi.LogManager!,
+                    _nethermindApi.EngineSigner!, 
+                    _entryPointContractAddresses.ToArray());
 
             UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
             if (minerBalance < 1.Ether())

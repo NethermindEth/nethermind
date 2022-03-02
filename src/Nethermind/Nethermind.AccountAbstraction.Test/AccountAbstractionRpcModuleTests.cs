@@ -509,7 +509,6 @@ namespace Nethermind.AccountAbstraction.Test
             await chain.AddBlock(true);
 
             chain.State.GetCode(accountAddress).Should().BeEquivalentTo(_contracts.SimpleWalletAbi.DeployedBytecode!);
-
         }
 
         public static void SignUserOperation(UserOperation op, PrivateKey privateKey, Address entryPointAddress, ulong chainId)

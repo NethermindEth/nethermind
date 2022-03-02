@@ -166,6 +166,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 Address.Zero, 
                 parent, 
                 spec, 
+                _stateProvider.GetNonce(Address.Zero),
                 true);
 
             return transaction;
@@ -176,17 +177,16 @@ namespace Nethermind.AccountAbstraction.Executor
             return new(parent.GasLimit, userOperation, _stateProvider, _userOperationTxBuilder, _entryPointContractAbi, _create2FactoryAddress,
                 _entryPointContractAddress, _logManager.GetClassLogger());
         }
-
-        public ReadOnlyTxProcessingEnv CreateTxProcessingEnv()
-        {
-            return new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
-        }
         
         [Todo("Refactor once BlockchainBridge is separated")]
-        public BlockchainBridge.CallOutput EstimateGas(ReadOnlyTxProcessingEnv txProcessingEnv, ITransactionProcessor transactionProcessor, IStateProvider? stateProvider, BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
+            ReadOnlyTxProcessingEnv txProcessingEnv =
+                new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
+            
             EstimateGasTracer estimateGasTracer = new();
-            (bool Success, string Error) tryCallResult = TryBuildUp(
+            (bool Success, string Error) tryCallResult = TryCallAndRestore(
                 transactionProcessor,
                 txProcessingEnv,
                 header,
@@ -195,7 +195,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 true,
                 estimateGasTracer.WithCancellation(cancellationToken));
 
-            GasEstimator gasEstimator = new(transactionProcessor, stateProvider ?? _stateProvider, _specProvider);
+            GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider);
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer);
 
             return new BlockchainBridge.CallOutput 
@@ -206,7 +206,7 @@ namespace Nethermind.AccountAbstraction.Executor
             };
         }
         
-        private (bool Success, string Error) TryBuildUp(
+        private (bool Success, string Error) TryCallAndRestore(
             ITransactionProcessor transactionProcessor,
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
             BlockHeader blockHeader,
@@ -217,7 +217,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             try
             {
-                BuildUp(transactionProcessor, readOnlyTxProcessingEnv, blockHeader, timestamp, transaction, treatBlockHeaderAsParentBlock, tracer);
+                CallAndRestore(transactionProcessor, readOnlyTxProcessingEnv, blockHeader, timestamp, transaction, treatBlockHeaderAsParentBlock, tracer);
                 return (true, string.Empty);
             }
             catch (InsufficientBalanceException ex)
@@ -226,7 +226,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
         }
 
-        private void BuildUp(
+        private void CallAndRestore(
             ITransactionProcessor transactionProcessor,
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
             BlockHeader blockHeader,
@@ -263,8 +263,7 @@ namespace Nethermind.AccountAbstraction.Executor
                     : blockHeader.BaseFeePerGas;
 
                 transaction.Hash = transaction.CalculateHash();
-                transactionProcessor.BuildUp(transaction, callHeader, tracer);
-                //transactionProcessor.BuildUp(transaction, callHeader, tracer);
+                transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
             }
             finally
             {

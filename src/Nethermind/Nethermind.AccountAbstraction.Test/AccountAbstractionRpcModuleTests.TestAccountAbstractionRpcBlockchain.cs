@@ -80,6 +80,7 @@ namespace Nethermind.AccountAbstraction.Test
             public AbiDefinition EntryPointContractAbi { get; private set; } = null!;
             public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = new Dictionary<Address, UserOperationTxBuilder>();
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
+            public Address[] EntryPointAddresses { get; private set; } = null!;
             
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
@@ -109,7 +110,7 @@ namespace Nethermind.AccountAbstraction.Test
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
-                
+
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
                     DbProvider,
                     BlockTree,
@@ -122,9 +123,17 @@ namespace Nethermind.AccountAbstraction.Test
                     TxPool,
                     transactionComparerProvider,
                     miningConfig,
-                    LogManager);
+                    LogManager)
+                {
+                    TransactionsExecutorFactory =
+                        new AABlockProducerTransactionsExecutorFactory(
+                            SpecProvider,
+                            LogManager,
+                            Signer,
+                            EntryPointAddresses)
+                };
                 
-                UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, State, LogManager.GetClassLogger());
+                UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, State, Signer, LogManager.GetClassLogger());
 
                 Eth2TestBlockProducerFactory producerFactory = new Eth2TestBlockProducerFactory(GasLimitCalculator, UserOperationTxSource);
                 Eth2BlockProducer blockProducer = producerFactory.Create(
@@ -151,6 +160,8 @@ namespace Nethermind.AccountAbstraction.Test
                         out Address? entryPointContractAddress);
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
+
+                EntryPointAddresses = entryPointContractAddresses.ToArray();
                 Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
