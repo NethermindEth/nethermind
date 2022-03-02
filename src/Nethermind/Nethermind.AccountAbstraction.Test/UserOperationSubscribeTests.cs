@@ -111,8 +111,8 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public void Wrong_subscription_name()
         {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "hfsdhjsfdju");
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Wrong subscription type: hfsdhjsfdju.\"},\"id\":67}";
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "whatever");
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Wrong subscription type: whatever.\"},\"id\":67}";
             expectedResult.Should().Be(serialized);
         }
 

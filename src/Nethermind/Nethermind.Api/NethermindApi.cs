@@ -45,7 +45,6 @@ using Nethermind.Facade.Eth;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -77,7 +76,7 @@ namespace Nethermind.Api
         }
 
         private IReadOnlyDbProvider? _readOnlyDbProvider;
-
+        
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree.AsReadOnly();
@@ -92,7 +91,7 @@ namespace Nethermind.Api
                 LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
-
+            
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
                 TxPool,
@@ -133,10 +132,8 @@ namespace Nethermind.Api
         public IFilterManager? FilterManager { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
-
         public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; } =
             new BuildBlocksWhenRequested();
-
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }
         public IKeyStore? KeyStore { get; set; }
@@ -184,15 +181,14 @@ namespace Nethermind.Api
         public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public IGasLimitCalculator GasLimitCalculator { get; set; }
-
+        
         public IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
-
+        
         public IEthSyncingInfo EthSyncingInfo { get; set; }
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
-        public ISubscriptionFactory SubscriptionFactory { get; set; }
 
         public ProtectedPrivateKey? NodeKey { get; set; }
         
