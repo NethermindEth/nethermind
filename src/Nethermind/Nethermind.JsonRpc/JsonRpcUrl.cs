@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc
             Port = port;
             RpcEndpoint = rpcEndpoint;
             EnabledModules = enabledModules;
-            IsAuthenticated = enabledModules.Contains("Engine") || enabledModules.Contains("engine");
+            IsAuthenticated = enabledModules.Contains("Engine") || enabledModules.Contains("engine"); // ToDo Nikita could we move it to parse? could we make it case insensitive
         }
 
         public static JsonRpcUrl Parse(string packedUrlValue)

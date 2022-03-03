@@ -50,6 +50,7 @@ namespace Nethermind.JsonRpc
         public long? MaxRequestBodySize { get; set; } = 30000000;
         public int? EthModuleConcurrentInstances { get; set; } = null;
         
+        // ToDo Nikita: we should have separate config for file and secret from string. I think the default path for file Jwt should be keystore/jwt-secret
         public string? Secret { get; set; }
         public bool UnsecureDevNoRpcAuthentication { get; set; }
     }
