@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Api;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -33,25 +34,32 @@ public class UserOpSubscriptionFactory : ISubscriptionFactory
 {
     private readonly ILogManager _logManager;
     private readonly IUserOperationPool _userOperationPool;
-    private readonly List<string> _allowedSubscriptionTypes = new List<string>(new[]
-        {
-            "newPendingUserOperations"
-        }
-    );
+    private static Dictionary<string, Delegate>? _customSubscriptions;
+    //TODO: make this more specific in terms of allowed delegates?
+
+    public string Type => "newPendingUserOperations";
 
     public UserOpSubscriptionFactory(ILogManager? logManager, IUserOperationPool userOperationPool)
     {
+        _customSubscriptions = new Dictionary<string, Delegate>();
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _userOperationPool = userOperationPool ?? throw new ArgumentNullException(nameof(userOperationPool));
     }
     public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType,
         Filter? filter)
     {
-        return (subscriptionType == "newPendingUserOperations"
+        return (subscriptionType == Type
             ? new NewPendingUserOpsSubscription(jsonRpcDuplexClient, _userOperationPool, _logManager)
             : throw new Exception("Unexpected UserOperation SubscriptionType."));
     }
+    private delegate Subscription CustomSubscriptionDelegate(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, Filter? filter);
 
-    public List<string> GetAllowedSubscriptionTypes() => _allowedSubscriptionTypes;
-
+    private void RegisterCustomSubscription()
+    {
+        if (!_customSubscriptions!.ContainsKey(Type))
+        {
+            CustomSubscriptionDelegate newPendingUserOperationsDelegate = CreateSubscription;
+            _customSubscriptions.Add(Type, newPendingUserOperationsDelegate);
+        }
+    }
 }

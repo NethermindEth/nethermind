@@ -31,6 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class SubscriptionFactory : ISubscriptionFactory
     {
+        private static Dictionary<string, CustomSubscriptionDelegate>? _customSubscriptions;
         private readonly ILogManager _logManager;
         private readonly IBlockTree _blockTree;
         private readonly ITxPool _txPool;
@@ -48,6 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IEthSyncingInfo ethSyncingInfo,
             ISpecProvider specProvider)
         {
+            _customSubscriptions = new Dictionary<string, CustomSubscriptionDelegate>();
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -71,18 +73,20 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 case SubscriptionType.Syncing:
                     return new SyncingSubscription(jsonRpcDuplexClient, _blockTree, _ethSyncingInfo, _logManager);
                 default:
-                    throw new Exception("Unexpected SubscriptionType.");
+                    return CreateCustomSubscription(jsonRpcDuplexClient, subscriptionType, filter);
             }
         }
-
-        public List<string> GetAllowedSubscriptionTypes() => new List<string>(new []
+        private Subscription CreateCustomSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType,
+            Filter? filter)
+        {
+            if (_customSubscriptions.ContainsKey(subscriptionType))
             {
-                SubscriptionType.NewHeads,
-                SubscriptionType.Logs,
-                SubscriptionType.NewPendingTransactions,
-                SubscriptionType.DroppedPendingTransactions,
-                SubscriptionType.Syncing
+                CustomSubscriptionDelegate customDelegate = _customSubscriptions[subscriptionType];
+                return customDelegate(jsonRpcDuplexClient, subscriptionType, filter);
+                //TODO: Where's the API?
             }
-        );
+            throw new Exception("Invalid or unregistered SubscriptionType.");
+        }
+        private delegate Subscription CustomSubscriptionDelegate(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, Filter? filter);
     }
 }

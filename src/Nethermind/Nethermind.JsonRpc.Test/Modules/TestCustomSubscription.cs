@@ -15,15 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Subscribe;
 
-namespace Nethermind.JsonRpc.Modules.Subscribe
+namespace Nethermind.JsonRpc.Test.Modules;
+
+public class TestCustomSubscription : Subscription
 {
-    public interface ISubscriptionManager
-    {
-        string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, Filter? filter = null);
-        bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId);
-        void RemoveClientSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient);
-    }
+    public TestCustomSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : base(jsonRpcDuplexClient){}
+
+    public override string Type => "testCustomSubscription";
 }

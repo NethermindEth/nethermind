@@ -51,7 +51,7 @@ namespace Nethermind.AccountAbstraction.Test
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
             
-            UserOpSubscriptionFactory subscriptionFactory = new(
+            SubscriptionFactory subscriptionFactory = new(
                 _logManager,
                 _userOperationPool
                 );

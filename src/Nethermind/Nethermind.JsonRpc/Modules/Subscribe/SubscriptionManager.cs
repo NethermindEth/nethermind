@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class SubscriptionManager : ISubscriptionManager
     {
-        private readonly ISubscriptionFactory _subscriptionFactory;
+        private readonly SubscriptionFactory _subscriptionFactory;
         private readonly ILogger _logger;
         
         private readonly ConcurrentDictionary<string, Subscription> _subscriptions =
@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
             new();
         
-        public SubscriptionManager(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
+        public SubscriptionManager(SubscriptionFactory? subscriptionFactory, ILogManager? logManager)
         {
             _subscriptionFactory = subscriptionFactory ?? throw new ArgumentNullException(nameof(subscriptionFactory));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -142,6 +142,5 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionInBag.Id} from dictionary _subscriptions.");
             }
         }
-        public List<string> GetAllowedSubscriptionTypes() => _subscriptionFactory.GetAllowedSubscriptionTypes();
     }
 }

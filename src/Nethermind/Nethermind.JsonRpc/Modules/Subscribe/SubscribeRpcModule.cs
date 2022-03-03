@@ -32,11 +32,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public ResultWrapper<string> eth_subscribe(string subscriptionName, Filter arguments = null)
         {
-            if (_subscriptionManager.GetAllowedSubscriptionTypes().Contains(subscriptionName))
+            try
             {
-                return ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, arguments));
+                ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, arguments));
+                return successfulResult;
             }
-            return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+            catch (Exception e) //TODO: specify exception type.
+            {
+                return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+            }
         }
 
         public ResultWrapper<bool> eth_unsubscribe(string subscriptionId)
