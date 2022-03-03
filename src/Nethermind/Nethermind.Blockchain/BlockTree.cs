@@ -607,7 +607,7 @@ namespace Nethermind.Blockchain
             if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
                 if (_logger.IsTrace) _logger.Trace($"Block {header.Hash} already known.");
-                return AddBlockResult.AlreadyKnown;
+            //    return AddBlockResult.AlreadyKnown;
             }
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
@@ -1329,9 +1329,9 @@ namespace Nethermind.Blockchain
         {
             bool ttdRequirementSatisfied =
                 TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
-            bool preMergeRequirementSatisfied = ttdRequirementSatisfied && !header.IsPostMerge;
+            bool preMergeRequirementSatisfied = ttdRequirementSatisfied && (!header.IsPostMerge && header.Difficulty != 0);
             bool postMergeRequirementSatisfied = ttdRequirementSatisfied &&
-                                                 BestSuggestedHeader?.Number <= header.Number && header.IsPostMerge;
+                                                 BestSuggestedHeader?.Number <= header.Number && (header.IsPostMerge || header.Difficulty == 0);
             return preMergeRequirementSatisfied || postMergeRequirementSatisfied;
         }
 
@@ -1348,7 +1348,7 @@ namespace Nethermind.Blockchain
             bool postMergeImprovementRequirementSatisfied = _specProvider.TerminalTotalDifficulty != null &&
                                                             header.TotalDifficulty >=
                                                             _specProvider.TerminalTotalDifficulty &&
-                                                            (header.IsPostMerge || IsTerminalBlock(header));
+                                                            (header.IsPostMerge || header.Difficulty == 0 || IsTerminalBlock(header));
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
 

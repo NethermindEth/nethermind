@@ -51,6 +51,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _beaconPivot = beaconPivot;
         }
         
+        protected override long GetCurrentNumber(PeerInfo bestPeer)
+        {
+            return _beaconPivot.BeaconPivotExists()
+                ? Math.Max(0, Math.Min(_blockTree.BestSuggestedBody.Number, bestPeer.HeadNumber - 1)):  base.GetCurrentNumber(bestPeer);
+        }
+        
         protected override long GetUpperDownloadBoundary(PeerInfo bestPeer, BlocksRequest blocksRequest)
         {
             long preMergeUpperDownloadBoundary = base.GetUpperDownloadBoundary(bestPeer, blocksRequest);
