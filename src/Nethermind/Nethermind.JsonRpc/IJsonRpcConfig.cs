@@ -111,7 +111,7 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Max logged request size",
-            DefaultValue = "None")]
+            DefaultValue = "null")]
         int? MaxLoggedRequestSize { get; set; }
     }
 }
