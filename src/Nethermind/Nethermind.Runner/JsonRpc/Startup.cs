@@ -109,6 +109,10 @@ namespace Nethermind.Runner.JsonRpc
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
+            IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication
+                ? NoAuthentication.Instance
+                : JwtAuthentication.ReadOrGenerateFromFile(jsonRpcConfig.Secret!, new ClockImpl(), logger);
+
             if (initConfig.WebSocketsEnabled)
             {
                 app.UseWebSockets(new WebSocketOptions());
@@ -116,7 +120,7 @@ namespace Nethermind.Runner.JsonRpc
                     ctx.WebSockets.IsWebSocketRequest &&
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-                builder => builder.UseWebSocketsModules());
+                builder => builder.UseWebSocketsModules(auth));
             }
             
             app.UseEndpoints(endpoints =>
@@ -153,8 +157,7 @@ namespace Nethermind.Runner.JsonRpc
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
-                    IRpcAuthentication auth = (!jsonRpcUrl.IsAuthenticated || jsonRpcConfig.UnsecureDevNoRpcAuthentication) ? NoAuthentication.Instance : new JwtAuthentication(jsonRpcConfig, new ClockImpl());
-                    if (!auth.Authenticate(ctx.Request.Headers["Authorization"]))
+                    if (jsonRpcUrl.IsAuthenticated && !auth.Authenticate(ctx.Request.Headers["Authorization"]))
                     {
                         var response = jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Authentication error");
                         ctx.Response.ContentType = "application/json";
