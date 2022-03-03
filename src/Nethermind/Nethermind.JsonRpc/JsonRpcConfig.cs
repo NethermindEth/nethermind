@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.JsonRpc.Modules;
 
@@ -49,6 +50,8 @@ namespace Nethermind.JsonRpc
         public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
         public long? MaxRequestBodySize { get; set; } = 30000000;
         public int? EthModuleConcurrentInstances { get; set; } = null;
-        public int? MaxLoggedRequestSize { get; set; } = null;
+        public int? MaxLoggedRequestParametersCharacters { get; set; } = null;
+        public HashSet<string>? MethodsLoggingFiltering { get; set; } = null;
+        
     }
 }

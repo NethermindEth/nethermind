@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.JsonRpc.Modules.Eth;
 
@@ -110,8 +111,13 @@ namespace Nethermind.JsonRpc
         int? EthModuleConcurrentInstances { get; set; }
 
         [ConfigItem(
-            Description = "Max logged request size",
+            Description = "Limits the Maximum characters printing to log for parameters of any Json RPC service request",
             DefaultValue = "null")]
-        int? MaxLoggedRequestSize { get; set; }
+        int? MaxLoggedRequestParametersCharacters { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines method names of Json RPC service requests to be logged. Example: {\"eth_blockNumber\"} will only log \"eth_blockNumber\" requests for this method. If null, it will log all methods.",
+            DefaultValue = "null")]
+        public HashSet<string>? MethodsLoggingFiltering { get; set; }
     }
 }
