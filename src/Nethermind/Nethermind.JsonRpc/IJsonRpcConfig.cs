@@ -108,5 +108,10 @@ namespace Nethermind.JsonRpc
                           "If this limit is exceeded on Http calls 503 Service Unavailable will be returned along with Json RPC error. " +
                           "Defaults to number of logical processes.")]
         int? EthModuleConcurrentInstances { get; set; }
+
+        [ConfigItem(
+            Description = "Max logged request size",
+            DefaultValue = "None")]
+        int? MaxLoggedRequestSize { get; set; }
     }
 }
