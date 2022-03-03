@@ -122,7 +122,7 @@ namespace Nethermind.JsonRpc
             if (_logger.IsInfo)
             {
                 var paramStr = string.Join(',', providedParameters);
-                const int maxParamsLength = 100; // ToDo move it to JSON RPC config as max logged request size?
+                const int maxParamsLength = 20000000; // ToDo move it to JSON RPC config as max logged request size?
                 var paramStrAdjusted = paramStr.Substring(0, Math.Min(paramStr.Length, maxParamsLength));
                 _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
             }

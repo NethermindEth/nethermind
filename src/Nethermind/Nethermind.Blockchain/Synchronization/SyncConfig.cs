@@ -38,6 +38,8 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
+
+        public bool BeaconHeadersSync { get; set; } = true;
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool FastSync { get; set; }

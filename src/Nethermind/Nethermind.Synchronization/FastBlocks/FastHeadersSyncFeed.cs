@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _headersRequestSize = NethermindSyncLimits.MaxHeaderFetch;
             }
 
-            if (!_syncConfig.FastBlocks)
+            if (!_syncConfig.FastBlocks && !_syncConfig.BeaconHeadersSync)
             {
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
@@ -129,6 +129,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _historicalOverrides.TryGetValue(_blockTree.ChainId, out _expectedDifficultyOverride);
         }
+
+        protected virtual bool StartingFeedCondition() => _syncConfig.FastBlocks;
         
         protected override SyncMode ActivationSyncModes { get; }
             = SyncMode.FastHeaders & ~SyncMode.FastBlocks;
