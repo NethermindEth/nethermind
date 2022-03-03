@@ -16,11 +16,11 @@
 // 
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class SubscriptionFactory : ISubscriptionFactory
     {
-        private static Dictionary<string, CustomSubscriptionDelegate>? _customSubscriptions;
+        private readonly ConcurrentDictionary<string, Func<Subscription>> _customSubscriptions;
         private readonly ILogManager _logManager;
         private readonly IBlockTree _blockTree;
         private readonly ITxPool _txPool;
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IEthSyncingInfo ethSyncingInfo,
             ISpecProvider specProvider)
         {
-            _customSubscriptions = new Dictionary<string, CustomSubscriptionDelegate>();
+            _customSubscriptions = new ConcurrentDictionary<string, Func<Subscription>>();
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -73,20 +73,21 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 case SubscriptionType.Syncing:
                     return new SyncingSubscription(jsonRpcDuplexClient, _blockTree, _ethSyncingInfo, _logManager);
                 default:
-                    return CreateCustomSubscription(jsonRpcDuplexClient, subscriptionType, filter);
+                    if (_customSubscriptions.ContainsKey(subscriptionType))
+                    {
+                        return _customSubscriptions[subscriptionType]();
+                    }
+                    throw new InvalidSubscriptionTypeException();
             }
         }
-        private Subscription CreateCustomSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType,
-            Filter? filter)
+        public void RegisterSubscriptionType(string subscriptionType, Func<Subscription> customSubscriptionDelegate)
         {
-            if (_customSubscriptions.ContainsKey(subscriptionType))
+            if (_customSubscriptions.TryAdd(subscriptionType,customSubscriptionDelegate))
             {
-                CustomSubscriptionDelegate customDelegate = _customSubscriptions[subscriptionType];
-                return customDelegate(jsonRpcDuplexClient, subscriptionType, filter);
-                //TODO: Where's the API?
+                _customSubscriptions[subscriptionType] = customSubscriptionDelegate;
             }
-            throw new Exception("Invalid or unregistered SubscriptionType.");
         }
-        private delegate Subscription CustomSubscriptionDelegate(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, Filter? filter);
+
+        public class InvalidSubscriptionTypeException : Exception { }
     }
 }

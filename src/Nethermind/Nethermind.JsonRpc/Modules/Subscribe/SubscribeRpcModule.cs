@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, arguments));
                 return successfulResult;
             }
-            catch (Exception e) //TODO: specify exception type.
+            catch (SubscriptionFactory.InvalidSubscriptionTypeException e)
             {
                 return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
             }

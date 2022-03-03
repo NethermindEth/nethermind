@@ -24,9 +24,11 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Mev;
 using Nethermind.AccountAbstraction.Bundler;
+using Nethermind.AccountAbstraction.Subscribe;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
+using Nethermind.JsonRpc.Modules.Subscribe;
 
 namespace Nethermind.AccountAbstraction
 {
@@ -150,7 +152,7 @@ namespace Nethermind.AccountAbstraction
                 return _userOperationTxSource;
             }
         }
-
+        
         public string Name => "Account Abstraction";
 
         public string Description => "Implements account abstraction via alternative mempool (ERC-4337)";
@@ -223,7 +225,7 @@ namespace Nethermind.AccountAbstraction
                                           throw new ArgumentNullException(nameof(_nethermindApi.NodeStatsManager));
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
-
+                
                 serializer.Register(new UserOperationsMessageSerializer());
                 protocolsManager.AddProtocol(Protocol.AA,
                     session => new AaProtocolHandler(session, serializer, stats, UserOperationPool, logManager));
@@ -249,9 +251,19 @@ namespace Nethermind.AccountAbstraction
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
 
                 AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(UserOperationPool, new[] {_entryPointContractAddress});
-
+                ISubscriptionFactory subscriptionFactory = _nethermindApi.SubscriptionFactory;
+                ILogManager logManager = _nethermindApi.LogManager ??
+                                         throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
-
+            
+                subscriptionFactory.RegisterSubscriptionType(
+                    "newPendingUserOperations",
+                    () => new NewPendingUserOpsSubscription(
+                        getFromApi.JsonRpcDuplexClient,
+                        UserOperationPool,
+                        logManager)
+                );
+                
                 if (BundleMiningEnabled && MevPluginEnabled)
                 {
                     if (_logger!.IsInfo) _logger.Info("Both AA and MEV Plugins enabled, sending user operations to mev bundle pool instead");

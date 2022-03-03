@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class SubscriptionManager : ISubscriptionManager
     {
-        private readonly SubscriptionFactory _subscriptionFactory;
+        private readonly ISubscriptionFactory _subscriptionFactory;
         private readonly ILogger _logger;
         
         private readonly ConcurrentDictionary<string, Subscription> _subscriptions =
@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
             new();
         
-        public SubscriptionManager(SubscriptionFactory? subscriptionFactory, ILogManager? logManager)
+        public SubscriptionManager(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
         {
             _subscriptionFactory = subscriptionFactory ?? throw new ArgumentNullException(nameof(subscriptionFactory));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

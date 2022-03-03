@@ -28,7 +28,13 @@ using NUnit.Framework;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.AccountAbstraction.Subscribe;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.TxPool;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -36,25 +42,47 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class UserOperationSubscribeTests
     {
+        private ISubscribeRpcModule _subscribeRpcModule = null!;
         private ILogManager _logManager = null!;
-        private IUserOperationPool _userOperationPool = null!;
+        private IBlockTree _blockTree = null!;
+        private ITxPool _txPool = null!;
+        private IReceiptStorage _receiptStorage = null!;
+        private IFilterStore _filterStore = null!;
+        private ISubscriptionManager _subscriptionManager = null!;
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
         private IJsonSerializer _jsonSerializer = null!;
-        private ISubscriptionManager _subscriptionManager = null!;
-        private ISubscribeRpcModule _subscribeRpcModule = null!;
-        
+        private ISpecProvider _specProvider = null!;
+        private IUserOperationPool _userOperationPool = null!;
+
         [SetUp]
         public void Setup()
         {
             _logManager = Substitute.For<ILogManager>();
+            _blockTree = Substitute.For<IBlockTree>();
+            _txPool = Substitute.For<ITxPool>();
+            _receiptStorage = Substitute.For<IReceiptStorage>();
+            _specProvider = Substitute.For<ISpecProvider>();
             _userOperationPool = Substitute.For<IUserOperationPool>();
+            _filterStore = new FilterStore();
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
             
             SubscriptionFactory subscriptionFactory = new(
                 _logManager,
-                _userOperationPool
-                );
+                _blockTree,
+                _txPool,
+                _receiptStorage,
+                _filterStore,
+                new EthSyncingInfo(_blockTree),
+                _specProvider);
+            
+            subscriptionFactory.RegisterSubscriptionType(
+                "newPendingUserOperations",
+                () => new NewPendingUserOpsSubscription(
+                    _jsonRpcDuplexClient,
+                    _userOperationPool,
+                    _logManager)
+            );
             
             _subscriptionManager = new SubscriptionManager(
                 subscriptionFactory,
@@ -78,7 +106,7 @@ namespace Nethermind.AccountAbstraction.Test
                 manualResetEvent.Set();
             }));
 
-            _userOperationPool.NewPending += Raise.EventWith(new object(), userOperationEventArgs);
+            _userOperationPool!.NewPending += Raise.EventWith(new object(), userOperationEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = newPendingUserOpsSubscription.Id;
