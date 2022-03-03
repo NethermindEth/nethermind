@@ -69,7 +69,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             bool preMergeDifficultyRequirementSatisfied = base.ImprovementRequirementSatisfied(bestPeer);
             bool postMergeRequirementSatisfied = _beaconPivot.BeaconPivotExists() 
-                                                 && Math.Min(bestPeer!.HeadNumber, _beaconPivot.PivotNumber) > (_blockTree.BestSuggestedHeader?.Number ?? 0);
+                                                 && Math.Min(bestPeer!.HeadNumber, _beaconPivot.PivotNumber) > (_blockTree.BestSuggestedBody?.Number ?? 0);
             
             return _beaconPivot.BeaconPivotExists() ? postMergeRequirementSatisfied : preMergeDifficultyRequirementSatisfied;
         }
