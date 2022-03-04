@@ -78,8 +78,8 @@ namespace Nethermind.AccountAbstraction.Test
             
             subscriptionFactory.RegisterSubscriptionType(
                 "newPendingUserOperations",
-                () => new NewPendingUserOpsSubscription(
-                    _jsonRpcDuplexClient,
+                (jsonRpcDuplexClient) => new NewPendingUserOpsSubscription(
+                    jsonRpcDuplexClient,
                     _userOperationPool,
                     _logManager)
             );
@@ -106,7 +106,7 @@ namespace Nethermind.AccountAbstraction.Test
                 manualResetEvent.Set();
             }));
 
-            _userOperationPool!.NewPending += Raise.EventWith(new object(), userOperationEventArgs);
+            _userOperationPool.NewPending += Raise.EventWith(new object(), userOperationEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = newPendingUserOpsSubscription.Id;

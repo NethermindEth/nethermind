@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class SubscriptionFactory : ISubscriptionFactory
     {
-        private readonly ConcurrentDictionary<string, Func<Subscription>> _customSubscriptions;
+        private readonly ConcurrentDictionary<string, Func<IJsonRpcDuplexClient, Subscription>> _customSubscriptions;
         private readonly ILogManager _logManager;
         private readonly IBlockTree _blockTree;
         private readonly ITxPool _txPool;
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IEthSyncingInfo ethSyncingInfo,
             ISpecProvider specProvider)
         {
-            _customSubscriptions = new ConcurrentDictionary<string, Func<Subscription>>();
+            _customSubscriptions = new ConcurrentDictionary<string, Func<IJsonRpcDuplexClient, Subscription>>();
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -73,14 +73,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 case SubscriptionType.Syncing:
                     return new SyncingSubscription(jsonRpcDuplexClient, _blockTree, _ethSyncingInfo, _logManager);
                 default:
-                    if (_customSubscriptions.ContainsKey(subscriptionType))
+                    if (_customSubscriptions.TryGetValue(subscriptionType, out var customSubscriptionDelegate))
                     {
-                        return _customSubscriptions[subscriptionType]();
+                        return customSubscriptionDelegate(jsonRpcDuplexClient);
                     }
                     throw new InvalidSubscriptionTypeException();
             }
         }
-        public void RegisterSubscriptionType(string subscriptionType, Func<Subscription> customSubscriptionDelegate)
+        public void RegisterSubscriptionType(string subscriptionType, Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate)
         {
             if (_customSubscriptions.TryAdd(subscriptionType,customSubscriptionDelegate))
             {

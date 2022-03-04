@@ -209,6 +209,8 @@ namespace Nethermind.Init.Steps
                 _api.FilterStore,
                 _api.EthSyncingInfo!,
                 _api.SpecProvider);
+
+            _api.SubscriptionFactory = subscriptionFactory;
             
             SubscriptionManager subscriptionManager = new(subscriptionFactory, _api.LogManager);
             

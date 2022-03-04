@@ -193,9 +193,6 @@ namespace Nethermind.Api
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
         
         public ISubscriptionFactory SubscriptionFactory { get; set; }
-
-        public IJsonRpcDuplexClient JsonRpcDuplexClient { get; set; }
-
         public ProtectedPrivateKey? NodeKey { get; set; }
         
         /// <summary>

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
@@ -29,6 +30,8 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.JsonRpc.WebSockets;
+
 
 namespace Nethermind.AccountAbstraction
 {
@@ -255,11 +258,14 @@ namespace Nethermind.AccountAbstraction
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
-            
+                
+                //Get the Websockets client:
+                //IJsonRpcDuplexClient jsonRpcSocketsClient = getFromApi.WebSocketsManager.GetModule("default").CreateClient(new WebSocket())
+                    
                 subscriptionFactory.RegisterSubscriptionType(
                     "newPendingUserOperations",
-                    () => new NewPendingUserOpsSubscription(
-                        getFromApi.JsonRpcDuplexClient,
+                    (jsonRpcDuplexClient) => new NewPendingUserOpsSubscription(
+                        jsonRpcDuplexClient,
                         UserOperationPool,
                         logManager)
                 );

@@ -16,7 +16,6 @@
 // 
 
 using System;
-using System.Collections.Generic;
 using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
@@ -24,6 +23,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public interface ISubscriptionFactory
     {
         Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, Filter? filter = null);
-        void RegisterSubscriptionType(string subscriptionType, Func<Subscription> customSubscriptionDelegate);
+        void RegisterSubscriptionType(string subscriptionType, Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate);
     }
 }
