@@ -98,6 +98,18 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidBlockHash;
             }
             
+            if (_blockValidator.ValidateSuggestedBlock(block) == false)
+            {
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn(
+                        $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
+                }
+
+                return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, false, null,
+                    $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}"));
+            }
+            
             if (synced == false)
             {
                 if (_blockCacheService.Contains(block.Hash))
@@ -136,9 +148,17 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 bool wasProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash ?? parentHeader.CalculateHash());
                 if (!wasProcessed)
                 {
-                    _blockTree.Insert(block, true);
-                    _blockCacheService.EnqueueBlockHeader(block.Header);
-
+                    bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
+                    if (parentPivotProcessed)
+                    {
+                        _blockTree.SuggestBlock(block, true);
+                    }
+                    else
+                    {
+                        _blockTree.Insert(block, true);
+                        _blockCacheService.EnqueueBlockHeader(block.Header);
+                    }
+                    
                     return NewPayloadV1Result.Syncing;
                 }
                 synced = true;
