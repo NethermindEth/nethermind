@@ -38,12 +38,14 @@ namespace Nethermind.JsonRpc
         private readonly ILogger _logger;
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
 
-        public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager)
+        public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
         {
             _logger = logManager.GetClassLogger();
             _rpcModuleProvider = rpcModuleProvider;
             _serializer = new JsonSerializer();
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
 
             List<JsonConverter> converterList = new();
             foreach (JsonConverter converter in rpcModuleProvider.Converters)
@@ -122,8 +124,8 @@ namespace Nethermind.JsonRpc
             if (_logger.IsInfo)
             {
                 var paramStr = string.Join(',', providedParameters);
-                const int maxParamsLength = 2000; // ToDo move it to JSON RPC config as max logged request size?
-                var paramStrAdjusted = paramStr.Substring(0, Math.Min(paramStr.Length, maxParamsLength));
+                var paramStrAdjusted = paramStr.Substring(0, Math.Min(paramStr.Length, _jsonRpcConfig.MaxLoggedRequestSize ?? paramStr.Length));
+                if (paramStrAdjusted.Length < paramStr.Length) paramStrAdjusted += "...";
                 _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
             }
 
