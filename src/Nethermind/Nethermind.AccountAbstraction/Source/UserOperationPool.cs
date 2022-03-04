@@ -29,7 +29,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -165,7 +164,7 @@ namespace Nethermind.AccountAbstraction.Source
             Metrics.UserOperationsReceived++;
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
             
-            NewDiscovered?.Invoke(this,new UserOperationEventArgs(userOperation));
+            NewReceived?.Invoke(this,new UserOperationEventArgs(userOperation));
             
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
@@ -350,7 +349,7 @@ namespace Nethermind.AccountAbstraction.Source
             _headBlocksChannel.Writer.Complete();
         }
 
-        public event EventHandler<UserOperationEventArgs>? NewDiscovered;
+        public event EventHandler<UserOperationEventArgs>? NewReceived;
         public event EventHandler<UserOperationEventArgs>? NewPending;
 
     }

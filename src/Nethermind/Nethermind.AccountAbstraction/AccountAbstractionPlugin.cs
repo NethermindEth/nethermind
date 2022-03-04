@@ -259,12 +259,17 @@ namespace Nethermind.AccountAbstraction
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
                 
-                //Get the Websockets client:
-                //IJsonRpcDuplexClient jsonRpcSocketsClient = getFromApi.WebSocketsManager.GetModule("default").CreateClient(new WebSocket())
-                    
                 subscriptionFactory.RegisterSubscriptionType(
                     "newPendingUserOperations",
                     (jsonRpcDuplexClient) => new NewPendingUserOpsSubscription(
+                        jsonRpcDuplexClient,
+                        UserOperationPool,
+                        logManager)
+                );
+                
+                subscriptionFactory.RegisterSubscriptionType(
+                    "newReceivedUserOperations",
+                    (jsonRpcDuplexClient) => new NewReceivedUserOpsSubscription(
                         jsonRpcDuplexClient,
                         UserOperationPool,
                         logManager)

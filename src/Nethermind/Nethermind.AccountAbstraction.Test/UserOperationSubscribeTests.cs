@@ -84,6 +84,14 @@ namespace Nethermind.AccountAbstraction.Test
                     _logManager)
             );
             
+            subscriptionFactory.RegisterSubscriptionType(
+                "newReceivedUserOperations",
+                (jsonRpcDuplexClient) => new NewReceivedUserOpsSubscription(
+                    jsonRpcDuplexClient,
+                    _userOperationPool,
+                    _logManager)
+            );
+            
             _subscriptionManager = new SubscriptionManager(
                 subscriptionFactory,
                 _logManager);
@@ -112,6 +120,27 @@ namespace Nethermind.AccountAbstraction.Test
             subscriptionId = newPendingUserOpsSubscription.Id;
             return jsonRpcResult;
         }
+        
+        private JsonRpcResult GetNewReceivedUserOpsResult(UserOperationEventArgs userOperationEventArgs,
+            out string subscriptionId)
+        {
+            NewReceivedUserOpsSubscription newReceivedUserOpsSubscription =
+                new(_jsonRpcDuplexClient, _userOperationPool, _logManager);
+            JsonRpcResult jsonRpcResult = new();
+
+            ManualResetEvent manualResetEvent = new(false);
+            newReceivedUserOpsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
+            {
+                jsonRpcResult = j;
+                manualResetEvent.Set();
+            }));
+
+            _userOperationPool.NewReceived += Raise.EventWith(new object(), userOperationEventArgs);
+            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
+
+            subscriptionId = newReceivedUserOpsSubscription.Id;
+            return jsonRpcResult;
+        }
 
         [Test]
         public void NewPendingUserOperationsSubscription_creating_result()
@@ -137,6 +166,29 @@ namespace Nethermind.AccountAbstraction.Test
         }
         
         [Test]
+        public void NewReceivedUserOperationsSubscription_creating_result()
+        {
+            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newReceivedUserOperations");
+            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+
+        [Test]
+        public void NewReceivedUserOperationsSubscription_on_NewPending_event()
+        {
+            UserOperation userOperation = Build.A.UserOperation.TestObject;
+            UserOperationEventArgs userOperationEventArgs = new(userOperation);
+
+            JsonRpcResult jsonRpcResult = GetNewReceivedUserOpsResult(userOperationEventArgs, out var subscriptionId);
+
+            jsonRpcResult.Response.Should().NotBeNull();
+            string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
+            var expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"sender\":\"0x0000000000000000000000000000000000000000\",\"nonce\":\"0x0\",\"callData\":\"0x\",\"initCode\":\"0x\",\"callGas\":\"0xf4240\",\"verificationGas\":\"0xf4240\",\"preVerificationGas\":\"0x33450\",\"maxFeePerGas\":\"0x1\",\"maxPriorityFeePerGas\":\"0x1\",\"paymaster\":\"0x0000000000000000000000000000000000000000\",\"signature\":\"0x\",\"paymasterData\":\"0x\"}}}";
+
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
         public void Wrong_subscription_name()
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "whatever");
@@ -144,14 +196,6 @@ namespace Nethermind.AccountAbstraction.Test
             expectedResult.Should().Be(serialized);
         }
 
-        [Test]
-        public void No_subscription_name()
-        {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe");
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\",\"data\":\"Incorrect parameters count, expected: 2, actual: 0\"},\"id\":67}";
-            expectedResult.Should().Be(serialized);
-        }
-        
         [Test]
         public void Eth_unsubscribe_success()
         {

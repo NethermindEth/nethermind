@@ -31,7 +31,7 @@ namespace Nethermind.AccountAbstraction.Source
         public IEnumerable<UserOperation> GetUserOperations();
         void AddPeer(IUserOperationPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
-        event EventHandler<UserOperationEventArgs> NewDiscovered;
+        event EventHandler<UserOperationEventArgs> NewReceived;
         event EventHandler<UserOperationEventArgs> NewPending;
     }
 }

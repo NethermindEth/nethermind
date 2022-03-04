@@ -23,42 +23,42 @@ using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules.Subscribe;
 
 namespace Nethermind.AccountAbstraction.Subscribe;
-public class NewPendingUserOpsSubscription : Subscription
+public class NewReceivedUserOpsSubscription : Subscription
 {
     private readonly IUserOperationPool _userOperationPool;
     
-    public NewPendingUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IUserOperationPool? userOperationPool, ILogManager? logManager) 
+    public NewReceivedUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IUserOperationPool? userOperationPool, ILogManager? logManager) 
         : base(jsonRpcDuplexClient)
     {
         _userOperationPool = userOperationPool ?? throw new ArgumentNullException(nameof(userOperationPool));
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
-        _userOperationPool.NewPending += OnNewPending;
-        if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will track newPendingUserOperations");
+        _userOperationPool.NewReceived += OnNewReceived;
+        if(_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} will track newReceivedUserOperations");
     }
     
-    private void OnNewPending(object? sender, UserOperationEventArgs e)
+    private void OnNewReceived(object? sender, UserOperationEventArgs e)
     {
         ScheduleAction(() =>
         {
             JsonRpcResult result = CreateSubscriptionMessage(new UserOperationRpc(e.UserOperation));
             JsonRpcDuplexClient.SendJsonRpcResult(result);
-            if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} printed hash of newPendingUserOperations.");
+            if(_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} printed hash of newReceivedUserOperations.");
         });
     }
     
     protected override string GetErrorMsg()
     {
-        return $"newPendingUserOperations subscription {Id}: Failed Task.Run after newPending event.";
+        return $"newReceivedUserOperations subscription {Id}: Failed Task.Run after newReceived event.";
     }
         
-    public override string Type => "newPendingUserOperations";
+    public override string Type => "newReceivedUserOperations";
 
     public override void Dispose()
     {
         base.Dispose();
-        _userOperationPool.NewPending -= OnNewPending;
-        if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will no longer track newPendingUserOperations");
+        _userOperationPool.NewReceived -= OnNewReceived;
+        if(_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} will no longer track newReceivedUserOperations");
     }
 
 }
