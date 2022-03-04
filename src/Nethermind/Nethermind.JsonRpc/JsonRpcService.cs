@@ -122,8 +122,7 @@ namespace Nethermind.JsonRpc
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string?[] providedParameters = request.Params ?? Array.Empty<string>();
             
-            if (_logger.IsInfo && (_jsonRpcConfig.MethodsLoggingFiltering == null ||
-                                   _jsonRpcConfig.MethodsLoggingFiltering.Contains(methodName)))
+            if (_logger.IsInfo && !_jsonRpcConfig.MethodsLoggingFiltering.Contains(methodName))
             {
                 string paramStr = string.Join(',', providedParameters);
                 string paramStrAdjusted = paramStr[..Math.Min(paramStr.Length, _jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? paramStr.Length)];

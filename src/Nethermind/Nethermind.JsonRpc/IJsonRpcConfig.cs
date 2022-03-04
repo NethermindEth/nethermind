@@ -116,8 +116,8 @@ namespace Nethermind.JsonRpc
         int? MaxLoggedRequestParametersCharacters { get; set; }
         
         [ConfigItem(
-            Description = "Defines method names of Json RPC service requests to be logged. Example: {\"eth_blockNumber\"} will only log \"eth_blockNumber\" requests for this method. If null, it will log all methods.",
-            DefaultValue = "null")]
-        public HashSet<string>? MethodsLoggingFiltering { get; set; }
+            Description = "Defines method names of Json RPC service requests to NOT log. Example: {\"eth_blockNumber\"} will not log \"eth_blockNumber\" requests.",
+            DefaultValue = "[engine_newPayloadV1]")]
+        public string[] MethodsLoggingFiltering { get; set; }
     }
 }

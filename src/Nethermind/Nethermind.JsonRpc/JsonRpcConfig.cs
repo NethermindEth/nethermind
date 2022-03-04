@@ -29,11 +29,11 @@ namespace Nethermind.JsonRpc
         public string Host { get; set; } = "127.0.0.1";
         public int Timeout { get; set; } = 20000;
         public string RpcRecorderBaseFilePath { get; set; } = "logs/rpc.{counter}.txt";
-        
+
         public RpcRecorderState RpcRecorderState { get; set; } = RpcRecorderState.None;
 
         public int Port { get; set; } = 8545;
- 
+
         public int WebSocketsPort
         {
             get => _webSocketsPort ?? Port;
@@ -51,7 +51,8 @@ namespace Nethermind.JsonRpc
         public long? MaxRequestBodySize { get; set; } = 30000000;
         public int? EthModuleConcurrentInstances { get; set; } = null;
         public int? MaxLoggedRequestParametersCharacters { get; set; } = null;
-        public HashSet<string>? MethodsLoggingFiltering { get; set; } = null;
+        public string[] MethodsLoggingFiltering { get; set; } = {"engine_newPayloadV1"};
         
-    }
-}
+    };
+};
+
