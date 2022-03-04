@@ -108,10 +108,10 @@ namespace Nethermind.JsonRpc
                           "If this limit is exceeded on Http calls 503 Service Unavailable will be returned along with Json RPC error. " +
                           "Defaults to number of logical processes.")]
         int? EthModuleConcurrentInstances { get; set; }
-
-        [ConfigItem(Description = "Hex encoded secret for jwt authentication", DefaultValue = "null")]
-        public string? Secret { get; set; }
         
+        [ConfigItem(Description = "Path to file with hex encoded secret for jwt authentication", DefaultValue = "keystore/jwt-secret")]
+        public string JwtSecretFile { get; set; }
+
         [ConfigItem(Description = "It shouldn't be set to true for production nodes. If set to true all modules can work without RPC authentication.", DefaultValue = "false", HiddenFromDocs = true)]
         public bool UnsecureDevNoRpcAuthentication { get; set; }
 

@@ -111,7 +111,7 @@ namespace Nethermind.Runner.JsonRpc
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
             IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication
                 ? NoAuthentication.Instance
-                : JwtAuthentication.ReadOrGenerateFromFile(jsonRpcConfig.Secret!, new ClockImpl(), logger);
+                : JwtAuthentication.ReadOrGenerateFromFile(jsonRpcConfig.JwtSecretFile, new ClockImpl(), logger);
 
             if (initConfig.WebSocketsEnabled)
             {
