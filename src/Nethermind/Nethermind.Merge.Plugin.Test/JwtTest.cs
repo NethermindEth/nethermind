@@ -15,14 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Threading.Tasks;
+using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Authentication;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.Merge.Plugin.Data;
 using NSubstitute;
 using NUnit.Framework;
-using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -47,8 +43,11 @@ public class JwtTest
         var mock = Substitute.For<IClock>();
         mock.GetCurrentTime().Returns(1644994971);
         JwtAuthentication authentication = CreateRpcAuthentication("736563726574", mock);
+        JwtAuthentication authenticationWithPrefix = CreateRpcAuthentication("0x736563726574", mock);
         bool actual = authentication.Authenticate(token);
         Assert.AreEqual(expected, actual);
+        actual = authenticationWithPrefix.Authenticate(token);
+        Assert.AreEqual(actual, expected);
     }
     
     private JwtAuthentication CreateRpcAuthentication(string secret, IClock mock)
