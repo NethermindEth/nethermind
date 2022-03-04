@@ -68,6 +68,7 @@ namespace Nethermind.JsonRpc.Authentication
                 byte[] secret = new byte[JWT_SECRET_LENGTH / 2];
                 Random rnd = new();
                 rnd.NextBytes(secret);
+                Directory.CreateDirectory(fileInfo.DirectoryName!);
                 StreamWriter writer = new(filePath);
                 string hexSecret = EncodeSecret(secret);
                 writer.Write(hexSecret);
