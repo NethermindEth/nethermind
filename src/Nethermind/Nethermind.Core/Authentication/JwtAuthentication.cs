@@ -85,7 +85,7 @@ namespace Nethermind.Core.Authentication
                 StreamReader stream = new(filePath);
                 string hexSecret = stream.ReadToEnd();
                 hexSecret = hexSecret.TrimStart().TrimEnd();
-                if (!System.Text.RegularExpressions.Regex.IsMatch(hexSecret, @"^[0-9a-fA-F]{64}$"))
+                if (!System.Text.RegularExpressions.Regex.IsMatch(hexSecret, @"^(0x)?[0-9a-fA-F]{64}$"))
                 {
                     throw new FormatException("Secret should be a 64 digit hexadecimal number");
                 }
