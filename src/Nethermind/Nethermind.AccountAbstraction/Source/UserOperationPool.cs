@@ -163,8 +163,9 @@ namespace Nethermind.AccountAbstraction.Source
         {
             Metrics.UserOperationsReceived++;
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
-            
-            NewReceived?.Invoke(this,new UserOperationEventArgs(userOperation));
+
+            UserOperationEventArgs userOperationEventArgs = new(userOperation);
+            NewReceived?.Invoke(this, userOperationEventArgs);
             
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
@@ -177,7 +178,7 @@ namespace Nethermind.AccountAbstraction.Source
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
                     _broadcaster.BroadcastOnce(userOperation);
                     
-                    NewPending?.Invoke(this, new UserOperationEventArgs(userOperation));
+                    NewPending?.Invoke(this, userOperationEventArgs);
                     
                     return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, _chainId));
                 }

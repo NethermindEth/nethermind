@@ -53,8 +53,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public override void Dispose()
         {
-            base.Dispose();
             _txPool.EvictedPending -= OnEvicted;
+            base.Dispose();
             if(_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will no longer track DroppedPendingTransactions");
         }
     }

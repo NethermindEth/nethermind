@@ -56,8 +56,8 @@ public class NewReceivedUserOpsSubscription : Subscription
 
     public override void Dispose()
     {
-        base.Dispose();
         _userOperationPool.NewReceived -= OnNewReceived;
+        base.Dispose();
         if(_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} will no longer track newReceivedUserOperations");
     }
 

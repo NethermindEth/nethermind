@@ -56,8 +56,8 @@ public class NewPendingUserOpsSubscription : Subscription
 
     public override void Dispose()
     {
-        base.Dispose();
         _userOperationPool.NewPending -= OnNewPending;
+        base.Dispose();
         if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will no longer track newPendingUserOperations");
     }
 

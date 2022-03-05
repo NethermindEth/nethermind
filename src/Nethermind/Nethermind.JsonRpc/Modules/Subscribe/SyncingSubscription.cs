@@ -89,11 +89,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public override string Type => SubscriptionType.Syncing;
         public override void Dispose()
         {
-            base.Dispose();
             _blockTree.NewBestSuggestedBlock -= OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
-
             _blockTree.NewHeadBlock -= OnConditionsChange;
+            base.Dispose();
+            
+            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewHeadBlocks");
         }
     }

@@ -64,8 +64,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         
         public override void Dispose()
         {
-            base.Dispose();
             _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
+            base.Dispose();
             if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will no longer track BlockAddedToMain");
         }
     }

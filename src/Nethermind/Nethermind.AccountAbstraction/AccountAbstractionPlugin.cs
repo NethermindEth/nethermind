@@ -254,22 +254,22 @@ namespace Nethermind.AccountAbstraction
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
 
                 AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(UserOperationPool, new[] {_entryPointContractAddress});
-                ISubscriptionFactory subscriptionFactory = _nethermindApi.SubscriptionFactory;
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
                 
+                ISubscriptionFactory subscriptionFactory = _nethermindApi.SubscriptionFactory;
+                //Register custom UserOperation websocket subscription types in the SubscriptionFactory.
                 subscriptionFactory.RegisterSubscriptionType(
                     "newPendingUserOperations",
-                    (jsonRpcDuplexClient) => new NewPendingUserOpsSubscription(
+                    (jsonRpcDuplexClient,_) => new NewPendingUserOpsSubscription(
                         jsonRpcDuplexClient,
                         UserOperationPool,
                         logManager)
                 );
-                
                 subscriptionFactory.RegisterSubscriptionType(
                     "newReceivedUserOperations",
-                    (jsonRpcDuplexClient) => new NewReceivedUserOpsSubscription(
+                    (jsonRpcDuplexClient,_) => new NewReceivedUserOpsSubscription(
                         jsonRpcDuplexClient,
                         UserOperationPool,
                         logManager)
