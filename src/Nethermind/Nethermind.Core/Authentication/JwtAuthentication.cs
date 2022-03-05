@@ -22,9 +22,11 @@ using System.Linq;
 using JWT;
 using JWT.Algorithms;
 using JWT.Serializers;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.Logging; // ToDo Nikita I think we should use Micsoroft library
 
-namespace Nethermind.JsonRpc.Authentication
+namespace Nethermind.Core.Authentication
 {
     public class JwtAuthentication : IRpcAuthentication
     {
@@ -32,9 +34,9 @@ namespace Nethermind.JsonRpc.Authentication
         public byte[]? Secret { private get; set; }
         private readonly IJwtDecoder _decoder;
 
-        private const string JWT_MESSAGE_PREFIX = "Bearer ";
-        private const int JWT_TOKEN_TTL = 5;
-        private const int JWT_SECRET_LENGTH = 64;
+        private const string JwtMessagePrefix = "Bearer ";
+        private const int JwtTokenTtl = 5;
+        private const int JwtSecretLength = 64;
         
         // ToDo we should pass JsonRpcConfig here
         public JwtAuthentication(
@@ -65,7 +67,7 @@ namespace Nethermind.JsonRpc.Authentication
             {
                 // Generate secret;
                 logger.Info("Generating jwt secret");
-                byte[] secret = new byte[JWT_SECRET_LENGTH / 2];
+                byte[] secret = new byte[JwtSecretLength / 2];
                 Random rnd = new();
                 rnd.NextBytes(secret);
                 Directory.CreateDirectory(fileInfo.DirectoryName!);
@@ -83,12 +85,10 @@ namespace Nethermind.JsonRpc.Authentication
                 StreamReader stream = new(filePath);
                 string hexSecret = stream.ReadToEnd();
                 hexSecret = hexSecret.TrimStart().TrimEnd();
-                if (hexSecret.Length != JWT_SECRET_LENGTH ||
-                    !System.Text.RegularExpressions.Regex.IsMatch(hexSecret, @"\A\b[0-9a-fA-F]+\b\Z"))
+                if (!System.Text.RegularExpressions.Regex.IsMatch(hexSecret, @"^(0x)?[0-9a-fA-F]{64}$"))
                 {
                     throw new FormatException("Secret should be a 64 digit hexadecimal number");
                 }
-
                 return FromHexSecret(hexSecret, clock);
             }
         }
@@ -97,14 +97,14 @@ namespace Nethermind.JsonRpc.Authentication
         {
             if (token == null) return false;
             if (Secret == null) return false;
-            if (!token.StartsWith(JWT_MESSAGE_PREFIX)) return false;
-            token = token.Remove(0, JWT_MESSAGE_PREFIX.Length);
+            if (!token.StartsWith(JwtMessagePrefix)) return false;
+            token = token.Remove(0, JwtMessagePrefix.Length);
             try
             {
                 var decoded = _decoder.DecodeToObject<Dictionary<string, object>>(token, Secret, true);
                 long iat = (long)decoded["iat"];
                 long cur = _clock.GetCurrentTime();
-                return Math.Abs(iat - cur) <= JWT_TOKEN_TTL;
+                return Math.Abs(iat - cur) <= JwtTokenTtl;
             }
             catch (Exception e)
             {
@@ -115,7 +115,8 @@ namespace Nethermind.JsonRpc.Authentication
         // ToDo Nikita the method like this should be private
         private static byte[] DecodeSecret(string hexSecret)
         {
-            return Enumerable.Range(0, hexSecret.Length)
+            int start = hexSecret.StartsWith("0x") ? 2 : 0;
+            return Enumerable.Range(start, hexSecret.Length - start)
                 .Where(x => x % 2 == 0)
                 .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
                 .ToArray();
