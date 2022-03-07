@@ -54,6 +54,8 @@ public class ResettableList<T> : IList<T>
 
     public bool IsReadOnly => false;
 
+    public int Capacity => _wrapped.Capacity;
+
     public int IndexOf(T item) => _wrapped.IndexOf(item);
 
     public void Insert(int index, T item) => _wrapped.Insert(index, item);
@@ -68,11 +70,6 @@ public class ResettableList<T> : IList<T>
     
     public void Reset()
     {
-        if (_wrapped.Count == 0)
-        {
-            return;
-        }
-            
         if (_wrapped.Count < _currentCapacity / _resetRatio && _currentCapacity != _startCapacity)
         {
             _currentCapacity = Math.Max(_startCapacity, _currentCapacity / _resetRatio);
