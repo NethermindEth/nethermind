@@ -33,7 +33,9 @@
 
     <ItemGroup>
       <EmbeddedResource Include="Contract\AuRaContractGasLimitOverrideTests.json" />
+      <EmbeddedResource Include="Contract\VerkleAuRaContractGasLimitOverrideTests.json" />
       <EmbeddedResource Include="Contract\TxPriorityContractTests.json" />
+      <EmbeddedResource Include="Contract\VerkleTxPriorityContractTests.json" />
       <EmbeddedResource Include="Transactions\TxCertifierFilterTests.json" />
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V2.json" />
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V3.json" />

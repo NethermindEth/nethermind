@@ -170,7 +170,7 @@ namespace Nethermind.Blockchain.Test
 
             var branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
             ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
-            (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
+            (await suggestedBlockResetEvent.WaitAsync(VerkleTestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
             Assert.AreEqual(branchLength - 1, (int)testRpc.BlockTree.BestKnownNumber);
         }
     }

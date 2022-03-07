@@ -70,7 +70,10 @@ public interface IVerkleTrieStore :IDisposable
     byte[] GetStateRoot();
 }
 
-public interface IVerkleReadOnlyVerkleTrieStore : IVerkleTrieStore { }
+public interface IVerkleReadOnlyVerkleTrieStore : IVerkleTrieStore
+{
+    void ClearTempChanges();
+}
 
 public class VerkleTrieStore: IVerkleTrieStore
 {
@@ -98,7 +101,11 @@ public class VerkleTrieStore: IVerkleTrieStore
         RustVerkleLib.VerkleTrieFlush(_verkleTrie);
     }
     
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+    {
+        add { }
+        remove { }
+    }
 
     public IVerkleReadOnlyVerkleTrieStore AsReadOnly()
     {
@@ -161,6 +168,8 @@ public class ReadOnlyVerkleTrieStore: IVerkleReadOnlyVerkleTrieStore
     public void SetValue(Span<byte> rawKey, Span<byte> value) => RustVerkleLib.VerkleTrieInsert(_verkleTrie, rawKey, value);
     public void SetValue(byte[] rawKey, byte[] value) => RustVerkleLib.VerkleTrieInsert(_verkleTrie, rawKey, value);
     public byte[] GetStateRoot() => RustVerkleLib.VerkleTrieGetStateRoot(_verkleTrie);
+    
+    public void ClearTempChanges() => RustVerkleLib.VerkleTrieClear(_verkleTrie);
 }
 
 public static class RustVerkleLib {
