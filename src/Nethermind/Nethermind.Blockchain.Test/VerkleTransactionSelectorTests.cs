@@ -32,6 +32,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
@@ -40,19 +41,17 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
 {
-    public class TransactionSelectorTests: TransactionSelectorTestsBase
+    public class VerkleTransactionSelectorTests: TransactionSelectorTestsBase
     {
+
         [TestCaseSource(nameof(ProperTransactionsSelectedTestCases))]
         [TestCaseSource(nameof(Eip1559LegacyTransactionTestCases))]
         [TestCaseSource(nameof(Eip1559TestCases))]
-        public void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
+        public new void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
-            MemDb stateDb = new();
             MemDb codeDb = new();
-            TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-            StateReader stateReader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), codeDb, LimboLogs.Instance);
+            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+            VerkleStateProvider stateProvider = new(trieStore, LimboLogs.Instance, codeDb);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
@@ -60,7 +59,7 @@ namespace Nethermind.Blockchain.Test
                 HashSet<Address> missingAddressesSet = missingAddresses.ToHashSet();
 
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
-                    .Where(v => !missingAddressesSet.Contains(v.Key)))
+                             .Where(v => !missingAddressesSet.Contains(v.Key)))
                 {
                     stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                     for (int i = 0; i < accountState.Value.Nonce; i++)
@@ -77,10 +76,7 @@ namespace Nethermind.Blockchain.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
-            IReleaseSpec spec = new ReleaseSpec()
-            {
-                IsEip1559Enabled = testCase.Eip1559Enabled
-            };
+            IReleaseSpec spec = new ReleaseSpec() {IsEip1559Enabled = testCase.Eip1559Enabled};
             specProvider.GetSpec(Arg.Any<long>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider =
                 new(specProvider, blockTree);
@@ -105,7 +101,8 @@ namespace Nethermind.Blockchain.Test
 
 
             IEnumerable<Transaction> selectedTransactions =
-                poolTxSource.GetTransactions(Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee).TestObject,
+                poolTxSource.GetTransactions(
+                    Build.A.BlockHeader.WithStateRoot(stateProvider.StateRoot).WithBaseFee(testCase.BaseFee).TestObject,
                     testCase.GasLimit);
             selectedTransactions.Should()
                 .BeEquivalentTo(testCase.ExpectedSelectedTransactions, o => o.WithStrictOrdering());
