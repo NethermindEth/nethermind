@@ -161,6 +161,23 @@ namespace Nethermind.AccountAbstraction.Source
             return _userOperationSortedPool.GetSnapshot();
         }
 
+        public bool IncludesUserOperationWithSenderAndNonce(Address sender, UInt256 nonce)
+        {
+            if (_userOperationSortedPool.TryGetBucket(sender, out UserOperation[] userOperations))
+            {
+                return userOperations.Any(op => op.Nonce == nonce);
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        public bool CanInsert(UserOperation userOperation)
+        {
+            return _userOperationSortedPool.CanInsert(userOperation);
+        }
+
         public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
         {
             Metrics.UserOperationsReceived++;

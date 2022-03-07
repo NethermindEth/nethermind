@@ -102,30 +102,6 @@ namespace Nethermind.AccountAbstraction
                 _nethermindApi.SpecProvider!.ChainId);
 
             return _userOperationPools[entryPoint];
-            //     if (_userOperationPool is null)
-            //     {
-            //         var (getFromApi, _) = _nethermindApi!.ForProducer;
-            //         UserOperationSortedPool userOperationSortedPool = new(
-            //             _accountAbstractionConfig.UserOperationPoolSize,
-            //             CompareUserOperationsByDecreasingGasPrice.Default,
-            //             getFromApi.LogManager);
-
-            //         _userOperationPool = new UserOperationPool(
-            //             _accountAbstractionConfig,
-            //             _nethermindApi.BlockTree!,
-            //             _entryPointContractAddress,
-            //             _logger,
-            //             new PaymasterThrottler(BundleMiningEnabled),
-            //             _nethermindApi.LogFinder!,
-            //             _nethermindApi.EngineSigner!,
-            //             _nethermindApi.StateProvider!,
-            //             _nethermindApi.Timestamper,
-            //             UserOperationSimulator,
-            //             userOperationSortedPool);
-            //     }
-
-            //     return _userOperationPool;
-            // }
         }
 
         private UserOperationSimulator UserOperationSimulator (Address entryPoint)
@@ -152,29 +128,6 @@ namespace Nethermind.AccountAbstraction
                 getFromApi.LogManager);
 
             return _userOperationSimulators[entryPoint];
-            // get
-            // {
-            //     if (_userOperationSimulator is null)
-            //     {
-            //         var (getFromApi, _) = _nethermindApi!.ForProducer;
-
-            //         _userOperationSimulator = new UserOperationSimulator(
-            //             UserOperationTxBuilder,
-            //             getFromApi.StateProvider!,
-            //             getFromApi.StateReader!,
-            //             _entryPointContractAbi,
-            //             _create2FactoryAddress,
-            //             _entryPointContractAddress,
-            //             getFromApi.SpecProvider!,
-            //             getFromApi.BlockTree!,
-            //             getFromApi.DbProvider!,
-            //             getFromApi.ReadOnlyTrieStore!,
-            //             getFromApi.Timestamper!,
-            //             getFromApi.LogManager);
-            //     }
-
-            //     return _userOperationSimulator;
-            // }
         }
 
         private UserOperationTxSource UserOperationTxSource
@@ -183,24 +136,11 @@ namespace Nethermind.AccountAbstraction
             {
                 if (_userOperationTxSource is null)
                 {
-                    var (getFromApi, _) = _nethermindApi!.ForProducer;
-
-                    IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); 
-                    IDictionary<Address, UserOperationSimulator> _Simulators = new Dictionary<Address, UserOperationSimulator>();
-                    IDictionary<Address, UserOperationTxBuilder> _TxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
-
-                    foreach(Address entryPoint in _entryPointContractAddresses)
-                    {
-                        _Pools[entryPoint] = UserOperationPool(entryPoint);
-                        _Simulators[entryPoint] = UserOperationSimulator(entryPoint);
-                        _TxBuilders[entryPoint] = UserOperationTxBuilder(entryPoint);
-                    }
-
                     _userOperationTxSource = new UserOperationTxSource
                     (
-                        _TxBuilders,
-                        _Pools,
-                        _Simulators,
+                        _userOperationTxBuilders,
+                        _userOperationPools,
+                        _userOperationSimulators,
                         _nethermindApi.SpecProvider!,
                         _nethermindApi.StateProvider!,
                         _nethermindApi.EngineSigner!,
@@ -226,22 +166,8 @@ namespace Nethermind.AccountAbstraction
 
             if (_accountAbstractionConfig.Enabled)
             {
-
-                // bool parsed = Address.TryParse(
-                //     _accountAbstractionConfig.EntryPointContractAddress,
-                //     out Address? entryPointContractAddress);
-                // if (!parsed)
-                // {
-                //     if (_logger.IsError) _logger.Error("Account Abstraction Plugin: EntryPoint contract address could not be parsed");
-                // }
-                // else
-                // {
-                //     if (_logger.IsInfo) _logger.Info($"Parsed EntryPoint Address: {entryPointContractAddress}");
-                //     _entryPointContractAddress = entryPointContractAddress!;
-                // }
-
-                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in _entryPointContractAddressesString){
+                IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string _addressString in entryPointContractAddressesString){
                     bool parsed = Address.TryParse(
                         _addressString,
                         out Address? entryPointContractAddress);
@@ -270,6 +196,14 @@ namespace Nethermind.AccountAbstraction
                 }
 
                 _entryPointContractAbi = LoadEntryPointContract();
+                
+                // init all relevant objects
+                foreach(Address entryPoint in _entryPointContractAddresses)
+                {
+                    UserOperationPool(entryPoint);
+                    UserOperationSimulator(entryPoint);
+                    UserOperationTxBuilder(entryPoint);
+                }
             }
 
             if (Enabled)
@@ -289,15 +223,8 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 if (_nethermindApi is null) throw new ArgumentNullException(nameof(_nethermindApi));
-
-                //TODO: try filling the _userOperationPools instead and try using that
-                IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); 
-                foreach(Address entryPoint in _entryPointContractAddresses)
-                {
-                    _Pools[entryPoint] = UserOperationPool(entryPoint);
-                }
-
-                if (_Pools.Count == 0) throw new ArgumentNullException(nameof(UserOperationPool));
+                
+                if (_userOperationPools.Count == 0) throw new ArgumentNullException(nameof(UserOperationPool));
 
                 IProtocolsManager protocolsManager = _nethermindApi.ProtocolsManager ??
                                                      throw new ArgumentNullException(
@@ -310,12 +237,12 @@ namespace Nethermind.AccountAbstraction
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
 
-                UserOperationBroadcaster _broadcaster = new UserOperationBroadcaster(_logger);
-                AccountAbstractionPeerManager peerManager = new AccountAbstractionPeerManager(_Pools, _broadcaster, _logger);
+                UserOperationBroadcaster broadcaster = new UserOperationBroadcaster(_logger);
+                AccountAbstractionPeerManager peerManager = new AccountAbstractionPeerManager(_userOperationPools, broadcaster, _logger);
 
                 serializer.Register(new UserOperationsMessageSerializer());
                 protocolsManager.AddProtocol(Protocol.AA,
-                    session => new AaProtocolHandler(session, serializer, stats, _Pools, peerManager, logManager));
+                    session => new AaProtocolHandler(session, serializer, stats, _userOperationPools, peerManager, logManager));
                 protocolsManager.AddSupportedCapability(new Capability(Protocol.AA, 0));
 
                 if (_logger.IsInfo) _logger.Info("Initialized Account Abstraction network protocol");
@@ -336,16 +263,8 @@ namespace Nethermind.AccountAbstraction
 
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
-
-                //TODO: try filling the _userOperationPools instead and try using that
-                IDictionary<Address, UserOperationPool> _Pools = new Dictionary<Address, UserOperationPool>(); 
-                foreach(Address entryPoint in _entryPointContractAddresses)
-                {
-                    _Pools[entryPoint] = UserOperationPool(entryPoint);
-                }
-
-                // AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(UserOperationPool, new[] {_entryPointContractAddress});
-                AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(_Pools, _entryPointContractAddresses.ToArray());
+                
+                AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(_userOperationPools, _entryPointContractAddresses.ToArray());
 
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
 

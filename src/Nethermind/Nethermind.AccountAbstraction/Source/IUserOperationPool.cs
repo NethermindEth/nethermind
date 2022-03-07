@@ -18,7 +18,9 @@
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.AccountAbstraction.Source
@@ -27,6 +29,8 @@ namespace Nethermind.AccountAbstraction.Source
     {
         ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
         bool RemoveUserOperation(Keccak? userOperationHash);
-        public IEnumerable<UserOperation> GetUserOperations();
+        IEnumerable<UserOperation> GetUserOperations();
+        bool IncludesUserOperationWithSenderAndNonce(Address sender, UInt256 nonce);
+        bool CanInsert(UserOperation userOperation);
     }
 }

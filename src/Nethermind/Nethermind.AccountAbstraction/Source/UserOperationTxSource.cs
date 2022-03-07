@@ -101,8 +101,7 @@ namespace Nethermind.AccountAbstraction.Source
             
             foreach (Tuple<Address, UserOperation> addressedUserOperation in sortedUserOperations)
             {
-                UserOperation userOperation = addressedUserOperation.Item2;
-                Address entryPoint = addressedUserOperation.Item1;
+                (Address entryPoint, UserOperation userOperation) = addressedUserOperation;
                 
                 ulong userOperationTotalGasLimit = (ulong)userOperation.CallGas +
                                                    (ulong)userOperation.PreVerificationGas +
