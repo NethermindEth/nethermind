@@ -15,11 +15,22 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
+using Nethermind.State;
 
 namespace Nethermind.Evm.TransactionProcessing
 {
     public interface IReadOnlyTxProcessorSource
     {
+        public IStateReader StateReader { get; }
+        public IStateProvider StateProvider { get; }
+        public IStorageProvider StorageProvider { get; }
+        public ITransactionProcessor TransactionProcessor { get; set; }
+        public IBlockhashProvider BlockhashProvider { get; }
+        public IVirtualMachine Machine { get; }
+        
         IReadOnlyTransactionProcessor Build(Keccak stateRoot);
+
+        public void Reset();
     }
 }

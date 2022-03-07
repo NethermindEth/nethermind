@@ -18,6 +18,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Nethermind.Logging;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
@@ -56,6 +57,8 @@ public interface IVerkleTrieStore :IDisposable
     void FinishBlockCommit(TrieType trieType, long blockNumber);
 
     void HackPersistOnShutdown();
+    
+    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
         
     IVerkleReadOnlyVerkleTrieStore AsReadOnly();
     byte[]? GetValue(Span<byte> rawKey);
@@ -94,6 +97,8 @@ public class VerkleTrieStore: IVerkleTrieStore
     {
         RustVerkleLib.VerkleTrieFlush(_verkleTrie);
     }
+    
+    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
     public IVerkleReadOnlyVerkleTrieStore AsReadOnly()
     {
@@ -135,6 +140,12 @@ public class ReadOnlyVerkleTrieStore: IVerkleReadOnlyVerkleTrieStore
     public void FinishBlockCommit(TrieType trieType, long blockNumber) { }
 
     public void HackPersistOnShutdown() { }
+    
+    public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
+    {
+        add { }
+        remove { }
+    }
 
     public IVerkleReadOnlyVerkleTrieStore AsReadOnly()
     {
