@@ -167,7 +167,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
             if (shouldUpdateHead)
             {
-                _blockTree.UpdateMainChain(blocks!, true, true);
+        //        _blockTree.UpdateMainChain(blocks!, true, true);
                 headUpdated = _blockTree.Head == newHeadBlock;
             }
 

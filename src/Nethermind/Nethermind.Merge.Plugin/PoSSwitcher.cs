@@ -122,7 +122,7 @@ namespace Nethermind.Merge.Plugin
                     parent = _blockTree.FindParentHeader(header!, BlockTreeLookupOptions.None);
                 }
 
-                if (parent != null && parent.TotalDifficulty < TerminalTotalDifficulty)
+                if (parent != null && (parent.TotalDifficulty < TerminalTotalDifficulty && parent.TotalDifficulty != 0)) // ToDo hack - && parent.TotalDifficulty != 0 need to be fixed
                 {
                     isTerminalBlock = true;
                 }
@@ -195,8 +195,9 @@ namespace Nethermind.Merge.Plugin
 
             bool isTerminal = false, isPostMerge = false;
 
-            if (header.TotalDifficulty == null)
+            if (header.TotalDifficulty == null || header.TotalDifficulty == 0)
             {
+                header.IsPostMerge = header.Difficulty == 0;
                 return (false, header.Difficulty == 0);
             }
             

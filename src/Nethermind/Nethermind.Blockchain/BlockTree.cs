@@ -619,7 +619,7 @@ namespace Nethermind.Blockchain
 
             SetTotalDifficulty(header);
 
-            if (block is not null && !isKnown)
+            if (block is not null)
             {
                 if (block.Hash is null)
                 {
@@ -640,7 +640,8 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
+            _logger.Warn($"New Suggested block {block}, BestSuggestedBlock: {BestSuggestedBody}, {header.TotalDifficulty}");
+            if (header.IsGenesis || header.IsPostMerge || BestSuggestedImprovementRequirementsSatisfied(header))
             {
                 if (header.IsGenesis)
                 {
@@ -654,6 +655,7 @@ namespace Nethermind.Blockchain
                 if (block is not null && shouldProcess)
                 {
                     BestSuggestedBody = block;
+                    _logger.Warn($"New block to process {block}");
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
             }
@@ -1331,7 +1333,7 @@ namespace Nethermind.Blockchain
                 TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
             bool preMergeRequirementSatisfied = ttdRequirementSatisfied && (!header.IsPostMerge && header.Difficulty != 0);
             bool postMergeRequirementSatisfied = ttdRequirementSatisfied &&
-                                                 BestSuggestedHeader?.Number <= header.Number && (header.IsPostMerge || header.Difficulty == 0);
+                                                 BestSuggestedBody?.Number <= header.Number && (header.IsPostMerge || header.Difficulty == 0);
             return preMergeRequirementSatisfied || postMergeRequirementSatisfied;
         }
 
