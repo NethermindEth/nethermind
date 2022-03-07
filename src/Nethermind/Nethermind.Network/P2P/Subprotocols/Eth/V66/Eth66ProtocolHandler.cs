@@ -86,7 +86,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
                     Metrics.Eth66BlockHeadersReceived++;
                     ReportIn(headersMsg);
-                    Handle(headersMsg.EthMessage, size);
+                    Handle(headersMsg, size);
                     break;
                 case Eth66MessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
@@ -98,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
                     Metrics.Eth66BlockBodiesReceived++;
                     ReportIn(bodiesMsg);
-                    HandleBodies(bodiesMsg.EthMessage, size);
+                    HandleBodies(bodiesMsg, size);
                     break;
                 case Eth66MessageCode.GetPooledTransactions:
                     GetPooledTransactionsMessage getPooledTxMsg
@@ -112,7 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                         = Deserialize<PooledTransactionsMessage>(message.Content);
                     Metrics.Eth66PooledTransactionsReceived++;
                     ReportIn(pooledTxMsg);
-                    Handle(pooledTxMsg.EthMessage);
+                    Handle(pooledTxMsg);
                     break;
                 case Eth66MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
@@ -124,7 +124,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
                     Metrics.Eth66ReceiptsReceived++;
                     ReportIn(receiptsMessage);
-                    Handle(receiptsMessage.EthMessage, size);
+                    Handle(receiptsMessage, size);
                     break;
                 case Eth66MessageCode.GetNodeData:
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
@@ -136,7 +136,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
                     Metrics.Eth66NodeDataReceived++;
                     ReportIn(nodeDataMessage);
-                    Handle(nodeDataMessage.EthMessage, size);
+                    Handle(nodeDataMessage, size);
                     break;
                 default:
                     base.HandleMessage(message);
@@ -179,24 +179,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             Send(new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage));
         }
 
-        protected override void Handle(V62.Messages.BlockHeadersMessage message, long size)
+        private void Handle(BlockHeadersMessage message, long size)
         {
-            _headersRequests66.Handle(message.BlockHeaders, size);
+            _headersRequests66.Handle(message.EthMessage.BlockHeaders, size);
         }
 
-        protected override void HandleBodies(V62.Messages.BlockBodiesMessage blockBodiesMessage, long size)
+        private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
-            _bodiesRequests66.Handle(blockBodiesMessage.Bodies, size);
+            _bodiesRequests66.Handle(blockBodiesMessage.EthMessage.Bodies, size);
         }
 
-        protected override void Handle(V63.Messages.NodeDataMessage msg, int size)
+        private void Handle(NodeDataMessage msg, int size)
         {
-            _nodeDataRequests66.Handle(msg.Data, size);
+            _nodeDataRequests66.Handle(msg.EthMessage.Data, size);
         }
 
-        protected override void Handle(V63.Messages.ReceiptsMessage msg, long size)
+        private void Handle(PooledTransactionsMessage msg)
         {
-            _receiptsRequests66.Handle(msg.TxReceipts, size);
+            base.Handle(msg.EthMessage);
+        }
+
+        private void Handle(ReceiptsMessage msg, long size)
+        {
+            _receiptsRequests66.Handle(msg.EthMessage.TxReceipts, size);
         }
 
         protected override void Handle(NewPooledTransactionHashesMessage msg)
