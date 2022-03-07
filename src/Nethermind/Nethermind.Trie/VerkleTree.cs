@@ -30,7 +30,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Trie.Pruning;
 
-namespace Nethermind.State;
+namespace Nethermind.Trie;
 
 public class VerkleTree
 {
@@ -49,7 +49,7 @@ public class VerkleTree
     private readonly UInt256 MainStorageOffset;
 
     
-    private readonly IntPtr _verkleTrieObj;
+    protected readonly IVerkleTrieStore _verkleTrieStore;
     private readonly ILogger _logger;
     
     public static readonly Keccak EmptyTreeHash = new (UInt256.Zero.ToBigEndian());
@@ -77,10 +77,10 @@ public class VerkleTree
         ILogManager? logManager)
     {
         // TODO: do i need to pass roothash here to rust to use for initialization of the library?
-        _verkleTrieObj = RustVerkleLib.VerkleTrieNew();
+        _verkleTrieStore = new VerkleTrieStore(DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, logManager);
             
         _logger = logManager?.GetClassLogger<VerkleTree>() ?? throw new ArgumentNullException(nameof(logManager));
-        _logger.Info(_verkleTrieObj.ToString());
+        _logger.Info(_verkleTrieStore.ToString());
         _allowCommits = allowCommits;
         RootHash = rootHash;
         MainStorageOffsetBase.LeftShift(MainStorageOffsetExponent, out MainStorageOffset);
@@ -92,42 +92,55 @@ public class VerkleTree
         }
     }
     
-    
+    public VerkleTree(IVerkleTrieStore verkleTrieStore)
+        : this(verkleTrieStore, EmptyTreeHash, true, NullLogManager.Instance)
+    {
+    }
+    public VerkleTree(IVerkleTrieStore verkleTrieStore, ILogManager? logManager)
+        : this(verkleTrieStore, EmptyTreeHash, true, logManager)
+    {
+    }
+
+    public VerkleTree(
+        IVerkleTrieStore verkleTrieStore,
+        Keccak rootHash,
+        bool allowCommits,
+        ILogManager? logManager)
+    {
+        // TODO: do i need to pass roothash here to rust to use for initialization of the library?
+        _verkleTrieStore = verkleTrieStore;
+            
+        _logger = logManager?.GetClassLogger<VerkleTree>() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger.Info(_verkleTrieStore.ToString());
+        _allowCommits = allowCommits;
+        RootHash = rootHash;
+        MainStorageOffsetBase.LeftShift(MainStorageOffsetExponent, out MainStorageOffset);
+        
+        if (_allowCommits)
+        {
+            _currentCommit = new ConcurrentQueue<NodeCommitInfo>();
+            _commitExceptions = new ConcurrentQueue<Exception>();
+        }
+    }
+
+
     [DebuggerStepThrough]
     // TODO: add functionality to start with a given root hash (traverse from a starting node)
     // public byte[]? Get(Span<byte> rawKey, Keccak? rootHash = null)
-    public byte[]? GetValue(Span<byte> rawKey)
-    {
-        byte[]? result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, rawKey);
-        return result;
-    }
-    
-    public byte[]? GetValue(byte[] rawKey)
-    {
-        byte[]? result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, rawKey);
-        return result;
-    }
-    
-    public Span<byte> GetValueSpan(byte[] rawKey) => RustVerkleLib.VerkleTrieGetSpan(_verkleTrieObj, rawKey);
-    public Span<byte> GetValueSpan(Span<byte> rawKey) => RustVerkleLib.VerkleTrieGetSpan(_verkleTrieObj, rawKey);
+    public byte[]? GetValue(Span<byte> rawKey) => _verkleTrieStore.GetValue(rawKey);
+    public byte[]? GetValue(byte[] rawKey) => _verkleTrieStore.GetValue(rawKey);
+
+    public Span<byte> GetValueSpan(byte[] rawKey) => _verkleTrieStore.GetValueSpan(rawKey);
+    public Span<byte> GetValueSpan(Span<byte> rawKey) => _verkleTrieStore.GetValueSpan(rawKey);
 
 
-    [DebuggerStepThrough]
-    public void SetValue(Span<byte> rawKey, byte[] value)
-    {
-        if (_logger.IsTrace)
-            _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
-        // TODO; error handling here? or at least a way to check if the operation was successful
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value);
-    }
-    
     [DebuggerStepThrough]
     public void SetValue(byte[] rawKey, byte[] value)
     {
         if (_logger.IsTrace)
             _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
         // TODO; error handling here? or at least a way to check if the operation was successful
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value);
+        _verkleTrieStore.SetValue(rawKey, value);
     }
     
     [DebuggerStepThrough]
@@ -136,18 +149,9 @@ public class VerkleTree
         if (_logger.IsTrace)
             _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
         // TODO; error handling here? or at least a way to check if the operation was successful
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value);
+        _verkleTrieStore.SetValue(rawKey, value);
     }
-    
-    [DebuggerStepThrough]
-    public void SetValue(byte[] rawKey, Span<byte> value)
-    {
-        if (_logger.IsTrace)
-            _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString()}" : $"Setting {rawKey.ToHexString()} = {value.ToHexString()}")}");
-        // TODO; error handling here? or at least a way to check if the operation was successful
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, rawKey, value);
-    }
-    
+
     [DebuggerStepThrough]
     public void SetValue(Span<byte> keyPrefix, byte subIndex, byte[] value)
     {
@@ -155,7 +159,7 @@ public class VerkleTree
             _logger.Trace($"{(value.Length == 0 ? $"Deleting {keyPrefix.ToHexString() + subIndex}" : $"Setting {keyPrefix.ToHexString() + + subIndex} = {value.ToHexString()}")}");
         // TODO; error handling here? or at least a way to check if the operation was successful
         keyPrefix[31] = subIndex;
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, keyPrefix, value);
+        _verkleTrieStore.SetValue(keyPrefix, value);
     }
     
     [DebuggerStepThrough]
@@ -165,7 +169,7 @@ public class VerkleTree
             _logger.Trace($"{(value.Length == 0 ? $"Deleting {keyPrefix.ToHexString() + subIndex}" : $"Setting {keyPrefix.ToHexString() + + subIndex} = {value.ToHexString()}")}");
         // TODO; error handling here? or at least a way to check if the operation was successful
         keyPrefix[31] = subIndex;
-        RustVerkleLib.VerkleTrieInsert(_verkleTrieObj, keyPrefix, value);
+        _verkleTrieStore.SetValue(keyPrefix, value);
     }
 
     public byte[] GetTreeKeyPrefix(Address address, UInt256 treeIndex)
@@ -182,22 +186,19 @@ public class VerkleTree
         return Keccak.Compute(keyPrefix).Bytes;
     }
     
-    public byte[] GetTreeKeyPrefixAccount(Address address)
-    {
-        return GetTreeKeyPrefix(address, 0);
-    }
+    public byte[] GetTreeKeyPrefixAccount(Address address) => GetTreeKeyPrefix(address, 0);
     
     public byte[]? GetValue(byte[] keyPrefix, byte subIndex)
     {
         keyPrefix[31] = subIndex;
-        byte[]? result = RustVerkleLib.VerkleTrieGet(_verkleTrieObj, keyPrefix);
+        byte[]? result = _verkleTrieStore.GetValue(keyPrefix);
         return result;
     }
     
     public Span<byte> GetValueSpan(byte[] keyPrefix, byte subIndex)
     {
         keyPrefix[31] = subIndex;
-        return RustVerkleLib.VerkleTrieGetSpan(_verkleTrieObj, keyPrefix);
+        return _verkleTrieStore.GetValue(keyPrefix);
     }
 
     private byte[] GetTreeKey(Address address, UInt256 treeIndex, byte subIndexBytes)
@@ -239,30 +240,11 @@ public class VerkleTree
     //     return GetTreeKey(address, UInt256.Zero, leaf);
     // }
 
-    private byte[] GetTreeKeyForVersion(Address address)
-    {
-        return GetTreeKey(address, UInt256.Zero, VersionLeafKey);
-    }
-
-    private byte[] GetTreeKeyForBalance(Address address)
-    {
-        return GetTreeKey(address, UInt256.Zero, BalanceLeafKey);
-    }
-
-    private byte[] GetTreeKeyForNonce(Address address)
-    {
-        return GetTreeKey(address, UInt256.Zero, NonceLeafKey);
-    }
-
-    private byte[] GetTreeKeyForCodeKeccak(Address address)
-    {
-        return GetTreeKey(address, UInt256.Zero, CodeKeccakLeafKey);
-    }
-
-    private byte[] GetTreeKeyForCodeSize(Address address)
-    {
-        return GetTreeKey(address, UInt256.Zero, CodeSizeLeafKey);
-    }
+    private byte[] GetTreeKeyForVersion(Address address) => GetTreeKey(address, UInt256.Zero, VersionLeafKey);
+    private byte[] GetTreeKeyForBalance(Address address) => GetTreeKey(address, UInt256.Zero, BalanceLeafKey);
+    private byte[] GetTreeKeyForNonce(Address address) => GetTreeKey(address, UInt256.Zero, NonceLeafKey);
+    private byte[] GetTreeKeyForCodeKeccak(Address address) => GetTreeKey(address, UInt256.Zero, CodeKeccakLeafKey);
+    private byte[] GetTreeKeyForCodeSize(Address address) => GetTreeKey(address, UInt256.Zero, CodeSizeLeafKey);
     
     public byte[] GetTreeKeyForCodeChunk(Address address, UInt256 chunk)
     {
@@ -482,7 +464,7 @@ public class VerkleTree
 
     public void UpdateRootHash()
     {
-        byte[] rootHash = RustVerkleLib.VerkleTrieGetStateRoot(_verkleTrieObj);
+        byte[] rootHash = _verkleTrieStore.GetStateRoot();
         RootHash = new Keccak(rootHash);
     }
     
@@ -490,7 +472,18 @@ public class VerkleTree
     {
         if (visitor is null) throw new ArgumentNullException(nameof(visitor));
         if (rootHash is null) throw new ArgumentNullException(nameof(rootHash));
-        throw new InvalidOperationException("No support for visiting a VerkleTree");
+        visitingOptions ??= VisitingOptions.Default;
+
+        TrieVisitContext trieVisitContext = new()
+        {
+            // hacky but other solutions are not much better, something nicer would require a bit of thinking
+            // we introduced a notion of an account on the visit context level which should have no knowledge of account really
+            // but we know that we have multiple optimizations and assumptions on trees
+            ExpectAccounts = visitingOptions.ExpectAccounts,
+            MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism
+        };
+
+        visitor.VisitTree(rootHash, trieVisitContext);
     }
     
     public void Commit(long blockNumber)
@@ -505,6 +498,7 @@ public class VerkleTree
         {
             throw new TrieException("Commits are not allowed on this trie.");
         }
+        _verkleTrieStore.FinishBlockCommit(TrieType, blockNumber);
     }
 
 }

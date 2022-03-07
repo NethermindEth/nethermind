@@ -76,6 +76,12 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
+        public VerkleStateProvider(IVerkleTrieStore verkleTrieStore, ILogManager? logManager, IKeyValueStore? codeDb)
+        {
+            _tree = new VerkleStateTree(verkleTrieStore, logManager);
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
         public void CommitCode()
         {
         }
@@ -791,23 +797,8 @@ namespace Nethermind.State
             return GetCode(account.CodeHash);
         }
         
-        public byte[] GetStorageValue(StorageCell storageCell)
-        {
-            byte[] storageKey = _tree.GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
-            byte[]? value = _tree.GetValue(storageKey);
-            if (value is null)
-            {
-                return new byte[32];
-            }
-
-            return value;
-        }
-        
-        public void SetStorageValue(StorageCell storageCell, byte[] value)
-        {
-            byte[] storageKey = _tree.GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
-            _tree.SetValue(storageKey, value);
-        }
+        public byte[] GetStorageValue(StorageCell storageCell) => _tree.GetStorageValue(storageCell);
+        public void SetStorageValue(StorageCell storageCell, byte[] value) => _tree.SetStorageValue(storageCell, value);
         
         int IJournal<int>.TakeSnapshot()
         {
@@ -836,6 +827,11 @@ namespace Nethermind.State
         public Keccak GetStorageRoot(Address address)
         {
             throw new InvalidOperationException("No storage root in verkle trees");
+        }
+        
+        public IKeyValueStore GetCodeDb()
+        {
+            return _codeDb;
         }
         
     }
