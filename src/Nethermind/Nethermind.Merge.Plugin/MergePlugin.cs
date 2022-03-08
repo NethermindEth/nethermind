@@ -129,6 +129,8 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 if (_api.BlockProcessingQueue is null)
                     throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_api.SyncProgressResolver is null)
+                    throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
@@ -153,6 +155,8 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _beaconPivot,
                         _blockCacheService,
+                        _api.SyncProgressResolver,
+                        _api.BlockProcessingQueue,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,

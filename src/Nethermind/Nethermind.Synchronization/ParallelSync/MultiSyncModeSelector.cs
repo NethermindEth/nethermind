@@ -357,6 +357,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
+            bool notInBeaconSync = !best.IsInBeaconFullSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
             bool result = desiredPeerKnown &&
@@ -364,7 +365,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           hasFastSyncBeenActive &&
                           notInFastSync &&
                           notInStateSync &&
-                          notNeedToWaitForHeaders;
+                          notNeedToWaitForHeaders && notInBeaconSync;
 
             if (_logger.IsTrace)
             {

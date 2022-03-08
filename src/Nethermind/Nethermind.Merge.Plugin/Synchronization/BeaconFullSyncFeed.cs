@@ -59,33 +59,6 @@ public class BeaconFullSyncFeed : ActivatedSyncFeed<BlockHeader?>
         _logger = logManager.GetClassLogger();
     }
 
-    public override void InitializeFeed()
-    {
-        _blockTree.BackFillTotalDifficulty(_blockCacheService.Peek()?.Number ?? 0, _blockCacheService.ProcessDestination.Number);
-        // TODO: beaconsync use block ref and handle null headers / blocks
-        Stack<Block> stack = new();
-        Block? current = _blockTree.FindBlock(_blockCacheService.ProcessDestination.Hash ?? _blockCacheService.ProcessDestination.CalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        BlockHeader parentHeader = _blockTree.FindHeader(_blockCacheService.ProcessDestination.ParentHash);
-        current.Header.TotalDifficulty = parentHeader.TotalDifficulty + current.Difficulty;
-        long state = _syncProgressResolver.FindBestFullState();
-        bool shouldProcess = _blockCacheService.ProcessDestination.Number > state && state != 0;
-        if (shouldProcess)
-        {
-            while (current.Number != state)
-            {
-                stack.Push(current);
-                current = _blockTree.FindBlock(parentHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                parentHeader = _blockTree.FindHeader(current.ParentHash);
-                current.Header.TotalDifficulty = parentHeader.TotalDifficulty + current.Difficulty;
-            }
-
-            while (stack.TryPop(out Block block))
-            {
-                _blockProcessingQueue.Enqueue(block, ProcessingOptions.None);
-            }
-        }
-    }
-
     public override Task<BlockHeader?> PrepareRequest()
     {
         return Task.FromResult(_blockCacheService.DequeueBlockHeader());
@@ -97,23 +70,6 @@ public class BeaconFullSyncFeed : ActivatedSyncFeed<BlockHeader?>
         {
             return SyncResponseHandlingResult.Emptish;
         }
-        
-        // long state = _syncProgressResolver.FindBestFullState();
-        // bool shouldProcess = response.Number > state && state != 0;
-        // if (shouldProcess)
-        // {
-        //     Block? block = _blockTree.FindBlock(response.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        //     if (block == null)
-        //     {
-        //         if (_logger.IsWarn)
-        //             _logger.Warn(
-        //                 $"Could not find block {response.ToString(BlockHeader.Format.FullHashAndNumber)} for beacon full sync");
-        //         return SyncResponseHandlingResult.InternalError;
-        //     }
-        //     BlockHeader parentHeader = _blockTree.FindHeader(response.ParentHash);
-        //     block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
-        //     _blockProcessingQueue.Enqueue(block, ProcessingOptions.None);
-        // }
 
         return SyncResponseHandlingResult.OK;
     }

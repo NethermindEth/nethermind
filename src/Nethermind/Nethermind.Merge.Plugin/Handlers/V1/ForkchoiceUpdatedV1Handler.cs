@@ -82,36 +82,37 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState,
             PayloadAttributes? payloadAttributes)
         {
-            if (!synced)
+            if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
             {
-                BlockHeader? blockHeader = _blockCacheService.GetBlockHeader(forkchoiceState.HeadBlockHash);
-                if (blockHeader is not null)
+                _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
+            Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
+            if (newHeadBlock == null)
+            {
+                if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     if (!_beaconPivot.BeaconPivotExists())
                     {
-                        _beaconPivot.EnsurePivot(blockHeader);
+                        _beaconPivot.EnsurePivot(block.Header);   
                     }
+
+                    _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
 
-                blockHeader = _blockTree.FindHeader(forkchoiceState.HeadBlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (blockHeader != null)
+                return ForkchoiceUpdatedV1Result.Error($"Unknown forkchoiceState head hash {forkchoiceState.HeadBlockHash}", ErrorCodes.InvalidParams);
+            }
+
+            if (_beaconPivot.BeaconPivotExists())
+            {
+                if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.Hash))
                 {
-                    if (_blockTree.WasProcessed(blockHeader.Number, blockHeader.Hash))
-                    {
-                        _beaconPivot.ResetPivot();
-                        synced = true;
-                    }
-                    else
-                    {
-                        return ForkchoiceUpdatedV1Result.Syncing;
-                    }
+                    _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                    return ForkchoiceUpdatedV1Result.Syncing;
                 }
             }
-            
-            Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
-            if (newHeadBlock == null)
-                return ForkchoiceUpdatedV1Result.Syncing;
 
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
                 ValidateHashForFinalization(forkchoiceState.FinalizedBlockHash);

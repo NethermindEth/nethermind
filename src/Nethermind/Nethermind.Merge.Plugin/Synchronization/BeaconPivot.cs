@@ -80,7 +80,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 // exclusive of fast sync pivot
                 PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? 0 : _syncConfig.PivotNumberParsed + 1;
                 _metadataDb.Set(MetadataDbKeys.BeaconSyncDestinationNumber, Rlp.Encode(PivotDestinationNumber).Bytes);
-                _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(_currentBeaconPivot.Number).Bytes);
+                _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(PivotNumber).Bytes);
             }
         }
 

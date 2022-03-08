@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,8 +24,10 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public interface IBlockCacheService
 {
+    public ConcurrentDictionary<Keccak, Block> BlockCache { get; }
     bool IsEmpty { get; }
-    BlockHeader ProcessDestination { get; }
+    Keccak ProcessDestination { get; set; }
+    Keccak SyncingHead { get; set; }
     bool Contains(Keccak blockHash);
     BlockHeader? GetBlockHeader(Keccak blockHash);
     bool EnqueueBlockHeader(BlockHeader header);
