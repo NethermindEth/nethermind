@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2022 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,17 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.TxPool
+namespace Nethermind.Crypto.Blake2;
+
+public enum Blake2CompressMethod
 {
-    public interface ITxPoolPeer
-    {
-        public PublicKey Id { get; }
-        public string Enode => string.Empty;
-        void SendNewTransaction(Transaction tx) => SendNewTransactions(new[]{tx}, true);
-        void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx);
-    }
+    Avx2,
+    Sse41,
+    Scalar,
+    Optimal
 }

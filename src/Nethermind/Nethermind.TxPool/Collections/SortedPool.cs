@@ -146,21 +146,6 @@ namespace Nethermind.TxPool.Collections
         }
         
         /// <summary>
-        /// Returns best element of each bucket in supplied comparer order.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public IEnumerable<TValue> GetFirsts()
-        {
-            SortedSet<TValue> sortedValues = new(_sortedComparer);
-            foreach (KeyValuePair<TGroupKey, SortedSet<TValue>> bucket in _buckets)
-            {
-                sortedValues.Add(bucket.Value.Max!);
-            }
-
-            return sortedValues;
-        }
-        
-        /// <summary>
         /// Gets last element in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]

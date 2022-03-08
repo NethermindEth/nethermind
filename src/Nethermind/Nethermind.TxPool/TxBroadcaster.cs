@@ -18,7 +18,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -121,7 +120,33 @@ namespace Nethermind.TxPool
         
         public void BroadcastOnce(ITxPoolPeer peer, Transaction[] txs)
         {
-            Notify(peer, txs);
+            Notify(peer, txs, false);
+        }
+        
+        public void BroadcastPersistentTxs()
+        {
+            if (_logger.IsDebug) _logger.Debug($"Broadcasting persistent transactions to all peers");
+
+            foreach ((_, ITxPoolPeer peer) in _peers)
+            {
+                Notify(peer, GetPersistentTxsToSend(), true);
+            }
+        }
+        
+        internal IEnumerable<Transaction> GetPersistentTxsToSend()
+        {
+            if (_txPoolConfig.PeerNotificationThreshold <= 0)
+            {
+                yield break;
+            }
+            
+            foreach (Transaction tx in _persistentTxs.GetSnapshot())
+            {
+                if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
+                {
+                    yield return tx;
+                }
+            }
         }
         
         public void StopBroadcast(Keccak txHash)
@@ -158,7 +183,7 @@ namespace Nethermind.TxPool
 
                 foreach ((_, ITxPoolPeer peer) in _peers)
                 {
-                    Notify(peer, GetTxsToSend(peer, _txsToSend));
+                    Notify(peer, GetTxsToSend(peer, _txsToSend), false);
                 }
 
                 _txsToSend.Clear();
@@ -168,51 +193,22 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
-        internal IEnumerable<(Transaction Tx, bool IsPersistent)> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
+        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
         {
-            if (_txPoolConfig.PeerNotificationThreshold > 0)
-            {
-                // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast,
-                // which will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to
-                // PeerNotificationThreshold multiplication by number of transactions in persistent broadcast, rounded up.
-                int numberOfPersistentTxsToBroadcast =
-                    Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
-                        _persistentTxs.Count);
-
-                foreach (Transaction tx in _persistentTxs.GetFirsts())
-                {
-                    if (numberOfPersistentTxsToBroadcast > 0)
-                    {
-                        if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
-                        {
-                            numberOfPersistentTxsToBroadcast--;
-                            yield return (tx, true);
-                        }
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-            }
-
             foreach (Transaction tx in txsToSend)
             {
                 if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
                 {
-                    yield return (tx, false);
+                    yield return tx;
                 }
             }
         }
 
-        private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs) =>
-            Notify(peer, txs.Select(t => (t, false)));
-        
-        private void Notify(ITxPoolPeer peer, IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
+        private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs, bool sendFullTx)
         {
             try
             {
-                peer.SendNewTransactions(txs);
+                peer.SendNewTransactions(txs, sendFullTx);
                 if (_logger.IsTrace) _logger.Trace($"Notified {peer} about transactions.");
             }
             catch (Exception e)
