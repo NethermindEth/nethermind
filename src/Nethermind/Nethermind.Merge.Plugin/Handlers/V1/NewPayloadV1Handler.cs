@@ -138,7 +138,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (parentHeader == null)
             {
                 // TODO: beaconsync validation
-                _logger.Info($"Inserted {block}");
+                _logger.Info($"Inserted block without parent {block}");
                 _blockTree.Insert(block, true);
                 _blockCacheService.EnqueueBlockHeader(block.Header);
                 return NewPayloadV1Result.Accepted;

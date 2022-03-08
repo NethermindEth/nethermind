@@ -74,6 +74,11 @@ public class MergeSynchronizer : Synchronizer
 
     public override void Start()
     {
+        if (!_syncConfig.SynchronizationEnabled)
+        {
+            return;
+        }
+        
         base.Start();
         StartBeaconHeadersComponents();
         StartBeaconFullSyncComponents();

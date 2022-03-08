@@ -184,7 +184,7 @@
     },
     "MergeDevnet4": {
       "commandName": "Project",
-      "commandLineArgs": "--config merge_devnet_4.cfg --baseDbPath D:\\"
+      "commandLineArgs": "--config merge_devnet_4.cfg --Init.DiagnosticMode MemDb"
     }
   }
 }

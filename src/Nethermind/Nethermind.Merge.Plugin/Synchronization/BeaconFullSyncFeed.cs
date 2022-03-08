@@ -61,29 +61,29 @@ public class BeaconFullSyncFeed : ActivatedSyncFeed<BlockHeader?>
 
     public override void InitializeFeed()
     {
-        _blockTree.BackFillTotalDifficulty(_blockCacheService.Peek()?.Number ?? 0, _blockCacheService.ProcessDestination.Number);
-        // TODO: beaconsync use block ref and handle null headers / blocks
-        Stack<Block> stack = new();
-        Block? current = _blockTree.FindBlock(_blockCacheService.ProcessDestination.Hash ?? _blockCacheService.ProcessDestination.CalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        BlockHeader parentHeader = _blockTree.FindHeader(_blockCacheService.ProcessDestination.ParentHash);
-        current.Header.TotalDifficulty = parentHeader.TotalDifficulty + current.Difficulty;
-        long state = _syncProgressResolver.FindBestFullState();
-        bool shouldProcess = _blockCacheService.ProcessDestination.Number > state && state != 0;
-        if (shouldProcess)
-        {
-            while (current.Number != state)
-            {
-                stack.Push(current);
-                current = _blockTree.FindBlock(parentHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                parentHeader = _blockTree.FindHeader(current.ParentHash);
-                current.Header.TotalDifficulty = parentHeader.TotalDifficulty + current.Difficulty;
-            }
-
-            while (stack.TryPop(out Block block))
-            {
-                _blockProcessingQueue.Enqueue(block, ProcessingOptions.None);
-            }
-        }
+        // _blockTree.BackFillTotalDifficulty(_blockCacheService.Peek()?.Number ?? 0, _blockCacheService.ProcessDestination.Number);
+        // // TODO: beaconsync use block ref and handle null headers / blocks
+        // Stack<Block> stack = new();
+        // Block? current = _blockTree.FindBlock(_blockCacheService.ProcessDestination.Hash ?? _blockCacheService.ProcessDestination.CalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        // BlockHeader parentHeader = _blockTree.FindHeader(_blockCacheService.ProcessDestination.ParentHash);
+        // current.Header.TotalDifficulty = parentHeader.TotalDifficulty + current.Difficulty;
+        // long state = _syncProgressResolver.FindBestFullState();
+        // bool shouldProcess = _blockCacheService.ProcessDestination.Number > state && state != 0;
+        // if (shouldProcess)
+        // {
+        //     while (current.Number != state)
+        //     {
+        //         stack.Push(current);
+        //         current = _blockTree.FindBlock(parentHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        //         parentHeader = _blockTree.FindHeader(current.ParentHash);
+        //         current.Header.TotalDifficulty = parentHeader.TotalDifficulty + current.Difficulty;
+        //     }
+        //
+        //     while (stack.TryPop(out Block block))
+        //     {
+        //         _blockProcessingQueue.Enqueue(block, ProcessingOptions.None);
+        //     }
+        // }
     }
 
     public override Task<BlockHeader?> PrepareRequest()

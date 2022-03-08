@@ -33,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
+        private readonly ILogger _logger;
 
         public MergeBlockDownloader(
             IBeaconPivot beaconPivot,
@@ -44,17 +45,21 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISyncReport? syncReport, 
             IReceiptStorage? receiptStorage,
             ISpecProvider? specProvider, 
-            ILogManager? logManager)
+            ILogManager logManager)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _beaconPivot = beaconPivot;
+            _logger = logManager.GetClassLogger();
         }
         
         protected override long GetCurrentNumber(PeerInfo bestPeer)
         {
-            return _beaconPivot.BeaconPivotExists()
-                ? Math.Max(0, Math.Min(_blockTree.BestSuggestedBody.Number, bestPeer.HeadNumber - 1)):  base.GetCurrentNumber(bestPeer);
+            long currentNumber = _beaconPivot.BeaconPivotExists()
+                ? Math.Max(0, Math.Min(_blockTree.BestSuggestedBody.Number, bestPeer.HeadNumber - 1))
+                : base.GetCurrentNumber(bestPeer);
+            if (_logger.IsTrace) _logger.Trace($"Merge block downloader: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody.Number}");
+            return currentNumber;
         }
         
         protected override long GetUpperDownloadBoundary(PeerInfo bestPeer, BlocksRequest blocksRequest)

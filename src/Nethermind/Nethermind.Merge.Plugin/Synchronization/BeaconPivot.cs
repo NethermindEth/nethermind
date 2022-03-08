@@ -77,7 +77,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (!beaconPivotExists && blockHeader != null)
             {
                 _currentBeaconPivot = blockHeader;
-                // exclusive of fast sync pivot
+                if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
                 PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? 0 : _syncConfig.PivotNumberParsed + 1;
                 _metadataDb.Set(MetadataDbKeys.BeaconSyncDestinationNumber, Rlp.Encode(PivotDestinationNumber).Bytes);
                 _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(_currentBeaconPivot.Number).Bytes);
@@ -86,6 +86,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public void ResetPivot()
         {
+            if (_logger.IsInfo) _logger.Info($"Reset beacon pivot, previous pivot: {_currentBeaconPivot}");
             _currentBeaconPivot = null;
             PivotDestinationNumber = 0;
         }

@@ -99,6 +99,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     if (_blockTree.WasProcessed(blockHeader.Number, blockHeader.Hash))
                     {
+                        if (_logger.IsInfo) _logger.Info($"Beacon pivot reset. Block {blockHeader} was processed");
                         _beaconPivot.ResetPivot();
                         synced = true;
                     }
