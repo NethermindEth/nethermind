@@ -43,7 +43,7 @@ public class MergeSynchronizer : Synchronizer
     private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockProcessingQueue _blockProcessingQueue;
-    
+
     public MergeSynchronizer(
         IDbProvider dbProvider,
         ISpecProvider specProvider,
@@ -75,10 +75,7 @@ public class MergeSynchronizer : Synchronizer
     public override void Start()
     {
         base.Start();
-        if (_syncConfig.BeaconHeadersSync)
-        {
-            StartBeaconHeadersComponents();   
-        }
+        StartBeaconHeadersComponents();
         StartBeaconFullSyncComponents();
     }
 
@@ -88,7 +85,7 @@ public class MergeSynchronizer : Synchronizer
         BeaconHeadersSyncFeed beaconHeadersFeed =
             new(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _logManager);
         BeaconHeadersSyncDispatcher beaconHeadersDispatcher =
-            new (beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
+            new(beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
         beaconHeadersDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
         {
             if (t.IsFaulted)
@@ -104,9 +101,10 @@ public class MergeSynchronizer : Synchronizer
 
     private void StartBeaconFullSyncComponents()
     {
-        BeaconFullSyncFeed beaconFullSyncFeed = new (_syncMode, _blockCacheService, _blockTree, _syncProgressResolver, _blockValidator, _blockProcessingQueue, _logManager);
+        BeaconFullSyncFeed beaconFullSyncFeed = new(_syncMode, _blockCacheService, _blockTree, _syncProgressResolver,
+            _blockValidator, _blockProcessingQueue, _logManager);
         BeaconFullSyncDispatcher beaconFullSyncDispatcher =
-            new (beaconFullSyncFeed!, _logManager);
+            new(beaconFullSyncFeed!, _logManager);
         beaconFullSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
         {
             if (t.IsFaulted)

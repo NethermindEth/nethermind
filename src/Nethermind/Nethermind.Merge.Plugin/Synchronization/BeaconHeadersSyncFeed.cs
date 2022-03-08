@@ -46,7 +46,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         ISyncReport? syncReport,
         IPivot? pivot,
         IMergeConfig? mergeConfig,
-        ILogManager? logManager) : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager)
+        ILogManager? logManager) 
+        : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager, true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
         _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));

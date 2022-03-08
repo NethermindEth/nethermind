@@ -96,7 +96,8 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeerPool? syncPeerPool,
             ISyncConfig? syncConfig,
             ISyncReport? syncReport,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            bool alwaysStartHeaderSync = false)
         : base(syncModeSelector)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -110,7 +111,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _headersRequestSize = NethermindSyncLimits.MaxHeaderFetch;
             }
 
-            if (!_syncConfig.FastBlocks && !_syncConfig.BeaconHeadersSync)
+            if (!_syncConfig.FastBlocks && !alwaysStartHeaderSync)
             {
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }

@@ -39,10 +39,7 @@ namespace Nethermind.Blockchain.Synchronization
         // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
         [ConfigItem(Description = "Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. In normal usage we do not recommend setting this to less than 32 as this can cause issues with chain reorgs. Please note that last 2 blocks will always be processed in FullSync, so setting it to less than 2 will have no effect.", DefaultValue = "8192")]
         long? FastSyncCatchUpHeightDelta { get; set; }
-        
-        [ConfigItem(Description = "Beacon headers sync for the merge", DefaultValue = "false")]
-        bool BeaconHeadersSync { get; set; }
-        
+
         [ConfigItem(Description = "If set to 'true' then in the Fast Sync mode blocks will be first downloaded from the provided PivotNumber downwards. This allows for parallelization of requests with many sync peers and with no need to worry about syncing a valid branch (syncing downwards to 0). You need to enter the pivot block number, hash and total difficulty from a trusted source (you can use etherscan and confirm with other sources if you wan to change it).", DefaultValue = "false")]
         bool FastBlocks { get; set; }
         
