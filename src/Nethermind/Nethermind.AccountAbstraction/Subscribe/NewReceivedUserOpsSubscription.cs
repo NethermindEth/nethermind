@@ -46,12 +46,7 @@ public class NewReceivedUserOpsSubscription : Subscription
             if(_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} printed hash of newReceivedUserOperations.");
         });
     }
-    
-    protected override string GetErrorMsg()
-    {
-        return $"newReceivedUserOperations subscription {Id}: Failed Task.Run after newReceived event.";
-    }
-        
+
     public override string Type => "newReceivedUserOperations";
 
     public override void Dispose()

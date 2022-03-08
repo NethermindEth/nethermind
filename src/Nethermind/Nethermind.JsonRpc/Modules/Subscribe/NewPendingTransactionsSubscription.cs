@@ -50,11 +50,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        protected override string GetErrorMsg()
-        {
-            return $"NewPendingTransactions subscription {Id}: Failed Task.Run after NewPending event.";
-        }
-        
         public override string Type => SubscriptionType.NewPendingTransactions;
 
         public override void Dispose()

@@ -87,11 +87,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ScheduleAction(() => TryPublishEvent(blockHeader, getReceipts(), eventName));
         }
 
-        protected override string GetErrorMsg()
-        {
-            return $"Logs subscription {Id} failed.";
-        }
-        
         private void TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName)
         {
             BlockHeader fromBlock = _blockTree.FindHeader(_filter.FromBlock);

@@ -46,12 +46,7 @@ public class NewPendingUserOpsSubscription : Subscription
             if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} printed hash of newPendingUserOperations.");
         });
     }
-    
-    protected override string GetErrorMsg()
-    {
-        return $"newPendingUserOperations subscription {Id}: Failed Task.Run after newPending event.";
-    }
-        
+
     public override string Type => "newPendingUserOperations";
 
     public override void Dispose()

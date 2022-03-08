@@ -61,8 +61,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             SendChannel.Writer.TryWrite(action);
         }
 
-        protected virtual string GetErrorMsg() => $"Subscription {Id} failed.";
-
+        protected string GetErrorMsg() =>  $"{Type} subscription with ID {Id} failed.";
+        
         private void ProcessMessages()
         {
             Task.Factory.StartNew(async () =>

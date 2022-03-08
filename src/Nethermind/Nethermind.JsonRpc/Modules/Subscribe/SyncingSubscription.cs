@@ -81,11 +81,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        protected override string GetErrorMsg()
-        {
-            return $"Syncing subscription {Id}: Failed Task.Run.";
-        }
-        
         public override string Type => SubscriptionType.Syncing;
         public override void Dispose()
         {

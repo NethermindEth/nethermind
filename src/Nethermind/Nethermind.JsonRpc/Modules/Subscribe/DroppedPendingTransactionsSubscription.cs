@@ -40,15 +40,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if(_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");
             });
         }
-        
-        protected override string GetErrorMsg()
-        {
-            return $"DroppedPendingTransactions subscription {Id}: Failed Task.Run after EvictedPending event.";
-        }
-        
+
         public override string Type => SubscriptionType.DroppedPendingTransactions;
 
         public override void Dispose()
