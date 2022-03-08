@@ -44,7 +44,6 @@ namespace Nethermind.AccountAbstraction
                 "Defines the hex string representation of the address of the EntryPoint contract to which transactions will be made",
             DefaultValue = "")]
         string EntryPointContractAddresses {get; set;}
-        // string EntryPointContractAddress { get; set; }
 
         [ConfigItem(
             Description =
