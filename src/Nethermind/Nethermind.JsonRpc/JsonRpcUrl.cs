@@ -33,6 +33,7 @@ namespace Nethermind.JsonRpc
             Port = port;
             RpcEndpoint = rpcEndpoint;
             EnabledModules = enabledModules;
+            IsAuthenticated = enabledModules.Contains("Engine") || enabledModules.Contains("engine"); // ToDo Nikita could we move it to parse? could we make it case insensitive
         }
 
         public static JsonRpcUrl Parse(string packedUrlValue)
@@ -41,8 +42,8 @@ namespace Nethermind.JsonRpc
                 throw new ArgumentNullException(nameof(packedUrlValue));
 
             string[] parts = packedUrlValue.Split('|');
-            if (parts.Length != 3)
-                throw new FormatException("Packed url value must contain 3 parts delimited by '|'");
+            if (parts.Length != 3 && parts.Length != 4)
+                throw new FormatException("Packed url value must contain 3 or 4 parts delimited by '|'");
 
             string url = parts[0];
             if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
@@ -70,9 +71,23 @@ namespace Nethermind.JsonRpc
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one module delimited by ';'");
 
-            return new JsonRpcUrl(uri.Scheme, uri.Host, uri.Port, endpoint, enabledModules);
+            JsonRpcUrl result = new (uri.Scheme, uri.Host, uri.Port, endpoint, enabledModules);
+           
+           // Check if authentication disabled for this url
+           if (parts.Length == 4)
+           {
+               if (parts[3] != "no-auth")
+               {
+                   throw new FormatException("Fourth part be \"no-auth\"");
+               }
+
+               result.IsAuthenticated = false;
+           }
+
+           return result;
         }
 
+        public bool IsAuthenticated { get; private set; }
         public string Scheme { get; set; }
         public string Host { get; set; }
         public int Port { get; set; }

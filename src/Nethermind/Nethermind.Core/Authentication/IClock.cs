@@ -13,15 +13,21 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-namespace Nethermind.JsonRpc.Modules
+using System;
+
+namespace Nethermind.JsonRpc;
+
+public interface IClock
 {
-    public enum ModuleResolution
+    long GetCurrentTime();
+}
+
+public class ClockImpl : IClock
+{
+    public long GetCurrentTime()
     {
-        Enabled,
-        Disabled,
-        Unknown,
-        EndpointDisabled,
-        NotAuthenticated
+        return DateTimeOffset.Now.ToUnixTimeSeconds();
     }
 }
