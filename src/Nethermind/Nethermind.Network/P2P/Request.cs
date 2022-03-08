@@ -42,6 +42,7 @@ namespace Nethermind.Network.P2P
         private Stopwatch Stopwatch { get; set; }
         public long ResponseSize { get; set; }
         public TMsg Message { get; }
+        public long Id { get; set; }
         public TaskCompletionSource<TResult> CompletionSource { get; }
     }
 }
