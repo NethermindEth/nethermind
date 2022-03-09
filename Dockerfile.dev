@@ -9,8 +9,12 @@ COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ] ; \
     then git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
+    dotnet tool install JetBrains.dotTrace.GlobalTools --version 2021.3.2 --tool-path /tmp/ && \
+    dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-x64 --version 2021.3.2 --package-directory /tmp/ && \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
     else git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
+    dotnet tool install JetBrains.dotTrace.GlobalTools --version 2021.3.2 --tool-path /tmp/ && \
+    dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.$TARGETOS-$TARGETARCH --version 2021.3.2 --package-directory /tmp/ && \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
     fi
 RUN dotnet tool install --tool-path /dotnetcore-tools dotnet-trace && \
@@ -24,6 +28,9 @@ WORKDIR /nethermind
 
 COPY --from=build /out .
 COPY --from=build /dotnetcore-tools /opt/dotnetcore-tools
+COPY --from=build /tmp/jetbrains.dotmemory.console.* /opt/tools
+COPY --from=build /tmp/dottrace /opt/tools
+COPY --from=build /tmp/.store /opt/tools/.store
 ENV PATH="/opt/dotnetcore-tools:${PATH}"
 
 ARG GIT_COMMIT=unspecified
