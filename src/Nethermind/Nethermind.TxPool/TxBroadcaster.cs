@@ -86,8 +86,8 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _accumulatedTemporaryTxs = new ResettableList<Transaction>(256, 4);
-            _txsToSend = new ResettableList<Transaction>(256, 4);
+            _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
+            _txsToSend = new ResettableList<Transaction>(512, 4);
 
             _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(1000));
             _timer.Elapsed += TimerOnElapsed;
