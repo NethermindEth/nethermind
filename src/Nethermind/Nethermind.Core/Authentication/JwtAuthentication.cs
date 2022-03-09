@@ -24,7 +24,7 @@ using JWT.Algorithms;
 using JWT.Serializers;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Authentication;
-using Nethermind.Logging; // ToDo Nikita I think we should use Micsoroft library
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Authentication
 {
@@ -37,30 +37,28 @@ namespace Nethermind.Core.Authentication
         private const string JwtMessagePrefix = "Bearer ";
         private const int JwtTokenTtl = 5;
         private const int JwtSecretLength = 64;
-        
-        // ToDo we should pass JsonRpcConfig here
+
         public JwtAuthentication(
             byte[] secret,
             IClock clock)
         {
             _clock = clock;
-            IJsonSerializer serializer = new JsonNetSerializer(); // ToDo Niktia we should use our implementation of serializer
+            IJsonSerializer serializer = new JsonNetSerializer();
             IDateTimeProvider provider = new DateTimeProviderWrapper(_clock);
             IJwtValidator validator = new JwtValidator(serializer, provider, 0);
             IBase64UrlEncoder urlEncoder = new JwtBase64UrlEncoder();
-            IJwtAlgorithm algorithm = new HMACSHA256Algorithm(); // ToDo Nikita what about IAT claims?
+            IJwtAlgorithm algorithm = new HMACSHA256Algorithm();
             _decoder = new JwtDecoder(serializer, validator, urlEncoder, algorithm);
             Secret = secret;
         }
 
-        public static JwtAuthentication FromHexSecret(string hexSecret, IClock clock)
+        public static JwtAuthentication CreateFromHexSecret(string hexSecret, IClock clock)
         {
             byte[] decodedSecret = DecodeSecret(hexSecret);
             return new JwtAuthentication(decodedSecret, clock);
         }
 
-        // ToDo Nikita the method like this should be private
-        public static JwtAuthentication ReadOrGenerateFromFile(string filePath, IClock clock, ILogger logger)
+        public static JwtAuthentication CreateFromFileOrGenerate(string filePath, IClock clock, ILogger logger)
         {
             FileInfo fileInfo = new(filePath);
             if (!fileInfo.Exists || fileInfo.Length == 0)
@@ -89,7 +87,7 @@ namespace Nethermind.Core.Authentication
                 {
                     throw new FormatException("Secret should be a 64 digit hexadecimal number");
                 }
-                return FromHexSecret(hexSecret, clock);
+                return CreateFromHexSecret(hexSecret, clock);
             }
         }
 
@@ -112,7 +110,6 @@ namespace Nethermind.Core.Authentication
             }
         }
 
-        // ToDo Nikita the method like this should be private
         private static byte[] DecodeSecret(string hexSecret)
         {
             int start = hexSecret.StartsWith("0x") ? 2 : 0;
