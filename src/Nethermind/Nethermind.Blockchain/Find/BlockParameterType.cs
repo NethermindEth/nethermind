@@ -21,6 +21,7 @@ namespace Nethermind.Blockchain.Find
         Earliest,
         Latest,
         Pending,
+        Finalized,
         BlockNumber,
         BlockHash
     }

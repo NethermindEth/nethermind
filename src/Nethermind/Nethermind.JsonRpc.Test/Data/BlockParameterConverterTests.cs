@@ -114,6 +114,7 @@ namespace Nethermind.JsonRpc.Test.Data
             TestRoundtrip(BlockParameter.Latest, "latest");
             TestRoundtrip(BlockParameter.Pending, "pending");
             TestRoundtrip(BlockParameter.Earliest, "earliest");
+            TestRoundtrip(BlockParameter.Finalized, "finalized");
             TestRoundtrip(new BlockParameter(0L), "zero");
             TestRoundtrip(new BlockParameter(long.MaxValue), "max");
             TestRoundtrip(new BlockParameter(TestItem.KeccakA), "hash");

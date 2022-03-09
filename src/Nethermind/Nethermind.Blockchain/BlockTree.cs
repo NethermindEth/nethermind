@@ -55,6 +55,7 @@ namespace Nethermind.Blockchain
         private const int BestKnownSearchLimit = 256_000_000;
 
         private readonly object _batchInsertLock = new();
+        private readonly object _batchForkChoiceUpdatedLock = new();
 
         private readonly IDb _blockDb;
         private readonly IDb _headerDb;
@@ -1457,7 +1458,8 @@ namespace Nethermind.Blockchain
         public Keccak? HeadHash => Head?.Hash;
         public Keccak? GenesisHash => Genesis?.Hash;
         public Keccak? PendingHash => Head?.Hash;
-
+        // public Keccak? FinalizedHash => FinalizedBlockHash?.Hash;
+        public Keccak? FinalizedHash { get; private set; }
         public Block? FindBlock(Keccak? blockHash, BlockTreeLookupOptions options)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
@@ -1687,6 +1689,14 @@ namespace Nethermind.Blockchain
                 {
                     _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
                 }
+            }
+        }
+        
+        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash, Keccak? HeadBlockHash)
+        {
+            lock (_batchForkChoiceUpdatedLock)
+            {
+                FinalizedHash = finalizedBlockHash;    
             }
         }
     }

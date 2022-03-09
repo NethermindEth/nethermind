@@ -131,6 +131,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
             if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead)
             {
+                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash,forkchoiceState.SafeBlockHash,forkchoiceState.HeadBlockHash);
                 return ForkchoiceUpdatedV1Result.Valid(null, _blockTree.HeadHash);
             }
 
@@ -172,7 +173,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
             }
-
+            
+            _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash,forkchoiceState.SafeBlockHash,forkchoiceState.HeadBlockHash);
             return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
         }
 

@@ -48,5 +48,10 @@ namespace Nethermind.Facade.Proxy.Models
         {
             Type = "pending"
         };
+        
+        public static BlockParameterModel Finalized => new()
+        {
+            Type = "finalized"
+        };
     }
 }

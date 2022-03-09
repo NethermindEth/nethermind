@@ -66,6 +66,9 @@ namespace Nethermind.JsonRpc.Data
                 case BlockParameterType.Pending:
                     writer.WriteValue("pending");
                     break;
+                case BlockParameterType.Finalized:
+                    writer.WriteValue("finalized");
+                    break;
                 case BlockParameterType.BlockNumber:
                     throw new InvalidOperationException("block number should be handled separately");
                 case BlockParameterType.BlockHash:
@@ -143,6 +146,8 @@ namespace Nethermind.JsonRpc.Data
                     return BlockParameter.Earliest;
                 case { } latest when latest.Equals("pending", StringComparison.InvariantCultureIgnoreCase):
                     return BlockParameter.Pending;
+                case { } latest when latest.Equals("finalized", StringComparison.InvariantCultureIgnoreCase):
+                    return BlockParameter.Finalized;
                 case { } hash when hash.Length == 66 && hash.StartsWith("0x"):
                     return new BlockParameter(new Keccak(hash));
                 default:
