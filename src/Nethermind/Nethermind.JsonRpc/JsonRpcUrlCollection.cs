@@ -43,7 +43,8 @@ namespace Nethermind.JsonRpc
 
         private void BuildUrls(bool includeWebSockets)
         {
-            JsonRpcUrl defaultUrl = new JsonRpcUrl(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, _jsonRpcConfig.EnabledModules);
+            bool isAuthincicated = _jsonRpcConfig.EnabledModules.Any(m => m.ToLower() == "engine");
+            JsonRpcUrl defaultUrl = new JsonRpcUrl(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, isAuthincicated, _jsonRpcConfig.EnabledModules);
             string environmentVariableUrl = Environment.GetEnvironmentVariable(NethermindUrlVariable);
             if (!string.IsNullOrWhiteSpace(environmentVariableUrl))
             {
