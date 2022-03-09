@@ -26,14 +26,14 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
     {
-        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, string[] enabledModules)
+        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules)
         {
             Scheme = scheme;
             Host = host;
             Port = port;
             RpcEndpoint = rpcEndpoint;
             EnabledModules = enabledModules;
-            IsAuthenticated = enabledModules.Contains("Engine") || enabledModules.Contains("engine"); // ToDo Nikita could we move it to parse? could we make it case insensitive
+            IsAuthenticated = isAuthenticated;
         }
 
         public static JsonRpcUrl Parse(string packedUrlValue)
@@ -71,18 +71,20 @@ namespace Nethermind.JsonRpc
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one module delimited by ';'");
 
-            JsonRpcUrl result = new (uri.Scheme, uri.Host, uri.Port, endpoint, enabledModules);
-           
-           // Check if authentication disabled for this url
-           if (parts.Length == 4)
-           {
-               if (parts[3] != "no-auth")
-               {
-                   throw new FormatException("Fourth part be \"no-auth\"");
-               }
+            bool isAuthenticated = enabledModules.Any(m => m.ToLower() == "engine");
 
-               result.IsAuthenticated = false;
-           }
+            // Check if authentication disabled for this url
+            if (parts.Length == 4)
+            {
+                if (parts[3] != "no-auth")
+                {
+                    throw new FormatException("Fourth part should be \"no-auth\"");
+                }
+
+                isAuthenticated = false;
+            }
+
+            JsonRpcUrl result = new (uri.Scheme, uri.Host, uri.Port, endpoint, isAuthenticated, enabledModules);
 
            return result;
         }
@@ -121,7 +123,7 @@ namespace Nethermind.JsonRpc
         }
 
         public override int GetHashCode() => HashCode.Combine(Scheme, Host, Port, RpcEndpoint, EnabledModules as IStructuralEquatable);
-        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, EnabledModules as string[]);
+        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, EnabledModules as string[]);
         public override string ToString() => $"{Scheme}://{Host}:{Port}";
     }
 }
