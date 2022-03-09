@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Collections;
@@ -23,19 +24,26 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
 
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 public class ResettableListTests
 {
-    [Test]
-    public void Can_resize()
+    private static IEnumerable Tests
     {
-        ResettableList<int> list = new();
-        list.AddRange(Enumerable.Range(0, 200));
+        get
+        {
+            ResettableList<int> list = new();
+            yield return new TestCaseData(list, 200) { ExpectedResult = 256 };
+            yield return new TestCaseData(list, 0) { ExpectedResult = 128 };
+            yield return new TestCaseData(list, 10) { ExpectedResult = 64 };
+        }
+    }
+
+    [TestCaseSource(nameof(Tests))]
+    public int Can_resize(ResettableList<int> list, int add)
+    {
+        list.AddRange(Enumerable.Range(0, add));
         list.Reset();
-        list.Capacity.Should().Be(256);
-        list.Reset();
-        list.Capacity.Should().Be(128);
-        list.Reset();
-        list.Capacity.Should().Be(64);
+        list.Count.Should().Be(0);
+        return list.Capacity;
     }
 }

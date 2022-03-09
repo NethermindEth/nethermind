@@ -81,8 +81,8 @@ public class ResettableList<T> : IList<T>
             {
                 _currentCapacity *= _resetRatio;
             }
-                
-            _wrapped.Clear();
         }
+        
+        _wrapped.Clear();
     }
 }
