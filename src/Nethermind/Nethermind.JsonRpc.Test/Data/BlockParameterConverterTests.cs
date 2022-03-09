@@ -58,6 +58,8 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"EaRlIEST\"", BlockParameterType.Earliest)]
         [TestCase("\"pending\"", BlockParameterType.Pending)]
         [TestCase("\"PeNdInG\"", BlockParameterType.Pending)]
+        [TestCase("\"finalized\"", BlockParameterType.Finalized)]
+        [TestCase("\"Finalized\"", BlockParameterType.Finalized)]
         public void Can_read_type(string input, BlockParameterType output)
         {
             using StringReader reader = new(input);
