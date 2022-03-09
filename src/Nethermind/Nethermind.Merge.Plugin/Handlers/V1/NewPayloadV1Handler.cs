@@ -82,26 +82,46 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(BlockRequestResult request)
         {
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Received payload {request}");
+            }
             request.TryGetBlock(out Block? block);
             if (block == null)
-            {
+            { 
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Result of payload: Invalid block");
+                }
                 return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
             }
 
             if (_blockValidator.ValidateHash(block.Header) == false)
-            {
+            { 
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Result of payload: Invalid block hash {block.Header}");
+                }
                 return NewPayloadV1Result.InvalidBlockHash;
             }
 
             // ToDo wait for final PostMerge sync
             if (_syncConfig.FastSync && _blockTree.LowestInsertedBodyNumber != 0)
-            {
+            { 
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Result of payload: Syncing {block}");
+                }
                 return NewPayloadV1Result.Syncing;
             }
 
             Block? parent = _blockTree.FindBlock(request.ParentHash, BlockTreeLookupOptions.None);
             if (parent == null)
-            {
+            { 
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Result of payload: Accepted {block}");
+                }
                 // ToDo wait for final PostMerge sync
                 return NewPayloadV1Result.Accepted;
             }
@@ -120,7 +140,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             //
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
-            {
+            { 
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Result of payload: Invalid Terminal Block {block}");
+                }
                 return NewPayloadV1Result.InvalidTerminalBlock;
             }
 
@@ -129,17 +153,29 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if ((result.ValidationResult & ValidationResult.AlreadyKnown) != 0 ||
                 result.ValidationResult == ValidationResult.Invalid)
             {
-                bool isValid = (result.ValidationResult & ValidationResult.Valid) != 0;
+                bool isValid = (result.ValidationResult & ValidationResult.Valid) != 0; 
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Result of payload: Success {block}");
+                }
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, isValid, parentHeader,
                     result.Message));
             }
 
             if (processedBlock == null)
-            {
+            { 
+                if (_logger.IsInfo)
+                {
+                    _logger.Info($"Result of payload: Success {block}");
+                }
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, false, parentHeader,
                     $"Processed block is null, request {request}"));
             }
-            
+             
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Result of payload: Valid {block}");
+            }
             return NewPayloadV1Result.Valid(request.BlockHash);
         }
 

@@ -121,14 +121,15 @@ namespace Nethermind.JsonRpc
         {
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string?[] providedParameters = request.Params ?? Array.Empty<string>();
-            if (_logger.IsInfo)
+            
+            if (_logger.IsInfo && !_jsonRpcConfig.MethodsLoggingFiltering.Contains(methodName))
             {
-                var paramStr = string.Join(',', providedParameters);
-                var paramStrAdjusted = paramStr.Substring(0, Math.Min(paramStr.Length, _jsonRpcConfig.MaxLoggedRequestSize ?? paramStr.Length));
+                string paramStr = string.Join(',', providedParameters);
+                string paramStrAdjusted = paramStr[..Math.Min(paramStr.Length, _jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? paramStr.Length)];
                 if (paramStrAdjusted.Length < paramStr.Length) paramStrAdjusted += "...";
                 _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
             }
-
+            
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
             int explicitNullableParamsCount = 0;
 
