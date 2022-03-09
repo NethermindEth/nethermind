@@ -248,8 +248,9 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
+                if (_logger.IsInfo) _logger.Info($"SyncServer BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head!.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
                 AddBlockResult result = _blockTree.SuggestBlock(block);
-                if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.FullHashAndNumber)} adding result is {result}.");
+                if (_logger.IsInfo) _logger.Info($"Sync server Block {block.ToString(Block.Format.FullHashAndNumber)} adding result is {result}.");
             }
             else
             {
