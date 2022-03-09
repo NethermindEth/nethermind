@@ -487,6 +487,27 @@ namespace Nethermind.Merge.Plugin.Test
             actualHead.Should().Be(newHeadHash);
             AssertExecutionStatusChanged(rpc, newHeadHash!, Keccak.Zero, startingHead);
         }
+        
+        [Test]
+        public async Task forkchoiceUpdatedV1_should_update_finalized_block_hash()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
+
+            Keccak newHeadHash = blockRequestResult.BlockHash;
+            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
+                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+            forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+            forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
+
+            Keccak? actualFinalizedHash = chain.BlockTree.FinalizedHash;
+            actualFinalizedHash.Should().NotBeNull();
+            actualFinalizedHash.Should().Be(startingHead);
+            AssertExecutionStatusChanged(rpc, newHeadHash!, startingHead, startingHead);
+        }
 
         [Test]
         public async Task forkchoiceUpdatedV1_with_no_payload_attributes_should_change_head()
