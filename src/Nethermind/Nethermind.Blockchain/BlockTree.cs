@@ -457,7 +457,7 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        public AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options = BlockTreeInsertOptions.All)
+        public AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options = BlockTreeInsertOptions.None)
         {
             if (!CanAcceptNewBlocks)
             {
@@ -479,8 +479,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
-            bool totalDifficultyNeeded = (options & BlockTreeInsertOptions.TotalDifficultyNotNeeded) ==
-                                         BlockTreeInsertOptions.All;
+            bool totalDifficultyNeeded = (options & BlockTreeInsertOptions.TotalDifficultyNotNeeded) == 0;
 
             if (header.TotalDifficulty is null && totalDifficultyNeeded)
             {
@@ -504,14 +503,18 @@ namespace Nethermind.Blockchain
                 LowestInsertedHeader = header;
             }
 
-            if (header.Number > BestKnownNumber)
+            bool updateBestPointers = (options & BlockTreeInsertOptions.SkipUpdateBestPointers) == 0;
+            if (updateBestPointers)
             {
-                BestKnownNumber = header.Number;
-            }
+                if (header.Number > BestKnownNumber)
+                {
+                    BestKnownNumber = header.Number;
+                }
 
-            if (header.Number > (BestSuggestedHeader?.Number ?? 0))
-            {
-                BestSuggestedHeader = header;
+                if (header.Number > (BestSuggestedHeader?.Number ?? 0))
+                {
+                    BestSuggestedHeader = header;
+                }
             }
 
             if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue)
@@ -524,7 +527,7 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        public AddBlockResult Insert(Block block, bool saveHeader = false)
+        public AddBlockResult Insert(Block block, bool saveHeader = false, BlockTreeInsertOptions options = BlockTreeInsertOptions.None)
         {
             if (!CanAcceptNewBlocks)
             {
@@ -549,7 +552,7 @@ namespace Nethermind.Blockchain
             if (saveHeader)
             {
                 // TODO: beaconsync parameterize blocktree insert options
-                Insert(block.Header, BlockTreeInsertOptions.TotalDifficultyNotNeeded);
+                Insert(block.Header, BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers);
             }
 
             return AddBlockResult.Added;

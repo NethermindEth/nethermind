@@ -22,7 +22,8 @@ namespace Nethermind.Blockchain
     [Flags]
     public enum BlockTreeInsertOptions
     {
-        All = 0,
-        TotalDifficultyNotNeeded = 1
+        None = 0,
+        TotalDifficultyNotNeeded = 1,
+        SkipUpdateBestPointers = 2
     }
 }
