@@ -18,9 +18,11 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -65,12 +67,12 @@ namespace Nethermind.TxPool
         /// <summary>
         /// Transactions added by external peers between timer elapses.
         /// </summary>
-        private ConcurrentBag<Transaction> _accumulatedTemporaryTxs;
+        private ResettableList<Transaction> _accumulatedTemporaryTxs;
 
         /// <summary>
         /// Bag for exchanging with _accumulatedTemporaryTxs and for preparing sending message.
         /// </summary>
-        private ConcurrentBag<Transaction> _txsToSend;
+        private ResettableList<Transaction> _txsToSend;
 
         private readonly ILogger _logger;
 
@@ -84,8 +86,8 @@ namespace Nethermind.TxPool
             _headInfo = chainHeadInfoProvider;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
-            _accumulatedTemporaryTxs = new ConcurrentBag<Transaction>();
-            _txsToSend = new ConcurrentBag<Transaction>();
+            _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
+            _txsToSend = new ResettableList<Transaction>(512, 4);
 
             _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(1000));
             _timer.Elapsed += TimerOnElapsed;
@@ -115,7 +117,10 @@ namespace Nethermind.TxPool
 
         private void BroadcastOnce(Transaction tx)
         {
-            _accumulatedTemporaryTxs.Add(tx);
+            lock (_accumulatedTemporaryTxs)
+            {
+                _accumulatedTemporaryTxs.Add(tx);
+            }
         }
         
         public void BroadcastOnce(ITxPoolPeer peer, Transaction[] txs)
@@ -175,6 +180,7 @@ namespace Nethermind.TxPool
         
         private void TimerOnElapsed(object sender, EventArgs args)
         {
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             void NotifyPeers()
             {
                 _txsToSend = Interlocked.Exchange(ref _accumulatedTemporaryTxs, _txsToSend);
@@ -186,17 +192,18 @@ namespace Nethermind.TxPool
                     Notify(peer, GetTxsToSend(peer, _txsToSend), false);
                 }
 
-                _txsToSend.Clear();
+                _txsToSend.Reset();
             }
             
             NotifyPeers();
             _timer.Enabled = true;
         }
 
-        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IEnumerable<Transaction> txsToSend)
+        private IEnumerable<Transaction> GetTxsToSend(ITxPoolPeer peer, IList<Transaction> txsToSend)
         {
-            foreach (Transaction tx in txsToSend)
+            for (int index = 0; index < txsToSend.Count; index++)
             {
+                Transaction tx = txsToSend[index];
                 if (tx.DeliveredBy is null || !tx.DeliveredBy.Equals(peer.Id))
                 {
                     yield return tx;
