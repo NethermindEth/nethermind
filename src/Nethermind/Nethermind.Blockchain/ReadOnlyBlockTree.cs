@@ -90,6 +90,7 @@ namespace Nethermind.Blockchain
         public Keccak GenesisHash => _wrapped.GenesisHash;
         public Keccak PendingHash => _wrapped.PendingHash;
         public Keccak FinalizedHash => _wrapped.FinalizedHash;
+        public Keccak SafeHash => _wrapped.SafeHash;
 
         public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockHash, options);
 
@@ -182,6 +183,6 @@ namespace Nethermind.Blockchain
 
         public void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
         
-        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash, Keccak? HeadBlockHash) => _wrapped.ForkChoiceUpdated(finalizedBlockHash,safeBlockBlockHash,HeadBlockHash);
+        public void ForkChoiceUpdated(Keccak? HeadBlockHash, Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) => _wrapped.ForkChoiceUpdated(HeadBlockHash,finalizedBlockHash,safeBlockBlockHash);
     }
 }

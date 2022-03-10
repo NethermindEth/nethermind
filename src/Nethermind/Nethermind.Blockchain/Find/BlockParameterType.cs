@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain.Find
         Latest,
         Pending,
         Finalized,
+        Safe,
         BlockNumber,
         BlockHash
     }

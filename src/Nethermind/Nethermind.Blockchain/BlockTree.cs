@@ -55,11 +55,11 @@ namespace Nethermind.Blockchain
         private const int BestKnownSearchLimit = 256_000_000;
 
         private readonly object _batchInsertLock = new();
-        private readonly object _batchForkChoiceUpdatedLock = new();
 
         private readonly IDb _blockDb;
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
+        private readonly IDb _metadataDb;
 
         private ICache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128, 128, "invalid blocks");
         private readonly BlockDecoder _blockDecoder = new();
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ILogManager? logManager)
-            : this(dbProvider?.BlocksDb, dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, chainLevelInfoRepository, specProvider, bloomStorage, new SyncConfig(), logManager)
+            : this(dbProvider?.BlocksDb, dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, dbProvider?.MetadataDb, chainLevelInfoRepository, specProvider, bloomStorage, new SyncConfig(), logManager)
         {
         }
 
@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
             ILogManager? logManager)
-            : this(dbProvider?.BlocksDb, dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager)
+            : this(dbProvider?.BlocksDb, dbProvider?.HeadersDb, dbProvider?.BlockInfosDb, dbProvider?.MetadataDb, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager)
         {
         }
 
@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
             ILogManager? logManager)
-            : this(blockDb, headerDb, blockInfoDb, chainLevelInfoRepository, specProvider, bloomStorage, new SyncConfig(), logManager)
+            : this(blockDb, headerDb, blockInfoDb, new MemDb(), chainLevelInfoRepository, specProvider, bloomStorage, new SyncConfig(), logManager)
         {
         }
 
@@ -138,6 +138,7 @@ namespace Nethermind.Blockchain
             IDb? blockDb,
             IDb? headerDb,
             IDb? blockInfoDb,
+            IDb? metadataDb,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
@@ -148,6 +149,7 @@ namespace Nethermind.Blockchain
             _blockDb = blockDb ?? throw new ArgumentNullException(nameof(blockDb));
             _headerDb = headerDb ?? throw new ArgumentNullException(nameof(headerDb));
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
+            _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -1458,8 +1460,8 @@ namespace Nethermind.Blockchain
         public Keccak? HeadHash => Head?.Hash;
         public Keccak? GenesisHash => Genesis?.Hash;
         public Keccak? PendingHash => Head?.Hash;
-        // public Keccak? FinalizedHash => FinalizedBlockHash?.Hash;
         public Keccak? FinalizedHash { get; private set; }
+        public Keccak? SafeHash { get; private set; }
         public Block? FindBlock(Keccak? blockHash, BlockTreeLookupOptions options)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
@@ -1692,11 +1694,14 @@ namespace Nethermind.Blockchain
             }
         }
         
-        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash, Keccak? HeadBlockHash)
+        public void ForkChoiceUpdated(Keccak? HeadBlockHash, Keccak? finalizedBlockHash, Keccak? safeBlockHash)
         {
-            lock (_batchForkChoiceUpdatedLock)
+            FinalizedHash = finalizedBlockHash;
+            SafeHash = safeBlockHash;
+            using (_metadataDb.StartBatch())
             {
-                FinalizedHash = finalizedBlockHash;    
+                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, FinalizedHash!.Bytes);  
+                _metadataDb.Set(MetadataDbKeys.SafeBlockHash, SafeHash!.Bytes);  
             }
         }
     }

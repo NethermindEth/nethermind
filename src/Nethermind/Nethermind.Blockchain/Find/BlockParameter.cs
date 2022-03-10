@@ -28,6 +28,8 @@ namespace Nethermind.Blockchain.Find
         public static BlockParameter Latest = new(BlockParameterType.Latest);
         
         public static BlockParameter Finalized = new(BlockParameterType.Finalized);
+        
+        public static BlockParameter Safe = new(BlockParameterType.Safe);
 
         public BlockParameterType Type { get; }
         public long? BlockNumber { get; }

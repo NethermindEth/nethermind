@@ -519,6 +519,35 @@ namespace Nethermind.Merge.Plugin.Test
             
             AssertExecutionStatusChanged(rpc, newHeadHash!, startingHead, startingHead);
         }
+        
+        [Test]
+        public async Task forkchoiceUpdatedV1_should_update_safe_block_hash()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            TestRpcBlockchain testRpc = await CreateTestRpc(chain);
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
+
+            Keccak newHeadHash = blockRequestResult.BlockHash;
+            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
+                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+            forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+            forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
+            
+            Keccak? actualSafeHash = chain.BlockTree.SafeHash;
+            actualSafeHash.Should().NotBeNull();
+            actualSafeHash.Should().Be(startingHead);
+            
+            BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Safe).Data;
+            blockForRpc.Should().NotBeNull();
+            actualSafeHash = blockForRpc.Hash;
+            actualSafeHash.Should().NotBeNull();
+            actualSafeHash.Should().Be(startingHead);
+            
+            AssertExecutionStatusChanged(rpc, newHeadHash!, startingHead, startingHead);
+        }
 
         [Test]
         public async Task forkchoiceUpdatedV1_with_no_payload_attributes_should_change_head()

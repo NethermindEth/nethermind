@@ -53,5 +53,10 @@ namespace Nethermind.Facade.Proxy.Models
         {
             Type = "finalized"
         };
+        
+        public static BlockParameterModel Safe => new()
+        {
+            Type = "safe"
+        };
     }
 }

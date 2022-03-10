@@ -56,6 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 dbProvider.BlocksDb,
                 dbProvider.HeadersDb,
                 dbProvider.BlockInfosDb,
+                dbProvider.MetadataDb,
                 new ChainLevelInfoRepository(dbProvider.BlockInfosDb),
                 specProvider,
                 new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),
