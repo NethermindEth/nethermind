@@ -45,8 +45,8 @@ namespace Nethermind.Merge.Plugin.Handlers
         {
             return ResultWrapper<ExecutionStatusResult>.Success(new ExecutionStatusResult(
                     _blockFinder.HeadHash,
-                    _blockFinalizationManager.LastFinalizedHash,
-                    _blockConfirmationManager.LastConfirmedHash)
+                    _blockFinder.FinalizedHash!,
+                    _blockFinder.SafeHash!)
             );
         }
     }

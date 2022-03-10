@@ -146,7 +146,7 @@ namespace Nethermind.Blockchain
 
         void DeleteInvalidBlock(Block invalidBlock);
 
-        void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash, Keccak? headBlockHash);
+        void ForkChoiceUpdated(Keccak? headBlockHash, Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash);
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
