@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,7 +34,9 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test;
+using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
@@ -492,6 +495,7 @@ namespace Nethermind.Merge.Plugin.Test
         public async Task forkchoiceUpdatedV1_should_update_finalized_block_hash()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
+            TestRpcBlockchain testRpc = await CreateTestRpc(chain);
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             BlockRequestResult blockRequestResult = await SendNewBlockV1(rpc, chain);
@@ -502,10 +506,17 @@ namespace Nethermind.Merge.Plugin.Test
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
-
+            
             Keccak? actualFinalizedHash = chain.BlockTree.FinalizedHash;
             actualFinalizedHash.Should().NotBeNull();
             actualFinalizedHash.Should().Be(startingHead);
+            
+            BlockForRpc blockForRpc = testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Finalized).Data;
+            blockForRpc.Should().NotBeNull();
+            actualFinalizedHash = blockForRpc.Hash;
+            actualFinalizedHash.Should().NotBeNull();
+            actualFinalizedHash.Should().Be(startingHead);
+            
             AssertExecutionStatusChanged(rpc, newHeadHash!, startingHead, startingHead);
         }
 
