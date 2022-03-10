@@ -139,7 +139,6 @@ namespace Nethermind.Merge.Plugin
                         _blockFinalizationManager,
                         _poSSwitcher,
                         _api.EthSyncingInfo,
-                        _api.BlockConfirmationManager,
                         payloadPreparationService,
                         _api.Synchronizer,
                         syncConfig, 

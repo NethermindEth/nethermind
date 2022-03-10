@@ -45,7 +45,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IEthSyncingInfo _ethSyncingInfo;
-        private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly ISynchronizer _synchronizer;
         private readonly ISyncConfig _syncConfig;
@@ -57,7 +56,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IManualBlockFinalizationManager manualBlockFinalizationManager,
             IPoSSwitcher poSSwitcher,
             IEthSyncingInfo ethSyncingInfo,
-            IBlockConfirmationManager blockConfirmationManager,
             IPayloadPreparationService payloadPreparationService,
             ISynchronizer synchronizer,
             ISyncConfig syncConfig,
@@ -68,8 +66,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                                               throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
-            _blockConfirmationManager = blockConfirmationManager ??
-                                        throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadPreparationService = payloadPreparationService;
             _synchronizer = synchronizer;
             _syncConfig = syncConfig;
@@ -147,8 +143,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         $"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
 
 
-            // In future safeBlockHash will be added to JSON-RPC
-            _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
             string? payloadId = null;
 
             bool headUpdated = false;
