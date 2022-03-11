@@ -167,9 +167,9 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in entryPointContractAddressesString){
+                foreach (string addressString in entryPointContractAddressesString){
                     bool parsed = Address.TryParse(
-                        _addressString,
+                        addressString,
                         out Address? entryPointContractAddress);
                     if (!parsed)
                     {
@@ -196,14 +196,6 @@ namespace Nethermind.AccountAbstraction
                 }
 
                 _entryPointContractAbi = LoadEntryPointContract();
-                
-                // init all relevant objects
-                foreach(Address entryPoint in _entryPointContractAddresses)
-                {
-                    UserOperationPool(entryPoint);
-                    UserOperationSimulator(entryPoint);
-                    UserOperationTxBuilder(entryPoint);
-                }
             }
 
             if (Enabled)
@@ -223,6 +215,14 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 if (_nethermindApi is null) throw new ArgumentNullException(nameof(_nethermindApi));
+                
+                // init all relevant objects if not already initted
+                foreach(Address entryPoint in _entryPointContractAddresses)
+                {
+                    UserOperationPool(entryPoint);
+                    UserOperationSimulator(entryPoint);
+                    UserOperationTxBuilder(entryPoint);
+                }
                 
                 if (_userOperationPools.Count == 0) throw new ArgumentNullException(nameof(UserOperationPool));
 
@@ -260,6 +260,14 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
+                
+                // init all relevant objects if not already initted
+                foreach(Address entryPoint in _entryPointContractAddresses)
+                {
+                    UserOperationPool(entryPoint);
+                    UserOperationSimulator(entryPoint);
+                    UserOperationTxBuilder(entryPoint);
+                }
 
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
@@ -298,6 +306,14 @@ namespace Nethermind.AccountAbstraction
         {
             if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
 
+            // init all relevant objects if not already initted
+            foreach(Address entryPoint in _entryPointContractAddresses)
+            {
+                UserOperationPool(entryPoint);
+                UserOperationSimulator(entryPoint);
+                UserOperationTxBuilder(entryPoint);
+            }
+            
             _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory =
                 new AABlockProducerTransactionsExecutorFactory(
                     _nethermindApi.SpecProvider!, 

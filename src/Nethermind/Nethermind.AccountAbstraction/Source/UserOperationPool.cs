@@ -92,7 +92,7 @@ namespace Nethermind.AccountAbstraction.Source
             _chainId = chainId;
 
             // topic hash emitted by a successful user operation
-            _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
+            _userOperationEventTopic = new Keccak("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
 
@@ -233,8 +233,8 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 if (log?.Topics[0] == _userOperationEventTopic)
                 {
-                    Address senderAddress = new(log.Topics[1]);
-                    Address paymasterAddress = new(log.Topics[2]);
+                    Address senderAddress = new(log.Topics[2]);
+                    Address paymasterAddress = new(log.Topics[3]);
                     UInt256 nonce = new(log.Data.Slice(0, 32), true);
                     if (_userOperationSortedPool.TryGetBucket(senderAddress, out UserOperation[] opsOfSender))
                     {

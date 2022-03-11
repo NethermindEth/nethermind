@@ -38,7 +38,7 @@ namespace Nethermind.AccountAbstraction.Test
         private ILogFinder _logFinder = Substitute.For<ILogFinder>();
         private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
-        private readonly Keccak _userOperationEventTopic = new("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
+        private readonly Keccak _userOperationEventTopic = new("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
         private readonly string _entryPointContractAddress = "0x8595dd9e0438640b5e1254f9df579ac12a86865f";
         private static Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
         
@@ -301,7 +301,7 @@ namespace Nethermind.AccountAbstraction.Test
                 new FilterLog(0, 0, receipt,
                     new LogEntry(new Address(_entryPointContractAddress), 
                         Bytes.Zero32,
-                        new[] {_userOperationEventTopic, new Keccak(senderAddress.Bytes.PadLeft(32)), Keccak.Zero}))
+                        new[] {_userOperationEventTopic, Keccak.Zero, new Keccak(senderAddress.Bytes.PadLeft(32)), Keccak.Zero}))
             });
             //_receiptFinder.Get(block).Returns(new[]{receipt});
             BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
