@@ -17,6 +17,7 @@
 
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Authentication;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -38,20 +39,48 @@ public class JwtTest
     [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.tICF9zHKdMOwccLLA2LGqbA_P1X8WHD-KMe5R4GpgkE", "false")]
     [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.JxoxCpDIzhNLqBCvSWJjddHQ87SynxgwTjJP0-PapA4", "false")]
     [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.JxoxCpDIzhNLqBCvSWJjddHQ87SynxgwTjJP0-PapA4", "false")]
+    [TestCase("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.3MaCM_vL7Dl50v0FMEJeVWwYckxifqxGtA2dlZA9YHQ", "false")]
+    [TestCase("Bearer  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.3MaCM_vL7Dl50v0FMEJeVWwYckxifqxGtA2dlZA9YHQ", "false")]
+    [TestCase("bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.3MaCM_vL7Dl50v0FMEJeVWwYckxifqxGtA2dlZA9YHQ", "false")]
+    [TestCase("Bearer: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.3MaCM_vL7Dl50v0FMEJeVWwYckxifqxGtA2dlZA9YHQ", "false")]
+    [TestCase("Bearer:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.3MaCM_vL7Dl50v0FMEJeVWwYckxifqxGtA2dlZA9YHQ", "false")]
+    [TestCase("Bearer\teyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.3MaCM_vL7Dl50v0FMEJeVWwYckxifqxGtA2dlZA9YHQ", "false")]
+    [TestCase("Bearer \teyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.3MaCM_vL7Dl50v0FMEJeVWwYckxifqxGtA2dlZA9YHQ", "false")]
     public void geth_tests(string token, bool expected)
     {
+        // Only for JwtAuthentication class
         var mock = Substitute.For<IClock>();
         mock.GetCurrentTime().Returns(1644994971);
-        JwtAuthentication authentication = CreateRpcAuthentication("736563726574", mock);
-        JwtAuthentication authenticationWithPrefix = CreateRpcAuthentication("0x736563726574", mock);
+        IRpcAuthentication authentication = JwtAuthentication.CreateFromHexSecret("736563726574", mock);
+        IRpcAuthentication authenticationWithPrefix = JwtAuthentication.CreateFromHexSecret("0x736563726574", mock);
         bool actual = authentication.Authenticate(token);
         Assert.AreEqual(expected, actual);
         actual = authenticationWithPrefix.Authenticate(token);
         Assert.AreEqual(actual, expected);
     }
     
-    private JwtAuthentication CreateRpcAuthentication(string secret, IClock mock)
+    [Test]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.RmIbZajyYGF9fhAq7A9YrTetdf15ebHIJiSdAhX7PME", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzV9.HfWy49SIyB12PBB_xEpy6IAiIan5mIqD6Jzeh_J1QNw", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5Njd9.YGA0v88qMS7lp41wJQv9Msru6dwrNOHXHYiDsuhuScU", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NDQ5OTQ5NzMsImlhdCI6MTY0NDk5NDk3MX0.ADc_b_tCac2uRHcNCekHvHV-qQ8hNyUjdxCVPETd3Os", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJiYXIiOiJiYXoiLCJpYXQiOjE2NDQ5OTQ5NzF9.UZmoAYPGvKoWvz3KcXuxkDnVIF4Fn7QT7z9RwZgSREo", "true")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5Nzd9.QydUOgQDbnaM66i5-YKWFqmQFV_vqO2-wHCR0GbyUz8", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NjV9.PvVSCk5oBSgJ77JNUw_PM9kak-1aM9VJD1qvTNIpFVw", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.RmIbZajyYGF9fhAq7A9YrTetdf15ebHIJiSdAhX7PMe", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF9.RmIbZajyYGF9fhAq7A9YrTetdf15ebHIJiSdAhX7PMEe", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpYXQiOjE2NDQ5OTQ5NzF8.RmIbZajyYGF9fhAq7A9YrTetdf15ebHIJiSdAhX7PME", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.d88KZjmZ_nL0JTnsF6SR1BRBCjus4U3M-390HDDDNRc", "false")]
+    [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NDQ5OTQ5NzEsImlhdCI6MTY0NDk5NDk3MX0.wU4z8ROPW-HaOgrUBG0FqTEutt7rWVsWMqXLvdEl_wI", "false")]
+    public void long_key_tests(string token, bool expected)
     {
-        return JwtAuthentication.FromHexSecret(secret, mock);
+        var mock = Substitute.For<IClock>();
+        mock.GetCurrentTime().Returns(1644994971);
+        IRpcAuthentication authentication = MicrosoftJwtAuthentication.CreateFromHexSecret("5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", mock);
+        IRpcAuthentication authenticationWithPrefix = MicrosoftJwtAuthentication.CreateFromHexSecret("0x5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", mock);
+        bool actual = authentication.Authenticate(token);
+        Assert.AreEqual(expected, actual);
+        actual = authenticationWithPrefix.Authenticate(token);
+        Assert.AreEqual(actual, expected);
     }
 }

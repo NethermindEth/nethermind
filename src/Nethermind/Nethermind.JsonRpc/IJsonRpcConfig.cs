@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Config;
 using Nethermind.JsonRpc.Modules.Eth;
 
@@ -116,8 +117,13 @@ namespace Nethermind.JsonRpc
         public bool UnsecureDevNoRpcAuthentication { get; set; }
 
         [ConfigItem(
-            Description = "Max logged request size",
+            Description = "Limits the Maximum characters printing to log for parameters of any Json RPC service request",
             DefaultValue = "null")]
-        int? MaxLoggedRequestSize { get; set; }
+        int? MaxLoggedRequestParametersCharacters { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines method names of Json RPC service requests to NOT log. Example: {\"eth_blockNumber\"} will not log \"eth_blockNumber\" requests.",
+            DefaultValue = "null")]
+        public string[]? MethodsLoggingFiltering { get; set; }
     }
 }

@@ -181,10 +181,6 @@
     "Goerli ShadowFork": {
       "commandName": "Project",
       "commandLineArgs": "--config goerli_shadowfork.cfg  --Init.DiagnosticMode MemDb --Merge.Enabled true"
-    },
-    "MergeDevnet4": {
-      "commandName": "Project",
-      "commandLineArgs": "--config merge_devnet_4.cfg  --Init.DiagnosticMode MemDb"
     }
   }
 }
