@@ -110,13 +110,5 @@ namespace Nethermind.Api.Extensions
             _pluginTypes.Sort((p1, p2) => 
                 typeof(IConsensusPlugin).IsAssignableFrom(p2).CompareTo(typeof(IConsensusPlugin).IsAssignableFrom(p1)));
         }
-
-        public void OrderPlugins(IPluginConfig pluginConfig)
-        {
-            if (pluginConfig.PluginOrder == null) return;
-            Dictionary<string, int> order = pluginConfig.PluginOrder.Select((s, i) => new {s, i})
-                .ToDictionary(elem => elem.s.ToLower() + "plugin", elem => elem.i);
-            _pluginTypes.Sort((f, s) => order[f.Name.ToLower()].CompareTo(order[s.Name.ToLower()]));
-        }
     }
 }
