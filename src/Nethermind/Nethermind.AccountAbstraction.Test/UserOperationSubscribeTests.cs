@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.AccountAbstraction.Data;
@@ -31,6 +32,7 @@ using Nethermind.AccountAbstraction.Subscribe;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -52,8 +54,11 @@ namespace Nethermind.AccountAbstraction.Test
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
         private IJsonSerializer _jsonSerializer = null!;
         private ISpecProvider _specProvider = null!;
-        private IUserOperationPool _userOperationPool = null!;
-
+        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
+        //Any test pool and entry point addresses should work for testing.
+        private Address _testPoolAddress = Address.Zero;
+        private Address _entryPointAddress = Address.Zero;
+        
         [SetUp]
         public void Setup()
         {
@@ -62,7 +67,7 @@ namespace Nethermind.AccountAbstraction.Test
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
             _specProvider = Substitute.For<ISpecProvider>();
-            _userOperationPool = Substitute.For<IUserOperationPool>();
+            _userOperationPools[_testPoolAddress] = Substitute.For<IUserOperationPool>();
             _filterStore = new FilterStore();
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
@@ -80,7 +85,7 @@ namespace Nethermind.AccountAbstraction.Test
                 "newPendingUserOperations",
                 (jsonRpcDuplexClient,filter) => new NewPendingUserOpsSubscription(
                     jsonRpcDuplexClient,
-                    _userOperationPool,
+                    _userOperationPools,
                     _logManager,
                     filter)
             );
@@ -88,7 +93,7 @@ namespace Nethermind.AccountAbstraction.Test
                 "newReceivedUserOperations",
                 (jsonRpcDuplexClient,filter) => new NewReceivedUserOpsSubscription(
                     jsonRpcDuplexClient,
-                    _userOperationPool,
+                    _userOperationPools,
                     _logManager,
                     filter)
             );
@@ -105,7 +110,7 @@ namespace Nethermind.AccountAbstraction.Test
             out string subscriptionId)
         {
             NewPendingUserOpsSubscription newPendingUserOpsSubscription =
-                new(_jsonRpcDuplexClient, _userOperationPool, _logManager);
+                new(_jsonRpcDuplexClient, _userOperationPools, _logManager);
             JsonRpcResult jsonRpcResult = new();
 
             ManualResetEvent manualResetEvent = new(false);
@@ -115,7 +120,7 @@ namespace Nethermind.AccountAbstraction.Test
                 manualResetEvent.Set();
             }));
 
-            _userOperationPool.NewPending += Raise.EventWith(new object(), userOperationEventArgs);
+            _userOperationPools[_testPoolAddress].NewPending += Raise.EventWith(new object(), userOperationEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = newPendingUserOpsSubscription.Id;
@@ -126,7 +131,7 @@ namespace Nethermind.AccountAbstraction.Test
             out string subscriptionId)
         {
             NewReceivedUserOpsSubscription newReceivedUserOpsSubscription =
-                new(_jsonRpcDuplexClient, _userOperationPool, _logManager);
+                new(_jsonRpcDuplexClient, _userOperationPools, _logManager);
             JsonRpcResult jsonRpcResult = new();
 
             ManualResetEvent manualResetEvent = new(false);
@@ -136,7 +141,7 @@ namespace Nethermind.AccountAbstraction.Test
                 manualResetEvent.Set();
             }));
 
-            _userOperationPool.NewReceived += Raise.EventWith(new object(), userOperationEventArgs);
+            _userOperationPools[_testPoolAddress].NewReceived += Raise.EventWith(new object(), userOperationEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = newReceivedUserOpsSubscription.Id;
@@ -155,7 +160,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void NewPendingUserOperationsSubscription_on_NewPending_event()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            UserOperationEventArgs userOperationEventArgs = new(userOperation);
+            UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
             JsonRpcResult jsonRpcResult = GetNewPendingUserOpsResult(userOperationEventArgs, out var subscriptionId);
 
@@ -178,7 +183,7 @@ namespace Nethermind.AccountAbstraction.Test
         public void NewReceivedUserOperationsSubscription_on_NewPending_event()
         {
             UserOperation userOperation = Build.A.UserOperation.TestObject;
-            UserOperationEventArgs userOperationEventArgs = new(userOperation);
+            UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
 
             JsonRpcResult jsonRpcResult = GetNewReceivedUserOpsResult(userOperationEventArgs, out var subscriptionId);
 
@@ -186,14 +191,6 @@ namespace Nethermind.AccountAbstraction.Test
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
             var expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"sender\":\"0x0000000000000000000000000000000000000000\",\"nonce\":\"0x0\",\"callData\":\"0x\",\"initCode\":\"0x\",\"callGas\":\"0xf4240\",\"verificationGas\":\"0xf4240\",\"preVerificationGas\":\"0x33450\",\"maxFeePerGas\":\"0x1\",\"maxPriorityFeePerGas\":\"0x1\",\"paymaster\":\"0x0000000000000000000000000000000000000000\",\"signature\":\"0x\",\"paymasterData\":\"0x\"}}}";
 
-            expectedResult.Should().Be(serialized);
-        }
-        
-        [Test]
-        public void Wrong_subscription_name()
-        {
-            string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "whatever");
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Wrong subscription type: whatever.\"},\"id\":67}";
             expectedResult.Should().Be(serialized);
         }
 

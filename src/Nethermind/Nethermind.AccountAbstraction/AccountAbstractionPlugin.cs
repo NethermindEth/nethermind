@@ -45,7 +45,7 @@ namespace Nethermind.AccountAbstraction
 
         private INethermindApi _nethermindApi = null!;
         private IList<Address> _entryPointContractAddresses = new List<Address>();
-        private IDictionary<Address, UserOperationPool> _userOperationPools = new Dictionary<Address, UserOperationPool>(); // EntryPoint Address -> Pool
+        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>(); // EntryPoint Address -> Pool
         private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
         private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
         private UserOperationTxSource? _userOperationTxSource;
@@ -77,9 +77,9 @@ namespace Nethermind.AccountAbstraction
             return _userOperationTxBuilders[entryPoint];
         }
         
-        private UserOperationPool UserOperationPool(Address entryPoint)
+        private IUserOperationPool UserOperationPool(Address entryPoint)
         {
-            if (_userOperationPools.TryGetValue(entryPoint, out UserOperationPool? userOperationPool))
+            if (_userOperationPools.TryGetValue(entryPoint, out IUserOperationPool? userOperationPool))
             {
                 return userOperationPool;
             }

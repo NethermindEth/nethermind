@@ -28,11 +28,11 @@ namespace Nethermind.AccountAbstraction.Network
 {
     public class AccountAbstractionPeerManager : IAccountAbstractionPeerManager
     {
-        private IDictionary<Address, UserOperationPool> _userOperationPools;
+        private IDictionary<Address, IUserOperationPool> _userOperationPools;
         private readonly UserOperationBroadcaster _broadcaster;
         private readonly ILogger _logger;
 
-        public AccountAbstractionPeerManager(IDictionary<Address, UserOperationPool> userOperationPools, UserOperationBroadcaster broadcaster, ILogger logger)
+        public AccountAbstractionPeerManager(IDictionary<Address, IUserOperationPool> userOperationPools, UserOperationBroadcaster broadcaster, ILogger logger)
         {
             _userOperationPools = userOperationPools;
             _broadcaster = broadcaster;
@@ -49,7 +49,7 @@ namespace Nethermind.AccountAbstraction.Network
                 UserOperation[][] userOperations = new UserOperation[_userOperationPools.Count][];
                 int counter = 0;
                 int totalLength = 0;
-                foreach (KeyValuePair<Address, UserOperationPool> kv in _userOperationPools) {
+                foreach (KeyValuePair<Address, IUserOperationPool> kv in _userOperationPools) {
                     entryPoints[counter] = kv.Key;
                     userOperations[counter] = kv.Value.GetUserOperations().ToArray();
                     totalLength = totalLength + userOperations[counter].Length;

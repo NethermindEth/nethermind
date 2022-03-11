@@ -29,7 +29,7 @@ namespace Nethermind.AccountAbstraction
 {
     public class AccountAbstractionRpcModule : IAccountAbstractionRpcModule
     {
-        private readonly IDictionary<Address, UserOperationPool> _userOperationPool;
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPool;
         private readonly Address[] _supportedEntryPoints;
 
         static AccountAbstractionRpcModule()
@@ -37,7 +37,7 @@ namespace Nethermind.AccountAbstraction
             Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly);
         }
         
-        public AccountAbstractionRpcModule(IDictionary<Address, UserOperationPool> userOperationPool, Address[] supportedEntryPoints)
+        public AccountAbstractionRpcModule(IDictionary<Address, IUserOperationPool> userOperationPool, Address[] supportedEntryPoints)
         {
             _userOperationPool = userOperationPool;
             _supportedEntryPoints = supportedEntryPoints;

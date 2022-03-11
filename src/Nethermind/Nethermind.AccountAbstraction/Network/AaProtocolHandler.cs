@@ -40,13 +40,13 @@ namespace Nethermind.AccountAbstraction.Network
     public class AaProtocolHandler : ProtocolHandlerBase, IZeroProtocolHandler, IUserOperationPoolPeer
     {
         private readonly ISession _session;
-        private IDictionary<Address, UserOperationPool> _userOperationPools;
+        private IDictionary<Address, IUserOperationPool> _userOperationPools;
         private readonly IAccountAbstractionPeerManager _peerManager;
 
         public AaProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
-            IDictionary<Address, UserOperationPool> userOperationPools,
+            IDictionary<Address, IUserOperationPool> userOperationPools,
             IAccountAbstractionPeerManager peerManager,
             ILogManager logManager)
             : base(session, nodeStatsManager, serializer, logManager)
@@ -122,7 +122,7 @@ namespace Nethermind.AccountAbstraction.Network
             for (int i = 0; i < userOperations.Count; i++)
             {
                 UserOperationWithEntryPoint uop = userOperations[i];
-                if (_userOperationPools.TryGetValue(uop.EntryPoint, out UserOperationPool? pool))
+                if (_userOperationPools.TryGetValue(uop.EntryPoint, out IUserOperationPool? pool))
                 {
                     ResultWrapper<Keccak> result = pool.AddUserOperation(uop.UserOperation);
                     if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} sent {uop.UserOperation.Hash} uop to pool for entryPoint {uop.EntryPoint} and it was {result}");
