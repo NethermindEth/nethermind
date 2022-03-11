@@ -1240,7 +1240,13 @@ namespace Nethermind.Blockchain
         public void UpdateHeadBlock(Keccak blockHash)
         {
             if(_logger.IsError) _logger.Error($"Block tree override detected - updating head block to {blockHash}.");
+            BlockHeader? header = FindHeader(blockHash, BlockTreeLookupOptions.None);
             _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
+            if (header is not null)
+            {
+                BestPersistedState = header.Number;
+            }
+            
         }
 
         private void UpdateHeadBlock(Block block)
