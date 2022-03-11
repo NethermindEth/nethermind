@@ -70,7 +70,10 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 _peerManager,
                 LimboLogs.Instance);
             _handler.Init();
-            //AccountAbstractionRpcModule aaRpcModule = new(_userOperationPool);
+            
+            AccountAbstractionRpcModule aaRpcModule = new(_userOperationPools, new Address[] {});
+            
+
         }
 
         [TearDown]
