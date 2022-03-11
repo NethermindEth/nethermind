@@ -15,18 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Serialization.Rlp;
-using Nethermind.AccountAbstraction.Network;
+using Nethermind.AccountAbstraction.Broadcaster;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.AccountAbstraction.Network
 {
-    public static class RlpStreamExtensions
+    public interface IAccountAbstractionPeerManager
     {
-        private static readonly UserOperationDecoder _userOperationDecoder = new();
-
-        public static void Encode(this RlpStream rlpStream, UserOperationWithEntryPoint? value)
-        {
-            _userOperationDecoder.Encode(rlpStream, value);
-        }
+        void AddPeer(IUserOperationPoolPeer peer);
+        void RemovePeer(PublicKey nodeId);
     }
 }

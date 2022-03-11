@@ -21,12 +21,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using NUnit.Framework;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.AccountAbstraction.Test.TestContracts;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Contracts.Json;
@@ -73,14 +75,13 @@ namespace Nethermind.AccountAbstraction.Test
         
         public class TestAccountAbstractionRpcBlockchain : TestRpcBlockchain
         {
-            public UserOperationPool UserOperationPool { get; private set; } = null!;
-            public UserOperationSimulator UserOperationSimulator { get; private set; } = null!;
+            public IDictionary<Address, UserOperationPool> UserOperationPool { get; private set; } = new Dictionary<Address, UserOperationPool>();
+            public IDictionary<Address, UserOperationSimulator> UserOperationSimulator { get; private set; } = new Dictionary<Address, UserOperationSimulator>();
             public AbiDefinition EntryPointContractAbi { get; private set; } = null!;
-            public UserOperationTxBuilder UserOperationTxBuilder { get; private set; } = null!;
+            public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = new Dictionary<Address, UserOperationTxBuilder>();
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
-
-            public Address EntryPointAddress { get; private set; } = null!;
-
+            public Address[] EntryPointAddresses { get; private set; } = null!;
+            
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
                 Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
@@ -96,7 +97,7 @@ namespace Nethermind.AccountAbstraction.Test
             private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
                 {
                     Enabled = true, 
-                    EntryPointContractAddress = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215",
+                    EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
                     Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
                     UserOperationPoolSize = 200
                 };
@@ -109,7 +110,7 @@ namespace Nethermind.AccountAbstraction.Test
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
                 MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
-                
+
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
                     DbProvider,
                     BlockTree,
@@ -122,9 +123,17 @@ namespace Nethermind.AccountAbstraction.Test
                     TxPool,
                     transactionComparerProvider,
                     miningConfig,
-                    LogManager);
+                    LogManager)
+                {
+                    TransactionsExecutorFactory =
+                        new AABlockProducerTransactionsExecutorFactory(
+                            SpecProvider,
+                            LogManager,
+                            Signer,
+                            EntryPointAddresses)
+                };
                 
-                UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, LogManager.GetClassLogger());
+                UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, State, Signer, LogManager.GetClassLogger());
 
                 Eth2TestBlockProducerFactory producerFactory = new Eth2TestBlockProducerFactory(GasLimitCalculator, UserOperationTxSource);
                 Eth2BlockProducer blockProducer = producerFactory.Create(
@@ -142,10 +151,18 @@ namespace Nethermind.AccountAbstraction.Test
 
             protected override BlockProcessor CreateBlockProcessor()
             {
-                Address.TryParse(_accountAbstractionConfig.EntryPointContractAddress, out Address? entryPointContractAddress);
+                // Address.TryParse(_accountAbstractionConfig.EntryPointContractAddress, out Address? entryPointContractAddress);
+                IList<Address> entryPointContractAddresses = new List<Address>();
+                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string _addressString in _entryPointContractAddressesString){
+                    bool parsed = Address.TryParse(
+                        _addressString,
+                        out Address? entryPointContractAddress);
+                    entryPointContractAddresses.Add(entryPointContractAddress!);
+                }
+
+                EntryPointAddresses = entryPointContractAddresses.ToArray();
                 Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
-                EntryPointAddress = entryPointContractAddress!;
-                
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
                     SpecProvider,
@@ -163,44 +180,50 @@ namespace Nethermind.AccountAbstraction.Test
                 var json = parser.LoadContract(typeof(EntryPoint));
                 EntryPointContractAbi = parser.Parse(json);
 
-                UserOperationTxBuilder = new UserOperationTxBuilder(
-                    EntryPointContractAbi, 
-                    Signer,
-                    entryPointContractAddress!, 
-                    SpecProvider, 
-                    State);
+                foreach(Address entryPoint in entryPointContractAddresses){
+                    UserOperationTxBuilder[entryPoint] = new UserOperationTxBuilder(
+                        EntryPointContractAbi, 
+                        Signer,
+                        entryPoint!, 
+                        SpecProvider, 
+                        State);
+                }
                 
-                UserOperationSimulator = new(
-                    UserOperationTxBuilder,
-                    State,
-                    StateReader,
-                    EntryPointContractAbi,
-                    create2FactoryAddress!,
-                    entryPointContractAddress!,
-                    SpecProvider, 
-                    BlockTree, 
-                    DbProvider, 
-                    ReadOnlyTrieStore, 
-                    Timestamper,
-                    LogManager);
+                foreach(Address entryPoint in entryPointContractAddresses){
+                    UserOperationSimulator[entryPoint] = new(
+                        UserOperationTxBuilder[entryPoint],
+                        State,
+                        StateReader,
+                        EntryPointContractAbi,
+                        create2FactoryAddress!,
+                        entryPoint!,
+                        SpecProvider, 
+                        BlockTree, 
+                        DbProvider, 
+                        ReadOnlyTrieStore, 
+                        Timestamper,
+                        LogManager);
+                }
                 
-                UserOperationPool = new UserOperationPool(
-                    _accountAbstractionConfig, 
-                    BlockTree,
-                    entryPointContractAddress!, 
-                    LogManager.GetClassLogger(),
-                    new PaymasterThrottler(), 
-                    LogFinder, 
-                    Signer, 
-                    State, 
-                    Timestamper, 
-                    UserOperationSimulator, 
-                    new UserOperationSortedPool(
-                        _accountAbstractionConfig.UserOperationPoolSize, 
-                        new CompareUserOperationsByDecreasingGasPrice(), 
-                        LogManager, 
-                        _accountAbstractionConfig.MaximumUserOperationPerSender),
-                    SpecProvider.ChainId);
+                foreach(Address entryPoint in entryPointContractAddresses){
+                    UserOperationPool[entryPoint] = new UserOperationPool(
+                        _accountAbstractionConfig, 
+                        BlockTree,
+                        entryPoint!, 
+                        LogManager.GetClassLogger(),
+                        new PaymasterThrottler(), 
+                        LogFinder, 
+                        Signer, 
+                        State, 
+                        Timestamper, 
+                        UserOperationSimulator[entryPoint], 
+                        new UserOperationSortedPool(
+                            _accountAbstractionConfig.UserOperationPoolSize, 
+                            new CompareUserOperationsByDecreasingGasPrice(), 
+                            LogManager, 
+                            _accountAbstractionConfig.MaximumUserOperationPerSender),
+                        SpecProvider.ChainId);
+                }
                 
                 return blockProcessor;
             }
@@ -208,7 +231,15 @@ namespace Nethermind.AccountAbstraction.Test
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
-                AccountAbstractionRpcModule = new AccountAbstractionRpcModule(UserOperationPool, new []{new Address(_accountAbstractionConfig.EntryPointContractAddress)});
+                IList<Address> entryPointContractAddresses = new List<Address>();
+                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string _addressString in _entryPointContractAddressesString){
+                    bool parsed = Address.TryParse(
+                        _addressString,
+                        out Address? entryPointContractAddress);
+                    entryPointContractAddresses.Add(entryPointContractAddress!);
+                }
+                AccountAbstractionRpcModule = new AccountAbstractionRpcModule(UserOperationPool, entryPointContractAddresses.ToArray());
                 
                 return chain;
             }
@@ -227,11 +258,29 @@ namespace Nethermind.AccountAbstraction.Test
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
             
-            public void SendUserOperation(UserOperation userOperation)
+            public void SendUserOperation(Address entryPoint, UserOperation userOperation)
             {
-                ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool.AddUserOperation(userOperation);
+                ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(userOperation.CalculateRequestId(new Address(_accountAbstractionConfig.EntryPointContractAddress), SpecProvider.ChainId));
+                resultOfUserOperation.GetData().Should().Be(userOperation.CalculateRequestId(entryPoint, SpecProvider.ChainId));
+            }
+
+            public void SupportedEntryPoints()
+            {
+                ResultWrapper<Address[]> resultOfEntryPoints= AccountAbstractionRpcModule.eth_supportedEntryPoints();
+                resultOfEntryPoints.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfEntryPoints.Result.Error);
+                IList<Address> entryPointContractAddresses = new List<Address>();
+                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string _addressString in _entryPointContractAddressesString){
+                    bool parsed = Address.TryParse(
+                        _addressString,
+                        out Address? entryPointContractAddress);
+                    entryPointContractAddresses.Add(entryPointContractAddress!);
+                }
+
+                Address[] eps = entryPointContractAddresses.ToArray();
+                Address[] recieved_eps = (Address[])(resultOfEntryPoints.GetData());
+                Assert.AreEqual(eps, recieved_eps);
             }
         }
     }

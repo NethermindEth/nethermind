@@ -15,18 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Serialization.Rlp;
-using Nethermind.AccountAbstraction.Network;
+using System;
+using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
+using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 
-namespace Nethermind.AccountAbstraction.Data
+namespace Nethermind.AccountAbstraction.Test.TestContracts
 {
-    public static class RlpStreamExtensions
+    public sealed class EntryPoint_2 : CallableContract
     {
-        private static readonly UserOperationDecoder _userOperationDecoder = new();
-
-        public static void Encode(this RlpStream rlpStream, UserOperationWithEntryPoint? value)
+        public EntryPoint_2(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) 
+            : base(transactionProcessor, abiEncoder, contractAddress?? throw new ArgumentNullException(nameof(contractAddress)))
         {
-            _userOperationDecoder.Encode(rlpStream, value);
         }
     }
 }

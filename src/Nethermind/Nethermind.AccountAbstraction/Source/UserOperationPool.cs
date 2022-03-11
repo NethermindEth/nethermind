@@ -25,6 +25,7 @@ using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
+using Nethermind.AccountAbstraction.Network;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
@@ -91,7 +92,7 @@ namespace Nethermind.AccountAbstraction.Source
             _chainId = chainId;
 
             // topic hash emitted by a successful user operation
-            _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
+            _userOperationEventTopic = new Keccak("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
 
@@ -160,6 +161,23 @@ namespace Nethermind.AccountAbstraction.Source
             return _userOperationSortedPool.GetSnapshot();
         }
 
+        public bool IncludesUserOperationWithSenderAndNonce(Address sender, UInt256 nonce)
+        {
+            if (_userOperationSortedPool.TryGetBucket(sender, out UserOperation[] userOperations))
+            {
+                return userOperations.Any(op => op.Nonce == nonce);
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        public bool CanInsert(UserOperation userOperation)
+        {
+            return _userOperationSortedPool.CanInsert(userOperation);
+        }
+
         public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
         {
             Metrics.UserOperationsReceived++;
@@ -173,7 +191,7 @@ namespace Nethermind.AccountAbstraction.Source
                     Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
-                    _broadcaster.BroadcastOnce(userOperation);
+                    _broadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));
                     return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, _chainId));
                 }
 
@@ -215,8 +233,8 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 if (log?.Topics[0] == _userOperationEventTopic)
                 {
-                    Address senderAddress = new(log.Topics[1]);
-                    Address paymasterAddress = new(log.Topics[2]);
+                    Address senderAddress = new(log.Topics[2]);
+                    Address paymasterAddress = new(log.Topics[3]);
                     UInt256 nonce = new(log.Data.Slice(0, 32), true);
                     if (_userOperationSortedPool.TryGetBucket(senderAddress, out UserOperation[] opsOfSender))
                     {
@@ -317,25 +335,6 @@ namespace Nethermind.AccountAbstraction.Source
                 _timestamper.UnixTime.Seconds, CancellationToken.None);
 
             return success;
-        }
-
-        public void AddPeer(IUserOperationPoolPeer peer)
-        {
-            PeerInfo peerInfo = new(peer);
-            if (_broadcaster.AddPeer(peerInfo))
-            {
-                _broadcaster.BroadcastOnce(peerInfo, _userOperationSortedPool.GetSnapshot());
-
-                if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer.Id}");
-            }
-        }
-
-        public void RemovePeer(PublicKey nodeId)
-        {
-            if (_broadcaster.RemovePeer(nodeId))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Removed a peer from User Operation pool: {nodeId}");
-            }
         }
 
         public void Dispose()

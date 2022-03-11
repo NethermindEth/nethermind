@@ -61,5 +61,10 @@ namespace Nethermind.AccountAbstraction.Source
 
             return !CanInsert(op.Hash, op);
         }
+
+        public bool CanInsert(UserOperation userOperation)
+        {
+            return CanInsert(userOperation.Hash, userOperation);
+        }
     }
 }
