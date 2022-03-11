@@ -31,5 +31,10 @@ namespace Nethermind.Merge.Plugin.Data.V1
         
         public Keccak SafeBlockHash { get; set; }
         public Keccak FinalizedBlockHash { get; set; }
+
+        public override string ToString()
+        {
+            return $"{nameof(HeadBlockHash)}: {HeadBlockHash}, {nameof(SafeBlockHash)}: {SafeBlockHash}, {nameof(FinalizedBlockHash)}: {FinalizedBlockHash}";
+        }
     }
 }
