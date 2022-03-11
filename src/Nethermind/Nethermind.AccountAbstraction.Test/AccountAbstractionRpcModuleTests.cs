@@ -52,11 +52,12 @@ namespace Nethermind.AccountAbstraction.Test
     {
         private Contracts _contracts = new();
         private AbiEncoder _encoder = new();
+        private static int entryPointNum = 2;
         
         public class Contracts
         {
             internal AbiDefinition SingletonFactory;
-            internal AbiDefinition EntryPointAbi;
+            internal AbiDefinition[] EntryPointAbi = new AbiDefinition[entryPointNum];
             internal AbiDefinition SimpleWalletAbi;
             internal AbiDefinition TestCounterAbi;
             internal AbiDefinition TokenPaymasterAbi;
@@ -66,7 +67,9 @@ namespace Nethermind.AccountAbstraction.Test
             public Contracts()
             {
                 SingletonFactory = LoadContract(typeof(SingletonFactory));
-                EntryPointAbi = LoadContract(typeof(EntryPoint));
+                // TODO: Implement a way to loop over the file names also
+                EntryPointAbi[0] = LoadContract(typeof(EntryPoint));
+                EntryPointAbi[1] = LoadContract(typeof(EntryPoint_2));
                 SimpleWalletAbi = LoadContract(typeof(SimpleWallet));
                 TestCounterAbi = LoadContract(typeof(TestCounter));
                 TokenPaymasterAbi = LoadContract(typeof(TokenPaymaster));
@@ -101,13 +104,13 @@ namespace Nethermind.AccountAbstraction.Test
                 return count;
             }
             
-            public Address GetAccountAddress(TestRpcBlockchain chain, Address entryPointAddress, byte[] bytecode, UInt256 salt)
+            public Address GetAccountAddress(TestRpcBlockchain chain, Address entryPointAddress, byte[] bytecode, UInt256 salt, int epNum)
             {
                 Transaction getAccountAddressTransaction = Core.Test.Builders.Build.A.Transaction
                     .WithTo(entryPointAddress)
                     .WithGasLimit(1_000_000)
                     .WithValue(0)
-                    .WithData(_encoder.Encode(AbiEncodingStyle.IncludeSignature, EntryPointAbi.Functions["getSenderAddress"].GetCallInfo().Signature, bytecode, salt))
+                    .WithData(_encoder.Encode(AbiEncodingStyle.IncludeSignature, EntryPointAbi[epNum].Functions["getSenderAddress"].GetCallInfo().Signature, bytecode, salt))
                     .SignedAndResolved(TestItem.PrivateKeyA)
                     .TestObject;
             
@@ -122,44 +125,56 @@ namespace Nethermind.AccountAbstraction.Test
                 return Bytes.Concat(SimpleWalletAbi.Bytecode!, walletConstructorBytes);
             }
 
-            public async Task<(Address, Address?, Address?)> Deploy(TestAccountAbstractionRpcBlockchain chain, byte[]? miscContractCode = null)
+            public async Task<(Address[], Address?[], Address?[])> Deploy(TestAccountAbstractionRpcBlockchain chain, byte[]? miscContractCode = null)
             {
                 Transaction singletonFactoryTx = Core.Test.Builders.Build.A.Transaction.WithCode(SingletonFactory.Bytecode!).WithGasLimit(6_000_000).WithNonce(0).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
                 await chain.AddBlock(true, singletonFactoryTx);
                 Address singletonFactoryAddress = chain.Bridge.GetReceipt(singletonFactoryTx.Hash!).ContractAddress!;
 
-                byte[] entryPointConstructorBytes = Bytes.Concat(EntryPointAbi.Bytecode!, _encoder.Encode(AbiEncodingStyle.None, EntryPointAbi.Constructors[0].GetCallInfo().Signature, singletonFactoryAddress, 0, 2));
-                byte[] createEntryPointBytes = _encoder.Encode(AbiEncodingStyle.IncludeSignature, SingletonFactory.Functions["deploy"].GetCallInfo().Signature, entryPointConstructorBytes, Bytes.Zero32);
-                
-                Transaction entryPointTx = Core.Test.Builders.Build.A.Transaction.WithTo(singletonFactoryAddress).WithData(createEntryPointBytes).WithGasLimit(6_000_000).WithNonce(1).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
-                await chain.AddBlock(true, entryPointTx);
+                Address[] computedAddresses = new Address[entryPointNum];
+                Address?[] createWalletTxReceiptContractAddresses = new Address[entryPointNum];
+                Address?[] miscContractTxReceiptContractAddresses = new Address[entryPointNum];
 
-                Address computedAddress = new(Keccak.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Keccak.Compute(entryPointConstructorBytes).Bytes)).Bytes.TakeLast(20).ToArray());
+                for(int i=0; i<entryPointNum; i++)
+                {
 
-                TxReceipt createEntryPointTxReceipt = chain.Bridge.GetReceipt(entryPointTx.Hash!);
-                createEntryPointTxReceipt.Error.Should().BeNullOrEmpty($"Contract transaction {computedAddress!} was not deployed.");
-                chain.State.GetCode(computedAddress).Should().NotBeNullOrEmpty();
-                
-                bool createMiscContract = miscContractCode is not null;
-                IList<Transaction> transactionsToInclude = new List<Transaction>();
-                
-                Transaction? walletTx = Core.Test.Builders.Build.A.Transaction.WithCode(GetWalletConstructor(computedAddress)).WithGasLimit(LargeGasLimit).WithNonce(2).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
-                transactionsToInclude.Add(walletTx!);
-                
-                Transaction? miscContractTx = createMiscContract ? Core.Test.Builders.Build.A.Transaction.WithCode(miscContractCode!).WithGasLimit(LargeGasLimit).WithNonce(3).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject : null;
-                if (createMiscContract) transactionsToInclude.Add(miscContractTx!);
-                
-                await chain.AddBlock(true, transactionsToInclude.ToArray());
+                    byte[] entryPointConstructorBytes = Bytes.Concat(EntryPointAbi[i].Bytecode!, _encoder.Encode(AbiEncodingStyle.None, EntryPointAbi[i].Constructors[0].GetCallInfo().Signature, singletonFactoryAddress, 0, 2));
+                    byte[] createEntryPointBytes = _encoder.Encode(AbiEncodingStyle.IncludeSignature, SingletonFactory.Functions["deploy"].GetCallInfo().Signature, entryPointConstructorBytes, Bytes.Zero32);
 
-                TxReceipt createWalletTxReceipt = chain.Bridge.GetReceipt(walletTx.Hash!);
-                TxReceipt? miscContractTxReceipt = createMiscContract ? chain.Bridge.GetReceipt(miscContractTx!.Hash!) : null;
-                createWalletTxReceipt?.ContractAddress.Should().NotBeNull($"Contract transaction {walletTx?.Hash!} was not deployed.");
-                miscContractTxReceipt?.ContractAddress.Should().NotBeNull($"Contract transaction {miscContractTx?.Hash!} was not deployed.");
+                    Transaction entryPointTx = Core.Test.Builders.Build.A.Transaction.WithTo(singletonFactoryAddress).WithData(createEntryPointBytes).WithGasLimit(6_000_000).WithNonce(chain.State.GetNonce(ContractCreatorPrivateKey.Address)).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
+                    await chain.AddBlock(true, entryPointTx);
 
-                chain.State.GetCode(createWalletTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
-                if (createMiscContract) chain.State.GetCode(miscContractTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
+                    Address computedAddress = new(Keccak.Compute(Bytes.Concat(Bytes.FromHexString("0xff"), singletonFactoryAddress.Bytes, Bytes.Zero32, Keccak.Compute(entryPointConstructorBytes).Bytes)).Bytes.TakeLast(20).ToArray());
+
+                    TxReceipt createEntryPointTxReceipt = chain.Bridge.GetReceipt(entryPointTx.Hash!);
+                    createEntryPointTxReceipt.Error.Should().BeNullOrEmpty($"Contract transaction {computedAddress!} was not deployed.");
+                    chain.State.GetCode(computedAddress).Should().NotBeNullOrEmpty();
+                    
+                    bool createMiscContract = miscContractCode is not null;
+                    IList<Transaction> transactionsToInclude = new List<Transaction>();
+                    
+                    Transaction? walletTx = Core.Test.Builders.Build.A.Transaction.WithCode(GetWalletConstructor(computedAddress)).WithGasLimit(LargeGasLimit).WithNonce(chain.State.GetNonce(ContractCreatorPrivateKey.Address)).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject;
+                    transactionsToInclude.Add(walletTx!);
+                    
+                    Transaction? miscContractTx = createMiscContract ? Core.Test.Builders.Build.A.Transaction.WithCode(miscContractCode!).WithGasLimit(LargeGasLimit).WithNonce(chain.State.GetNonce(ContractCreatorPrivateKey.Address) + 1).WithValue(0).SignedAndResolved(ContractCreatorPrivateKey).TestObject : null;
+                    if (createMiscContract) transactionsToInclude.Add(miscContractTx!);
+                    
+                    await chain.AddBlock(true, transactionsToInclude.ToArray());
+
+                    TxReceipt createWalletTxReceipt = chain.Bridge.GetReceipt(walletTx.Hash!);
+                    TxReceipt? miscContractTxReceipt = createMiscContract ? chain.Bridge.GetReceipt(miscContractTx!.Hash!) : null;
+                    createWalletTxReceipt?.ContractAddress.Should().NotBeNull($"Contract transaction {walletTx?.Hash!} was not deployed.");
+                    miscContractTxReceipt?.ContractAddress.Should().NotBeNull($"Contract transaction {miscContractTx?.Hash!} was not deployed.");
+
+                    chain.State.GetCode(createWalletTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
+                    if (createMiscContract) chain.State.GetCode(miscContractTxReceipt?.ContractAddress!).Should().NotBeNullOrEmpty();
+
+                    computedAddresses[i] = computedAddress;
+                    createWalletTxReceiptContractAddresses[i] = createWalletTxReceipt?.ContractAddress!;
+                    miscContractTxReceiptContractAddresses[i] = miscContractTxReceipt?.ContractAddress!;
+                }
                 
-                return (computedAddress, createWalletTxReceipt?.ContractAddress!, miscContractTxReceipt?.ContractAddress!);
+                return (computedAddresses, createWalletTxReceiptContractAddresses, miscContractTxReceiptContractAddresses);
             }
         }
 
@@ -167,7 +182,7 @@ namespace Nethermind.AccountAbstraction.Test
         public async Task Should_deploy_contracts_successfully()
         {
             var chain = await CreateChain();
-            (Address entryPointAddress, Address? walletAddress, _) = await _contracts.Deploy(chain);
+            (Address[] entryPointAddresses, Address?[] walletAddresses, _) = await _contracts.Deploy(chain);
         }
         
         [Test]
@@ -207,34 +222,138 @@ namespace Nethermind.AccountAbstraction.Test
         [Test]
         public async Task Should_execute_well_formed_op_successfully() {
             var chain = await CreateChain();
-            (Address entryPointAddress, Address? walletAddress, Address? counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
-
+            (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
+            
             byte[] countCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
-            byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, counterAddress!, 0, countCallData);
+            byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, counterAddress[0]!, 0, countCallData);
             
             UserOperation op = Build.A.UserOperation
-                .WithSender(walletAddress!)
+                .WithSender(walletAddress[0]!)
                 .WithCallData(execCounterCountFromEntryPoint)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
 
+            /*
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
-                .WithTo(walletAddress!)
+                .WithTo(walletAddress[0]!)
                 .WithGasLimit(1_000_000)
                 .WithGasPrice(2)
                 .WithValue(1.Ether())
-                .WithNonce(0)
+                .WithNonce((UInt256)(0))
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             await chain.AddBlock(true, fundTransaction);
+            */
 
-            UInt256 countBefore = _contracts.GetCount(chain, counterAddress!, walletAddress!);
+            UInt256 countBefore = _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!);
             countBefore.Should().Be(0);
 
-            chain.SendUserOperation(op);
+            chain.SendUserOperation(entryPointAddress[0], op);
             await chain.AddBlock(true);
 
-            UInt256 countAfter = _contracts.GetCount(chain, counterAddress!, walletAddress!);
+            UInt256 countAfter = _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!);
             countAfter.Should().Be(1);
+
+        }
+
+        [Test]
+        public async Task Should_display_the_list_of_supported_entry_points()
+        {
+            var chain = await CreateChain();
+            (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
+            chain.SupportedEntryPoints();
+        }
+        
+        [Test]
+        public async Task Should_execute_well_formed_op_successfully_for_all_entry_points() {
+            var chain = await CreateChain();
+            (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
+
+            for (int i = 0; i < entryPointNum; i++)
+            {
+
+                byte[] countCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature,
+                    _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
+                byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature,
+                    _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature,
+                    counterAddress[i]!, 0, countCallData);
+
+                UserOperation op = Build.A.UserOperation
+                    .WithSender(walletAddress[i]!)
+                    .WithCallData(execCounterCountFromEntryPoint)
+                    .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[i], chain.SpecProvider.ChainId)
+                    .TestObject;
+
+                /*
+                Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
+                    .WithTo(walletAddress[i]!)
+                    .WithGasLimit(1_000_000)
+                    .WithGasPrice(2)
+                    .WithValue(1.Ether())
+                    .WithNonce((UInt256)(i))
+                    .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+                await chain.AddBlock(true, fundTransaction);
+                */
+
+                UInt256 countBefore = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
+                countBefore.Should().Be(0);
+                
+                chain.SendUserOperation(entryPointAddress[i], op);
+                await chain.AddBlock(true);
+
+                UInt256 countAfter = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
+                countAfter.Should().Be(1);
+
+            }
+
+        }
+        
+        [Test]
+        public async Task Should_execute_well_formed_op_successfully_for_all_entry_points_at_the_same_time() {
+            var chain = await CreateChain();
+            (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
+
+            for (int i = 0; i < entryPointNum; i++)
+            {
+
+                byte[] countCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature,
+                    _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
+                byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature,
+                    _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature,
+                    counterAddress[i]!, 0, countCallData);
+
+                UserOperation op = Build.A.UserOperation
+                    .WithSender(walletAddress[i]!)
+                    .WithCallData(execCounterCountFromEntryPoint)
+                    .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[i], chain.SpecProvider.ChainId)
+                    .TestObject;
+
+                /*
+                Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
+                    .WithTo(walletAddress[i]!)
+                    .WithGasLimit(1_000_000)
+                    .WithGasPrice(2)
+                    .WithValue(1.Ether())
+                    .WithNonce((UInt256)(i))
+                    .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+                await chain.AddBlock(true, fundTransaction);
+                */
+
+                UInt256 countBefore = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
+                countBefore.Should().Be(0);
+                
+                chain.SendUserOperation(entryPointAddress[i], op);
+            }
+            
+            
+            await chain.AddBlock(true);
+
+            for (int i = 0; i < entryPointNum; i++)
+            {
+                UInt256 countAfter = _contracts.GetCount(chain, counterAddress[i]!, walletAddress[i]!);
+                countAfter.Should().Be(1);
+            }
+            
+            Console.WriteLine("2");
         }
         
         [Test]
@@ -242,17 +361,17 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var chain = await CreateChain();
             chain.GasLimitCalculator.GasLimit = 20_000_000;
-            (Address entryPointAddress, Address? walletAddress, Address? counterAddress) = await _contracts.Deploy(chain);
+            (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain);
 
-            byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress);
-            Address accountAddress = _contracts.GetAccountAddress(chain, entryPointAddress, walletConstructor, 0);
+            byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress[0]);
+            Address accountAddress = _contracts.GetAccountAddress(chain, entryPointAddress[0], walletConstructor, 0, 0);
             
             UserOperation createOp = Build.A.UserOperation
                 .WithSender(accountAddress!)
                 .WithInitCode(walletConstructor)
                 .WithCallGas(10_000_000)
                 .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
 
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -264,7 +383,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             await chain.AddBlock(true, fundTransaction);
 
-            chain.SendUserOperation(createOp);
+            chain.SendUserOperation(entryPointAddress[0], createOp);
             await chain.AddBlock(true);
 
             chain.State.GetCode(accountAddress).Should().BeEquivalentTo(_contracts.SimpleWalletAbi.DeployedBytecode!);
@@ -275,19 +394,19 @@ namespace Nethermind.AccountAbstraction.Test
         {
             var chain = await CreateChain();
             chain.GasLimitCalculator.GasLimit = 30_000_000;
-            (Address entryPointAddress, Address? walletAddress, Address? counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
+            (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
             
             byte[] countCalldata = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TestCounterAbi.Functions["count"].GetCallInfo().Signature);
-            byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, counterAddress!, 0, countCalldata);
+            byte[] execCounterCountFromEntryPoint = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.SimpleWalletAbi.Functions["execFromEntryPoint"].GetCallInfo().Signature, counterAddress[0]!, 0, countCalldata);
             
             UserOperation op = Build.A.UserOperation
-                .WithSender(walletAddress!)
+                .WithSender(walletAddress[0]!)
                 .WithCallData(execCounterCountFromEntryPoint)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
             
-            byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress);
-            Address accountAddress = _contracts.GetAccountAddress(chain, entryPointAddress, walletConstructor, 0);
+            byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress[0]);
+            Address accountAddress = _contracts.GetAccountAddress(chain, entryPointAddress[0], walletConstructor, 0, 0);
             
             UserOperation createOp = Build.A.UserOperation
                 .WithSender(accountAddress!)
@@ -295,7 +414,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithCallData(execCounterCountFromEntryPoint)
                 .WithCallGas(10_000_000)
                 .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
             
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
@@ -306,7 +425,7 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithNonce(0)
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Transaction fundTransaction2 = Core.Test.Builders.Build.A.Transaction
-                .WithTo(walletAddress!)
+                .WithTo(walletAddress[0]!)
                 .WithGasLimit(100_000)
                 .WithGasPrice(2)
                 .WithValue(1.Ether())
@@ -314,44 +433,49 @@ namespace Nethermind.AccountAbstraction.Test
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             await chain.AddBlock(true, fundTransaction, fundTransaction2);
 
-            UInt256 countBefore = _contracts.GetCount(chain, counterAddress!, walletAddress!);
-            UInt256 countBefore1 = _contracts.GetCount(chain, counterAddress!, accountAddress!);
+            UInt256 countBefore = _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!);
+            UInt256 countBefore1 = _contracts.GetCount(chain, counterAddress[0]!, accountAddress!);
             countBefore.Should().Be(0);
             countBefore1.Should().Be(0);
 
-            chain.SendUserOperation(op);
-            chain.SendUserOperation(createOp);
+            chain.SendUserOperation(entryPointAddress[0], op);
+            chain.SendUserOperation(entryPointAddress[0], createOp);
             await chain.AddBlock(true);
-            
+
             chain.State.GetCode(accountAddress).Should().BeEquivalentTo(_contracts.SimpleWalletAbi.DeployedBytecode!);
 
-            UInt256 countAfter = _contracts.GetCount(chain, counterAddress!, walletAddress!);
-            UInt256 countAfter1 = _contracts.GetCount(chain, counterAddress!, accountAddress!);
+            UInt256 countAfter = _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!);
+            UInt256 countAfter1 = _contracts.GetCount(chain, counterAddress[0]!, accountAddress!);
             countAfter.Should().Be(1);
             countAfter1.Should().Be(1);
+                
         }
-        
+
         [Test]
         public async Task Should_create_account_with_tokens()
         {
             var chain = await CreateChain();
             chain.GasLimitCalculator.GasLimit = 20_000_000;
 
+            // string[] epAddresses = {"0xdb8b5f6080a8e466b64a8d7458326cb650b3353f", "0x90f3e1105e63c877bf9587de5388c23cdb702c6b"};
+
             byte[] paymasterBytecode = Bytes.Concat(
                 _contracts.TokenPaymasterAbi.Bytecode!,
                 _encoder.Encode(
                     AbiEncodingStyle.None,
-                    _contracts.TokenPaymasterAbi.Constructors[0].GetCallInfo().Signature, "tst", 
-                    chain.EntryPointAddress));
-            
-            (Address entryPointAddress, Address? walletAddress, Address? paymasterAddress) = await _contracts.Deploy(chain, paymasterBytecode);
+                    _contracts.TokenPaymasterAbi.Constructors[0].GetCallInfo().Signature, "tst",
+                    new Address("0xb0894727fe4ff102e1f1c8a16f38afc7b859f215")));
 
-            byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress);
-            Address accountAddress = _contracts.GetAccountAddress(chain, entryPointAddress, walletConstructor, 0);
+            (Address[] entryPointAddress, Address?[] walletAddress, Address?[] paymasterAddress) =
+                await _contracts.Deploy(chain, paymasterBytecode);
 
-            byte[] addStakeCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TokenPaymasterAbi.Functions["addStake"].GetCallInfo().Signature, 0);
+            byte[] walletConstructor = _contracts.GetWalletConstructor(entryPointAddress[0]);
+            Address accountAddress = _contracts.GetAccountAddress(chain, entryPointAddress[0], walletConstructor, 0, 0);
+
+            byte[] addStakeCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature,
+                _contracts.TokenPaymasterAbi.Functions["addStake"].GetCallInfo().Signature, 0);
             Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
-                .WithTo(paymasterAddress!)
+                .WithTo(paymasterAddress[0]!)
                 .WithGasLimit(100_000)
                 .WithGasPrice(2)
                 .WithValue(2.Ether())
@@ -360,9 +484,11 @@ namespace Nethermind.AccountAbstraction.Test
                 .SignedAndResolved(Contracts.ContractCreatorPrivateKey).TestObject;
             await chain.AddBlock(true, fundTransaction);
 
-            byte[] mintTokensCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature, _contracts.TokenPaymasterAbi.Functions["mintTokens"].GetCallInfo().Signature, accountAddress, 1.Ether());
+            byte[] mintTokensCallData = _encoder.Encode(AbiEncodingStyle.IncludeSignature,
+                _contracts.TokenPaymasterAbi.Functions["mintTokens"].GetCallInfo().Signature, accountAddress,
+                1.Ether());
             Transaction mintTokensTransaction = Core.Test.Builders.Build.A.Transaction
-                .WithTo(paymasterAddress!)
+                .WithTo(paymasterAddress[0]!)
                 .WithGasLimit(100_000)
                 .WithGasPrice(2)
                 .WithData(mintTokensCallData)
@@ -370,16 +496,16 @@ namespace Nethermind.AccountAbstraction.Test
                 .WithNonce(chain.State.GetNonce(Contracts.ContractCreatorPrivateKey.Address))
                 .SignedAndResolved(Contracts.ContractCreatorPrivateKey).TestObject;
             await chain.AddBlock(true, mintTokensTransaction);
-            
+
             UserOperation createOp = Build.A.UserOperation
-                .WithPaymaster(paymasterAddress!)
+                .WithPaymaster(paymasterAddress[0]!)
                 .WithSender(accountAddress)
                 .WithInitCode(walletConstructor)
                 .WithCallGas(10_000_000)
                 .WithVerificationGas(2_000_000)
-                .SignedAndResolved(TestItem.PrivateKeyA, chain.EntryPointAddress, chain.SpecProvider.ChainId)
+                .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
-            chain.SendUserOperation(createOp);
+            chain.SendUserOperation(entryPointAddress[0], createOp);
             await chain.AddBlock(true);
 
             chain.State.GetCode(accountAddress).Should().BeEquivalentTo(_contracts.SimpleWalletAbi.DeployedBytecode!);

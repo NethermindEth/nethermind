@@ -20,6 +20,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
+using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -42,35 +43,35 @@ namespace Nethermind.AccountAbstraction.Source
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
-        public void BroadcastOnce(UserOperation op)
+        public void BroadcastOnce(UserOperationWithEntryPoint op)
         {
             NotifyAllPeers(op);
         }
         
-        public void BroadcastOnce(IUserOperationPoolPeer peer, UserOperation[] ops)
+        public void BroadcastOnce(IUserOperationPoolPeer peer, UserOperationWithEntryPoint[] ops)
         {
             NotifyPeer(peer, ops);
         }
         
-        private void NotifyAllPeers(UserOperation op)
+        private void NotifyAllPeers(UserOperationWithEntryPoint op)
         {
-            if (_logger.IsDebug) _logger.Debug($"Broadcasting new user operation {op.Hash} to all peers");
+            if (_logger.IsDebug) _logger.Debug($"Broadcasting new user operation {op.UserOperation.Hash} to entryPoint {op.EntryPoint} to all peers");
 
             foreach ((_, IUserOperationPoolPeer peer) in _peers)
             {
                 try
                 {
                     peer.SendNewUserOperation(op);
-                    if (_logger.IsTrace) _logger.Trace($"Notified {peer.Id} about user operation {op.Hash}.");
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer.Id} about user operation {op.UserOperation.Hash} to entryPoint {op.EntryPoint}.");
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"Failed to notify {peer.Id} about user operation {op.Hash}.", e);
+                    if (_logger.IsError) _logger.Error($"Failed to notify {peer.Id} about user operation {op.UserOperation.Hash} to entryPoint {op.EntryPoint}.", e);
                 }
             }
         }
         
-        private void NotifyPeer(IUserOperationPoolPeer peer, IEnumerable<UserOperation> ops)
+        private void NotifyPeer(IUserOperationPoolPeer peer, IEnumerable<UserOperationWithEntryPoint> ops)
         {
             try
             {

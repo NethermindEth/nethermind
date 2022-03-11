@@ -16,7 +16,6 @@
 // 
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -26,8 +25,7 @@ namespace Nethermind.TxPool
     {
         public PublicKey Id { get; }
         public string Enode => string.Empty;
-        void SendNewTransaction(Transaction tx) => SendNewTransactions(new[]{tx});
-        void SendNewTransactions(IEnumerable<(Transaction Tx, bool IsPersistent)> txs);
-        void SendNewTransactions(IEnumerable<Transaction> txs)  => SendNewTransactions(txs.Select(t => (t, false)));
+        void SendNewTransaction(Transaction tx) => SendNewTransactions(new[]{tx}, true);
+        void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx);
     }
 }

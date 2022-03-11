@@ -15,14 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.AccountAbstraction.Data
 {
-    public class UserOperationDecoder : IRlpValueDecoder<UserOperation>, IRlpStreamDecoder<UserOperation>
+    public class UserOperationDecoder : IRlpValueDecoder<UserOperationWithEntryPoint>, IRlpStreamDecoder<UserOperationWithEntryPoint>
     {
-        public Rlp Encode(UserOperation? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(UserOperationWithEntryPoint? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
@@ -34,16 +35,19 @@ namespace Nethermind.AccountAbstraction.Data
             return new Rlp(rlpStream.Data!);
 
         }
-        
-        public void Encode(RlpStream stream, UserOperation? op, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+
+        public void Encode(RlpStream stream, UserOperationWithEntryPoint? opWithEntryPoint, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (op is null)
+            if (opWithEntryPoint is null)
             {
                 stream.EncodeNullObject();
                 return;
             }
+
+            int contentLength = GetContentLength(opWithEntryPoint);
             
-            int contentLength = GetContentLength(op);
+            UserOperation op = opWithEntryPoint.UserOperation;
+            Address entryPoint = opWithEntryPoint.EntryPoint;
 
             stream.StartSequence(contentLength);
 
@@ -59,14 +63,16 @@ namespace Nethermind.AccountAbstraction.Data
             stream.Encode(op.Paymaster);
             stream.Encode(op.PaymasterData);
             stream.Encode(op.Signature);
+            stream.Encode(entryPoint);
         }
+        
 
-        public UserOperation Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public UserOperationWithEntryPoint Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             throw new System.NotImplementedException();
         }
 
-        public UserOperation Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public UserOperationWithEntryPoint Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.SkipLength();
             
@@ -86,16 +92,22 @@ namespace Nethermind.AccountAbstraction.Data
                     Signature = rlpStream.DecodeByteArray()
                 };
 
-            return new UserOperation(userOperationRpc);
+            Address entryPoint = rlpStream.DecodeAddress() ?? Address.Zero;
+            
+            // TODO: Make instantiation simpler?
+            return new UserOperationWithEntryPoint(new UserOperation(userOperationRpc), entryPoint);
         }
 
-        public int GetLength(UserOperation item, RlpBehaviors rlpBehaviors)
+        public int GetLength(UserOperationWithEntryPoint item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOfSequence(GetContentLength(item));
         }
         
-        private static int GetContentLength(UserOperation op)
+        private static int GetContentLength(UserOperationWithEntryPoint opWithEntryPoint)
         {
+            UserOperation op = opWithEntryPoint.UserOperation;
+            Address entryPoint = opWithEntryPoint.EntryPoint;
+            
             return Rlp.LengthOf(op.Sender)
                    + Rlp.LengthOf(op.Nonce)
                    + Rlp.LengthOf(op.InitCode)
@@ -107,7 +119,9 @@ namespace Nethermind.AccountAbstraction.Data
                    + Rlp.LengthOf(op.MaxPriorityFeePerGas)
                    + Rlp.LengthOf(op.Paymaster)
                    + Rlp.LengthOf(op.PaymasterData)
-                   + Rlp.LengthOf(op.Signature);
+                   + Rlp.LengthOf(op.Signature)
+                   + Rlp.LengthOf(entryPoint);
         }
+        
     }
 }

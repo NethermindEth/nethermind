@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Net.WebSockets;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
@@ -43,11 +44,12 @@ namespace Nethermind.AccountAbstraction
         private ILogger _logger = null!;
 
         private INethermindApi _nethermindApi = null!;
-        private Address _entryPointContractAddress = null!;
-        private UserOperationPool? _userOperationPool;
-        private UserOperationSimulator? _userOperationSimulator;
-        private UserOperationTxBuilder? _userOperationTxBuilder;
+        private IList<Address> _entryPointContractAddresses = new List<Address>();
+        private IDictionary<Address, UserOperationPool> _userOperationPools = new Dictionary<Address, UserOperationPool>(); // EntryPoint Address -> Pool
+        private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
+        private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
         private UserOperationTxSource? _userOperationTxSource;
+
         private IBundler? _bundler;
 
         private MevPlugin MevPlugin => _nethermindApi
@@ -55,83 +57,82 @@ namespace Nethermind.AccountAbstraction
             .OfType<MevPlugin>()
             .Single();
 
-        private UserOperationTxBuilder UserOperationTxBuilder
+        private UserOperationTxBuilder UserOperationTxBuilder(Address entryPoint)
         {
-            get
+            if (_userOperationTxBuilders.TryGetValue(entryPoint, out UserOperationTxBuilder? userOperationTxBuilder))
             {
-                if (_userOperationTxBuilder is null)
-                {
-                    var (getFromApi, _) = _nethermindApi!.ForProducer;
 
-                    _userOperationTxBuilder = new UserOperationTxBuilder(
-                        _entryPointContractAbi,
-                        getFromApi.EngineSigner!, 
-                        _entryPointContractAddress, 
-                        getFromApi.SpecProvider!,
-                        getFromApi.StateProvider!);
-                }
-
-                return _userOperationTxBuilder;
+                return userOperationTxBuilder;
             }
+
+            var (getFromApi, _) = _nethermindApi!.ForProducer;
+            
+            _userOperationTxBuilders[entryPoint] = new UserOperationTxBuilder(
+                _entryPointContractAbi,
+                getFromApi.EngineSigner!,
+                entryPoint,
+                getFromApi.SpecProvider!,
+                getFromApi.StateProvider!);
+
+            return _userOperationTxBuilders[entryPoint];
         }
         
-        private UserOperationPool UserOperationPool
+        private UserOperationPool UserOperationPool(Address entryPoint)
         {
-            get
+            if (_userOperationPools.TryGetValue(entryPoint, out UserOperationPool? userOperationPool))
             {
-                if (_userOperationPool is null)
-                {
-                    var (getFromApi, _) = _nethermindApi!.ForProducer;
-                    UserOperationSortedPool userOperationSortedPool = new(
-                        _accountAbstractionConfig.UserOperationPoolSize,
-                        CompareUserOperationsByDecreasingGasPrice.Default,
-                        getFromApi.LogManager,
-                        _accountAbstractionConfig.MaximumUserOperationPerSender);
-
-                    _userOperationPool = new UserOperationPool(
-                        _accountAbstractionConfig,
-                        _nethermindApi.BlockTree!,
-                        _entryPointContractAddress,
-                        _logger,
-                        new PaymasterThrottler(BundleMiningEnabled),
-                        _nethermindApi.LogFinder!,
-                        _nethermindApi.EngineSigner!,
-                        _nethermindApi.StateProvider!,
-                        _nethermindApi.Timestamper,
-                        UserOperationSimulator,
-                        userOperationSortedPool,
-                        _nethermindApi.SpecProvider!.ChainId);
-                }
-
-                return _userOperationPool;
+                return userOperationPool;
             }
+
+            var (getFromApi, _) = _nethermindApi!.ForProducer;
+
+            UserOperationSortedPool userOperationSortedPool = new UserOperationSortedPool(
+                _accountAbstractionConfig.UserOperationPoolSize,
+                CompareUserOperationsByDecreasingGasPrice.Default,
+                getFromApi.LogManager,
+                _accountAbstractionConfig.MaximumUserOperationPerSender);
+
+            _userOperationPools[entryPoint] = new UserOperationPool(
+                _accountAbstractionConfig,
+                _nethermindApi.BlockTree!,
+                entryPoint,
+                _logger,
+                new PaymasterThrottler(BundleMiningEnabled),
+                _nethermindApi.LogFinder!,
+                _nethermindApi.EngineSigner!,
+                _nethermindApi.StateProvider!,
+                _nethermindApi.Timestamper,
+                UserOperationSimulator(entryPoint),
+                userOperationSortedPool,
+                _nethermindApi.SpecProvider!.ChainId);
+
+            return _userOperationPools[entryPoint];
         }
 
-        private UserOperationSimulator UserOperationSimulator
+        private UserOperationSimulator UserOperationSimulator (Address entryPoint)
         {
-            get
+            if(_userOperationSimulators.TryGetValue(entryPoint, out UserOperationSimulator? userOperationSimulator))
             {
-                if (_userOperationSimulator is null)
-                {
-                    var (getFromApi, _) = _nethermindApi!.ForProducer;
-
-                    _userOperationSimulator = new UserOperationSimulator(
-                        UserOperationTxBuilder,
-                        getFromApi.StateProvider!,
-                        getFromApi.StateReader!,
-                        _entryPointContractAbi,
-                        _create2FactoryAddress,
-                        _entryPointContractAddress,
-                        getFromApi.SpecProvider!,
-                        getFromApi.BlockTree!,
-                        getFromApi.DbProvider!,
-                        getFromApi.ReadOnlyTrieStore!,
-                        getFromApi.Timestamper!,
-                        getFromApi.LogManager);
-                }
-
-                return _userOperationSimulator;
+                return userOperationSimulator;
             }
+
+            var (getFromApi, _) = _nethermindApi!.ForProducer;
+
+            _userOperationSimulators[entryPoint] = new UserOperationSimulator(
+                UserOperationTxBuilder(entryPoint),
+                getFromApi.StateProvider!,
+                getFromApi.StateReader!,
+                _entryPointContractAbi,
+                _create2FactoryAddress,
+                entryPoint,
+                getFromApi.SpecProvider!,
+                getFromApi.BlockTree!,
+                getFromApi.DbProvider!,
+                getFromApi.ReadOnlyTrieStore!,
+                getFromApi.Timestamper!,
+                getFromApi.LogManager);
+
+            return _userOperationSimulators[entryPoint];
         }
 
         private UserOperationTxSource UserOperationTxSource
@@ -140,14 +141,14 @@ namespace Nethermind.AccountAbstraction
             {
                 if (_userOperationTxSource is null)
                 {
-                    var (getFromApi, _) = _nethermindApi!.ForProducer;
-
                     _userOperationTxSource = new UserOperationTxSource
                     (
-                        UserOperationTxBuilder,
-                        UserOperationPool,
-                        UserOperationSimulator,
+                        _userOperationTxBuilders,
+                        _userOperationPools,
+                        _userOperationSimulators,
                         _nethermindApi.SpecProvider!,
+                        _nethermindApi.StateProvider!,
+                        _nethermindApi.EngineSigner!,
                         _logger
                     );
                 }
@@ -170,17 +171,20 @@ namespace Nethermind.AccountAbstraction
 
             if (_accountAbstractionConfig.Enabled)
             {
-                bool parsed = Address.TryParse(
-                    _accountAbstractionConfig.EntryPointContractAddress,
-                    out Address? entryPointContractAddress);
-                if (!parsed)
-                {
-                    if (_logger.IsError) _logger.Error("Account Abstraction Plugin: EntryPoint contract address could not be parsed");
-                }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info($"Parsed EntryPoint Address: {entryPointContractAddress}");
-                    _entryPointContractAddress = entryPointContractAddress!;
+                IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string addressString in entryPointContractAddressesString){
+                    bool parsed = Address.TryParse(
+                        addressString,
+                        out Address? entryPointContractAddress);
+                    if (!parsed)
+                    {
+                        if (_logger.IsError) _logger.Error("Account Abstraction Plugin: EntryPoint contract address could not be parsed");
+                    }
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Parsed EntryPoint Address: {entryPointContractAddress}");
+                        _entryPointContractAddresses.Add(entryPointContractAddress!);
+                    }
                 }
 
                 bool parsedCreate2Factory = Address.TryParse(
@@ -216,7 +220,16 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 if (_nethermindApi is null) throw new ArgumentNullException(nameof(_nethermindApi));
-                if (UserOperationPool is null) throw new ArgumentNullException(nameof(UserOperationPool));
+                
+                // init all relevant objects if not already initted
+                foreach(Address entryPoint in _entryPointContractAddresses)
+                {
+                    UserOperationPool(entryPoint);
+                    UserOperationSimulator(entryPoint);
+                    UserOperationTxBuilder(entryPoint);
+                }
+                
+                if (_userOperationPools.Count == 0) throw new ArgumentNullException(nameof(UserOperationPool));
 
                 IProtocolsManager protocolsManager = _nethermindApi.ProtocolsManager ??
                                                      throw new ArgumentNullException(
@@ -228,10 +241,13 @@ namespace Nethermind.AccountAbstraction
                                           throw new ArgumentNullException(nameof(_nethermindApi.NodeStatsManager));
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
-                
+
+                UserOperationBroadcaster broadcaster = new UserOperationBroadcaster(_logger);
+                AccountAbstractionPeerManager peerManager = new AccountAbstractionPeerManager(_userOperationPools, broadcaster, _logger);
+
                 serializer.Register(new UserOperationsMessageSerializer());
                 protocolsManager.AddProtocol(Protocol.AA,
-                    session => new AaProtocolHandler(session, serializer, stats, UserOperationPool, logManager));
+                    session => new AaProtocolHandler(session, serializer, stats, _userOperationPools, peerManager, logManager));
                 protocolsManager.AddSupportedCapability(new Capability(Protocol.AA, 0));
 
                 if (_logger.IsInfo) _logger.Info("Initialized Account Abstraction network protocol");
@@ -249,11 +265,19 @@ namespace Nethermind.AccountAbstraction
             if (_accountAbstractionConfig.Enabled)
             {
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
+                
+                // init all relevant objects if not already initted
+                foreach(Address entryPoint in _entryPointContractAddresses)
+                {
+                    UserOperationPool(entryPoint);
+                    UserOperationSimulator(entryPoint);
+                    UserOperationTxBuilder(entryPoint);
+                }
 
                 IJsonRpcConfig rpcConfig = getFromApi.Config<IJsonRpcConfig>();
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
-
-                AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(UserOperationPool, new[] {_entryPointContractAddress});
+                
+                AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(_userOperationPools, _entryPointContractAddresses.ToArray());
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
@@ -304,6 +328,21 @@ namespace Nethermind.AccountAbstraction
         public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
+
+            // init all relevant objects if not already initted
+            foreach(Address entryPoint in _entryPointContractAddresses)
+            {
+                UserOperationPool(entryPoint);
+                UserOperationSimulator(entryPoint);
+                UserOperationTxBuilder(entryPoint);
+            }
+            
+            _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory =
+                new AABlockProducerTransactionsExecutorFactory(
+                    _nethermindApi.SpecProvider!, 
+                    _nethermindApi.LogManager!,
+                    _nethermindApi.EngineSigner!, 
+                    _entryPointContractAddresses.ToArray());
 
             UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
             if (minerBalance < 1.Ether())

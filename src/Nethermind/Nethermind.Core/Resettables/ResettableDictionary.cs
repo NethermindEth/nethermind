@@ -24,8 +24,8 @@ namespace Nethermind.Core.Resettables
     {
         private readonly IEqualityComparer<TKey>? _comparer;
         private int _currentCapacity;
-        private int _startCapacity;
-        private int _resetRatio;
+        private readonly int _startCapacity;
+        private readonly int _resetRatio;
 
         private IDictionary<TKey, TValue> _wrapped;
         
