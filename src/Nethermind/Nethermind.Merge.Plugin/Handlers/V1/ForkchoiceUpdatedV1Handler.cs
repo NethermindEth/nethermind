@@ -106,9 +106,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 ValidateHashForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
             {
-                if (_logger.IsInfo)
+                if (_logger.IsWarn)
                 {
-                    _logger.Info($"Result of fork choice update: Invalid finalized block hash {finalizationErrorMsg}");
+                    _logger.Warn($"Result of fork choice update: Invalid finalized block hash {finalizationErrorMsg}");
                 }
                 return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, ErrorCodes.InvalidParams);
             }
@@ -117,9 +117,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 ValidateSafeBlockHash(forkchoiceState.SafeBlockHash);
             if (safeBlockErrorMsg != null)
             {
-                if (_logger.IsInfo)
+                if (_logger.IsWarn)
                 {
-                    _logger.Info($"Result of fork choice update: Invalid safe block Hash {safeBlockErrorMsg}");
+                    _logger.Warn($"Result of fork choice update: Invalid safe block Hash {safeBlockErrorMsg}");
                 }
                 return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, ErrorCodes.InvalidParams);
             }
@@ -128,9 +128,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 EnsureNewHeadHeader(newHeadBlock);
             if (setHeadErrorMsg != null)
             {
-                if (_logger.IsInfo)
+                if (_logger.IsWarn)
                 {
-                    _logger.Info($"Result of fork choice update: Invalid new head block {setHeadErrorMsg}");
+                    _logger.Warn($"Result of fork choice update: Invalid new head block {setHeadErrorMsg}");
                 }
                 return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
             }
@@ -150,18 +150,18 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 newHeadBlock!.Header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
-                if (_logger.IsInfo)
+                if (_logger.IsWarn)
                 {
-                    _logger.Info("Result of fork choice update: Invalid terminal block");
+                    _logger.Warn("Result of fork choice update: Invalid terminal block");
                 }
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
 
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
-                if (_logger.IsInfo)
+                if (_logger.IsWarn)
                 {
-                    _logger.Info($"Result of fork choice update: Invalid payload attributes timestamp {payloadAttributes.Timestamp}, parent block header {newHeadBlock!.Header}");
+                    _logger.Warn($"Result of fork choice update: Invalid payload attributes timestamp {payloadAttributes.Timestamp}, parent block header {newHeadBlock!.Header}");
                 }
                 return ForkchoiceUpdatedV1Result.Error(
                     $"Invalid payload attributes timestamp: {payloadAttributes.Timestamp} parent block header: {newHeadBlock!.Header}",

@@ -89,18 +89,18 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             request.TryGetBlock(out Block? block);
             if (block == null)
             { 
-                if (_logger.IsInfo)
+                if (_logger.IsWarn)
                 {
-                    _logger.Info($"Result of payload: Invalid block");
+                    _logger.Warn($"Result of payload: Invalid block");
                 }
                 return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
             }
 
             if (_blockValidator.ValidateHash(block.Header) == false)
             { 
-                if (_logger.IsInfo)
+                if (_logger.IsWarn)
                 {
-                    _logger.Info($"Result of payload: Invalid block hash {block.Header}");
+                    _logger.Warn($"Result of payload: Invalid block hash {block.Header}");
                 }
                 return NewPayloadV1Result.InvalidBlockHash;
             }
@@ -141,9 +141,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             { 
-                if (_logger.IsInfo)
+                if (_logger.IsWarn)
                 {
-                    _logger.Info($"Result of payload: Invalid Terminal Block {block}");
+                    _logger.Warn($"Result of payload: Invalid Terminal Block {block}");
                 }
                 return NewPayloadV1Result.InvalidTerminalBlock;
             }
