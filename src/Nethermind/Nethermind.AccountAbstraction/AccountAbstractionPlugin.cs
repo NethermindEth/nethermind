@@ -294,10 +294,11 @@ namespace Nethermind.AccountAbstraction
                 );
                 subscriptionFactory.RegisterSubscriptionType(
                     "newReceivedUserOperations",
-                    (jsonRpcDuplexClient,_) => new NewReceivedUserOpsSubscription(
+                    (jsonRpcDuplexClient,filter) => new NewReceivedUserOpsSubscription(
                         jsonRpcDuplexClient,
                         _userOperationPools,
-                        logManager)
+                        logManager,
+                        filter)
                 );
                 
                 if (BundleMiningEnabled && MevPluginEnabled)

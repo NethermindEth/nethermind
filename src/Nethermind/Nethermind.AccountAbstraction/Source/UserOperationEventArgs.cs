@@ -16,15 +16,18 @@
 
 using System;
 using Nethermind.AccountAbstraction.Data;
+using Nethermind.Core;
 
 namespace Nethermind.AccountAbstraction.Source
 {
     public class UserOperationEventArgs : EventArgs
     {
+        public Address EntryPoint { get; }
         public UserOperation UserOperation { get; }
 
-        public UserOperationEventArgs(UserOperation userOperation)
+        public UserOperationEventArgs(UserOperation userOperation, Address entryPoint)
         {
+            EntryPoint = entryPoint;
             UserOperation = userOperation;
         }
     }

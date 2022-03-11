@@ -78,17 +78,19 @@ namespace Nethermind.AccountAbstraction.Test
             
             subscriptionFactory.RegisterSubscriptionType(
                 "newPendingUserOperations",
-                (jsonRpcDuplexClient,_) => new NewPendingUserOpsSubscription(
+                (jsonRpcDuplexClient,filter) => new NewPendingUserOpsSubscription(
                     jsonRpcDuplexClient,
                     _userOperationPool,
-                    _logManager)
+                    _logManager,
+                    filter)
             );
             subscriptionFactory.RegisterSubscriptionType(
                 "newReceivedUserOperations",
-                (jsonRpcDuplexClient,_) => new NewReceivedUserOpsSubscription(
+                (jsonRpcDuplexClient,filter) => new NewReceivedUserOpsSubscription(
                     jsonRpcDuplexClient,
                     _userOperationPool,
-                    _logManager)
+                    _logManager,
+                    filter)
             );
             
             _subscriptionManager = new SubscriptionManager(

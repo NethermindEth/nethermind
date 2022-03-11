@@ -21,82 +21,89 @@ using System.IO;
 using System.Linq;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Logging;
 
-namespace Nethermind.AccountAbstraction.Subscribe;
-public class NewPendingUserOpsSubscription : Subscription
+namespace Nethermind.AccountAbstraction.Subscribe
 {
-    private readonly UserOperationPool[] _userOperationPoolsToTrack;
+    public class NewPendingUserOpsSubscription : Subscription
+    {
+        private readonly UserOperationPool[] _userOperationPoolsToTrack;
     
-    public NewPendingUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IDictionary<Address, UserOperationPool>? userOperationPools, ILogManager? logManager, Filter? filter = null!) 
-        : base(jsonRpcDuplexClient)
-    {
-        if (userOperationPools is null) throw new ArgumentNullException(nameof(userOperationPools));
-        if (filter is not null)
+        public NewPendingUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IDictionary<Address, UserOperationPool>? userOperationPools, ILogManager? logManager, Filter? filter = null!) 
+            : base(jsonRpcDuplexClient)
         {
-            Address[] addressFilter = DecodeAddresses(filter.EntryPoints);
-            _userOperationPoolsToTrack = userOperationPools
-                .Where(kv => addressFilter.Contains(kv.Key))
-                .Select(kv => kv.Value)
-                .ToArray();
-        }
-        else
-        {
-            // use all pools
-            _userOperationPoolsToTrack = userOperationPools.Values.ToArray();
-        }
+            if (userOperationPools is null) throw new ArgumentNullException(nameof(userOperationPools));
+            if (filter is not null)
+            {
+                Address[] addressFilter = DecodeAddresses(filter.EntryPoints);
+                _userOperationPoolsToTrack = userOperationPools
+                    .Where(kv => addressFilter.Contains(kv.Key))
+                    .Select(kv => kv.Value)
+                    .ToArray();
+            }
+            else
+            {
+                // use all pools
+                _userOperationPoolsToTrack = userOperationPools.Values.ToArray();
+            }
         
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            foreach (var pool in _userOperationPoolsToTrack)
+            {
+                pool.NewPending += OnNewPending;
+            }
         
-        _userOperationPool.NewPending += OnNewPending;
-        if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will track newPendingUserOperations");
-    }
+            if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will track newPendingUserOperations");
+        }
     
-    private void OnNewPending(object? sender, UserOperationEventArgs e)
-    {
-        ScheduleAction(() =>
+        private void OnNewPending(object? sender, UserOperationEventArgs e)
         {
-            JsonRpcResult result = CreateSubscriptionMessage(new UserOperationRpc(e.UserOperation));
-            JsonRpcDuplexClient.SendJsonRpcResult(result);
-            if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} printed hash of newPendingUserOperations.");
-        });
-    }
-
-    public override string Type => "newPendingUserOperations";
-
-    public override void Dispose()
-    {
-        _userOperationPool.NewPending -= OnNewPending;
-        base.Dispose();
-        if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will no longer track newPendingUserOperations");
-    }
-
-    private static Address[] DecodeAddresses(object? entryPoints)
-    {
-        if (entryPoints is null)
-        {
-            throw new InvalidDataException("No entryPoint addresses to decode");
+            ScheduleAction(() =>
+            {
+                JsonRpcResult result = CreateSubscriptionMessage(new { UserOperation = new UserOperationRpc(e.UserOperation), EntryPoint = e.EntryPoint });
+                JsonRpcDuplexClient.SendJsonRpcResult(result);
+                if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} printed hash of newPendingUserOperations.");
+            });
         }
 
-        if (entryPoints is string s)
+        public override string Type => "newPendingUserOperations";
+
+        public override void Dispose()
         {
-            return new Address[] {new(s)};
+            foreach (var pool in _userOperationPoolsToTrack)
+            {
+                pool.NewPending -= OnNewPending;
+            }
+            base.Dispose();
+            if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will no longer track newPendingUserOperations");
         }
+
+        private static Address[] DecodeAddresses(object? entryPoints)
+        {
+            if (entryPoints is null)
+            {
+                throw new InvalidDataException("No entryPoint addresses to decode");
+            }
+
+            if (entryPoints is string s)
+            {
+                return new Address[] {new(s)};
+            }
             
-        if (entryPoints is IEnumerable<string> e)
-        {
-            return e.Select(a => new Address(a)).ToArray();
-        }
+            if (entryPoints is IEnumerable<string> e)
+            {
+                return e.Select(a => new Address(a)).ToArray();
+            }
             
-        throw new InvalidDataException("Invalid address filter format");
-    }
+            throw new InvalidDataException("Invalid address filter format");
+        }
 
+    }
 }
 
 

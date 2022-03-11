@@ -102,6 +102,8 @@ namespace Nethermind.AccountAbstraction.Source
             ProcessNewBlocks();
         }
 
+        public Address EntryPoint() => _entryPointAddress;
+
         private void OnBlockAdded(object? sender, BlockReplacementEventArgs e)
         {
             try
@@ -182,7 +184,7 @@ namespace Nethermind.AccountAbstraction.Source
             Metrics.UserOperationsReceived++;
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
 
-            UserOperationEventArgs userOperationEventArgs = new(userOperation);
+            UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
             NewReceived?.Invoke(this, userOperationEventArgs);
             
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);

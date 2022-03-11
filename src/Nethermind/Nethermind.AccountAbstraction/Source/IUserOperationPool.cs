@@ -31,6 +31,7 @@ namespace Nethermind.AccountAbstraction.Source
         ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
         bool RemoveUserOperation(Keccak? userOperationHash);
         IEnumerable<UserOperation> GetUserOperations();
+        Address EntryPoint();
         bool IncludesUserOperationWithSenderAndNonce(Address sender, UInt256 nonce);
         bool CanInsert(UserOperation userOperation);
         event EventHandler<UserOperationEventArgs> NewReceived;
