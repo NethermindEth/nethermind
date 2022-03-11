@@ -34,9 +34,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -108,6 +110,10 @@ namespace Nethermind.Runner.JsonRpc
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
+            IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication
+                ? NoAuthentication.Instance
+                : MicrosoftJwtAuthentication.CreateFromFileOrGenerate(jsonRpcConfig.JwtSecretFile, new ClockImpl(), logger);
+
             if (initConfig.WebSocketsEnabled)
             {
                 app.UseWebSockets(new WebSocketOptions());
@@ -115,7 +121,7 @@ namespace Nethermind.Runner.JsonRpc
                     ctx.WebSockets.IsWebSocketRequest &&
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-                builder => builder.UseWebSocketsModules());
+                builder => builder.UseWebSocketsModules(auth));
             }
             
             app.UseEndpoints(endpoints =>
@@ -152,6 +158,15 @@ namespace Nethermind.Runner.JsonRpc
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
+                    if (jsonRpcUrl.IsAuthenticated && !auth.Authenticate(ctx.Request.Headers["Authorization"]))
+                    {
+                        var response = jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Authentication error");
+                        ctx.Response.ContentType = "application/json";
+                        ctx.Response.StatusCode = StatusCodes.Status200OK;
+                        jsonSerializer.Serialize(ctx.Response.Body, response);
+                        await ctx.Response.CompleteAsync();
+                        return;
+                    }
                     Stopwatch stopwatch = Stopwatch.StartNew();
                     using CountingTextReader request = new(new StreamReader(ctx.Request.Body, Encoding.UTF8));
                     try

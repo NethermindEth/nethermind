@@ -38,12 +38,14 @@ namespace Nethermind.JsonRpc
         private readonly ILogger _logger;
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
 
-        public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager)
+        public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
         {
             _logger = logManager.GetClassLogger();
             _rpcModuleProvider = rpcModuleProvider;
             _serializer = new JsonSerializer();
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
 
             List<JsonConverter> converterList = new();
             foreach (JsonConverter converter in rpcModuleProvider.Converters)
@@ -119,14 +121,15 @@ namespace Nethermind.JsonRpc
         {
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string?[] providedParameters = request.Params ?? Array.Empty<string>();
-            if (_logger.IsInfo)
+            
+            if (_logger.IsInfo && (_jsonRpcConfig.MethodsLoggingFiltering == null || !_jsonRpcConfig.MethodsLoggingFiltering.Contains(methodName)))
             {
-                var paramStr = string.Join(',', providedParameters);
-                const int maxParamsLength = 20000000; // ToDo move it to JSON RPC config as max logged request size?
-                var paramStrAdjusted = paramStr.Substring(0, Math.Min(paramStr.Length, maxParamsLength));
+                string paramStr = string.Join(',', providedParameters);
+                string paramStrAdjusted = paramStr[..Math.Min(paramStr.Length, _jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? paramStr.Length)];
+                if (paramStrAdjusted.Length < paramStr.Length) paramStrAdjusted += "...";
                 _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
             }
-
+            
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
             int explicitNullableParamsCount = 0;
 
@@ -395,6 +398,7 @@ namespace Nethermind.JsonRpc
                 ModuleResolution.Unknown => ((int?) ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
                 ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
                 ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
+                ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"Method {methodName} should be authenticated"),
                 _ => (null, null)
             };
         }

@@ -457,7 +457,7 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        public AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options = BlockTreeInsertOptions.All)
+        public AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options = BlockTreeInsertOptions.None)
         {
             if (!CanAcceptNewBlocks)
             {
@@ -479,8 +479,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
-            bool totalDifficultyNeeded = (options & BlockTreeInsertOptions.TotalDifficultyNotNeeded) ==
-                                         BlockTreeInsertOptions.All;
+            bool totalDifficultyNeeded = (options & BlockTreeInsertOptions.TotalDifficultyNotNeeded) == 0;
 
             if (header.TotalDifficulty is null && totalDifficultyNeeded)
             {
@@ -504,14 +503,18 @@ namespace Nethermind.Blockchain
                 LowestInsertedHeader = header;
             }
 
-            if (header.Number > BestKnownNumber)
+            bool updateBestPointers = (options & BlockTreeInsertOptions.SkipUpdateBestPointers) == 0;
+            if (updateBestPointers)
             {
-                BestKnownNumber = header.Number;
-            }
+                if (header.Number > BestKnownNumber)
+                {
+                    BestKnownNumber = header.Number;
+                }
 
-            if (header.Number > (BestSuggestedHeader?.Number ?? 0))
-            {
-                BestSuggestedHeader = header;
+                if (header.Number > (BestSuggestedHeader?.Number ?? 0))
+                {
+                    BestSuggestedHeader = header;
+                }
             }
 
             if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue)
@@ -524,7 +527,7 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        public AddBlockResult Insert(Block block, bool saveHeader = false)
+        public AddBlockResult Insert(Block block, bool saveHeader = false, BlockTreeInsertOptions options = BlockTreeInsertOptions.None)
         {
             if (!CanAcceptNewBlocks)
             {
@@ -549,7 +552,7 @@ namespace Nethermind.Blockchain
             if (saveHeader)
             {
                 // TODO: beaconsync parameterize blocktree insert options
-                Insert(block.Header, BlockTreeInsertOptions.TotalDifficultyNotNeeded);
+                Insert(block.Header, BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers);
             }
 
             return AddBlockResult.Added;
@@ -607,7 +610,7 @@ namespace Nethermind.Blockchain
             if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
                 if (_logger.IsTrace) _logger.Trace($"Block {header.Hash} already known.");
-                return AddBlockResult.AlreadyKnown;
+            //    return AddBlockResult.AlreadyKnown;
             }
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
@@ -619,7 +622,7 @@ namespace Nethermind.Blockchain
 
             SetTotalDifficulty(header);
 
-            if (block is not null && !isKnown)
+            if (block is not null)
             {
                 if (block.Hash is null)
                 {
@@ -640,7 +643,8 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
+            if (_logger.IsInfo) _logger.Info($"Suggesting block BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}  Block {block?.ToString(Block.Format.FullHashAndNumber)}");
+            if (header.IsGenesis || header.IsPostMerge || BestSuggestedImprovementRequirementsSatisfied(header))
             {
                 if (header.IsGenesis)
                 {
@@ -653,7 +657,9 @@ namespace Nethermind.Blockchain
 
                 if (block is not null && shouldProcess)
                 {
+                    if (_logger.IsInfo) _logger.Info($"New block for processing BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}  Block {block?.ToString(Block.Format.FullHashAndNumber)}");
                     BestSuggestedBody = block;
+                    _logger.Warn($"New block to process {block}");
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
             }
@@ -1329,9 +1335,9 @@ namespace Nethermind.Blockchain
         {
             bool ttdRequirementSatisfied =
                 TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
-            bool preMergeRequirementSatisfied = ttdRequirementSatisfied && !header.IsPostMerge;
+            bool preMergeRequirementSatisfied = ttdRequirementSatisfied && (!header.IsPostMerge && header.Difficulty != 0);
             bool postMergeRequirementSatisfied = ttdRequirementSatisfied &&
-                                                 BestSuggestedHeader?.Number <= header.Number && header.IsPostMerge;
+                                                 BestSuggestedBody?.Number <= header.Number && (header.IsPostMerge || header.Difficulty == 0);
             return preMergeRequirementSatisfied || postMergeRequirementSatisfied;
         }
 
@@ -1348,7 +1354,7 @@ namespace Nethermind.Blockchain
             bool postMergeImprovementRequirementSatisfied = _specProvider.TerminalTotalDifficulty != null &&
                                                             header.TotalDifficulty >=
                                                             _specProvider.TerminalTotalDifficulty &&
-                                                            (header.IsPostMerge || IsTerminalBlock(header));
+                                                            (header.IsPostMerge || header.Difficulty == 0 || IsTerminalBlock(header));
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
 
@@ -1426,10 +1432,10 @@ namespace Nethermind.Blockchain
 
         public bool IsKnownBlock(long number, Keccak blockHash)
         {
-            if (number > BestKnownNumber)
-            {
-                return false;
-            }
+            // if (number > BestKnownNumber)
+            // {
+            //     return false;
+            // }
 
             // IsKnownBlock will be mainly called when new blocks are incoming
             // and these are very likely to be all at the head of the chain

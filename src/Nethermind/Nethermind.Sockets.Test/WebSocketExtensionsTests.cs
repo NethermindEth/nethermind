@@ -193,7 +193,7 @@ namespace Nethermind.Sockets.Test
             Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
             for (int i = 0; i < 1024; i++)
             {
-                receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, false));
+                receiveResult.Enqueue(new WebSocketReceiveResult(5*1024, WebSocketMessageType.Text, false));
             }
 
             receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));

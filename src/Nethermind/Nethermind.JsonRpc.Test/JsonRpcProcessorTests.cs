@@ -21,6 +21,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
