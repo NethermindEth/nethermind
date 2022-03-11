@@ -173,6 +173,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
 
+            if (_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock!.Hash!) == false)
+            {
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
                 if (_logger.IsInfo)
@@ -214,7 +219,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
             if (shouldUpdateHead)
             {
-        //        _blockTree.UpdateMainChain(blocks!, true, true);
+                _blockTree.UpdateMainChain(blocks!, true, true);
                 headUpdated = _blockTree.Head == newHeadBlock;
             }
 

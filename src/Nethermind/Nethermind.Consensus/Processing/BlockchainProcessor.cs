@@ -338,18 +338,17 @@ namespace Nethermind.Consensus.Processing
 
             if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
             {
-                _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
-                // if (lastProcessed!.IsPostMerge == false)
-                // {
-                //     _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
-                // }
-                // else
-                // {
-                //     if (_logger.IsTrace)
-                //         _logger.Trace(
-                //             $"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
-                //     _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
-                // }
+                if (lastProcessed!.IsPostMerge == false)
+                {
+                    _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
+                }
+                else
+                {
+                    if (_logger.IsTrace)
+                        _logger.Trace(
+                            $"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
+                    _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
+                }
 
                 Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
             }
@@ -409,7 +408,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
                     {
-                 //       _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
+                       _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
                         if (_logger.IsDebug)
                             _logger.Debug(
                                 $"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
@@ -567,8 +566,8 @@ namespace Nethermind.Consensus.Processing
                 // otherwise some nodes would be missing
                 bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
                 bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-                preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
-         //                                          !suggestedBlockIsPostMerge;
+                preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) &&
+                                                   !suggestedBlockIsPostMerge;
                 postMergeFinishBranchingCondition = suggestedBlockIsPostMerge &&
                                                     _blockTree.WasProcessed(branchingPoint.Number,
                                                         branchingPoint.Hash) == false;
