@@ -33,6 +33,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -166,8 +167,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"sender\":\"0x0000000000000000000000000000000000000000\",\"nonce\":\"0x0\",\"callData\":\"0x\",\"initCode\":\"0x\",\"callGas\":\"0xf4240\",\"verificationGas\":\"0xf4240\",\"preVerificationGas\":\"0x33450\",\"maxFeePerGas\":\"0x1\",\"maxPriorityFeePerGas\":\"0x1\",\"paymaster\":\"0x0000000000000000000000000000000000000000\",\"signature\":\"0x\",\"paymasterData\":\"0x\"}}}";
-
+            string expectedResult = Expected_text_response_to_UserOperation_event(userOperation, subscriptionId);
             expectedResult.Should().Be(serialized);
         }
         
@@ -189,8 +189,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
-            var expectedResult = "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"" + subscriptionId + "\",\"result\":{\"sender\":\"0x0000000000000000000000000000000000000000\",\"nonce\":\"0x0\",\"callData\":\"0x\",\"initCode\":\"0x\",\"callGas\":\"0xf4240\",\"verificationGas\":\"0xf4240\",\"preVerificationGas\":\"0x33450\",\"maxFeePerGas\":\"0x1\",\"maxPriorityFeePerGas\":\"0x1\",\"paymaster\":\"0x0000000000000000000000000000000000000000\",\"signature\":\"0x\",\"paymasterData\":\"0x\"}}}";
-
+            string expectedResult = Expected_text_response_to_UserOperation_event(userOperation, subscriptionId);
             expectedResult.Should().Be(serialized);
         }
 
@@ -224,5 +223,34 @@ namespace Nethermind.AccountAbstraction.Test
                     subscriptionId, ".\",\"data\":false},\"id\":67}");
             expectedLogsUnsub.Should().Be(serializedLogsUnsub);
         }
+
+        private string Expected_text_response_to_UserOperation_event(UserOperation userOperation, string subscriptionId) => 
+            "{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\""
+                   + subscriptionId
+                   + "\",\"result\":{\"userOperation\":{\"sender\":\""
+                   + userOperation.Sender
+                   + "\",\"nonce\":\"0x0\",\"callData\":\""
+                   + userOperation.CallData.ToHexString(true)
+                   + "\",\"initCode\":\""
+                   + userOperation.InitCode.ToHexString(true)
+                   + "\",\"callGas\":\""
+                   + userOperation.CallGas.ToHexString(true)
+                   + "\",\"verificationGas\":\""
+                   + userOperation.VerificationGas.ToHexString(true)
+                   + "\",\"preVerificationGas\":\""
+                   + userOperation.PreVerificationGas.ToHexString(true)
+                   + "\",\"maxFeePerGas\":\""
+                   + userOperation.MaxFeePerGas.ToHexString(true)
+                   + "\",\"maxPriorityFeePerGas\":\""
+                   + userOperation.MaxPriorityFeePerGas.ToHexString(true) 
+                   + "\",\"paymaster\":\""
+                   + userOperation.Paymaster
+                   + "\",\"signature\":\""
+                   + userOperation.Signature.ToHexString(true)
+                   + "\",\"paymasterData\":\""
+                   + userOperation.PaymasterData.ToHexString(true)
+                   + "\"},\"entryPoint\":\""
+                   + _entryPointAddress
+                   + "\"}}}";
     }
 }
