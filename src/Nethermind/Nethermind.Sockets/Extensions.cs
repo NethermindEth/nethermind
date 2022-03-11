@@ -20,13 +20,15 @@ using System.Net.WebSockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.Logging;
 
 namespace Nethermind.Sockets
 {
     public static class Extensions
     {
-        public static void UseWebSocketsModules(this IApplicationBuilder app)
+        public static void UseWebSocketsModules(this IApplicationBuilder app, IRpcAuthentication authentication)
         {
             IWebSocketsManager? webSocketsManager;
             ILogger? logger;
@@ -62,8 +64,11 @@ namespace Nethermind.Sockets
                         : string.Empty;
 
                     if (logger?.IsDebug == true) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
+
                     var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    var socketsClient = module.CreateClient(webSocket, clientName, context.Connection.LocalPort);
+                    var socketsClient =
+                        module.CreateClient(webSocket, clientName, context.Connection.LocalPort,
+                            authentication.Authenticate(context.Request.Headers["Authorization"]));
                     id = socketsClient.Id;
                     await socketsClient.ReceiveAsync();
                 }

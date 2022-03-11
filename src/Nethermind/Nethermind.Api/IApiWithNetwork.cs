@@ -19,6 +19,8 @@ using System.Collections.Generic;
 using Nethermind.Consensus;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Monitoring;
 using Nethermind.Network;

@@ -643,7 +643,7 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            _logger.Warn($"New Suggested block {block}, BestSuggestedBlock: {BestSuggestedBody}, {header.TotalDifficulty}");
+            if (_logger.IsInfo) _logger.Info($"Suggesting block BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}  Block {block?.ToString(Block.Format.FullHashAndNumber)}");
             if (header.IsGenesis || header.IsPostMerge || BestSuggestedImprovementRequirementsSatisfied(header))
             {
                 if (header.IsGenesis)
@@ -657,6 +657,7 @@ namespace Nethermind.Blockchain
 
                 if (block is not null && shouldProcess)
                 {
+                    if (_logger.IsInfo) _logger.Info($"New block for processing BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}  Block {block?.ToString(Block.Format.FullHashAndNumber)}");
                     BestSuggestedBody = block;
                     _logger.Warn($"New block to process {block}");
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
@@ -1431,10 +1432,10 @@ namespace Nethermind.Blockchain
 
         public bool IsKnownBlock(long number, Keccak blockHash)
         {
-            if (number > BestKnownNumber)
-            {
-                return false;
-            }
+            // if (number > BestKnownNumber)
+            // {
+            //     return false;
+            // }
 
             // IsKnownBlock will be mainly called when new blocks are incoming
             // and these are very likely to be all at the head of the chain

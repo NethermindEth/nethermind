@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, _enabledModules) }
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) }
             }, urlCollection);
         }
 
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http | RpcEndpoint.Ws, _enabledModules) }
+                { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) }
             }, urlCollection);
         }
 
@@ -95,8 +95,8 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, _enabledModules) },
-                { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Ws, _enabledModules) }
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
+                { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Ws, false, _enabledModules) }
             }, urlCollection);
         }
 
@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, _enabledModules) },
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false,_enabledModules) },
             }, urlCollection);
         }
 
@@ -130,8 +130,8 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, _enabledModules) },
-                { 1234, new JsonRpcUrl("https", "localhost", 1234, RpcEndpoint.Https | RpcEndpoint.Wss, new[] { "admin", "debug" }) }
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
+                { 1234, new JsonRpcUrl("https", "localhost", 1234, RpcEndpoint.Https | RpcEndpoint.Wss, false, new[] { "admin", "debug" }) }
             }, urlCollection);
         }
 
@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, _enabledModules) }
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545,  RpcEndpoint.Http, false, _enabledModules) }
             }, urlCollection);
         }
 
@@ -165,8 +165,8 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, _enabledModules) },
-                { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http, new [] { "admin", "debug" }) }
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
+                { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http,  false, new [] { "admin", "debug" }) }
             }, urlCollection);
         }
 
@@ -190,9 +190,9 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, _enabledModules) },
-                { 9876, new JsonRpcUrl("http", "127.0.0.1", 9876, RpcEndpoint.Ws, _enabledModules) },
-                { 1234, new JsonRpcUrl("https", "127.0.0.1", 1234, RpcEndpoint.Https | RpcEndpoint.Wss, new [] { "eth", "web3" }) }
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
+                { 9876, new JsonRpcUrl("http", "127.0.0.1", 9876, RpcEndpoint.Ws,false, _enabledModules) },
+                { 1234, new JsonRpcUrl("https", "127.0.0.1", 1234, RpcEndpoint.Https | RpcEndpoint.Wss, false, new [] { "eth", "web3" }) }
             }, urlCollection);
         }
 
@@ -214,8 +214,8 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, _enabledModules) },
-                { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http, new [] { "db", "erc20", "web3" }) }
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
+                { 1234, new JsonRpcUrl("http", "localhost", 1234, RpcEndpoint.Http, false, new [] { "db", "erc20", "web3" }) }
             }, urlCollection); ;
         }
     }
