@@ -16,23 +16,44 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Blockchain.Filters;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules.Subscribe;
 
 namespace Nethermind.AccountAbstraction.Subscribe;
 public class NewPendingUserOpsSubscription : Subscription
 {
-    private readonly IUserOperationPool _userOperationPool;
+    private readonly UserOperationPool[] _userOperationPoolsToTrack;
     
-    public NewPendingUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IUserOperationPool? userOperationPool, ILogManager? logManager) 
+    public NewPendingUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IDictionary<Address, UserOperationPool>? userOperationPools, ILogManager? logManager, Filter? filter = null!) 
         : base(jsonRpcDuplexClient)
     {
-        _userOperationPool = userOperationPool ?? throw new ArgumentNullException(nameof(userOperationPool));
+        if (userOperationPools is null) throw new ArgumentNullException(nameof(userOperationPools));
+        if (filter is not null)
+        {
+            Address[] addressFilter = DecodeAddresses(filter.EntryPoints);
+            _userOperationPoolsToTrack = userOperationPools
+                .Where(kv => addressFilter.Contains(kv.Key))
+                .Select(kv => kv.Value)
+                .ToArray();
+        }
+        else
+        {
+            // use all pools
+            _userOperationPoolsToTrack = userOperationPools.Values.ToArray();
+        }
+        
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
+        
         _userOperationPool.NewPending += OnNewPending;
         if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will track newPendingUserOperations");
     }
@@ -54,6 +75,26 @@ public class NewPendingUserOpsSubscription : Subscription
         _userOperationPool.NewPending -= OnNewPending;
         base.Dispose();
         if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will no longer track newPendingUserOperations");
+    }
+
+    private static Address[] DecodeAddresses(object? entryPoints)
+    {
+        if (entryPoints is null)
+        {
+            throw new InvalidDataException("No entryPoint addresses to decode");
+        }
+
+        if (entryPoints is string s)
+        {
+            return new Address[] {new(s)};
+        }
+            
+        if (entryPoints is IEnumerable<string> e)
+        {
+            return e.Select(a => new Address(a)).ToArray();
+        }
+            
+        throw new InvalidDataException("Invalid address filter format");
     }
 
 }

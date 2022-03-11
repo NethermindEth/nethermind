@@ -32,6 +32,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public bool IncludeTransactions { get; set;  }
 
         private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
+        
+        // For account abstraction subscriptions
+        public IEnumerable<object?> EntryPoints { get; set; }
 
         public void FromJson(string jsonValue)
         {
