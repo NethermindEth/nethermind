@@ -29,10 +29,10 @@ namespace Nethermind.AccountAbstraction.Network
     public class AccountAbstractionPeerManager : IAccountAbstractionPeerManager
     {
         private IDictionary<Address, UserOperationPool> _userOperationPools;
-        private readonly UserOperationBroadcaster _broadcaster;
+        private readonly IUserOperationBroadcaster _broadcaster;
         private readonly ILogger _logger;
 
-        public AccountAbstractionPeerManager(IDictionary<Address, UserOperationPool> userOperationPools, UserOperationBroadcaster broadcaster, ILogger logger)
+        public AccountAbstractionPeerManager(IDictionary<Address, UserOperationPool> userOperationPools, IUserOperationBroadcaster broadcaster, ILogger logger)
         {
             _userOperationPools = userOperationPools;
             _broadcaster = broadcaster;
