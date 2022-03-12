@@ -66,8 +66,9 @@ namespace Nethermind.Synchronization.Blocks
             ISyncReport? syncReport,
             IReceiptStorage? receiptStorage,
             ISpecProvider? specProvider,
+            IPeerAllocationStrategyFactory<BlocksRequest?> blockSyncPeerAllocationStrategyFactory,
             ILogManager? logManager)
-            : base(feed, syncPeerPool, new BlocksSyncPeerAllocationStrategyFactory(), logManager)
+            : base(feed, syncPeerPool, blockSyncPeerAllocationStrategyFactory, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));

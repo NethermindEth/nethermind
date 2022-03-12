@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IReceiptStorage? receiptStorage,
             ISpecProvider? specProvider, 
             ILogManager logManager)
-            : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, logManager)
+            : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(), logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _beaconPivot = beaconPivot;

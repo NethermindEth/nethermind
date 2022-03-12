@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,27 +13,28 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
-namespace Nethermind.Synchronization.Blocks
+namespace Nethermind.Merge.Plugin.Synchronization;
+
+public class MergeBlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest?>
 {
-    internal class BlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest?>
+    public IPeerAllocationStrategy Create(BlocksRequest? request)
     {
-        public IPeerAllocationStrategy Create(BlocksRequest? request)
+        // because of the way the generics cannot handle T / T?
+        if (request == null)
         {
-            // because of the way the generics cannot handle T / T?
-            if (request == null)
-            {
-                throw new ArgumentNullException(
-                    $"NULL received for allocation in {nameof(BlocksSyncPeerAllocationStrategyFactory)}");
-            }
-            
-            IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
-            TotalDiffStrategy totalDiffStrategy = new(baseStrategy);
-            return totalDiffStrategy;
+            throw new ArgumentNullException(
+                $"NULL received for allocation in {nameof(MergeBlocksSyncPeerAllocationStrategyFactory)}");
         }
+            
+        IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
+        TotalDiffStrategy totalDiffStrategy = new(baseStrategy, TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
+        return totalDiffStrategy;
     }
 }
