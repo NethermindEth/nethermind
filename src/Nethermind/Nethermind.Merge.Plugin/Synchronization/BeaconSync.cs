@@ -62,6 +62,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _isInBeaconModeControl = false;
         }
 
+        public bool Enabled => true;
+
         public bool ShouldBeInBeaconHeaders()
         {
             bool beaconPivotExists =  _beaconPivot.BeaconPivotExists();

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Configuration;
+
 namespace Nethermind.Synchronization
 {
     public class No : IBeaconSyncStrategy
@@ -22,6 +24,8 @@ namespace Nethermind.Synchronization
         private No() { }
 
         public static No BeaconSync { get; } = new();
+        
+        public bool Enabled => false;
             
         public bool ShouldBeInBeaconHeaders() => false;
 
@@ -32,6 +36,7 @@ namespace Nethermind.Synchronization
     
     public interface IBeaconSyncStrategy
     {
+        bool Enabled { get; }
         bool ShouldBeInBeaconHeaders();
 
         bool ShouldBeInBeaconModeControl();

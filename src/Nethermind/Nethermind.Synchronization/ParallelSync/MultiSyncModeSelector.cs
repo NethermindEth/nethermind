@@ -496,12 +496,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool ShouldBeInBeaconFullSyncMode(Snapshot best)
         {
+            bool beaconSyncEnabled = _beaconSyncStrategy.Enabled;
             bool stateSyncFinished = best.State > 0;
             bool beaconHeadersFinished = _beaconSyncStrategy.IsBeaconSyncHeadersFinished();
             bool beaconFullSyncNotFinished = best.Processed <= best.State;
             bool beaconHeadersBeenActive = best.Header > PivotNumber;
 
-            bool result = beaconHeadersFinished
+            bool result = beaconSyncEnabled
+                          && beaconHeadersFinished
                           && beaconFullSyncNotFinished
                           && beaconHeadersBeenActive
                           && stateSyncFinished;
