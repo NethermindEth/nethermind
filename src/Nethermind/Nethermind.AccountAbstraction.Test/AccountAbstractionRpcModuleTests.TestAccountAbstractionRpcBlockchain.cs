@@ -204,6 +204,8 @@ namespace Nethermind.AccountAbstraction.Test
                         Timestamper,
                         LogManager);
                 }
+
+                IUserOperationBroadcaster broadcaster = new UserOperationBroadcaster(LogManager.GetClassLogger());
                 
                 foreach(Address entryPoint in entryPointContractAddresses){
                     UserOperationPool[entryPoint] = new UserOperationPool(
@@ -222,6 +224,7 @@ namespace Nethermind.AccountAbstraction.Test
                             new CompareUserOperationsByDecreasingGasPrice(), 
                             LogManager, 
                             _accountAbstractionConfig.MaximumUserOperationPerSender),
+                        broadcaster,
                         SpecProvider.ChainId);
                 }
                 

@@ -418,7 +418,8 @@ namespace Nethermind.AccountAbstraction.Test
             _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 
             IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
-            
+            IUserOperationBroadcaster userOperationBroadcaster = Substitute.For<IUserOperationBroadcaster>();
+
             return new UserOperationPool(
                 config,
                 _blockTree,
@@ -431,6 +432,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Substitute.For<ITimestamper>(), 
                 _simulator, 
                 userOperationSortedPool,
+                userOperationBroadcaster,
                 1);
         }
     }
