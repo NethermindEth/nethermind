@@ -93,7 +93,7 @@ namespace Nethermind.Blockchain
         /// <param name="block">Block to be included</param>
         /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null);
+        AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null);
         
         /// <summary>
         /// Suggests block for inclusion in the block tree. Wait for DB unlock if needed.
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain
         /// <param name="block">Block to be included</param>
         /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        Task<AddBlockResult> SuggestBlockAsync(Block block, bool shouldProcess = true, bool? setAsMain = null);
+        Task<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null);
 
         /// <summary>
         /// Suggests a block header (without body)

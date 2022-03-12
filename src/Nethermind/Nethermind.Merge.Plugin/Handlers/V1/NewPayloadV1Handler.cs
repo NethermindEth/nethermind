@@ -165,7 +165,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (parentPivotProcessed)
                     {
                         _logger.Info($"Parent pivot processed suggesting block {block}");
-                        _blockTree.SuggestBlock(block, true);
+                        _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None);
                     }
                     else
                     {
@@ -280,7 +280,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return false;
             }
             
-            var addResult = _blockTree.SuggestBlock(block, false, false);
+            var addResult = _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
             _logger.Info($"{processedBlock} add result {addResult}");
             
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);

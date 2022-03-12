@@ -22,6 +22,7 @@ using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -131,7 +132,7 @@ namespace Nethermind.AccountAbstraction.Test
             
             private void OnBlockProduced(object? sender, BlockEventArgs e)
             {
-                BlockTree.SuggestBlock(e.Block, false, false);
+                BlockTree.SuggestBlock(e.Block, BlockTreeSuggestOptions.None, false);
                 BlockchainProcessor.Process(e.Block!, GetProcessingOptions(), NullBlockTracer.Instance);
                 BlockTree.UpdateMainChain(new[] { e.Block! }, true);
             }

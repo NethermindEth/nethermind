@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,20 +13,36 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain;
+
+/// <summary>
+/// This class has been introduced for performance reasons only (in order to minimize expensive DB lookups where not necessary).
+/// </summary>
+[Flags]
+public enum BlockTreeLookupOptions
 {
-    /// <summary>
-    /// This class has been introduced for performance reasons only (in order to minimize expensive DB lookups where not necessary).
-    /// </summary>
-    [Flags]
-    public enum BlockTreeLookupOptions
-    {
-        None = 0,
-        TotalDifficultyNotNeeded = 1,
-        RequireCanonical = 2,
-        All = 3
-    }
+    None = 0,
+    TotalDifficultyNotNeeded = 1,
+    RequireCanonical = 2,
+    All = 3
+}
+
+[Flags]
+public enum BlockTreeInsertOptions
+{
+    None = 0,
+    TotalDifficultyNotNeeded = 1,
+    SkipUpdateBestPointers = 2
+}
+
+[Flags]
+public enum BlockTreeSuggestOptions
+{
+    None = 0,
+    ShouldProcess = 1,
+    
 }

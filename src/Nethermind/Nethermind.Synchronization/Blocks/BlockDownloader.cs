@@ -348,7 +348,7 @@ namespace Nethermind.Synchronization.Blocks
                         }
                     }
 
-                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess)))
+                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None)))
                     {
                         if (downloadReceipts)
                         {

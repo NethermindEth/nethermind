@@ -578,9 +578,10 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private AddBlockResult Suggest(Block? block, BlockHeader header, bool shouldProcess = true,
+        private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess,
             bool? setAsMain = null)
         {
+            bool shouldProcess = (options & BlockTreeSuggestOptions.ShouldProcess) != 0;
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
             if (header.StateRoot is null && !header.IsGenesis)
@@ -672,14 +673,14 @@ namespace Nethermind.Blockchain
             return Suggest(null, header);
         }
 
-        public async Task<AddBlockResult> SuggestBlockAsync(Block block, bool shouldProcess = true,
+        public async Task<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions suggestOptions = BlockTreeSuggestOptions.ShouldProcess,
             bool? setAsMain = null)
         {
             await WaitForReadinessToAcceptNewBlock;
-            return SuggestBlock(block, shouldProcess, setAsMain);
+            return SuggestBlock(block, suggestOptions, setAsMain);
         }
 
-        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null)
+        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null)
         {
             if (Genesis is null && !block.IsGenesis)
             {
@@ -687,7 +688,7 @@ namespace Nethermind.Blockchain
                     "Block tree should be initialized with genesis before suggesting other blocks.");
             }
 
-            return Suggest(block, block.Header, shouldProcess, setAsMain);
+            return Suggest(block, block.Header, options, setAsMain);
         }
 
         public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)
