@@ -40,13 +40,9 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
     public ResultWrapper<TransitionConfigurationV1> Handle(TransitionConfigurationV1 beaconTransitionConfiguration)
     {
         UInt256? terminalTotalDifficulty = _poSSwitcher.TerminalTotalDifficulty;
-        long? terminalBlockNumber = _poSSwitcher.TerminalBlockNumber;
-        Keccak? terminalBlockHash = _poSSwitcher.TerminalBlockHash;
+        long configuredTerminalBlockNumber = _poSSwitcher.ConfiguredTerminalBlockNumber ?? 0;
+        Keccak configuredTerminalBlockHash = _poSSwitcher.ConfiguredTerminalBlockHash ?? Keccak.Zero;
 
-        if (terminalBlockNumber == null || terminalBlockHash == null)
-        {
-            if (_logger.IsInfo) _logger.Info($"[MergeTransitionInfo] Nethermind hasn't reached transition yet. CL TerminalBlockNumber: {beaconTransitionConfiguration.TerminalBlockNumber}, CL TerminalBlockHash: {beaconTransitionConfiguration.TerminalBlockHash}");
-        }
         if (terminalTotalDifficulty == null)
         {
             if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Terminal Total Difficulty wasn't specified in Nethermind");
@@ -55,15 +51,15 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
         {
             if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Found the difference in terminal total difficulty between Nethermind and CL. Nethermind TTD: {terminalTotalDifficulty}, CL TTD: {beaconTransitionConfiguration.TerminalTotalDifficulty}");
         }
-        if (terminalBlockHash != null && beaconTransitionConfiguration.TerminalBlockHash != terminalBlockHash)
+        if (beaconTransitionConfiguration.TerminalBlockHash != configuredTerminalBlockHash)
         {
-            if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Found the difference in terminal block hash between Nethermind and CL. Nethermind TerminalBlockHash: {terminalBlockHash}, CL TerminalBlockHash: {beaconTransitionConfiguration.TerminalBlockHash}");
+            if (_logger.IsWarn) _logger.Warn($"[MergeTransitionInfo] Found the difference in terminal block hash between Nethermind and CL. Nethermind TerminalBlockHash: {configuredTerminalBlockHash}, CL TerminalBlockHash: {beaconTransitionConfiguration.TerminalBlockHash}");
         }
         
         return ResultWrapper<TransitionConfigurationV1>.Success(new TransitionConfigurationV1()
         {
-            TerminalBlockHash = terminalBlockHash ?? Keccak.Zero,
-            TerminalBlockNumber = terminalBlockNumber ?? 0,
+            TerminalBlockHash = configuredTerminalBlockHash,
+            TerminalBlockNumber = configuredTerminalBlockNumber,
             TerminalTotalDifficulty = terminalTotalDifficulty ?? 0
         });
     }

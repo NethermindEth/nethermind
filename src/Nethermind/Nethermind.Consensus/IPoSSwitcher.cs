@@ -35,6 +35,10 @@ namespace Nethermind.Consensus
         long? TerminalBlockNumber { get; }
         
         Keccak? TerminalBlockHash { get; }
+        
+        public Keccak? ConfiguredTerminalBlockHash { get; }
+        
+        public long? ConfiguredTerminalBlockNumber { get; }
 
         // We can get TerminalBlock from three different points in the system:
         // 1) Block Processing - it is needed because we need to switch classes, for example, block production, during the transition
