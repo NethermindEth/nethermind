@@ -34,7 +34,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
 
         public override string ToString()
         {
-            return $"{nameof(HeadBlockHash)}: {HeadBlockHash}, {nameof(SafeBlockHash)}: {SafeBlockHash}, {nameof(FinalizedBlockHash)}: {FinalizedBlockHash}";
+            return $"ForkchoiceState: ({nameof(HeadBlockHash)}: {HeadBlockHash}, {nameof(SafeBlockHash)}: {SafeBlockHash}, {nameof(FinalizedBlockHash)}: {FinalizedBlockHash})";
         }
     }
 }
