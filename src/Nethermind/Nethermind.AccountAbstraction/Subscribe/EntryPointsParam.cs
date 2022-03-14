@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
@@ -30,6 +31,7 @@ public class EntryPointsParam : IJsonRpcParam
     {
         EntryPoints = Address.TryParse(jsonValue, out Address? address) 
             ? new[] { address! } 
-            : serializer.Deserialize<Address[]>(jsonValue.ToJsonTextReader());
+            : serializer.Deserialize<Address[]>(jsonValue.ToJsonTextReader()) 
+              ?? throw new ArgumentException($"Invalid entry points {jsonValue}");
     }
 }
