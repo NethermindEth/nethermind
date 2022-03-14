@@ -82,6 +82,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState,
             PayloadAttributes? payloadAttributes)
         {
+            string requestStr = $"{forkchoiceState} {payloadAttributes}";
             if (!synced)
             {
                 BlockHeader? blockHeader = _blockCacheService.GetBlockHeader(forkchoiceState.HeadBlockHash);
@@ -92,10 +93,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         _beaconPivot.EnsurePivot(blockHeader);
                     }
 
-                    if (_logger.IsInfo)
-                    {
-                        _logger.Info($"Received fork choice update {forkchoiceState}");
-                    }
+                    if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
 
@@ -110,10 +108,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     }
                     else
                     {
-                        if (_logger.IsInfo)
-                        {
-                            _logger.Info($"Received fork choice update {forkchoiceState}");
-                        }
+                        if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
                         return ForkchoiceUpdatedV1Result.Syncing;
                     }
                 }
@@ -122,10 +117,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of fork choice update: Syncing");
-                }
+                if (_logger.IsInfo) { _logger.Info($"Syncing... (HeadBlockHash not found). Request: {requestStr}"); }
+
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
@@ -133,10 +126,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 ValidateHashForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
             {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of fork choice update: Invalid finalized block hash {finalizationErrorMsg}");
-                }
+                if (_logger.IsWarn)
+                    _logger.Warn($"Invalid finalized block hash {finalizationErrorMsg}. Request: {requestStr}");
+
                 return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, ErrorCodes.InvalidParams);
             }
 
@@ -144,10 +136,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 ValidateSafeBlockHash(forkchoiceState.SafeBlockHash);
             if (safeBlockErrorMsg != null)
             {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of fork choice update: Invalid safe block Hash {safeBlockErrorMsg}");
-                }
+                if (_logger.IsWarn)
+                    _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}");
+
                 return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, ErrorCodes.InvalidParams);
             }
 
@@ -155,10 +146,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 EnsureNewHeadHeader(newHeadBlock);
             if (setHeadErrorMsg != null)
             {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of fork choice update: Invalid new head block {setHeadErrorMsg}");
-                }
+                if (_logger.IsWarn)
+                    _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}");
 
                 return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
             }
@@ -166,10 +155,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 newHeadBlock!.Header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info("Result of fork choice update: Invalid terminal block");
-                }
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}");
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
 
@@ -180,23 +168,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of fork choice update: Invalid payload attributes timestamp {payloadAttributes.Timestamp}, parent block header {newHeadBlock!.Header}");
-                }
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, parent block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}");
+
                 return ForkchoiceUpdatedV1Result.Error(
-                    $"Invalid payload attributes timestamp: {payloadAttributes.Timestamp} parent block header: {newHeadBlock!.Header}",
+                    $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, parent block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}",
                     ErrorCodes.InvalidParams);
             }
 
             bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
             if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead)
             {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of fork choice update: Valid {_blockTree.HeadHash}");
-                }
-                return ForkchoiceUpdatedV1Result.Valid(null, _blockTree.HeadHash);
+                if (_logger.IsInfo) { _logger.Info($"VALID. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}"); }
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
 
             EnsureTerminalBlock(forkchoiceState, blocks);
@@ -237,11 +222,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
             }
-            
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Result of fork choice update: Valid {forkchoiceState.HeadBlockHash}");
-            }
+
+            if (_logger.IsInfo) { _logger.Info($"Valid. Request: {requestStr}"); }
             return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
          }
 
@@ -272,7 +254,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
             }
         }
-        
+
         private Block? EnsureHeadBlockHash(Keccak headBlockHash)
         {
             Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.None);

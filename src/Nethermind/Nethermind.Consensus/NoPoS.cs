@@ -42,6 +42,8 @@ public class NoPoS : IPoSSwitcher
     public UInt256? TerminalTotalDifficulty => null;
     public long? TerminalBlockNumber => null;
     public Keccak? TerminalBlockHash => null;
+    public Keccak? ConfiguredTerminalBlockHash => null;
+    public long? ConfiguredTerminalBlockNumber => null;
 
     public bool TryUpdateTerminalBlock(BlockHeader header, BlockHeader? parent = null)
     {

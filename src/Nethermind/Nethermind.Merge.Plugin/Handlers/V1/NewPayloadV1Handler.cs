@@ -87,26 +87,23 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(BlockRequestResult request)
         {
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Received payload {request}");
-            }
+            string requestStr = $"a new payload: {request}";
+            if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
+
             request.TryGetBlock(out Block? block);
             if (block == null)
-            { 
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of payload: Invalid block");
-                }
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Invalid block. Result of {requestStr}");
+
                 return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
             }
 
             if (_blockValidator.ValidateHash(block.Header) == false)
-            { 
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of payload: Invalid block hash {block.Header}");
-                }
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"InvalidBlockHash. Result of {requestStr}");
+
                 return NewPayloadV1Result.InvalidBlockHash;
             }
             
@@ -181,11 +178,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
-            { 
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of payload: Invalid Terminal Block {block}");
-                }
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}");
+
                 return NewPayloadV1Result.InvalidTerminalBlock;
             }
 
@@ -194,29 +191,28 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if ((result.ValidationResult & ValidationResult.AlreadyKnown) != 0 ||
                 result.ValidationResult == ValidationResult.Invalid)
             {
-                bool isValid = (result.ValidationResult & ValidationResult.Valid) != 0; 
+                bool isValid = (result.ValidationResult & ValidationResult.Valid) != 0;
                 if (_logger.IsInfo)
                 {
-                    _logger.Info($"Result of payload: Success {block}");
+                    string resultStr = isValid ? "Valid" : "Invalid";
+                    _logger.Info($"{resultStr}. Result of {requestStr}");
                 }
+
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, isValid, parentHeader,
                     result.Message));
             }
 
             if (processedBlock == null)
-            { 
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of payload: Success {block}");
-                }
+            {
+                if (_logger.IsInfo) { _logger.Info($"Invalid block processed. Result of {requestStr}"); }
+
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, false, parentHeader,
                     $"Processed block is null, request {request}"));
             }
-             
+
             if (_logger.IsInfo)
-            {
-                _logger.Info($"Result of payload: Valid {block}");
-            }
+                _logger.Info($"Valid. Result of {requestStr}");
+
             return NewPayloadV1Result.Valid(request.BlockHash);
         }
 
@@ -282,7 +278,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             var addResult = _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
             _logger.Info($"{processedBlock} add result {addResult}");
-            
+
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             if (processedBlock == null)
             {
