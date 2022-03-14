@@ -163,7 +163,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead)
             {
                 if (_logger.IsInfo) { _logger.Info($"VALID. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}"); }
-                return ForkchoiceUpdatedV1Result.Valid(null, _blockTree.HeadHash);
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
 
             EnsureTerminalBlock(forkchoiceState, blocks);
