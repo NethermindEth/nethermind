@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -31,9 +32,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public object? Address { get; set; }
         public IEnumerable<object?> Topics { get; set; }
 
-        public void FromJson(string jsonValue)
+        public void FromJson(JsonSerializer serializer, string jsonValue)
         {
-            JObject jObject = IJsonRpcParam.Deserialize<JObject>(jsonValue);
+            JObject jObject = serializer.Deserialize<JObject>(jsonValue.ToJsonTextReader());
             FromBlock = BlockParameterConverter.GetBlockParameter(jObject["fromBlock"]?.ToObject<string>());
             ToBlock = BlockParameterConverter.GetBlockParameter(jObject["toBlock"]?.ToObject<string>());
             Address = GetAddress(jObject["address"]);

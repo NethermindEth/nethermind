@@ -16,15 +16,20 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
+using Newtonsoft.Json;
 
 namespace Nethermind.AccountAbstraction.Subscribe;
 
 public class EntryPointsParam : IJsonRpcParam
 {
-    public IEnumerable<object?> EntryPoints { get; set; } = null!;
+    public IEnumerable<Address> EntryPoints { get; set; } = null;
     
-    public void FromJson(string jsonValue)
+    public void FromJson(JsonSerializer serializer, string jsonValue)
     {
+        EntryPoints = Address.TryParse(jsonValue, out Address? address) 
+            ? new[] { address! } 
+            : serializer.Deserialize<Address[]>(jsonValue.ToJsonTextReader());
     }
 }

@@ -38,6 +38,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.TxPool;
+using Newtonsoft.Json;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -80,23 +81,24 @@ namespace Nethermind.AccountAbstraction.Test
                 _receiptStorage,
                 _filterStore,
                 new EthSyncingInfo(_blockTree),
-                _specProvider);
+                _specProvider,
+                new JsonSerializer());
             
-            subscriptionFactory.RegisterSubscriptionType(
+            subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
                 "newPendingUserOperations",
                 (jsonRpcDuplexClient,entryPoints) => new NewPendingUserOpsSubscription(
                     jsonRpcDuplexClient,
                     _userOperationPools,
                     _logManager,
-                    (EntryPointsParam?) entryPoints)
+                    entryPoints)
             );
-            subscriptionFactory.RegisterSubscriptionType(
+            subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
                 "newReceivedUserOperations",
                 (jsonRpcDuplexClient,entryPoints) => new NewReceivedUserOpsSubscription(
                     jsonRpcDuplexClient,
                     _userOperationPools,
                     _logManager,
-                    (EntryPointsParam?) entryPoints)
+                    entryPoints)
             );
             
             _subscriptionManager = new SubscriptionManager(

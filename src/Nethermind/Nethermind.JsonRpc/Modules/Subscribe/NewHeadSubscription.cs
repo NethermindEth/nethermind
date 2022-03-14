@@ -32,7 +32,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ISpecProvider _specProvider;
 
 
-        public NewHeadSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager, ISpecProvider specProvider, TransactionsOption? options = null) 
+        public NewHeadSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient, 
+            IBlockTree? blockTree, 
+            ILogManager? logManager,
+            ISpecProvider specProvider, 
+            TransactionsOption? options = null) 
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

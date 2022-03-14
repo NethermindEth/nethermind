@@ -31,7 +31,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private bool _lastIsSyncing;
         
-        public SyncingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, IEthSyncingInfo ethSyncingInfo, ILogManager? logManager) 
+        public SyncingSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient, 
+            IBlockTree? blockTree, 
+            IEthSyncingInfo ethSyncingInfo, 
+            ILogManager? logManager) 
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

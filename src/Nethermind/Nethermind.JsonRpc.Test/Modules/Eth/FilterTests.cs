@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Modules.Eth;
+using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
@@ -65,7 +66,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         public void FromJson_parses_correctly(string json, Filter expectation)
         {
             Filter filter = new();
-            filter.FromJson(json);
+            filter.FromJson(new JsonSerializer(), json);
             filter.Should().BeEquivalentTo(expectation);
         }
     }

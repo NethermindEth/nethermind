@@ -33,15 +33,18 @@ namespace Nethermind.AccountAbstraction.Subscribe
     {
         private readonly IUserOperationPool[] _userOperationPoolsToTrack;
     
-        public NewPendingUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IDictionary<Address, IUserOperationPool>? userOperationPools, ILogManager? logManager, EntryPointsParam? entryPoints = null) 
+        public NewPendingUserOpsSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient, 
+            IDictionary<Address, IUserOperationPool>? userOperationPools, 
+            ILogManager? logManager, 
+            EntryPointsParam? entryPoints = null) 
             : base(jsonRpcDuplexClient)
         {
             if (userOperationPools is null) throw new ArgumentNullException(nameof(userOperationPools));
             if (entryPoints is not null)
             {
-                Address[] addressFilter = DecodeAddresses(entryPoints.EntryPoints);
                 _userOperationPoolsToTrack = userOperationPools
-                    .Where(kv => addressFilter.Contains(kv.Key))
+                    .Where(kv => entryPoints.EntryPoints.Contains(kv.Key))
                     .Select(kv => kv.Value)
                     .ToArray();
             }
@@ -82,27 +85,6 @@ namespace Nethermind.AccountAbstraction.Subscribe
             base.Dispose();
             if(_logger.IsTrace) _logger.Trace($"newPendingUserOperations subscription {Id} will no longer track newPendingUserOperations");
         }
-
-        private static Address[] DecodeAddresses(object? entryPoints)
-        {
-            if (entryPoints is null)
-            {
-                throw new InvalidDataException("No entryPoint addresses to decode");
-            }
-
-            if (entryPoints is string s)
-            {
-                return new Address[] {new(s)};
-            }
-            
-            if (entryPoints is IEnumerable<string> e)
-            {
-                return e.Select(a => new Address(a)).ToArray();
-            }
-            
-            throw new InvalidDataException("Invalid address filter format");
-        }
-
     }
 }
 

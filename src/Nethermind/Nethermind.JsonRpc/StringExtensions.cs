@@ -13,13 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using System.IO;
 using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc;
+
+public static class StringExtensions
 {
-    public interface IJsonRpcParam
-    {
-        void FromJson(JsonSerializer serializer, string jsonValue);
-    }
+    public static JsonTextReader ToJsonTextReader(this string json) => new(new StringReader(json));
 }

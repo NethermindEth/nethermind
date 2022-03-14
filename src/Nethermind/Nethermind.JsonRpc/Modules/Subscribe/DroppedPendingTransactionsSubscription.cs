@@ -25,7 +25,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         private readonly ITxPool _txPool;
 
-        public DroppedPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager) : base(jsonRpcDuplexClient)
+        public DroppedPendingTransactionsSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            ITxPool? txPool, 
+            ILogManager? logManager) 
+            : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

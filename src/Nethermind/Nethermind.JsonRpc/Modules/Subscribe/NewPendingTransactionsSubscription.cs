@@ -29,7 +29,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ITxPool _txPool;
         private readonly bool _includeTransactions;
 
-        public NewPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager, TransactionsOption? options = null) 
+        public NewPendingTransactionsSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient, 
+            ITxPool? txPool, 
+            ILogManager? logManager, 
+            TransactionsOption? options = null) 
             : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

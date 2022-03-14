@@ -16,7 +16,7 @@
 // 
 
 using System;
-using Nethermind.JsonRpc.Modules.Eth;
+using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -36,9 +36,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
                 return successfulResult;
             }
-            catch (ArgumentException e)
+            catch (KeyNotFoundException)
             {
                 return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+            }
+            catch (ArgumentException e)
+            {
+                return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
             }
         }
 

@@ -280,7 +280,7 @@ namespace Nethermind.AccountAbstraction
             {
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
                 
-                // init all relevant objects if not already initted
+                // init all relevant objects if not already initialized
                 foreach(Address entryPoint in _entryPointContractAddresses)
                 {
                     UserOperationPool(entryPoint);
@@ -298,7 +298,7 @@ namespace Nethermind.AccountAbstraction
                 
                 ISubscriptionFactory subscriptionFactory = _nethermindApi.SubscriptionFactory;
                 //Register custom UserOperation websocket subscription types in the SubscriptionFactory.
-                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam>(
+                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
                     "newPendingUserOperations",
                     (jsonRpcDuplexClient, param) => new NewPendingUserOpsSubscription(
                         jsonRpcDuplexClient,
@@ -306,7 +306,7 @@ namespace Nethermind.AccountAbstraction
                         logManager,
                         param)
                 );
-                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam>(
+                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
                     "newReceivedUserOperations",
                     (jsonRpcDuplexClient, param) => new NewReceivedUserOpsSubscription(
                         jsonRpcDuplexClient,

@@ -32,15 +32,18 @@ namespace Nethermind.AccountAbstraction.Subscribe
     {
         private readonly IUserOperationPool[] _userOperationPoolsToTrack;
     
-        public NewReceivedUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IDictionary<Address, IUserOperationPool>? userOperationPools, ILogManager? logManager, EntryPointsParam? entryPoints = null) 
+        public NewReceivedUserOpsSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IDictionary<Address, IUserOperationPool>? userOperationPools, 
+            ILogManager? logManager, 
+            EntryPointsParam? entryPoints = null) 
             : base(jsonRpcDuplexClient)
         {
             if (userOperationPools is null) throw new ArgumentNullException(nameof(userOperationPools));
             if (entryPoints is not null)
             {
-                Address[] addressFilter = DecodeAddresses(entryPoints.EntryPoints);
                 _userOperationPoolsToTrack = userOperationPools
-                    .Where(kv => addressFilter.Contains(kv.Key))
+                    .Where(kv => entryPoints.EntryPoints.Contains(kv.Key))
                     .Select(kv => kv.Value)
                     .ToArray();
             }
@@ -52,7 +55,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
         
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-            foreach (var pool in _userOperationPoolsToTrack)
+            foreach (IUserOperationPool pool in _userOperationPoolsToTrack)
             {
                 pool.NewReceived += OnNewReceived;
             }
@@ -74,34 +77,13 @@ namespace Nethermind.AccountAbstraction.Subscribe
 
         public override void Dispose()
         {
-            foreach (var pool in _userOperationPoolsToTrack)
+            foreach (IUserOperationPool pool in _userOperationPoolsToTrack)
             {
                 pool.NewReceived -= OnNewReceived;
             }
             base.Dispose();
             if(_logger.IsTrace) _logger.Trace($"newReceivedUserOperations subscription {Id} will no longer track newReceivedUserOperations");
         }
-
-        private static Address[] DecodeAddresses(object? entryPoints)
-        {
-            if (entryPoints is null)
-            {
-                throw new InvalidDataException("No entryPoint addresses to decode");
-            }
-
-            if (entryPoints is string s)
-            {
-                return new Address[] {new(s)};
-            }
-            
-            if (entryPoints is IEnumerable<string> e)
-            {
-                return e.Select(a => new Address(a)).ToArray();
-            }
-            
-            throw new InvalidDataException("Invalid address filter format");
-        }
-
     }
 }
 

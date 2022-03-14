@@ -40,6 +40,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;
+using Newtonsoft.Json;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -79,7 +80,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _receiptStorage,
                 _filterStore,
                 new EthSyncingInfo(_blockTree),
-                _specProvider);
+                _specProvider,
+                new JsonSerializer());
             
             _subscriptionManager = new SubscriptionManager(
                 subscriptionFactory,
@@ -95,9 +97,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(toBlock);
         }
 
-        private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, Filter filter = null)
+        private JsonRpcResult GetBlockAddedToMainResult(BlockReplacementEventArgs blockReplacementEventArgs, out string subscriptionId, TransactionsOption? options = null)
         {
-            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, filter);
+            NewHeadSubscription newHeadSubscription = new(_jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, options);
             
             JsonRpcResult jsonRpcResult = new();
             
@@ -134,9 +136,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             return jsonRpcResults;
         }
         
-        private JsonRpcResult GetNewPendingTransactionsResult(TxEventArgs txEventArgs, out string subscriptionId, Filter filter = null)
+        private JsonRpcResult GetNewPendingTransactionsResult(TxEventArgs txEventArgs, out string subscriptionId, TransactionsOption? option = null)
         {
-            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _logManager, filter);
+            NewPendingTransactionsSubscription newPendingTransactionsSubscription = new(_jsonRpcDuplexClient, _txPool, _logManager, option);
             JsonRpcResult jsonRpcResult = new();
 
             ManualResetEvent manualResetEvent = new(false);
@@ -243,12 +245,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Block block = Build.A.Block.WithDifficulty(1991).WithExtraData(new byte[] {3, 5, 8}).TestObject;
             BlockReplacementEventArgs blockReplacementEventArgs = new(block);
-            Filter filter = new()
+            TransactionsOption option = new()
             {
                 IncludeTransactions = true
             };
 
-            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out string subscriptionId, filter);
+            JsonRpcResult jsonRpcResult = GetBlockAddedToMainResult(blockReplacementEventArgs, out string subscriptionId, option);
 
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);
@@ -776,12 +778,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             transaction.Hash = null;
             TxEventArgs txEventArgs = new(transaction);
             
-            Filter filter = new()
+            TransactionsOption option = new()
             {
                 IncludeTransactions = true
             };
             
-            JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out var subscriptionId, filter);
+            JsonRpcResult jsonRpcResult = GetNewPendingTransactionsResult(txEventArgs, out string subscriptionId, option);
             
             jsonRpcResult.Response.Should().NotBeNull();
             string serialized = _jsonSerializer.Serialize(jsonRpcResult.Response);

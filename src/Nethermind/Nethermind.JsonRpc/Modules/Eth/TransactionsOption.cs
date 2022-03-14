@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Serialization.Json;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
@@ -23,9 +25,9 @@ public class TransactionsOption : IJsonRpcParam
 {
     public bool IncludeTransactions { get; set; }
         
-    public void FromJson(string jsonValue)
+    public void FromJson(JsonSerializer serializer, string jsonValue)
     {
-        JObject jObject = IJsonRpcParam.Deserialize<JObject>(jsonValue);
+        JObject jObject = serializer.Deserialize<JObject>(jsonValue.ToJsonTextReader());
         IncludeTransactions = GetIncludeTransactions(jObject["includeTransactions"]);
     }
     

@@ -35,7 +35,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
 
-        public LogsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IReceiptStorage? receiptStorage, IFilterStore? store, IBlockTree? blockTree, ILogManager? logManager, Filter? filter = null) 
+        public LogsSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IReceiptStorage? receiptStorage, 
+            IFilterStore? store, 
+            IBlockTree? blockTree, 
+            ILogManager? logManager, 
+            Filter? filter = null) 
             : base(jsonRpcDuplexClient)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
