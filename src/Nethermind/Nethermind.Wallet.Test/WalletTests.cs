@@ -90,7 +90,7 @@ namespace Nethermind.Wallet.Test
         }
 
         private readonly ConcurrentDictionary<WalletType, Context> _cachedWallets = new ConcurrentDictionary<WalletType, Context>();
-        private readonly ConcurrentBag<Context> _wallets = new ConcurrentBag<Context>();
+        private readonly ConcurrentQueue<Context> _wallets = new();
 
         [OneTimeSetUp]
         public void Setup()
@@ -100,7 +100,7 @@ namespace Nethermind.Wallet.Test
             {
                 Context cachedWallet = new Context(walletType);
                 _cachedWallets.TryAdd(walletType, cachedWallet);
-                _wallets.Add(cachedWallet);
+                _wallets.Enqueue(cachedWallet);
             });
         }
 

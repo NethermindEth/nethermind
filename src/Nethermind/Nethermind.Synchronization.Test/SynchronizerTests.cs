@@ -256,7 +256,7 @@ namespace Nethermind.Synchronization.Test
 
         public class SyncingContext
         {
-            public static ConcurrentBag<SyncingContext> AllInstances = new();
+            public static ConcurrentQueue<SyncingContext> AllInstances = new();
 
             private Dictionary<string, ISyncPeer> _peers = new();
             private BlockTree BlockTree { get; }
@@ -333,7 +333,7 @@ namespace Nethermind.Synchronization.Test
                 Synchronizer.Start();
                 Synchronizer.SyncEvent += SynchronizerOnSyncEvent;
 
-                AllInstances.Add(this);
+                AllInstances.Enqueue(this);
             }
 
             private void SynchronizerOnSyncEvent(object sender, SyncEventArgs e)
