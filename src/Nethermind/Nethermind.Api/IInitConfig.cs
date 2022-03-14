@@ -27,7 +27,7 @@ namespace Nethermind.Api
         [ConfigItem(Description = "If 'true' then any accounts created will be only valid during the session and deleted when application closes.", DefaultValue = "false")]
         bool KeepDevWalletInMemory{ get; set; }
 
-        [ConfigItem(Description = "Defines whether the WebSockets service is enabled on node startup at the 'HttpPort' - e.g. ws://localhost:8545/ws/json-rpc", DefaultValue = "false")]
+        [ConfigItem(Description = "Defines whether the WebSockets service is enabled on node startup at the 'HttpPort' - e.g. ws://localhost:8545/ws/json-rpc", DefaultValue = "true")]
         bool WebSocketsEnabled { get; set; }
         
         [ConfigItem(Description = "If 'false' then the node does not try to find nodes beyond the bootnodes configured.", DefaultValue = "true")]

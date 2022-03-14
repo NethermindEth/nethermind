@@ -33,7 +33,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
     {
         private readonly IUserOperationPool[] _userOperationPoolsToTrack;
     
-        public NewPendingUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IDictionary<Address, IUserOperationPool>? userOperationPools, ILogManager? logManager, EntryPointsParam? entryPoints = null!) 
+        public NewPendingUserOpsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IDictionary<Address, IUserOperationPool>? userOperationPools, ILogManager? logManager, EntryPointsParam? entryPoints = null) 
             : base(jsonRpcDuplexClient)
         {
             if (userOperationPools is null) throw new ArgumentNullException(nameof(userOperationPools));

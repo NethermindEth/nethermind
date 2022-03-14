@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -29,20 +30,19 @@ using Nethermind.TxPool;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
+    /// <summary>
+    /// Creates different types of subscriptions.
+    /// </summary>
+    /// <remarks>
+    /// Uses a dictionary which holds the constructors to the different subscription types, using the name
+    /// of the respective RPC request as key-strings.
+    /// When SubscriptionFactory is constructed, the basic subscription types are automatically loaded.
+    /// Plugins may import additional subscription types by calling <see cref="RegisterSubscriptionType"/>.
+    /// </remarks>
     public class SubscriptionFactory : ISubscriptionFactory
     {
-        private readonly ConcurrentDictionary<string, Func<IJsonRpcDuplexClient, IJsonRpcParam, Subscription>> _subscriptionConstructors;
-        //This class uses a dictionary which holds the constructors to the different subscription types, using the name
-        //of the respective RPC request as key-strings.
-        //When SubscriptionFactory is constructed, the basic subscription types are automatically loaded.
-        //Plugins may import additional subscription types by calling RegisterSubscriptionType.
-        private readonly ILogManager _logManager;
-        private readonly IBlockTree _blockTree;
-        private readonly ITxPool _txPool;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IFilterStore _filterStore;
-        private readonly IEthSyncingInfo _ethSyncingInfo;
-        private readonly ISpecProvider _specProvider;
+        private readonly ConcurrentDictionary<string, CustomSubscriptionType> _subscriptionConstructors;
+
 
         public SubscriptionFactory(
             ILogManager? logManager,
@@ -53,46 +53,73 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             IEthSyncingInfo ethSyncingInfo,
             ISpecProvider specProvider)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
-            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
+            ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+            specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             
-            //Register the standard subscription types in the dictionary.
-            _subscriptionConstructors = new ConcurrentDictionary<string, Func<IJsonRpcDuplexClient, IJsonRpcParam, Subscription>>();
-            _subscriptionConstructors[SubscriptionType.NewHeads] = (jsonRpcDuplexClient, filter) => 
-                new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, (Filter?) filter);
-            _subscriptionConstructors[SubscriptionType.Logs] = (jsonRpcDuplexClient, filter) => 
-                new LogsSubscription(jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, (Filter?) filter);
-            _subscriptionConstructors[SubscriptionType.NewPendingTransactions] = (jsonRpcDuplexClient, filter) =>
-                new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager, (Filter?) filter);
-            //The Filter parameter in the customSubscriptionDelegate is not required for some subscriptions.
-            //It is denoted as _ and ignored in those cases.
-            _subscriptionConstructors[SubscriptionType.DroppedPendingTransactions] = (jsonRpcDuplexClient,_) =>
-                new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager);
-            _subscriptionConstructors[SubscriptionType.Syncing] = (jsonRpcDuplexClient,_) =>
-                new SyncingSubscription(jsonRpcDuplexClient, _blockTree, _ethSyncingInfo, _logManager);
+            _subscriptionConstructors = new ConcurrentDictionary<string, CustomSubscriptionType> {
+                
+                //Register the standard subscription types in the dictionary.
+                [SubscriptionType.NewHeads] = CreateSubscriptionType<TransactionsOption>((jsonRpcDuplexClient, args) => new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, args)),
+                [SubscriptionType.Logs] = CreateSubscriptionType<Filter>((jsonRpcDuplexClient, filter) => new LogsSubscription(jsonRpcDuplexClient, receiptStorage, filterStore, blockTree, logManager, filter)),
+                [SubscriptionType.NewPendingTransactions] = CreateSubscriptionType<TransactionsOption>((jsonRpcDuplexClient, args) => new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager, args)),
+                [SubscriptionType.DroppedPendingTransactions] = CreateSubscriptionType(jsonRpcDuplexClient => new DroppedPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager)),
+                [SubscriptionType.Syncing] = CreateSubscriptionType(jsonRpcDuplexClient => new SyncingSubscription(jsonRpcDuplexClient, blockTree, ethSyncingInfo, logManager))
+            };
         }
-        
-        public Subscription CreateSubscription(
-            IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, IJsonRpcParam? filter)
+
+        public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null)
         {
-            if (_subscriptionConstructors.TryGetValue(subscriptionType, out var customSubscriptionDelegate))
+            if (_subscriptionConstructors.TryGetValue(subscriptionType, out CustomSubscriptionType customSubscription))
             {
-                return customSubscriptionDelegate(jsonRpcDuplexClient, filter);
+                Type? paramType = customSubscription.ParamType;
+                
+                IJsonRpcParam? param = null;
+                bool thereIsParameter = paramType is not null;
+                bool thereAreArgs = args is not null;
+                if (thereIsParameter && (thereAreArgs || paramType.CannotBeAssignedNull()))
+                {
+                    param = (IJsonRpcParam)Activator.CreateInstance(paramType);
+                    if (thereAreArgs)
+                    {
+                        param!.FromJson(args);
+                    }
+                }
+                
+                return customSubscription.Constructor(jsonRpcDuplexClient, param);
             }
+
             throw new ArgumentException($"{subscriptionType} is an invalid or unregistered subscription type");
         }
+
+        public void RegisterSubscriptionType<T>(string subscriptionType, Func<IJsonRpcDuplexClient, T, Subscription> customSubscriptionDelegate) 
+            where T : IJsonRpcParam, new() =>
+            _subscriptionConstructors[subscriptionType] = CreateSubscriptionType(customSubscriptionDelegate);
         
-        public void RegisterSubscriptionType(
-            string subscriptionType, Func<IJsonRpcDuplexClient, IJsonRpcParam, Subscription> customSubscriptionDelegate)
+
+        private static CustomSubscriptionType CreateSubscriptionType<T>(Func<IJsonRpcDuplexClient, T, Subscription> customSubscriptionDelegate) 
+            where T : IJsonRpcParam, new() =>
+            new(((client, args) => customSubscriptionDelegate(client, (T)args)), typeof(T));
+
+        public void RegisterSubscriptionType(string subscriptionType, Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate) =>
+            _subscriptionConstructors[subscriptionType] = CreateSubscriptionType(customSubscriptionDelegate);
+
+        private static CustomSubscriptionType CreateSubscriptionType(Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate) => 
+            new(((client, _) => customSubscriptionDelegate(client)));
+
+        private struct CustomSubscriptionType
         {
-            if (_subscriptionConstructors.TryAdd(subscriptionType,customSubscriptionDelegate))
+            public Func<IJsonRpcDuplexClient, object, Subscription> Constructor { get; }
+            public Type? ParamType { get; }
+
+            public CustomSubscriptionType(Func<IJsonRpcDuplexClient, object, Subscription> constructor, Type? paramType = null)
             {
-                _subscriptionConstructors[subscriptionType] = customSubscriptionDelegate;
+                Constructor = constructor;
+                ParamType = paramType;
             }
         }
     }

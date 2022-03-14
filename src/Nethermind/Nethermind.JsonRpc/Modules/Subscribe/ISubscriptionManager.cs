@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public interface ISubscriptionManager
     {
-        string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, IJsonRpcParam? extraParam = null);
+        string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null);
         bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId);
         void RemoveClientSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient);
     }

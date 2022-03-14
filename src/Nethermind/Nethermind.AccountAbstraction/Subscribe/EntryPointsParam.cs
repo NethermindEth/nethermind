@@ -22,8 +22,8 @@ namespace Nethermind.AccountAbstraction.Subscribe;
 
 public class EntryPointsParam : IJsonRpcParam
 {
-    // For account abstraction subscriptions
     public IEnumerable<object?> EntryPoints { get; set; } = null!;
+    
     public void FromJson(string jsonValue)
     {
     }

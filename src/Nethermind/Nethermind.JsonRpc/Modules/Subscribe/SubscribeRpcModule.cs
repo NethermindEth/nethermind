@@ -29,11 +29,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         }
 
-        public ResultWrapper<string> eth_subscribe(string subscriptionName, Filter arguments = null)
+        public ResultWrapper<string> eth_subscribe(string subscriptionName, string? args = null)
         {
             try
             {
-                ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, arguments));
+                ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
                 return successfulResult;
             }
             catch (ArgumentException e)

@@ -236,7 +236,7 @@ namespace Nethermind.AccountAbstraction
             {
                 if (_nethermindApi is null) throw new ArgumentNullException(nameof(_nethermindApi));
                 
-                // init all relevant objects if not already initted
+                // init all relevant objects if not already initialized
                 foreach(Address entryPoint in _entryPointContractAddresses)
                 {
                     UserOperationPool(entryPoint);
@@ -298,21 +298,21 @@ namespace Nethermind.AccountAbstraction
                 
                 ISubscriptionFactory subscriptionFactory = _nethermindApi.SubscriptionFactory;
                 //Register custom UserOperation websocket subscription types in the SubscriptionFactory.
-                subscriptionFactory.RegisterSubscriptionType(
+                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam>(
                     "newPendingUserOperations",
-                    (jsonRpcDuplexClient, filter) => new NewPendingUserOpsSubscription(
+                    (jsonRpcDuplexClient, param) => new NewPendingUserOpsSubscription(
                         jsonRpcDuplexClient,
                         _userOperationPools,
                         logManager,
-                        (EntryPointsParam?) filter)
+                        param)
                 );
-                subscriptionFactory.RegisterSubscriptionType(
+                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam>(
                     "newReceivedUserOperations",
-                    (jsonRpcDuplexClient,filter) => new NewReceivedUserOpsSubscription(
+                    (jsonRpcDuplexClient, param) => new NewReceivedUserOpsSubscription(
                         jsonRpcDuplexClient,
                         _userOperationPools,
                         logManager,
-                        (EntryPointsParam?) filter)
+                        param)
                 );
                 
                 if (BundleMiningEnabled && MevPluginEnabled)
