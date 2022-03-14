@@ -23,7 +23,6 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -952,16 +951,16 @@ namespace Nethermind.TxPool.Test
             var address = TestItem.AddressA;
             const int reservationsCount = 1000;
             _txPool = CreatePool();
-            ConcurrentBag<UInt256> nonces = new();
+            ConcurrentQueue<UInt256> nonces = new();
             
             var result = Parallel.For(0, reservationsCount, i =>
             {
-                nonces.Add(_txPool.ReserveOwnTransactionNonce(address));
+                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(address));
             });
 
             result.IsCompleted.Should().BeTrue();
             UInt256 nonce = _txPool.ReserveOwnTransactionNonce(address);
-            nonces.Add(nonce);
+            nonces.Enqueue(nonce);
             nonce.Should().Be(new UInt256(reservationsCount));
             nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
         }
