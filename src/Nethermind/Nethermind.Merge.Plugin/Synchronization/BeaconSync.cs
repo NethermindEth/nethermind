@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -30,6 +31,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
+        private readonly ISyncConfig _syncConfig;
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IBlockCacheService _blockCacheService;
         private readonly IBlockValidator _blockValidator;
@@ -39,6 +41,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public BeaconSync(
             IBeaconPivot beaconPivot,
             IBlockTree blockTree,
+            ISyncConfig syncConfig,
             ISyncProgressResolver syncProgressResolver,
             IBlockCacheService blockCacheService,
             IBlockValidator blockValidator,
@@ -46,6 +49,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             _beaconPivot = beaconPivot;
             _blockTree = blockTree;
+            _syncConfig = syncConfig;
             _syncProgressResolver = syncProgressResolver;
             _blockCacheService = blockCacheService;
             _blockValidator = blockValidator;
@@ -78,6 +82,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public bool IsBeaconSyncHeadersFinished() => !_beaconPivot.BeaconPivotExists() || (_blockTree.LowestInsertedBeaconHeader?.Number ??
             _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber || (_blockTree.LowestInsertedBeaconHeader?.Number ??
                                                      _beaconPivot.PivotNumber) == 1;
+
+        public bool FastSyncEnabled => _syncConfig.FastSync;
     }
 
     public interface IMergeSyncController

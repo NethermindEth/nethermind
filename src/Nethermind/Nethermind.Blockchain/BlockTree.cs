@@ -82,6 +82,10 @@ namespace Nethermind.Blockchain
         public Block? Head { get; private set; }
         public BlockHeader? BestSuggestedHeader { get; private set; }
         public Block? BestSuggestedBody { get; private set; }
+        
+        public BlockHeader? BestSuggestedBeaconHeader { get; private set; }
+
+        public Block? BestSuggestedBeaconBody { get; private set; }
         public BlockHeader? LowestInsertedHeader { get; private set; }
         public BlockHeader? LowestInsertedBeaconHeader { get; private set; }
 
@@ -105,6 +109,7 @@ namespace Nethermind.Blockchain
         }
 
         public long BestKnownNumber { get; private set; }
+        public long BestKnownBeaconNumber { get; private set; }
         public ulong ChainId => _specProvider.ChainId;
 
         private int _canAcceptNewBlocksCounter;
@@ -517,6 +522,16 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            if (header.Number > BestKnownBeaconNumber)
+            {
+                BestKnownBeaconNumber = header.Number;
+            }
+
+            if (header.Number > (BestSuggestedBeaconHeader?.Number ?? 0))
+            {
+                BestSuggestedBeaconHeader = header;
+            }
+
             if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue)
                 && header.Number >= (_beaconSyncDestinationNumber ?? long.MaxValue)
                 && header.Number <= (_beaconSyncPivotNumber ?? long.MinValue))
@@ -551,8 +566,7 @@ namespace Nethermind.Blockchain
 
             if (saveHeader)
             {
-                // TODO: beaconsync parameterize blocktree insert options
-                Insert(block.Header, BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers);
+                Insert(block.Header, options);
             }
 
             return AddBlockResult.Added;

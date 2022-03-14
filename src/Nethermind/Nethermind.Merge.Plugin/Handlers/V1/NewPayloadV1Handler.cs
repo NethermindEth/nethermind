@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -124,9 +125,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     return NewPayloadV1Result.Syncing;
                 }
+
+                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.SkipUpdateBestPointers |
+                                                       BlockTreeInsertOptions.TotalDifficultyNotNeeded;
                 if (block.ParentHash == _blockCacheService.ProcessDestination)
                 {
-                    _blockTree.Insert(block, true);
+                    _blockTree.Insert(block, true, insertOptions);
                 }
                 else
                 {
@@ -158,10 +162,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         }
                         else
                         {
-                            _blockTree.Insert(block, true);
+                            _blockTree.Insert(block, true, insertOptions);
                         }
-                        // TODO: beaconsync when to clear cache?
-                        // _blockCacheService.BlockCache.TryRemove(child.Hash, out _);
                     }   
                 }
 
@@ -183,45 +185,57 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
                 }
-
-                bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
-                if (parentPivotProcessed)
+                
+                block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
+                if (_beaconSyncStrategy.FastSyncEnabled)
                 {
-                    _logger.Info($"Parent pivot processed suggesting block {block}");
-                    _blockTree.SuggestBlock(block, true);
+                    bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash);
+                    if (parentProcessed)
+                    {
+                        long state = _syncProgressResolver.FindBestFullState();
+                        if (state > 0)
+                        {
+                            bool shouldProcess = block.Number > state;
+                            if (shouldProcess)
+                            {
+                                Stack<Block> stack = new();
+                                Block? current = block;
+                                BlockHeader parent = parentHeader;
+
+                                while (current.Number > state)
+                                {
+                                    stack.Push(current);
+                                    current = _blockTree.FindBlock(parent.Hash,
+                                        BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                                    parent = _blockTree.FindHeader(current.ParentHash);
+                                    current.Header.TotalDifficulty = parent.TotalDifficulty + current.Difficulty;
+                                }
+
+                                while (stack.TryPop(out Block child))
+                                {
+                                    _blockTree.SuggestBlock(child);
+                                }
+                            }
+                        }
+
+                        return NewPayloadV1Result.Syncing;
+                    }
                 }
                 else
                 {
-                    block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
-                    _blockTree.SuggestBlock(block, false);
-                    
-                    long state = _syncProgressResolver.FindBestFullState();
-                    if (state > 0)
+                    bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
+                    if (parentPivotProcessed)
                     {
-                        bool shouldProcess = block.Number > state;
-                        if (shouldProcess)
-                        {
-                            Stack<Block> stack = new();
-                            Block? current = block;
-                            BlockHeader parent = parentHeader;
-                            
-                            while (current.Number > state)
-                            {
-                                stack.Push(current);
-                                current = _blockTree.FindBlock(parent.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                                parent = _blockTree.FindHeader(current.ParentHash);
-                                current.Header.TotalDifficulty = parent.TotalDifficulty + current.Difficulty;
-                            }
-                    
-                            while (stack.TryPop(out Block child))
-                            {
-                                _blockProcessingQueue.Enqueue(child, ProcessingOptions.None);
-                            }
-                        }
+                        _logger.Info($"Parent pivot processed suggesting block {block}");
+                        _blockTree.SuggestBlock(block);
                     }
-                
-                    return NewPayloadV1Result.Syncing;
+                    else
+                    {
+                        return NewPayloadV1Result.Syncing;
+                    } 
                 }
+
+                _blockCacheService.BlockCache.Clear();
             }
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||

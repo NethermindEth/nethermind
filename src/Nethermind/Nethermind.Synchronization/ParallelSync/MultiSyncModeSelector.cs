@@ -465,6 +465,8 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
+            bool stickyBeaconStateNodes =
+                best.PeerBlock - best.BeaconHeader < (FastSyncLag + StickyStateNodesDelta);
             bool stateNotDownloadedYet = (best.PeerBlock - best.State > FastSyncLag ||
                                           best.Header > best.State && best.Header > best.Block);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
@@ -473,7 +475,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool result = fastSyncEnabled &&
                           hasFastSyncBeenActive &&
                           hasAnyPostPivotPeer &&
-                          (notInFastSync || stickyStateNodes) &&
+                          (notInFastSync || stickyStateNodes || stickyBeaconStateNodes) &&
                           stateNotDownloadedYet &&
                           notHasJustStartedFullSync &&
                           notInAStickyFullSync && 
@@ -540,7 +542,7 @@ namespace Nethermind.Synchronization.ParallelSync
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
                 UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
-                if (peer.TotalDifficulty > currentMax || peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
+                 if (peer.TotalDifficulty > currentMax || peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
                 {
                     // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
                     var realTotalDifficulty =
@@ -570,8 +572,9 @@ namespace Nethermind.Synchronization.ParallelSync
             long state = _syncProgressResolver.FindBestFullState();
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
+            long beaconHeader = _syncProgressResolver.FindBestBeaconHeader();
 
-            Snapshot best = new(processed, state, block, header, peerBlock, peerDifficulty);
+            Snapshot best = new(processed, state, block, header, beaconHeader, peerBlock, peerDifficulty);
             VerifySnapshot(best);
             return best;
         }
@@ -626,13 +629,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected ref struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, long peerBlock,
+            public Snapshot(long processed, long state, long block, long header, long beaconHeader, long peerBlock,
                 in UInt256 peerDifficulty)
             {
                 Processed = processed;
                 State = state;
                 Block = block;
                 Header = header;
+                BeaconHeader = beaconHeader;
                 PeerBlock = peerBlock;
                 PeerDifficulty = peerDifficulty;
 
@@ -670,6 +674,8 @@ namespace Nethermind.Synchronization.ParallelSync
             /// Best block header - may be missing body if we just insert headers
             /// </summary>
             public long Header { get; }
+            
+            public long BeaconHeader { get; }
 
             /// <summary>
             /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers

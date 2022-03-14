@@ -41,6 +41,7 @@ namespace Nethermind.Blockchain
         public ulong ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
+        public BlockHeader BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
         public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
 
         public long? LowestInsertedBodyNumber
