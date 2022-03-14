@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class SubscriptionFactory : ISubscriptionFactory
     {
-        private readonly ConcurrentDictionary<string, Func<IJsonRpcDuplexClient, Filter, Subscription>> _subscriptionConstructors;
+        private readonly ConcurrentDictionary<string, Func<IJsonRpcDuplexClient, IJsonRpcParam, Subscription>> _subscriptionConstructors;
         //This class uses a dictionary which holds the constructors to the different subscription types, using the name
         //of the respective RPC request as key-strings.
         //When SubscriptionFactory is constructed, the basic subscription types are automatically loaded.
@@ -62,13 +62,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             
             //Register the standard subscription types in the dictionary.
-            _subscriptionConstructors = new ConcurrentDictionary<string, Func<IJsonRpcDuplexClient, Filter, Subscription>>();
+            _subscriptionConstructors = new ConcurrentDictionary<string, Func<IJsonRpcDuplexClient, IJsonRpcParam, Subscription>>();
             _subscriptionConstructors[SubscriptionType.NewHeads] = (jsonRpcDuplexClient, filter) => 
-                new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, filter);
+                new NewHeadSubscription(jsonRpcDuplexClient, _blockTree, _logManager, _specProvider, (Filter?) filter);
             _subscriptionConstructors[SubscriptionType.Logs] = (jsonRpcDuplexClient, filter) => 
-                new LogsSubscription(jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
+                new LogsSubscription(jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, (Filter?) filter);
             _subscriptionConstructors[SubscriptionType.NewPendingTransactions] = (jsonRpcDuplexClient, filter) =>
-                new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager, filter);
+                new NewPendingTransactionsSubscription(jsonRpcDuplexClient, _txPool, _logManager, (Filter?) filter);
             //The Filter parameter in the customSubscriptionDelegate is not required for some subscriptions.
             //It is denoted as _ and ignored in those cases.
             _subscriptionConstructors[SubscriptionType.DroppedPendingTransactions] = (jsonRpcDuplexClient,_) =>
@@ -78,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         }
         
         public Subscription CreateSubscription(
-            IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, Filter? filter)
+            IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, IJsonRpcParam? filter)
         {
             if (_subscriptionConstructors.TryGetValue(subscriptionType, out var customSubscriptionDelegate))
             {
@@ -88,7 +88,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         }
         
         public void RegisterSubscriptionType(
-            string subscriptionType, Func<IJsonRpcDuplexClient, Filter, Subscription> customSubscriptionDelegate)
+            string subscriptionType, Func<IJsonRpcDuplexClient, IJsonRpcParam, Subscription> customSubscriptionDelegate)
         {
             if (_subscriptionConstructors.TryAdd(subscriptionType,customSubscriptionDelegate))
             {

@@ -286,11 +286,11 @@ namespace Nethermind.AccountAbstraction
                 //Register custom UserOperation websocket subscription types in the SubscriptionFactory.
                 subscriptionFactory.RegisterSubscriptionType(
                     "newPendingUserOperations",
-                    (jsonRpcDuplexClient,filter) => new NewPendingUserOpsSubscription(
+                    (jsonRpcDuplexClient, filter) => new NewPendingUserOpsSubscription(
                         jsonRpcDuplexClient,
                         _userOperationPools,
                         logManager,
-                        filter)
+                        (EntryPointsParam?) filter)
                 );
                 subscriptionFactory.RegisterSubscriptionType(
                     "newReceivedUserOperations",
@@ -298,7 +298,7 @@ namespace Nethermind.AccountAbstraction
                         jsonRpcDuplexClient,
                         _userOperationPools,
                         logManager,
-                        filter)
+                        (EntryPointsParam?) filter)
                 );
                 
                 if (BundleMiningEnabled && MevPluginEnabled)

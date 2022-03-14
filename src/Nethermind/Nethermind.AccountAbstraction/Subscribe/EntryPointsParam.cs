@@ -15,15 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using Nethermind.JsonRpc.Modules.Eth;
+using System.Collections.Generic;
+using Nethermind.JsonRpc;
 
-namespace Nethermind.JsonRpc.Modules.Subscribe
+namespace Nethermind.AccountAbstraction.Subscribe;
+
+public class EntryPointsParam : IJsonRpcParam
 {
-    public interface ISubscriptionFactory
+    // For account abstraction subscriptions
+    public IEnumerable<object?> EntryPoints { get; set; } = null!;
+    public void FromJson(string jsonValue)
     {
-        Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, IJsonRpcParam? extraParam = null);
-        void RegisterSubscriptionType(string subscriptionType, Func
-            <IJsonRpcDuplexClient, IJsonRpcParam, Subscription> customSubscriptionDelegate);
     }
 }
