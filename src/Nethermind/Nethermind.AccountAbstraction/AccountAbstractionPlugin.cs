@@ -49,6 +49,7 @@ namespace Nethermind.AccountAbstraction
         private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
         private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
         private UserOperationTxSource? _userOperationTxSource;
+        private IUserOperationBroadcaster? _userOperationBroadcaster;
 
         private IBundler? _bundler;
 
@@ -104,6 +105,7 @@ namespace Nethermind.AccountAbstraction
                 _nethermindApi.Timestamper,
                 UserOperationSimulator(entryPoint),
                 userOperationSortedPool,
+                UserOperationBroadcaster,
                 _nethermindApi.SpecProvider!.ChainId);
 
             return _userOperationPools[entryPoint];
@@ -156,7 +158,20 @@ namespace Nethermind.AccountAbstraction
                 return _userOperationTxSource;
             }
         }
-        
+
+        private IUserOperationBroadcaster UserOperationBroadcaster
+        {
+            get
+            {
+                if (_userOperationBroadcaster is null)
+                {
+                    _userOperationBroadcaster = new UserOperationBroadcaster(_logger);
+                }
+
+                return _userOperationBroadcaster;
+            }
+        }
+
         public string Name => "Account Abstraction";
 
         public string Description => "Implements account abstraction via alternative mempool (ERC-4337)";
@@ -242,8 +257,7 @@ namespace Nethermind.AccountAbstraction
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
 
-                UserOperationBroadcaster broadcaster = new UserOperationBroadcaster(_logger);
-                AccountAbstractionPeerManager peerManager = new AccountAbstractionPeerManager(_userOperationPools, broadcaster, _logger);
+                AccountAbstractionPeerManager peerManager = new(_userOperationPools, UserOperationBroadcaster, _logger);
 
                 serializer.Register(new UserOperationsMessageSerializer());
                 protocolsManager.AddProtocol(Protocol.AA,
