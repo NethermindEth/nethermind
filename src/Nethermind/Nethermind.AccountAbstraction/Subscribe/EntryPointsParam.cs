@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Subscribe;
 
 public class EntryPointsParam : IJsonRpcParam
 {
-    public IEnumerable<Address> EntryPoints { get; set; } = null;
+    public IEnumerable<Address> EntryPoints { get; set; } = null!;
     
     public void FromJson(JsonSerializer serializer, string jsonValue)
     {
