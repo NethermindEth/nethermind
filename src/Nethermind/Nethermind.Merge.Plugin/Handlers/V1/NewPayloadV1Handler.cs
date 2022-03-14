@@ -17,11 +17,13 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -37,6 +39,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -56,6 +59,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockCacheService _blockCacheService;
+        private readonly ISyncProgressResolver _syncProgressResolver;
+        private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
@@ -71,6 +76,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBeaconSyncStrategy beaconSyncStrategy,
             IBeaconPivot beaconPivot,
             IBlockCacheService blockCacheService,
+            ISyncProgressResolver syncProgressResolver,
+            IBlockProcessingQueue blockProcessingQueue,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -82,6 +89,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _beaconSyncStrategy = beaconSyncStrategy;
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
+            _syncProgressResolver = syncProgressResolver;
+            _blockProcessingQueue = blockProcessingQueue;
             _logger = logManager.GetClassLogger();
         }
 
@@ -107,73 +116,123 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidBlockHash;
             }
             
-            // if (_blockValidator.ValidateSuggestedBlock(block) == false)
-            // {
-            //     if (_logger.IsWarn)
-            //     {
-            //         _logger.Warn(
-            //             $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
-            //     }
-            //
-            //     return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, false, null,
-            //         $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}"));
-            // }
-            
-            if (synced == false)
+            if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
             {
-                if (_blockCacheService.Contains(block.Hash))
+                if (_blockTree.IsKnownBlock(block.Number, block.Hash))
                 {
                     return NewPayloadV1Result.Syncing;
                 }
-                
-                if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+
+                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.SkipUpdateBestPointers |
+                                                       BlockTreeInsertOptions.TotalDifficultyNotNeeded;
+                if (block.ParentHash == _blockCacheService.ProcessDestination)
                 {
-                    _blockTree.Insert(block, true);
-                    _blockCacheService.EnqueueBlockHeader(block.Header);
-                    return NewPayloadV1Result.Syncing;
+                    _blockTree.Insert(block, true, insertOptions);
                 }
-                
-                // at this point beacon headers sync has been activated before and is completed
-                // we start suggesting blocks to update the best suggested body and header to trigger state sync
-                // after state sync we can start processing blocks
-                // TODO: beaconsync additional checks still needed to make sure the total difficulty backfill is finished
-                // if (_beaconPivot.BeaconPivotExists())
-                // {
-                //     _blockTree.SuggestBlock(block, false);
-                // }
+                else
+                {
+                    Block? current = block;
+                    Stack<Block> stack = new ();
+                    while (current != null)
+                    {
+                        stack.Push(current);
+                        if (current.Hash == _blockCacheService.SyncingHead)
+                        {
+                            break;
+                        }
+                        _blockCacheService.BlockCache.TryGetValue(current.ParentHash, out Block? parentBlock);
+                        current = parentBlock;
+                    }
+
+                    if (current == null)
+                    {
+                        _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
+                        return NewPayloadV1Result.Accepted;
+                    }
+
+                    while (stack.TryPop(out Block? child))
+                    {
+                        if (child.Hash == _beaconPivot.PivotHash)
+                        {
+                            // header will be inserted with beacon headers sync
+                            _blockTree.Insert(block);
+                        }
+                        else
+                        {
+                            _blockTree.Insert(block, true, insertOptions);
+                        }
+                    }   
+                }
+
+                _blockCacheService.ProcessDestination = block.Hash;
+                return NewPayloadV1Result.Syncing;
             }
 
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
-                // TODO: beaconsync validation
                 _logger.Info($"Inserted block without parent {block}");
-                _blockTree.Insert(block, true);
-                _blockCacheService.EnqueueBlockHeader(block.Header);
+                _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
                 return NewPayloadV1Result.Accepted;
             }
 
-            if (synced == false)
+            if (_beaconPivot.BeaconPivotExists())
             {
-                bool wasProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash ?? parentHeader.CalculateHash());
-                if (!wasProcessed)
+                if (parentHeader.TotalDifficulty == 0)
+                {
+                    _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
+                }
+                
+                block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
+                if (_beaconSyncStrategy.FastSyncEnabled)
+                {
+                    bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash);
+                    if (parentProcessed)
+                    {
+                        long state = _syncProgressResolver.FindBestFullState();
+                        if (state > 0)
+                        {
+                            bool shouldProcess = block.Number > state;
+                            if (shouldProcess)
+                            {
+                                Stack<Block> stack = new();
+                                Block? current = block;
+                                BlockHeader parent = parentHeader;
+
+                                while (current.Number > state)
+                                {
+                                    stack.Push(current);
+                                    current = _blockTree.FindBlock(parent.Hash,
+                                        BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                                    parent = _blockTree.FindHeader(current.ParentHash);
+                                    current.Header.TotalDifficulty = parent.TotalDifficulty + current.Difficulty;
+                                }
+
+                                while (stack.TryPop(out Block child))
+                                {
+                                    _blockTree.SuggestBlock(child);
+                                }
+                            }
+                        }
+
+                        return NewPayloadV1Result.Syncing;
+                    }
+                }
+                else
                 {
                     bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
                     if (parentPivotProcessed)
                     {
                         _logger.Info($"Parent pivot processed suggesting block {block}");
-                        _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None);
+                        _blockTree.SuggestBlock(block);
                     }
                     else
                     {
-                        _logger.Info($"Inserted {block}");
-                        _blockTree.Insert(block, true);
-                        _blockCacheService.EnqueueBlockHeader(block.Header);
-                    }
-                    
-                    return NewPayloadV1Result.Syncing;
+                        return NewPayloadV1Result.Syncing;
+                    } 
                 }
-                synced = true;
+
+                _blockCacheService.BlockCache.Clear();
             }
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
@@ -255,8 +314,26 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
         }
 
-        private bool ValidateAndInsert(Block block)
+        private bool ValidateAndInsert(Block block, bool saveHeader = true)
         {
+            block.Header.IsPostMerge = true;
+            if (_blockValidator.ValidateSuggestedBlock(block) == false)
+            {
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn(
+                        $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
+                }
+
+                return false;
+            }
+
+            AddBlockResult insertResult = _blockTree.Insert(block, saveHeader);
+            if (insertResult == AddBlockResult.Added || insertResult == AddBlockResult.AlreadyKnown)
+            {
+                return true;
+            }
+
             return false;
         }
 

@@ -25,12 +25,14 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public class BlockCacheService : IBlockCacheService
 {
+    public ConcurrentDictionary<Keccak, Block> BlockCache { get; } = new();
+    
     private readonly ConcurrentDictionary<Keccak, BlockHeader> _blockHeadersCache = new();
     private readonly ConcurrentQueue<BlockHeader> _blockHeadersQueue = new();
 
     public bool IsEmpty => _blockHeadersQueue.IsEmpty;
-    public BlockHeader? ProcessDestination { get; private set; }
-    public Keccak? SyncingHead { get; private set; }
+    public Keccak? ProcessDestination { get; set; }
+    public Keccak? SyncingHead { get; set; }
 
     public bool Contains(Keccak blockHash)
     {
@@ -49,7 +51,6 @@ public class BlockCacheService : IBlockCacheService
         {
             return false;
         }
-        ProcessDestination = blockHeader;
         _blockHeadersQueue.Enqueue(blockHeader);
         return _blockHeadersCache.TryAdd(blockHeader.Hash, blockHeader);
     }

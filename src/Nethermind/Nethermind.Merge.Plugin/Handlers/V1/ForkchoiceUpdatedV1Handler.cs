@@ -83,43 +83,41 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             PayloadAttributes? payloadAttributes)
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
-            if (!synced)
+            if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
             {
-                BlockHeader? blockHeader = _blockCacheService.GetBlockHeader(forkchoiceState.HeadBlockHash);
-                if (blockHeader is not null)
+                _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
+            Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
+            if (newHeadBlock == null)
+            {
+                if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     if (!_beaconPivot.BeaconPivotExists())
                     {
-                        _beaconPivot.EnsurePivot(blockHeader);
+                        _beaconPivot.EnsurePivot(block.Header);   
                     }
 
+                    _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
 
-                blockHeader = _blockTree.FindHeader(forkchoiceState.HeadBlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (blockHeader != null)
-                {
-                    if (_blockTree.WasProcessed(blockHeader.Number, blockHeader.Hash))
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Beacon pivot reset. Block {blockHeader} was processed");
-                        _beaconPivot.ResetPivot();
-                        synced = true;
-                    }
-                    else
-                    {
-                        if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
-                        return ForkchoiceUpdatedV1Result.Syncing;
-                    }
-                }
-            }
-            
-            Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
-            if (newHeadBlock == null)
-            {
-                if (_logger.IsInfo) { _logger.Info($"Syncing... (HeadBlockHash not found). Request: {requestStr}"); }
-
                 return ForkchoiceUpdatedV1Result.Syncing;
+                return ForkchoiceUpdatedV1Result.Error($"Unknown forkchoiceState head hash {forkchoiceState.HeadBlockHash}", ErrorCodes.InvalidParams);
+            }
+
+            if (_beaconPivot.BeaconPivotExists())
+            {
+                if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.Hash))
+                {
+                    _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                    if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
+                    return ForkchoiceUpdatedV1Result.Syncing;
+                }
+
+                if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
             }
 
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =

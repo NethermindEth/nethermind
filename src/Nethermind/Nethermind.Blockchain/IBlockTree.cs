@@ -47,6 +47,8 @@ namespace Nethermind.Blockchain
         /// Best block that has been suggested for processing
         /// </summary>
         Block BestSuggestedBody { get; }
+        
+        BlockHeader? BestSuggestedBeaconHeader { get; }
 
         /// <summary>
         /// Lowest header added in reverse fast sync insert
