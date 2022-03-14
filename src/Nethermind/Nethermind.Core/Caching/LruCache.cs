@@ -177,5 +177,10 @@ namespace Nethermind.Core.Caching
             int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
             return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);
         }
+
+        public long Size()
+        {
+            return _cacheMap.Count;
+        }
     }
 }
