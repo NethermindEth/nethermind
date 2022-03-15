@@ -59,7 +59,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
         //Any test pool and entry point addresses should work for testing.
         private Address _testPoolAddress = Address.Zero;
-        private Address _entryPointAddress = Address.Zero;
+        private Address _entryPointAddress = new("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
         
         [SetUp]
         public void Setup()
@@ -155,7 +155,30 @@ namespace Nethermind.AccountAbstraction.Test
         public void NewPendingUserOperationsSubscription_creating_result()
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newPendingUserOperations");
-            var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void NewPendingUserOperationsSubscription_creating_result_with_custom_entryPoints()
+        {
+            string serialized = RpcTest.TestSerializedRequest(
+                _subscribeRpcModule,
+                "eth_subscribe",
+                "newPendingUserOperations",
+                "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + Address.Zero + "\"]}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void NewPendingUserOperationsSubscription_creating_result_with_wrong_entryPoints()
+        {
+            string serialized = RpcTest.TestSerializedRequest(
+                _subscribeRpcModule,
+                "eth_subscribe",
+                "newPendingUserOperations", "{\"entryPoints\":[\"" + "whatever" + "\"]}");
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
             expectedResult.Should().Be(serialized);
         }
 
@@ -178,6 +201,29 @@ namespace Nethermind.AccountAbstraction.Test
         {
             string serialized = RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newReceivedUserOperations");
             var expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void NewReceivedUserOperationsSubscription_creating_result_with_custom_entryPoints()
+        {
+            string serialized = RpcTest.TestSerializedRequest(
+                _subscribeRpcModule,
+                "eth_subscribe",
+                "newReceivedUserOperations",
+                "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + Address.Zero + "\"]}");
+            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44,34), "\",\"id\":67}");
+            expectedResult.Should().Be(serialized);
+        }
+        
+        [Test]
+        public void NewReceivedUserOperationsSubscription_creating_result_with_wrong_entryPoints()
+        {
+            string serialized = RpcTest.TestSerializedRequest(
+                _subscribeRpcModule,
+                "eth_subscribe",
+                "newPendingUserOperations", "{\"entryPoints\":[\"" + "whatever" + "\"]}");
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
             expectedResult.Should().Be(serialized);
         }
 
