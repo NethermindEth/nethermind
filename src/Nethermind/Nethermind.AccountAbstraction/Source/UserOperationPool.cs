@@ -30,7 +30,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -102,6 +101,8 @@ namespace Nethermind.AccountAbstraction.Source
 
             ProcessNewBlocks();
         }
+
+        public Address EntryPoint() => _entryPointAddress;
 
         private void OnBlockAdded(object? sender, BlockReplacementEventArgs e)
         {
@@ -182,6 +183,10 @@ namespace Nethermind.AccountAbstraction.Source
         {
             Metrics.UserOperationsReceived++;
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
+
+            UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
+            NewReceived?.Invoke(this, userOperationEventArgs);
+            
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
             {
@@ -191,7 +196,9 @@ namespace Nethermind.AccountAbstraction.Source
                     Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
-                    _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));
+                    _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));                    
+                    NewPending?.Invoke(this, userOperationEventArgs);
+                    
                     return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, _chainId));
                 }
 
@@ -342,5 +349,9 @@ namespace Nethermind.AccountAbstraction.Source
             _blockTree.BlockAddedToMain -= OnBlockAdded;
             _headBlocksChannel.Writer.Complete();
         }
+
+        public event EventHandler<UserOperationEventArgs>? NewReceived;
+        public event EventHandler<UserOperationEventArgs>? NewPending;
+
     }
 }

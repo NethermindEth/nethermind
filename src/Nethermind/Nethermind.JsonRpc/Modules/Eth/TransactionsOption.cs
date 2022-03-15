@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,13 +13,32 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc.Modules.Eth;
+
+public class TransactionsOption : IJsonRpcParam
 {
-    public interface IJsonRpcParam
+    public bool IncludeTransactions { get; set; }
+        
+    public void FromJson(JsonSerializer serializer, string jsonValue)
     {
-        void FromJson(JsonSerializer serializer, string jsonValue);
+        JObject jObject = serializer.Deserialize<JObject>(jsonValue.ToJsonTextReader());
+        IncludeTransactions = GetIncludeTransactions(jObject["includeTransactions"]);
+    }
+    
+    private static bool GetIncludeTransactions(JToken? token)
+    {
+        switch (token)
+        {
+            case null:
+                return false;
+            default:
+                return token.ToObject<bool>();
+        }
     }
 }

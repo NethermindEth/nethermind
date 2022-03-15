@@ -353,7 +353,7 @@ namespace Nethermind.Runner.Test
         {
             Test<IInitConfig, bool>(configWildcard, c => c.DiscoveryEnabled, true);
             Test<IInitConfig, bool>(configWildcard, c => c.ProcessingEnabled, true);
-            Test<IInitConfig, bool>(configWildcard, c => c.WebSocketsEnabled, false);
+            Test<IInitConfig, bool>(configWildcard, c => c.WebSocketsEnabled, true);
             Test<IInitConfig, bool>(configWildcard, c => c.PeerManagerEnabled, true);
             Test<IInitConfig, bool>(configWildcard, c => c.KeepDevWalletInMemory, false);
 

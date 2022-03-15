@@ -28,19 +28,19 @@ namespace Nethermind.JsonRpc.Modules
 {
     public class RpcModuleProvider : IRpcModuleProvider
     {
-        private ILogger _logger;
-        private IJsonRpcConfig _jsonRpcConfig;
+        private readonly ILogger _logger;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
         
-        private List<string> _modules = new();
-        private List<string> _enabledModules = new();
+        private readonly List<string> _modules = new();
+        private readonly List<string> _enabledModules = new();
 
-        private Dictionary<string, ResolvedMethodInfo> _methods
+        private readonly Dictionary<string, ResolvedMethodInfo> _methods
             = new(StringComparer.InvariantCulture);
         
         private readonly Dictionary<string, (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule)> _pools
             = new();
         
-        private IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
+        private readonly IRpcMethodFilter _filter = NullRpcMethodFilter.Instance;
 
         public RpcModuleProvider(IFileSystem fileSystem, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
@@ -53,6 +53,8 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
+        public JsonSerializer Serializer { get; } = new();
+        
         public IReadOnlyCollection<JsonConverter> Converters { get; } = new List<JsonConverter>();
 
         public IReadOnlyCollection<string> Enabled => _enabledModules;

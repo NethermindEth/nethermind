@@ -51,12 +51,12 @@ namespace Nethermind.AccountAbstraction.Source
         // private readonly IUserOperationSimulator _userOperationSimulator;
 
         private readonly IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders;
-        private readonly IDictionary<Address, UserOperationPool> _userOperationPools;
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools;
         private readonly IDictionary<Address, UserOperationSimulator> _userOperationSimulators;
 
         public UserOperationTxSource(
             IDictionary<Address, UserOperationTxBuilder> userOperationTxBuilders,
-            IDictionary<Address, UserOperationPool> userOperationPools,
+            IDictionary<Address, IUserOperationPool> userOperationPools,
             IDictionary<Address, UserOperationSimulator> userOperationSimulators,
             ISpecProvider specProvider,
             IStateProvider stateProvider,

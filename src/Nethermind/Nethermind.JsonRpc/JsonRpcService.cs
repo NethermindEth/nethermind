@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc
         {
             _logger = logManager.GetClassLogger();
             _rpcModuleProvider = rpcModuleProvider;
-            _serializer = new JsonSerializer();
+            _serializer = rpcModuleProvider.Serializer;
 
             List<JsonConverter> converterList = new();
             foreach (JsonConverter converter in rpcModuleProvider.Converters)
@@ -182,9 +182,12 @@ namespace Nethermind.JsonRpc
             }
             catch (TargetParameterCountException e)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id,
-                    returnAction);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, e.Message, e.Data, request.Id, returnAction);
             }
+            catch (TargetInvocationException e) when (e.InnerException is JsonException)
+            {
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, request.Id, returnAction);
+            }            
             catch (Exception e) when (e.InnerException is OperationCanceledException)
             {
                 string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
@@ -192,8 +195,7 @@ namespace Nethermind.JsonRpc
             }
             catch (Exception e) when (e.InnerException is InsufficientBalanceException)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, null, request.Id,
-                    returnAction);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, null, request.Id, returnAction);
             }
             finally
             {
@@ -250,7 +252,7 @@ namespace Nethermind.JsonRpc
                     if (typeof(IJsonRpcParam).IsAssignableFrom(paramType))
                     {
                         IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
-                        jsonRpcParam!.FromJson(providedParameter);
+                        jsonRpcParam!.FromJson(_serializer, providedParameter);
                         executionParam = jsonRpcParam;
                     }
                     else if (paramType == typeof(string))

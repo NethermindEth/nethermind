@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using System.Net.WebSockets;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using Nethermind.Abi;
@@ -25,9 +26,13 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Mev;
 using Nethermind.AccountAbstraction.Bundler;
+using Nethermind.AccountAbstraction.Subscribe;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
+using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.JsonRpc.WebSockets;
+
 
 namespace Nethermind.AccountAbstraction
 {
@@ -40,7 +45,7 @@ namespace Nethermind.AccountAbstraction
 
         private INethermindApi _nethermindApi = null!;
         private IList<Address> _entryPointContractAddresses = new List<Address>();
-        private IDictionary<Address, UserOperationPool> _userOperationPools = new Dictionary<Address, UserOperationPool>(); // EntryPoint Address -> Pool
+        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>(); // EntryPoint Address -> Pool
         private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
         private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
         private UserOperationTxSource? _userOperationTxSource;
@@ -73,9 +78,9 @@ namespace Nethermind.AccountAbstraction
             return _userOperationTxBuilders[entryPoint];
         }
         
-        private UserOperationPool UserOperationPool(Address entryPoint)
+        private IUserOperationPool UserOperationPool(Address entryPoint)
         {
-            if (_userOperationPools.TryGetValue(entryPoint, out UserOperationPool? userOperationPool))
+            if (_userOperationPools.TryGetValue(entryPoint, out IUserOperationPool? userOperationPool))
             {
                 return userOperationPool;
             }
@@ -231,7 +236,7 @@ namespace Nethermind.AccountAbstraction
             {
                 if (_nethermindApi is null) throw new ArgumentNullException(nameof(_nethermindApi));
                 
-                // init all relevant objects if not already initted
+                // init all relevant objects if not already initialized
                 foreach(Address entryPoint in _entryPointContractAddresses)
                 {
                     UserOperationPool(entryPoint);
@@ -275,7 +280,7 @@ namespace Nethermind.AccountAbstraction
             {
                 (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
                 
-                // init all relevant objects if not already initted
+                // init all relevant objects if not already initialized
                 foreach(Address entryPoint in _entryPointContractAddresses)
                 {
                     UserOperationPool(entryPoint);
@@ -287,9 +292,29 @@ namespace Nethermind.AccountAbstraction
                 rpcConfig.EnableModules(ModuleType.AccountAbstraction);
                 
                 AccountAbstractionModuleFactory accountAbstractionModuleFactory = new(_userOperationPools, _entryPointContractAddresses.ToArray());
-
+                ILogManager logManager = _nethermindApi.LogManager ??
+                                         throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
                 getFromApi.RpcModuleProvider!.RegisterBoundedByCpuCount(accountAbstractionModuleFactory, rpcConfig.Timeout);
-
+                
+                ISubscriptionFactory subscriptionFactory = _nethermindApi.SubscriptionFactory;
+                //Register custom UserOperation websocket subscription types in the SubscriptionFactory.
+                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
+                    "newPendingUserOperations",
+                    (jsonRpcDuplexClient, param) => new NewPendingUserOpsSubscription(
+                        jsonRpcDuplexClient,
+                        _userOperationPools,
+                        logManager,
+                        param)
+                );
+                subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
+                    "newReceivedUserOperations",
+                    (jsonRpcDuplexClient, param) => new NewReceivedUserOpsSubscription(
+                        jsonRpcDuplexClient,
+                        _userOperationPools,
+                        logManager,
+                        param)
+                );
+                
                 if (BundleMiningEnabled && MevPluginEnabled)
                 {
                     if (_logger!.IsInfo) _logger.Info("Both AA and MEV Plugins enabled, sending user operations to mev bundle pool instead");

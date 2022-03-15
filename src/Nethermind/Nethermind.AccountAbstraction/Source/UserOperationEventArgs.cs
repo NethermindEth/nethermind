@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,12 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Newtonsoft.Json;
+using System;
+using Nethermind.AccountAbstraction.Data;
+using Nethermind.Core;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.AccountAbstraction.Source
 {
-    public interface IJsonRpcParam
+    public class UserOperationEventArgs : EventArgs
     {
-        void FromJson(JsonSerializer serializer, string jsonValue);
+        public Address EntryPoint { get; }
+        public UserOperation UserOperation { get; }
+
+        public UserOperationEventArgs(UserOperation userOperation, Address entryPoint)
+        {
+            EntryPoint = entryPoint;
+            UserOperation = userOperation;
+        }
     }
 }

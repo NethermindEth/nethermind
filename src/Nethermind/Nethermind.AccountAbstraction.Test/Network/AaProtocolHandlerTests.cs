@@ -43,7 +43,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
     {
         private ISession? _session;
         private IMessageSerializationService? _svc;
-        private IDictionary<Address, UserOperationPool>? _userOperationPools;
+        private IDictionary<Address, IUserOperationPool>? _userOperationPools;
         private AaProtocolHandler? _handler;
 
         [SetUp]
@@ -57,7 +57,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
-            _userOperationPools = new Dictionary<Address, UserOperationPool>();
+            _userOperationPools = new Dictionary<Address, IUserOperationPool>();
             UserOperationBroadcaster _broadcaster = new UserOperationBroadcaster(NullLogger.Instance);
             AccountAbstractionPeerManager _peerManager = new AccountAbstractionPeerManager(_userOperationPools, _broadcaster, NullLogger.Instance);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
@@ -70,7 +70,10 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 _peerManager,
                 LimboLogs.Instance);
             _handler.Init();
-            //AccountAbstractionRpcModule aaRpcModule = new(_userOperationPool);
+            
+            AccountAbstractionRpcModule aaRpcModule = new(_userOperationPools, new Address[] {});
+            
+
         }
 
         [TearDown]

@@ -75,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Test
         
         public class TestAccountAbstractionRpcBlockchain : TestRpcBlockchain
         {
-            public IDictionary<Address, UserOperationPool> UserOperationPool { get; private set; } = new Dictionary<Address, UserOperationPool>();
+            public IDictionary<Address, IUserOperationPool> UserOperationPool { get; private set; } = new Dictionary<Address, IUserOperationPool>();
             public IDictionary<Address, UserOperationSimulator> UserOperationSimulator { get; private set; } = new Dictionary<Address, UserOperationSimulator>();
             public AbiDefinition EntryPointContractAbi { get; private set; } = null!;
             public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = new Dictionary<Address, UserOperationTxBuilder>();
