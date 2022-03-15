@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test
 {
     [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
     [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
-    // [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.Self)]
     public class InvalidOpcodeTests : VirtualMachineTestsBase
     {
         public InvalidOpcodeTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
