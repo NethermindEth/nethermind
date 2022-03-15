@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -73,6 +74,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
             
+            JsonSerializer jsonSerializer = new();
+            jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
+            
             SubscriptionFactory subscriptionFactory = new(
                 _logManager,
                 _blockTree,
@@ -81,7 +85,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _filterStore,
                 new EthSyncingInfo(_blockTree),
                 _specProvider,
-                new JsonSerializer());
+                jsonSerializer);
             
             _subscriptionManager = new SubscriptionManager(
                 subscriptionFactory,

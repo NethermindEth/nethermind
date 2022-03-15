@@ -33,6 +33,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
@@ -73,6 +74,9 @@ namespace Nethermind.AccountAbstraction.Test
             _filterStore = new FilterStore();
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
+
+            JsonSerializer jsonSerializer = new();
+            jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
             
             SubscriptionFactory subscriptionFactory = new(
                 _logManager,
@@ -82,7 +86,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _filterStore,
                 new EthSyncingInfo(_blockTree),
                 _specProvider,
-                new JsonSerializer());
+                jsonSerializer);
             
             subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
                 "newPendingUserOperations",
