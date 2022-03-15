@@ -130,6 +130,8 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 if (_api.BlockProcessingQueue is null)
                     throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_api.SyncProgressResolver is null)
+                    throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
@@ -154,6 +156,8 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _beaconPivot,
                         _blockCacheService,
+                        _api.SyncProgressResolver,
+                        _api.BlockProcessingQueue,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
@@ -199,7 +203,7 @@ namespace Nethermind.Merge.Plugin
                     Always.Valid, _api.LogManager);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
                     _api.SpecProvider, _api.LogManager);
-                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _api.SyncProgressResolver, _blockCacheService,  _api.BlockValidator, _api.BlockchainProcessor);
+                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.SyncProgressResolver, _blockCacheService,  _api.BlockValidator, _api.BlockchainProcessor);
                 
                 _api.SyncModeSelector = new MultiSyncModeSelector(_api.SyncProgressResolver, _api.SyncPeerPool,
                     _syncConfig,

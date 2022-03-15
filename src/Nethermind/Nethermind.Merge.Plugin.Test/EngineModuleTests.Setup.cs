@@ -62,12 +62,11 @@ namespace Nethermind.Merge.Plugin.Test
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             IBeaconPivot beaconPivot = new BeaconPivot(new SyncConfig(),  chain.MergeConfig, new MemDb(), chain.BlockTree, chain.LogManager);
             BlockCacheService blockCacheService = new();
-            BeaconSync beaconSync = new(beaconPivot, chain.BlockTree, syncProgressResolver, blockCacheService, chain.BlockValidator, chain.BlockchainProcessor);
-
-
+            BeaconSync beaconSync = new(beaconPivot, chain.BlockTree, new SyncConfig(), syncProgressResolver, blockCacheService, chain.BlockValidator, chain.BlockchainProcessor);
+            
             return new EngineRpcModule(
                 new GetPayloadV1Handler(chain.PayloadPreparationService!, chain.LogManager),
-                new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.PoSSwitcher, beaconSync, beaconPivot, blockCacheService, chain.LogManager),
+                new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.PoSSwitcher, beaconSync, beaconPivot, blockCacheService, syncProgressResolver, chain.BlockProcessingQueue, chain.LogManager),
                 new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, chain.PayloadPreparationService!, blockCacheService, beaconSync, beaconPivot, chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
