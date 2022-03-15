@@ -27,7 +27,7 @@ namespace Nethermind.Evm.Test
     [TestFixture(false, VirtualMachineTestsStateProvider.MerkleTrie)]
     [TestFixture(true, VirtualMachineTestsStateProvider.VerkleTrie)]
     [TestFixture(false, VirtualMachineTestsStateProvider.VerkleTrie)]
-    // [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.Self)]
     public class SimdTests : VirtualMachineTestsBase
     {
         public SimdTests(bool simdDisabled, VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
