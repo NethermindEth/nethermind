@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test
     [TestFixture(true, VirtualMachineTestsStateProvider.VerkleTrie)]
     [TestFixture(false, VirtualMachineTestsStateProvider.MerkleTrie)]
     [TestFixture(false, VirtualMachineTestsStateProvider.VerkleTrie)]
-    // [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.Self)]
     public class CmpTests : VirtualMachineTestsBase
     {
         private readonly bool _simdDisabled;

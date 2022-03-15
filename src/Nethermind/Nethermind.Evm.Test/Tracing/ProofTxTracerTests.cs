@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test.Tracing
     [TestFixture(false, VirtualMachineTestsStateProvider.VerkleTrie)]
     [TestFixture(false, VirtualMachineTestsStateProvider.MerkleTrie)]
     [TestFixture(true, VirtualMachineTestsStateProvider.VerkleTrie)]
-    // [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.Self)]
     public class ProofTxTracerTests : VirtualMachineTestsBase
     {
         private readonly bool _treatSystemAccountDifferently;
