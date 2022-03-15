@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
     [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
-    // [Parallelizable(ParallelScope.Self)]
+    [Parallelizable(ParallelScope.Self)]
     public class GethLikeTxTracerTests : VirtualMachineTestsBase
     {
         [Test]
