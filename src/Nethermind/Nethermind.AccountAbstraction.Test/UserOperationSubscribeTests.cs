@@ -181,9 +181,10 @@ namespace Nethermind.AccountAbstraction.Test
             string serialized = RpcTest.TestSerializedRequest(
                 _subscribeRpcModule,
                 "eth_subscribe",
-                "newPendingUserOperations", "{\"entryPoints\":[\"" + "whatever" + "\"]}");
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
-            expectedResult.Should().Be(serialized);
+                "newPendingUserOperations", "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + "0x123" + "\"]}");
+
+            string beginningOfExpectedResult = "{\"jsonrpc\":\"2.0\",\"error\":";
+            beginningOfExpectedResult.Should().Be(serialized.Substring(0,beginningOfExpectedResult.Length));
         }
 
         [Test]
@@ -226,9 +227,9 @@ namespace Nethermind.AccountAbstraction.Test
             string serialized = RpcTest.TestSerializedRequest(
                 _subscribeRpcModule,
                 "eth_subscribe",
-                "newPendingUserOperations", "{\"entryPoints\":[\"" + "whatever" + "\"]}");
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params\"},\"id\":67}";
-            expectedResult.Should().Be(serialized);
+                "newPendingUserOperations", "{\"entryPoints\":[\"" + _entryPointAddress + "\", \"" + "0x123" + "\"]}");
+            string beginningOfExpectedResult = "{\"jsonrpc\":\"2.0\",\"error\":";
+            beginningOfExpectedResult.Should().Be(serialized.Substring(0,beginningOfExpectedResult.Length));
         }
 
         [Test]
