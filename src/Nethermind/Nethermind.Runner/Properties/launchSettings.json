@@ -174,7 +174,7 @@
       "commandName": "Project",
       "commandLineArgs": "--config xdai_themerge.cfg  --Init.DiagnosticMode MemDb"
     },
-    "Kinstugi": {
+    "Kiln": {
       "commandName": "Project",
       "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Merge.FeeRecipient 0x0000000000000000000000000000000000000000"
     },
