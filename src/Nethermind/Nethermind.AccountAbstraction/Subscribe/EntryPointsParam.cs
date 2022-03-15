@@ -25,13 +25,13 @@ namespace Nethermind.AccountAbstraction.Subscribe;
 
 public class EntryPointsParam : IJsonRpcParam
 {
-    public IEnumerable<Address> EntryPoints { get; set; } = null!;
+    public Address[] EntryPoints { get; set; } = null!;
     
     public void FromJson(JsonSerializer serializer, string jsonValue)
     {
-        EntryPoints = Address.TryParse(jsonValue, out Address? address) 
-            ? new[] { address! } 
-            : serializer.Deserialize<Address[]>(jsonValue.ToJsonTextReader()) 
-              ?? throw new ArgumentException($"Invalid entry points {jsonValue}");
+        EntryPointsParam ep = serializer.Deserialize<EntryPointsParam>(jsonValue.ToJsonTextReader())
+                              ?? throw new ArgumentException($"Invalid 'entryPoints' filter: {jsonValue}");
+        EntryPoints = ep.EntryPoints;
+
     }
 }
