@@ -179,7 +179,7 @@ public class VerkleTree
         cursor = cursor.Slice(20);
         // copy the tree index to the remaining 32 bytes
         treeIndex.ToBigEndian(cursor);
-        return Sha2.Compute(keyPrefix);
+        return Keccak.Compute(keyPrefix).Bytes;
     }
     
     public byte[] GetTreeKeyPrefixAccount(Address address)
