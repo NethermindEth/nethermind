@@ -116,9 +116,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidBlockHash;
             }
             
-            if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+            if (_beaconPivot.BeaconPivotExists())
             {
-                if (_blockTree.IsKnownBlock(block.Number, block.Hash))
+                if (_blockCacheService.BlockCache.ContainsKey(block.Hash))
                 {
                     return NewPayloadV1Result.Syncing;
                 }
@@ -136,7 +136,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     while (current != null)
                     {
                         stack.Push(current);
-                        if (current.Hash == _blockCacheService.SyncingHead)
+                        if (current.Hash == _beaconPivot.PivotHash)
                         {
                             break;
                         }
@@ -155,17 +155,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         if (child.Hash == _beaconPivot.PivotHash)
                         {
                             // header will be inserted with beacon headers sync
-                            _blockTree.Insert(block);
+                            _blockTree.Insert(child);
                         }
                         else
                         {
-                            _blockTree.Insert(block, true, insertOptions);
+                            _blockTree.Insert(child, true, insertOptions);
                         }
                     }   
                 }
 
                 _blockCacheService.ProcessDestination = block.Hash;
-                return NewPayloadV1Result.Syncing;
+                if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+                {
+                    return NewPayloadV1Result.Syncing;
+                }
             }
 
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
@@ -180,14 +183,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (parentHeader.TotalDifficulty == 0)
                 {
-                    _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
+                    parentHeader.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
                 }
                 
                 block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
                 if (_beaconSyncStrategy.FastSyncEnabled)
                 {
                     bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash);
-                    if (parentProcessed)
+                    if (!parentProcessed)
                     {
                         long state = _syncProgressResolver.FindBestFullState();
                         if (state > 0)
@@ -206,11 +209,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                                         BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                                     parent = _blockTree.FindHeader(current.ParentHash);
                                     current.Header.TotalDifficulty = parent.TotalDifficulty + current.Difficulty;
+                                    if (_blockTree.WasProcessed(current.Number, current.Hash))
+                                    {
+                                        break;
+                                    }
                                 }
 
                                 while (stack.TryPop(out Block child))
                                 {
-                                    _blockTree.SuggestBlock(child);
+                                    _blockProcessingQueue.Enqueue(child, ProcessingOptions.None);
                                 }
                             }
                         }
@@ -231,7 +238,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         return NewPayloadV1Result.Syncing;
                     } 
                 }
-
+                
                 _blockCacheService.BlockCache.Clear();
             }
 

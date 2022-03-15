@@ -142,7 +142,7 @@ namespace Nethermind.Blockchain
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 
-        void BackFillTotalDifficulty(long startNumber, long endNumber, UInt256? startingTotalDifficulty = null);
+        UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, UInt256? startingTotalDifficulty = null);
             
         ChainLevelInfo? FindLevel(long number);
 
