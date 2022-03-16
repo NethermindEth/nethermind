@@ -499,8 +499,9 @@ namespace Nethermind.Blockchain
             Rlp newRlp = _headerDecoder.Encode(header);
             _headerDb.Set(header.Hash, newRlp.Bytes);
             
+            bool isOnMainChain =  (options & BlockTreeInsertOptions.NotOnMainChain) == 0;
             BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-            ChainLevelInfo chainLevel = new(true, blockInfo);
+            ChainLevelInfo chainLevel = new(isOnMainChain, blockInfo);
             _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
 
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
@@ -1597,7 +1598,7 @@ namespace Nethermind.Blockchain
             return _chainLevelInfoRepository.LoadLevel(number);
         }
 
-        public void BackFillTotalDifficulty(long startNumber, long endNumber, UInt256? startingTotalDifficulty = null)
+        public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, UInt256? startingTotalDifficulty = null)
         {
             long batchSize = 3000;
             long currentNum = Math.Min(endNumber, startNumber + batchSize);
@@ -1608,7 +1609,7 @@ namespace Nethermind.Blockchain
                 ?? FindBlock(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header
                 ?? throw new InvalidOperationException($"An orphaned block on the chain {current}");
             
-            void BatchSetTotalDifficulty(BlockHeader current)
+            UInt256? BatchSetTotalDifficulty(BlockHeader current)
             {
                 Stack<ValueTuple<BlockHeader, ChainLevelInfo, BlockInfo>> stack = new();
                 
@@ -1651,8 +1652,12 @@ namespace Nethermind.Blockchain
                     _chainLevelInfoRepository.PersistLevel(item.child.Number, item.level, batch);
                     current = item.child;
                 }
+
+                return current.TotalDifficulty;
             }
 
+            UInt256? lastTotalDifficulty = new();
+            
             while (currentNum <= endNumber)
             {
                 ChainLevelInfo? levelForBatch = _chainLevelInfoRepository.LoadLevel(currentNum);
@@ -1668,7 +1673,7 @@ namespace Nethermind.Blockchain
                                                       BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header;
                             if (header != null)
                             {
-                                BatchSetTotalDifficulty(header);
+                                lastTotalDifficulty = BatchSetTotalDifficulty(header);
                             }
                         }
                     }   
@@ -1680,6 +1685,8 @@ namespace Nethermind.Blockchain
                 }
                 currentNum = Math.Min(endNumber, currentNum + batchSize);
             }
+
+            return lastTotalDifficulty;
         }
 
         public Keccak? HeadHash => Head?.Hash;

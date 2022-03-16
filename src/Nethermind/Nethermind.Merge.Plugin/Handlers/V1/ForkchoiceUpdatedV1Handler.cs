@@ -105,7 +105,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
 
                 return ForkchoiceUpdatedV1Result.Syncing;
-                return ForkchoiceUpdatedV1Result.Error($"Unknown forkchoiceState head hash {forkchoiceState.HeadBlockHash}", ErrorCodes.InvalidParams);
+                // return ForkchoiceUpdatedV1Result.Error($"Unknown forkchoiceState head hash {forkchoiceState.HeadBlockHash}", ErrorCodes.InvalidParams);
             }
 
             if (_beaconPivot.BeaconPivotExists())
@@ -117,6 +117,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
 
+                if (newHeadBlock.Header.TotalDifficulty == 0)
+                {
+                    newHeadBlock.Header.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, newHeadBlock.Number);
+                }
+                
                 if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
             }
 
@@ -158,7 +163,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}");
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
-
+            // TODO: beaconsyn is this needed?
             if (_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock!.Hash!) == false)
             {
                 return ForkchoiceUpdatedV1Result.Syncing;

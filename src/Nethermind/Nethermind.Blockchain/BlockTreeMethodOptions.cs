@@ -36,7 +36,8 @@ public enum BlockTreeInsertOptions
 {
     None = 0,
     TotalDifficultyNotNeeded = 1,
-    SkipUpdateBestPointers = 2
+    SkipUpdateBestPointers = 2,
+    NotOnMainChain = 3,
 }
 
 [Flags]

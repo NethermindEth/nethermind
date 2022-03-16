@@ -116,15 +116,16 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidBlockHash;
             }
             
-            if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+            if (_beaconPivot.BeaconPivotExists())
             {
-                if (_blockTree.IsKnownBlock(block.Number, block.Hash))
+                if (_blockCacheService.BlockCache.ContainsKey(block.Hash))
                 {
                     return NewPayloadV1Result.Syncing;
                 }
 
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.SkipUpdateBestPointers |
-                                                       BlockTreeInsertOptions.TotalDifficultyNotNeeded;
+                                                       BlockTreeInsertOptions.TotalDifficultyNotNeeded |
+                                                       BlockTreeInsertOptions.NotOnMainChain;
                 if (block.ParentHash == _blockCacheService.ProcessDestination)
                 {
                     _blockTree.Insert(block, true, insertOptions);
@@ -136,7 +137,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     while (current != null)
                     {
                         stack.Push(current);
-                        if (current.Hash == _blockCacheService.SyncingHead)
+                        if (current.Hash == _beaconPivot.PivotHash)
                         {
                             break;
                         }
@@ -155,17 +156,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         if (child.Hash == _beaconPivot.PivotHash)
                         {
                             // header will be inserted with beacon headers sync
-                            _blockTree.Insert(block);
+                            _blockTree.Insert(child);
                         }
                         else
                         {
-                            _blockTree.Insert(block, true, insertOptions);
+                            _blockTree.Insert(child, true, insertOptions);
                         }
                     }   
                 }
 
                 _blockCacheService.ProcessDestination = block.Hash;
-                return NewPayloadV1Result.Syncing;
+                if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+                {
+                    return NewPayloadV1Result.Syncing;
+                }
             }
 
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
@@ -180,14 +184,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (parentHeader.TotalDifficulty == 0)
                 {
-                    _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
+                    parentHeader.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
                 }
-                
+                // TODO: beaconsync add TDD and validation checks
                 block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
-                if (_beaconSyncStrategy.FastSyncEnabled)
+                block.Header.IsPostMerge = true;
+                 if (_beaconSyncStrategy.FastSyncEnabled)
                 {
                     bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash);
-                    if (parentProcessed)
+                    if (!parentProcessed)
                     {
                         long state = _syncProgressResolver.FindBestFullState();
                         if (state > 0)
@@ -197,20 +202,29 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                             {
                                 Stack<Block> stack = new();
                                 Block? current = block;
+                                // re-insert block as header is encoded with TD 0
+                                _blockTree.Insert(block);
                                 BlockHeader parent = parentHeader;
 
                                 while (current.Number > state)
                                 {
+                                    if (_blockTree.WasProcessed(current.Number, current.Hash))
+                                    {
+                                        break;
+                                    }
+                                    
                                     stack.Push(current);
                                     current = _blockTree.FindBlock(parent.Hash,
                                         BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                                     parent = _blockTree.FindHeader(current.ParentHash);
                                     current.Header.TotalDifficulty = parent.TotalDifficulty + current.Difficulty;
+                                    // re-insert block as header is originally encoded with TD 0
+                                    _blockTree.Insert(current);
                                 }
 
                                 while (stack.TryPop(out Block child))
                                 {
-                                    _blockTree.SuggestBlock(child);
+                                    _blockProcessingQueue.Enqueue(child, ProcessingOptions.None);
                                 }
                             }
                         }
@@ -231,7 +245,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         return NewPayloadV1Result.Syncing;
                     } 
                 }
-
+                
                 _blockCacheService.BlockCache.Clear();
             }
 
@@ -302,7 +316,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
 
                 processedBlock = _blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None);
-                if (processedBlock != null)
+                if (processedBlock != null && _blockTree.WasProcessed(processedBlock.Number, processedBlock.Hash))
                 {
                     return (ValidationResult.Valid | ValidationResult.AlreadyKnown, validationMessage);
                 }
@@ -312,29 +326,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _latestBlocks.Set(block.Hash!, validAndProcessed);
                 return (validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid, validationMessage);
             }
-        }
-
-        private bool ValidateAndInsert(Block block, bool saveHeader = true)
-        {
-            block.Header.IsPostMerge = true;
-            if (_blockValidator.ValidateSuggestedBlock(block) == false)
-            {
-                if (_logger.IsWarn)
-                {
-                    _logger.Warn(
-                        $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
-                }
-
-                return false;
-            }
-
-            AddBlockResult insertResult = _blockTree.Insert(block, saveHeader);
-            if (insertResult == AddBlockResult.Added || insertResult == AddBlockResult.AlreadyKnown)
-            {
-                return true;
-            }
-
-            return false;
         }
 
         private bool ValidateAndProcess(Block block, BlockHeader parent, out Block? processedBlock)
