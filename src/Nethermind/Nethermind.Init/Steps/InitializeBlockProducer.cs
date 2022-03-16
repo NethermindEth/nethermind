@@ -42,9 +42,6 @@ namespace Nethermind.Init.Steps
             if (miningConfig.Enabled)
             {
                 _api.BlockProducer = await BuildProducer();
-                
-                if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
-                if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
             }
         }
 
