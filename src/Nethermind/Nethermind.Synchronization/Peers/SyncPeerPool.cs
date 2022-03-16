@@ -576,7 +576,7 @@ namespace Nethermind.Synchronization.Peers
                             if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer} from {syncPeer.HeadNumber} to {header.Number}");
 
                             BlockHeader? parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
-                            if (parent != null)
+                            if (parent != null && parent.TotalDifficulty != 0)
                             {
                                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
                                 if (newTotalDifficulty >= syncPeer.TotalDifficulty)

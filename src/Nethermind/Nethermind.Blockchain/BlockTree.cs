@@ -499,8 +499,9 @@ namespace Nethermind.Blockchain
             Rlp newRlp = _headerDecoder.Encode(header);
             _headerDb.Set(header.Hash, newRlp.Bytes);
             
+            bool isOnMainChain =  (options & BlockTreeInsertOptions.NotOnMainChain) == 0;
             BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-            ChainLevelInfo chainLevel = new(true, blockInfo);
+            ChainLevelInfo chainLevel = new(isOnMainChain, blockInfo);
             _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
 
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))

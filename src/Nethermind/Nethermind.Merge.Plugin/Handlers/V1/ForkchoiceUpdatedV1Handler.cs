@@ -119,7 +119,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 if (newHeadBlock.Header.TotalDifficulty == 0)
                 {
-                    _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, newHeadBlock.Number);
+                    newHeadBlock.Header.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, newHeadBlock.Number);
                 }
                 
                 if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
@@ -163,7 +163,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}");
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
-
+            // TODO: beaconsyn is this needed?
             if (_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock!.Hash!) == false)
             {
                 return ForkchoiceUpdatedV1Result.Syncing;
