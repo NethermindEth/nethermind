@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,13 +13,19 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Newtonsoft.Json;
+using Nethermind.AccountAbstraction.Broadcaster;
+using Nethermind.AccountAbstraction.Network;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.AccountAbstraction.Source
 {
-    public interface IJsonRpcParam
+    public interface IUserOperationBroadcaster
     {
-        void FromJson(JsonSerializer serializer, string jsonValue);
+        void BroadcastOnce(UserOperationWithEntryPoint op);
+        void BroadcastOnce(IUserOperationPoolPeer peer, UserOperationWithEntryPoint[] ops);
+        bool AddPeer(IUserOperationPoolPeer peer);
+        bool RemovePeer(PublicKey nodeId);
     }
 }

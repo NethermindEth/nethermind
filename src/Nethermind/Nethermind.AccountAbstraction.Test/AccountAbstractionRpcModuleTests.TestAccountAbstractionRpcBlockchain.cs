@@ -75,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Test
         
         public class TestAccountAbstractionRpcBlockchain : TestRpcBlockchain
         {
-            public IDictionary<Address, UserOperationPool> UserOperationPool { get; private set; } = new Dictionary<Address, UserOperationPool>();
+            public IDictionary<Address, IUserOperationPool> UserOperationPool { get; private set; } = new Dictionary<Address, IUserOperationPool>();
             public IDictionary<Address, UserOperationSimulator> UserOperationSimulator { get; private set; } = new Dictionary<Address, UserOperationSimulator>();
             public AbiDefinition EntryPointContractAbi { get; private set; } = null!;
             public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = new Dictionary<Address, UserOperationTxBuilder>();
@@ -204,6 +204,8 @@ namespace Nethermind.AccountAbstraction.Test
                         Timestamper,
                         LogManager);
                 }
+
+                IUserOperationBroadcaster broadcaster = new UserOperationBroadcaster(LogManager.GetClassLogger());
                 
                 foreach(Address entryPoint in entryPointContractAddresses){
                     UserOperationPool[entryPoint] = new UserOperationPool(
@@ -222,6 +224,7 @@ namespace Nethermind.AccountAbstraction.Test
                             new CompareUserOperationsByDecreasingGasPrice(), 
                             LogManager, 
                             _accountAbstractionConfig.MaximumUserOperationPerSender),
+                        broadcaster,
                         SpecProvider.ChainId);
                 }
                 

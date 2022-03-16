@@ -35,7 +35,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
 
-        public LogsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IReceiptStorage? receiptStorage, IFilterStore? store, IBlockTree? blockTree, ILogManager? logManager, Filter? filter = null) 
+        public LogsSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            IReceiptStorage? receiptStorage, 
+            IFilterStore? store, 
+            IBlockTree? blockTree, 
+            ILogManager? logManager, 
+            Filter? filter = null) 
             : base(jsonRpcDuplexClient)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
@@ -87,11 +93,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ScheduleAction(() => TryPublishEvent(blockHeader, getReceipts(), eventName));
         }
 
-        protected override string GetErrorMsg()
-        {
-            return $"Logs subscription {Id} failed.";
-        }
-        
         private void TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName)
         {
             BlockHeader fromBlock = _blockTree.FindHeader(_filter.FromBlock);
@@ -147,12 +148,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
-        public override SubscriptionType Type => SubscriptionType.Logs;
+        public override string Type => SubscriptionType.Logs;
         public override void Dispose()
         {
-            base.Dispose();
             _receiptStorage.ReceiptsInserted -= OnReceiptsInserted;
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
+            base.Dispose();
             if(_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will no longer track ReceiptsInserted.");
         }
     }

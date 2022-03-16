@@ -23,7 +23,7 @@ namespace Nethermind.Logging;
 
 public class TestErrorLogManager : ILogManager
 {
-    private readonly ConcurrentBag<Error> _errors = new();
+    private readonly ConcurrentQueue<Error> _errors = new();
         
     public IReadOnlyCollection<Error> Errors => _errors;
 
@@ -37,9 +37,9 @@ public class TestErrorLogManager : ILogManager
 
     public class TestErrorLogger : ILogger
     {
-        private readonly ConcurrentBag<Error> _errors;
+        private readonly ConcurrentQueue<Error> _errors;
 
-        public TestErrorLogger(ConcurrentBag<Error> errors)
+        public TestErrorLogger(ConcurrentQueue<Error> errors)
         {
             _errors = errors;
         }
@@ -50,7 +50,7 @@ public class TestErrorLogManager : ILogManager
         public void Trace(string text) { }
         public void Error(string text, Exception ex = null)
         {
-            _errors.Add(new Error() { Text = text, Exception = ex });
+            _errors.Enqueue(new Error() { Text = text, Exception = ex });
         }
         public bool IsInfo => false;
         public bool IsWarn => false;

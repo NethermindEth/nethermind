@@ -32,7 +32,7 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class AccountAbstractionPeerManagerTests
     {
-        private IDictionary<Address, UserOperationPool> _userOperationPools = new Dictionary<Address, UserOperationPool>();
+        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
         private IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
         private IBlockTree _blockTree = Substitute.For<IBlockTree>();
         private ILogger _logger = Substitute.For<ILogger>();
@@ -128,6 +128,7 @@ namespace Nethermind.AccountAbstraction.Test
             _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 
             IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
+            IUserOperationBroadcaster userOperationBroadcaster = Substitute.For<IUserOperationBroadcaster>();
             
             return new UserOperationPool(
                 config,
@@ -141,6 +142,7 @@ namespace Nethermind.AccountAbstraction.Test
                 Substitute.For<ITimestamper>(), 
                 _simulator, 
                 userOperationSortedPool,
+                userOperationBroadcaster,
                 1);
         }
         

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
@@ -30,7 +31,10 @@ namespace Nethermind.AccountAbstraction.Source
         ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation);
         bool RemoveUserOperation(Keccak? userOperationHash);
         IEnumerable<UserOperation> GetUserOperations();
+        Address EntryPoint();
         bool IncludesUserOperationWithSenderAndNonce(Address sender, UInt256 nonce);
         bool CanInsert(UserOperation userOperation);
+        event EventHandler<UserOperationEventArgs> NewReceived;
+        event EventHandler<UserOperationEventArgs> NewPending;
     }
 }

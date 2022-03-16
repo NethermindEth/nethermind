@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,13 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using System;
+using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.JsonRpc;
 using Newtonsoft.Json;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.AccountAbstraction.Subscribe;
+
+public class EntryPointsParam : IJsonRpcParam
 {
-    public interface IJsonRpcParam
+    public Address[] EntryPoints { get; set; } = null!;
+    
+    public void FromJson(JsonSerializer serializer, string jsonValue)
     {
-        void FromJson(JsonSerializer serializer, string jsonValue);
+        EntryPointsParam ep = serializer.Deserialize<EntryPointsParam>(jsonValue.ToJsonTextReader())
+                              ?? throw new ArgumentException($"Invalid 'entryPoints' filter: {jsonValue}");
+        EntryPoints = ep.EntryPoints;
+
     }
 }

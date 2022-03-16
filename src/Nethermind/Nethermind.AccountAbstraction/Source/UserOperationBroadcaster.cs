@@ -29,7 +29,7 @@ namespace Nethermind.AccountAbstraction.Source
     /// <summary>
     /// This class responsibility is to notify other peers about interesting user operations.
     /// </summary>
-    public class UserOperationBroadcaster
+    public class UserOperationBroadcaster : IUserOperationBroadcaster
     {
         /// <summary>
         /// Connected peers that can be notified about user operations.
