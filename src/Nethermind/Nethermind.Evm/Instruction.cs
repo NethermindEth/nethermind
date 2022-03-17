@@ -183,7 +183,7 @@ namespace Nethermind.Evm
     {
         public static string? GetName(this Instruction instruction, bool isPostMerge = false)
         {
-            return (isPostMerge && instruction == Instruction.PREVRANDAO)
+            return (instruction == Instruction.PREVRANDAO && !isPostMerge)
                 ? "DIFFICULTY"
                 : System.Enum.GetName(typeof(Instruction), instruction);
         }
