@@ -70,7 +70,7 @@ namespace Nethermind.Evm.Tracing
 
         void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null);
 
-        void StartOperation(int depth, long gas, Instruction opcode, int pc);
+        void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false);
 
         void ReportOperationError(EvmExceptionType error);
 

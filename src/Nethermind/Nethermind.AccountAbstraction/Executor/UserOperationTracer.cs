@@ -128,7 +128,7 @@ namespace Nethermind.AccountAbstraction.Executor
     {
         private static readonly Instruction[] _bannedOpcodes =
         {
-            Instruction.GASPRICE, Instruction.GASLIMIT, Instruction.DIFFICULTY, Instruction.TIMESTAMP,
+            Instruction.GASPRICE, Instruction.GASLIMIT, Instruction.PREVRANDAO, Instruction.TIMESTAMP,
             Instruction.BASEFEE, Instruction.BLOCKHASH, Instruction.NUMBER, Instruction.SELFBALANCE,
             Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE
         };
@@ -230,7 +230,7 @@ namespace Nethermind.AccountAbstraction.Executor
             throw new NotImplementedException();
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             // spec: These opcodes are forbidden because their outputs may differ between simulation and execution,
             // so simulation of calls using these opcodes does not reliably tell what would happen if these calls are later done on-chain.
