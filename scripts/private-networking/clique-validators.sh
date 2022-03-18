@@ -20,7 +20,7 @@ mkdir genesis
 
 echo "Downloading goerli chainspec from Nethermind GitHub repository"
 # Download chainspec file with clique engine and place it in genesis folder (we will be using goerli chainspec in this example)
-wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/09389fc28b37605acc5eaed764d3e973969fe319/src/Nethermind/Chains/goerli.json
+wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/master/src/Nethermind/Chains/goerli.json
 cp goerli.json genesis/goerli.json
 
 for i in $(seq 1 $validators); do mkdir node_$i/configs node_$i/staticNodes; done
@@ -171,7 +171,7 @@ EOF
 function writeDockerComposeService() {
 cat <<EOF >> docker-compose.yml
     node_$1:
-        image: nethermind/nethermind:1.10.14
+        image: nethermind/nethermind:latest
         container_name: node_$1
         command: --config config
         volumes:
