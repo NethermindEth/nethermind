@@ -106,8 +106,8 @@ namespace Nethermind.Evm.Tracing
             return txReceipt;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc) =>
-            _currentTxTracer.StartOperation(depth, gas, opcode, pc);
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) =>
+            _currentTxTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
 
         public void ReportOperationError(EvmExceptionType error) =>
             _currentTxTracer.ReportOperationError(error);

@@ -61,12 +61,12 @@ namespace Nethermind.Evm.Tracing.GethStyle
             _trace.ReturnValue = output ?? Array.Empty<byte>();
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge)
         {
             GethTxTraceEntry previousTraceEntry = _traceEntry;
             _traceEntry = new GethTxTraceEntry();
             _traceEntry.Pc = pc;
-            _traceEntry.Operation = Enum.GetName(typeof(Instruction), opcode);
+            _traceEntry.Operation = opcode.GetName(isPostMerge);
             _traceEntry.Gas = gas;
             _traceEntry.Depth = depth;
             _trace.Entries.Add(_traceEntry);

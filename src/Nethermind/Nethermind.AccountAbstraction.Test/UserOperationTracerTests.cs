@@ -72,7 +72,7 @@ namespace Nethermind.AccountAbstraction.Test
         
         [TestCase(Instruction.GASPRICE, false)]
         [TestCase(Instruction.GASLIMIT, false)]
-        [TestCase(Instruction.DIFFICULTY, false)]
+        [TestCase(Instruction.PREVRANDAO, false)]
         [TestCase(Instruction.TIMESTAMP, false)]
         [TestCase(Instruction.BASEFEE, false)]
         [TestCase(Instruction.BLOCKHASH, false)]
@@ -86,7 +86,7 @@ namespace Nethermind.AccountAbstraction.Test
         [TestCase(Instruction.AND, true)]
         public void Should_fail_if_banned_opcode_is_used_when_call_depth_is_more_than_one(Instruction instruction, bool success)
         {
-            //GASPRICE, GASLIMIT, DIFFICULTY, TIMESTAMP, BASEFEE, BLOCKHASH, NUMBER, BALANCE, ORIGIN
+            //GASPRICE, GASLIMIT, PREVRANDAO, TIMESTAMP, BASEFEE, BLOCKHASH, NUMBER, BALANCE, ORIGIN
             byte[] deployedCode = Prepare.EvmCode
                 .PushData("0x01")
                 .PushData("0x69")
