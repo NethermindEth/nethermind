@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
@@ -31,110 +32,6 @@ using Nethermind.State;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
-    public class UserOperationBlockTracer : IBlockTracer
-    {
-        private readonly AbiDefinition _abi;
-        private readonly AbiEncoder _abiEncoder = new();
-        private readonly Address _create2FactoryAddress;
-        private readonly Address _entryPointAddress;
-        private readonly long _gasLimit;
-        private readonly ILogger _logger;
-        private readonly IStateProvider _stateProvider;
-        private readonly IUserOperationTxBuilder _userOperationTxBuilder;
-        private readonly UserOperation _userOperation;
-        private readonly Address[] _whitelistedPaymasters;
-
-        private UserOperationTxTracer? _tracer;
-
-        public UserOperationBlockTracer(
-            long gasLimit, 
-            UserOperation userOperation, 
-            Address[] whitelistedPaymasters,
-            IStateProvider stateProvider,
-            IUserOperationTxBuilder userOperationTxBuilder,
-            AbiDefinition abi, 
-            Address create2FactoryAddress, 
-            Address entryPointAddress, 
-            ILogger logger)
-        {
-            _gasLimit = gasLimit;
-            _userOperation = userOperation;
-            _whitelistedPaymasters = whitelistedPaymasters;
-            _stateProvider = stateProvider;
-            _userOperationTxBuilder = userOperationTxBuilder;
-            _abi = abi;
-            _create2FactoryAddress = create2FactoryAddress;
-            _entryPointAddress = entryPointAddress;
-            _logger = logger;
-
-            Output = Array.Empty<byte>();
-            AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
-        }
-
-        public bool Success { get; private set; } = true;
-        public long GasUsed { get; private set; }
-        public byte[] Output { get; private set; }
-        public FailedOp? FailedOp { get; private set; }
-        public string? Error { get; private set; }
-
-        public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; private set; }
-        public bool IsTracingRewards => true;
-
-        public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
-        {
-        }
-
-        public void StartNewBlockTrace(Block block)
-        {
-        }
-
-        public ITxTracer StartNewTxTrace(Transaction? tx)
-        {
-            Console.WriteLine("1");
-            _stateProvider.RecalculateStateRoot();
-            Console.WriteLine(_stateProvider.StateRoot);
-            
-            bool paymasterWhitelisted = _whitelistedPaymasters.Contains(_userOperation.Paymaster);
-            return tx is null
-                ? new UserOperationTxTracer(null, paymasterWhitelisted, true, _stateProvider, _userOperation.Sender, _userOperation.Paymaster, _entryPointAddress, _logger)
-                : _tracer = new UserOperationTxTracer(tx, paymasterWhitelisted, true, _stateProvider, _userOperation.Sender,
-                    _userOperation.Paymaster, _entryPointAddress, _logger);
-        }
-
-        public void EndTxTrace()
-        {
-            if (_tracer is null) throw new ArgumentNullException(nameof(_tracer));
-
-            Output = _tracer.Output;
-            Error = _tracer.Error;
-
-            FailedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(Output);
-
-            if (!_tracer!.Success)
-            {
-                Success = false;
-                return;
-            }
-
-            GasUsed += _tracer!.GasSpent;
-
-            if (GasUsed > _gasLimit)
-            {
-                Success = false;
-                return;
-            }
-
-            AccessedStorage = _tracer.AccessedStorage;
-            
-            _stateProvider.RecalculateStateRoot();
-            Console.WriteLine(_stateProvider.StateRoot);
-        }
-
-        public void EndBlockTrace()
-        {
-        }
-    }
-
     public class UserOperationTxTracer : ITxTracer
     {
         private static readonly Instruction[] _bannedOpcodes =
@@ -150,15 +47,16 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly Address _sender;
 
         private readonly bool _paymasterWhitelisted;
-        private readonly bool _storeAccessedAddresses;
+        private readonly bool _hasInitCode;
         private readonly IStateProvider _stateProvider;
 
         private bool _paymasterValidationMode;
+        private int numberOfCreate2Calls = 0;
         
         public UserOperationTxTracer(
             Transaction? transaction,
             bool paymasterWhitelisted,
-            bool storeAccessedAddresses, // at the end of the first simulation we should record accessed accounts, at the start of second simulation we should make sure they stay the same
+            bool hasInitCode,
             IStateProvider stateProvider,
             Address sender,
             Address paymaster,
@@ -168,8 +66,9 @@ namespace Nethermind.AccountAbstraction.Executor
             Transaction = transaction;
             Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
+            AccessedAddresses = ImmutableHashSet<Address>.Empty;
             _paymasterWhitelisted = paymasterWhitelisted;
-            _storeAccessedAddresses = storeAccessedAddresses;
+            _hasInitCode = hasInitCode;
             _stateProvider = stateProvider;
             _sender = sender;
             _paymaster = paymaster;
@@ -180,11 +79,11 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public Transaction? Transaction { get; }
         public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; }
+        public IReadOnlySet<Address> AccessedAddresses { get; private set; }
         public bool Success { get; private set; }
         public string? Error { get; private set; }
         public long GasSpent { get; set; }
         public byte[] Output { get; private set; }
-
 
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => true;
@@ -197,7 +96,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public bool IsTracingState => true;
         public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
-        public bool IsTracingAccess => false;
+        public bool IsTracingAccess => true;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
             Keccak? stateRoot = null)
@@ -256,6 +155,27 @@ namespace Nethermind.AccountAbstraction.Executor
             else if (depth == 1 && opcode == Instruction.NUMBER)
             { 
                 _paymasterValidationMode = true;
+            }
+            else if (opcode == Instruction.CREATE2)
+            {
+                numberOfCreate2Calls++;
+                
+                if (_hasInitCode)
+                {
+                    if (numberOfCreate2Calls > 1)
+                    {
+                        Success = false;
+                        Error = $"simulation failed: op with non-empty initCode called CREATE2 more than once";
+                    }
+                }
+                else
+                {
+                    if (numberOfCreate2Calls > 0)
+                    {
+                        Success = false;
+                        Error = $"simulation failed: op with empty initCode called CREATE2";
+                    }
+                }
             }
         }
 
@@ -338,27 +258,6 @@ namespace Nethermind.AccountAbstraction.Executor
             ExecutionType callType,
             bool isPrecompileCall = false)
         {
-            if (to is null) 
-            {
-                return;
-            }
-            
-            // the paymaster can never even access any contract which either selfdestruct or delegatecall
-            if (!_paymasterValidationMode)
-            {
-                return;
-            }
-            
-            if (_paymasterWhitelisted)
-            {
-                return;
-            }
-            
-            if (ContainsSelfDestructOrDelegateCall(to))
-            {
-                Success = false;
-                Error ??= "simulation error: non-whitelisted paymaster accessed contract which includes SELFDESTRUCT or DELEGATECALL";
-            }
         }
 
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
@@ -371,11 +270,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
-            // the paymaster can never even access any contract which either selfdestruct or delegatecall
-            if (_paymasterValidationMode && !_paymasterWhitelisted)
-            {
-                if (ContainsSelfDestructOrDelegateCall(deploymentAddress)) Success = false;
-            }
         }
 
         public void ReportBlockHash(Keccak blockHash)
@@ -405,7 +299,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses,
             IReadOnlySet<StorageCell> accessedStorageCells)
         {
-            throw new NotImplementedException();
+            AccessedAddresses = accessedAddresses;
         }
         
         private void AddToAccessedStorage(Address address, UInt256 index)
@@ -417,29 +311,6 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             AccessedStorage.Add(address, new HashSet<UInt256> {index});
-        }
-
-        private bool ContainsSelfDestructOrDelegateCall(Address address)
-        {
-            // simple static analysis
-            byte[] code = _stateProvider.GetCode(address);
-
-            int i = 0;
-            while (i < code.Length)
-            {
-                byte currentInstruction = code[i];
-
-                if (currentInstruction == (byte)Instruction.SELFDESTRUCT
-                    || currentInstruction == (byte)Instruction.DELEGATECALL)
-                    return true;
-
-                // push opcodes
-                if (currentInstruction >= 0x60 && currentInstruction <= 0x7f) i += currentInstruction - 0x5f;
-
-                i++;
-            }
-
-            return false;
         }
     }
 }

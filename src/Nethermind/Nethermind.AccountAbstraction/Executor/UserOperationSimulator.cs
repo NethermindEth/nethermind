@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -97,6 +99,21 @@ namespace Nethermind.AccountAbstraction.Executor
             UInt256? timestamp = null,
             CancellationToken cancellationToken = default)
         {
+            if (userOperation.AlreadySimulated)
+            {
+                // codehash of all accessed addresses should not change between calls
+                foreach (KeyValuePair<Address, Keccak> kv in userOperation.AddressesToCodeHashes)
+                {
+                    (Address address, Keccak expectedCodeHash) = kv;
+                    Keccak codeHash = _stateProvider.GetCodeHash(address);
+                    if (codeHash != expectedCodeHash)
+                    {
+                        return ResultWrapper<Keccak>.Fail($"codehash of address {address} changed since initial simulation");
+                    }
+                }
+            }
+            
+            
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
@@ -105,8 +122,13 @@ namespace Nethermind.AccountAbstraction.Executor
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
             Transaction simulateValidationTransaction =
                 BuildSimulateValidationTransaction(userOperation, parent, currentSpec);
-            (bool validationSuccess, UserOperationAccessList validationAccessList, string? error) =
-                SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
+            
+            (
+                    bool validationSuccess, 
+                    UserOperationAccessList validationAccessList, 
+                    IDictionary<Address, Keccak> addressesToCodeHashes, 
+                    string? error
+            ) = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
             if (!validationSuccess)
                 return ResultWrapper<Keccak>.Fail(error ?? "unknown simulation failure");
@@ -120,35 +142,51 @@ namespace Nethermind.AccountAbstraction.Executor
             else
             {
                 userOperation.AccessList = validationAccessList;
+                userOperation.AddressesToCodeHashes = addressesToCodeHashes;
                 userOperation.AlreadySimulated = true;
             }
 
             return ResultWrapper<Keccak>.Success(userOperation.Hash);
         }
 
-        private (bool success, UserOperationAccessList accessList, string? error) SimulateValidation(
+        private (bool success, UserOperationAccessList accessList, IDictionary<Address, Keccak> addressesToCodeHashes, string? error) SimulateValidation(
             Transaction transaction, UserOperation userOperation, BlockHeader parent,
             ITransactionProcessor transactionProcessor)
         {
-            UserOperationBlockTracer blockTracer = CreateBlockTracer(parent, userOperation);
-            ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
+            bool paymasterWhitelisted = _whitelistedPaymasters.Contains(userOperation.Paymaster);
+            UserOperationTxTracer txTracer = new(
+                transaction,
+                paymasterWhitelisted,
+                userOperation.InitCode != Bytes.Empty,
+                _stateProvider, userOperation.Sender,
+                userOperation.Paymaster,
+                _entryPointContractAddress,
+                _logManager.GetClassLogger()
+            );
             transactionProcessor.Execute(transaction, parent, txTracer);
-            blockTracer.EndTxTrace();
+            
+            FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(txTracer.Output);
 
             string? error = null;
 
-            if (!blockTracer.Success)
+            if (!txTracer.Success)
             {
-                if (blockTracer.FailedOp is not null)
-                    error = blockTracer.FailedOp.ToString()!;
+                if (failedOp is not null)
+                    error = failedOp.ToString()!;
                 else
-                    error = blockTracer.Error;
-                return (false, UserOperationAccessList.Empty, error);
+                    error = txTracer.Error;
+                return (false, UserOperationAccessList.Empty, ImmutableDictionary<Address, Keccak>.Empty, error);
             }
 
-            UserOperationAccessList userOperationAccessList = new(blockTracer.AccessedStorage);
+            UserOperationAccessList userOperationAccessList = new(txTracer.AccessedStorage);
+            
+            IDictionary<Address, Keccak> addressesToCodeHashes = new Dictionary<Address, Keccak>();
+            foreach (Address accessedAddress in txTracer.AccessedAddresses)
+            {
+                addressesToCodeHashes[accessedAddress] = _stateProvider.GetCodeHash(accessedAddress);
+            }
 
-            return (true, userOperationAccessList, error);
+            return (true, userOperationAccessList, addressesToCodeHashes, error);
         }
 
         private Transaction BuildSimulateValidationTransaction(
@@ -175,12 +213,6 @@ namespace Nethermind.AccountAbstraction.Executor
             return transaction;
         }
 
-        private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent, UserOperation userOperation)
-        {
-            return new(parent.GasLimit, userOperation, _whitelistedPaymasters, _stateProvider, _userOperationTxBuilder, _entryPointContractAbi, _create2FactoryAddress,
-                _entryPointContractAddress, _logManager.GetClassLogger());
-        }
-        
         [Todo("Refactor once BlockchainBridge is separated")]
         public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {

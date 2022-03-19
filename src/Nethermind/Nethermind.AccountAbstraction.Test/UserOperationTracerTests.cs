@@ -37,41 +37,6 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class UserOperationTracerTests : VirtualMachineTestsBase
     {
-        
-        [TestCase(Instruction.SELFDESTRUCT, 0, true)]
-        [TestCase(Instruction.DELEGATECALL, 0, true)]
-        [TestCase(Instruction.ADD, 0, true)]        
-        [TestCase(Instruction.SELFDESTRUCT, 1, false)]
-        [TestCase(Instruction.DELEGATECALL, 1, false)]
-        [TestCase(Instruction.ADD, 1, true)]
-        public void Bans_selfdestruct_and_delegatecall_only_when_paymaster_mode_is_active(Instruction instruction, int numberOpcodeCalls, bool success)
-        {
-            byte[] deployedCode = Prepare.EvmCode
-                .PushData("0x01")
-                .PushData("0x02")
-                .PushData("0x03")
-                .PushData("0x04")
-                .PushData("0x05")
-                .PushData("0x69")
-                .Op(instruction)
-                .Done;
-
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak deployedCodeHash = TestState.UpdateCode(deployedCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, deployedCodeHash, Spec);
-
-            byte[] code = Prepare.EvmCode
-                //.Op(Instruction.NUMBER)
-                .Op(numberOpcodeCalls > 0 ? Instruction.NUMBER : Instruction.SELFBALANCE)
-                .Call(TestItem.AddressC, 50000)
-                .Op(Instruction.STOP)
-                .Done;
-
-            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
-            
-            tracer.Success.Should().Be(success);
-        }
-        
         [TestCase(Instruction.GASPRICE, false)]
         [TestCase(Instruction.GASLIMIT, false)]
         [TestCase(Instruction.DIFFICULTY, false)]
@@ -170,12 +135,12 @@ namespace Nethermind.AccountAbstraction.Test
         [TestCase(false, false, true, false)]
         [TestCase(false, true, true, false)]
         [TestCase(true, false, true, false)]
-        [TestCase(true, true, true, true)]
+        [TestCase(true, true, true, false)]
         [TestCase(false, false, false, true)]
         [TestCase(false, true, false, true)]
         [TestCase(true, false, false, true)]
         [TestCase(true, true, false, true)]
-        public void Should_make_sure_external_contract_extcodehashes_stays_same_after_simulation(bool paymasterValidation, bool whitelisted, bool selfdestruct, bool shouldSucceed)
+        public void Should_make_sure_external_contract_extcodehashes_stays_same_after_simulation(bool paymasterValidation, bool whitelisted, bool selfdestruct, bool shouldMatch)
         {
             Address externalContractAddress = TestItem.GetRandomAddress();
             Address paymasterContractAddress = TestItem.GetRandomAddress();
@@ -191,8 +156,6 @@ namespace Nethermind.AccountAbstraction.Test
             TestState.UpdateCodeHash(externalContractAddress, externalContractDeployedCodeHash, Spec);
             
             byte[] paymasterCode = Prepare.EvmCode
-                .PushData("0x01")
-                .PushData("0x69")
                 .Call(externalContractAddress, 70000)
                 .Done;
             
@@ -208,10 +171,14 @@ namespace Nethermind.AccountAbstraction.Test
             
             Keccak initialCodeHash = TestState.GetCodeHash(externalContractAddress);
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
-            TestState.GetCodeHash(externalContractAddress).Should().Be(initialCodeHash);
-
-
-            //tracer.Success.Should().Be(shouldSucceed);
+            if (shouldMatch)
+            {
+                TestState.GetCodeHash(externalContractAddress).Should().Be(initialCodeHash);
+            }
+            else
+            {
+                TestState.GetCodeHash(externalContractAddress).Should().NotBe(initialCodeHash);
+            }
         }
 
         private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, byte[] code, bool paymasterWhitelisted = false, bool firstSimulation = true)

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -42,6 +44,7 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
+            AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty;
             Hash = CalculateHash();
         }
 
@@ -87,6 +90,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] Signature { get; set; }
         public byte[] PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
+        public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
         public bool AlreadySimulated { get; set; }
     }
 }
