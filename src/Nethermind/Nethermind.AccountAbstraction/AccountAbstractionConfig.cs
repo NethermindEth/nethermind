@@ -27,6 +27,7 @@ namespace Nethermind.AccountAbstraction
         public string EntryPointContractAddresses {get; set;} = "";
         public string Create2FactoryAddress { get; set; } = "";
         public UInt256 MinimumGasPrice { get; set; } = 1;
+        public string WhitelistedPaymasters { get; set; } = "";
         public string FlashbotsEndpoint { get; set; } = "https://relay.flashbots.net/";
     }
 }

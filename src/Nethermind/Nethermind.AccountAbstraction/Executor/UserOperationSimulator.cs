@@ -50,6 +50,7 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly AbiDefinition _entryPointContractAbi;
         private readonly ILogManager _logManager;
         private readonly Address _entryPointContractAddress;
+        private readonly Address[] _whitelistedPaymasters;
         private readonly ISpecProvider _specProvider;
         private readonly IUserOperationTxBuilder _userOperationTxBuilder;
         private readonly IStateProvider _stateProvider;
@@ -66,6 +67,7 @@ namespace Nethermind.AccountAbstraction.Executor
             AbiDefinition entryPointContractAbi,
             Address create2FactoryAddress,
             Address entryPointContractAddress,
+            Address[] whitelistedPaymasters,
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IDbProvider dbProvider,
@@ -79,6 +81,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _entryPointContractAbi = entryPointContractAbi;
             _create2FactoryAddress = create2FactoryAddress;
             _entryPointContractAddress = entryPointContractAddress;
+            _whitelistedPaymasters = whitelistedPaymasters;
             _specProvider = specProvider;
             _blockTree = blockTree;
             _dbProvider = dbProvider.AsReadOnly(false);
@@ -129,7 +132,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             UserOperationBlockTracer blockTracer = CreateBlockTracer(parent, userOperation);
             ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
-            transactionProcessor.CallAndRestore(transaction, parent, txTracer);
+            transactionProcessor.Execute(transaction, parent, txTracer);
             blockTracer.EndTxTrace();
 
             string? error = null;
@@ -174,7 +177,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private UserOperationBlockTracer CreateBlockTracer(BlockHeader parent, UserOperation userOperation)
         {
-            return new(parent.GasLimit, userOperation, _stateProvider, _userOperationTxBuilder, _entryPointContractAbi, _create2FactoryAddress,
+            return new(parent.GasLimit, userOperation, _whitelistedPaymasters, _stateProvider, _userOperationTxBuilder, _entryPointContractAbi, _create2FactoryAddress,
                 _entryPointContractAddress, _logManager.GetClassLogger());
         }
         

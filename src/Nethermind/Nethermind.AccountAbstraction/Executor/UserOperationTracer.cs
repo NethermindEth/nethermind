@@ -22,6 +22,7 @@ using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -41,12 +42,14 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly IStateProvider _stateProvider;
         private readonly IUserOperationTxBuilder _userOperationTxBuilder;
         private readonly UserOperation _userOperation;
+        private readonly Address[] _whitelistedPaymasters;
 
         private UserOperationTxTracer? _tracer;
 
         public UserOperationBlockTracer(
             long gasLimit, 
             UserOperation userOperation, 
+            Address[] whitelistedPaymasters,
             IStateProvider stateProvider,
             IUserOperationTxBuilder userOperationTxBuilder,
             AbiDefinition abi, 
@@ -56,6 +59,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             _gasLimit = gasLimit;
             _userOperation = userOperation;
+            _whitelistedPaymasters = whitelistedPaymasters;
             _stateProvider = stateProvider;
             _userOperationTxBuilder = userOperationTxBuilder;
             _abi = abi;
@@ -86,11 +90,15 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public ITxTracer StartNewTxTrace(Transaction? tx)
         {
+            Console.WriteLine("1");
+            _stateProvider.RecalculateStateRoot();
+            Console.WriteLine(_stateProvider.StateRoot);
+            
+            bool paymasterWhitelisted = _whitelistedPaymasters.Contains(_userOperation.Paymaster);
             return tx is null
-                ? new UserOperationTxTracer(null, _stateProvider, _userOperation.Sender, _userOperation.Paymaster,
-                    _create2FactoryAddress, _entryPointAddress, _logger)
-                : _tracer = new UserOperationTxTracer(tx, _stateProvider, _userOperation.Sender,
-                    _userOperation.Paymaster, _create2FactoryAddress, _entryPointAddress, _logger);
+                ? new UserOperationTxTracer(null, paymasterWhitelisted, true, _stateProvider, _userOperation.Sender, _userOperation.Paymaster, _entryPointAddress, _logger)
+                : _tracer = new UserOperationTxTracer(tx, paymasterWhitelisted, true, _stateProvider, _userOperation.Sender,
+                    _userOperation.Paymaster, _entryPointAddress, _logger);
         }
 
         public void EndTxTrace()
@@ -117,6 +125,9 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             AccessedStorage = _tracer.AccessedStorage;
+            
+            _stateProvider.RecalculateStateRoot();
+            Console.WriteLine(_stateProvider.StateRoot);
         }
 
         public void EndBlockTrace()
@@ -133,38 +144,38 @@ namespace Nethermind.AccountAbstraction.Executor
             Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE, Instruction.GAS
         };
 
-        private readonly Address _create2FactoryAddress;
         private readonly Address _entryPointAddress;
         private readonly ILogger _logger;
         private readonly Address _paymaster;
         private readonly Address _sender;
 
+        private readonly bool _paymasterWhitelisted;
+        private readonly bool _storeAccessedAddresses;
         private readonly IStateProvider _stateProvider;
 
         private bool _paymasterValidationMode;
-        private Address[] _excludedAddresses;
         
         public UserOperationTxTracer(
             Transaction? transaction,
+            bool paymasterWhitelisted,
+            bool storeAccessedAddresses, // at the end of the first simulation we should record accessed accounts, at the start of second simulation we should make sure they stay the same
             IStateProvider stateProvider,
             Address sender,
             Address paymaster,
-            Address create2FactoryAddress,
             Address entryPointAddress,
             ILogger logger)
         {
             Transaction = transaction;
             Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
+            _paymasterWhitelisted = paymasterWhitelisted;
+            _storeAccessedAddresses = storeAccessedAddresses;
             _stateProvider = stateProvider;
             _sender = sender;
             _paymaster = paymaster;
-            _create2FactoryAddress = create2FactoryAddress;
             _entryPointAddress = entryPointAddress;
             _logger = logger;
             Output = Array.Empty<byte>();
-
-            _excludedAddresses = new[] {_create2FactoryAddress, Address.Zero, _entryPointAddress, _paymaster, _sender};
         }
 
         public Transaction? Transaction { get; }
@@ -177,16 +188,16 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public bool IsTracingReceipt => true;
         public bool IsTracingActions => true;
-        public bool IsTracingOpLevelStorage => false;
+        public bool IsTracingOpLevelStorage => true;
         public bool IsTracingMemory => false;
         public bool IsTracingInstructions => true;
         public bool IsTracingRefunds => false;
         public bool IsTracingCode => false;
         public bool IsTracingStack => false;
         public bool IsTracingState => true;
-        public bool IsTracingStorage => true;
+        public bool IsTracingStorage => false;
         public bool IsTracingBlockHash => false;
-        public bool IsTracingAccess => true;
+        public bool IsTracingAccess => false;
 
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
             Keccak? stateRoot = null)
@@ -238,9 +249,9 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 _logger.Info($"AA: Encountered banned opcode {opcode} during simulation at depth {depth} pc {pc}");
                 Success = false;
-                Error ??= $"simulation: encountered banned opcode {opcode} at depth {depth} pc {pc}";
+                Error ??= $"simulation failed: encountered banned opcode {opcode} at depth {depth} pc {pc}";
             }
-            // in the simulateWallet function of the entryPoint, selfbalance is called twice
+            // in the simulateWallet function of the entryPoint, NUMBER is called once
             // signalling that validation is switching from the wallet to the paymaster
             else if (depth == 1 && opcode == Instruction.NUMBER)
             { 
@@ -286,7 +297,36 @@ namespace Nethermind.AccountAbstraction.Executor
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue,
             ReadOnlySpan<byte> currentValue)
         {
-            throw new NotImplementedException();
+            HandleStorageAccess(address, storageIndex);
+        }
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+            HandleStorageAccess(address, storageIndex);
+        }
+
+        private void HandleStorageAccess(Address address, UInt256 storageIndex)
+        {
+            AddToAccessedStorage(address, storageIndex);
+            
+            if (address == _entryPointAddress) return;
+            // spec: The call does not access mutable state of any contract except the wallet/paymaster itself
+            if (!_paymasterValidationMode)
+            {
+                if (address != _sender)
+                {
+                    Success = false;
+                    Error ??= $"simulation failed: accessed external storage at address {address} storage key {storageIndex.ToHexString(false)} during wallet validation";
+                }
+            }
+            else
+            {
+                if (address != _paymaster && !_paymasterWhitelisted)
+                {
+                    Success = false;
+                    Error ??= $"simulation failed: accessed external storage at address {address} storage key {storageIndex.ToHexString(false)} during paymaster validation";
+                }
+            }
         }
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
@@ -298,13 +338,26 @@ namespace Nethermind.AccountAbstraction.Executor
             ExecutionType callType,
             bool isPrecompileCall = false)
         {
-            // the paymaster can never even access any contract which either selfdestruct or delegatecall
-            if (_paymasterValidationMode)
+            if (to is null) 
             {
-                if (to is not null)
-                {
-                    if (ContainsSelfDestructOrDelegateCall(to)) Success = false;
-                }
+                return;
+            }
+            
+            // the paymaster can never even access any contract which either selfdestruct or delegatecall
+            if (!_paymasterValidationMode)
+            {
+                return;
+            }
+            
+            if (_paymasterWhitelisted)
+            {
+                return;
+            }
+            
+            if (ContainsSelfDestructOrDelegateCall(to))
+            {
+                Success = false;
+                Error ??= "simulation error: non-whitelisted paymaster accessed contract which includes SELFDESTRUCT or DELEGATECALL";
             }
         }
 
@@ -319,7 +372,7 @@ namespace Nethermind.AccountAbstraction.Executor
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             // the paymaster can never even access any contract which either selfdestruct or delegatecall
-            if (_paymasterValidationMode)
+            if (_paymasterValidationMode && !_paymasterWhitelisted)
             {
                 if (ContainsSelfDestructOrDelegateCall(deploymentAddress)) Success = false;
             }
@@ -352,31 +405,18 @@ namespace Nethermind.AccountAbstraction.Executor
         public void ReportAccess(IReadOnlySet<Address> accessedAddresses,
             IReadOnlySet<StorageCell> accessedStorageCells)
         {
-            void AddToAccessedStorage(StorageCell storageCell)
+            throw new NotImplementedException();
+        }
+        
+        private void AddToAccessedStorage(Address address, UInt256 index)
+        {
+            if (AccessedStorage.TryGetValue(address, out HashSet<UInt256>? values))
             {
-                if (AccessedStorage.TryGetValue(storageCell.Address, out HashSet<UInt256>? values))
-                {
-                    values.Add(storageCell.Index);
-                    return;
-                }
-
-                AccessedStorage.Add(storageCell.Address, new HashSet<UInt256> {storageCell.Index});
+                values.Add(index);
+                return;
             }
 
-            Address walletAddress = _sender;
-            Address? paymasterAddress = _paymaster == Address.Zero ? null : _paymaster;
-            Address[] furtherAddresses = accessedAddresses
-                .Except(_excludedAddresses)
-                .ToArray();
-
-            // spec: The call does not access mutable state of any contract except the wallet/paymaster itself
-            foreach (StorageCell accessedStorageCell in accessedStorageCells)
-            {
-                if (accessedStorageCell.Address == paymasterAddress || accessedStorageCell.Address == walletAddress)
-                    AddToAccessedStorage(accessedStorageCell);
-
-                if (furtherAddresses.Contains(accessedStorageCell.Address)) Success = false;
-            }
+            AccessedStorage.Add(address, new HashSet<UInt256> {index});
         }
 
         private bool ContainsSelfDestructOrDelegateCall(Address address)

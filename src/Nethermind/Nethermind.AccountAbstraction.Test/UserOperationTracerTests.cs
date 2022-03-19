@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
+using AutoMapper.Mappers;
 using FluentAssertions;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.Core;
@@ -121,11 +123,101 @@ namespace Nethermind.AccountAbstraction.Test
             
             tracer.Success.Should().BeTrue();
         }
+
+        [TestCase(false, false, Instruction.SSTORE, false)]
+        [TestCase(false, false, Instruction.SLOAD, false)]
+        [TestCase(false, true, Instruction.SSTORE, false)]
+        [TestCase(false, true, Instruction.SLOAD, false)]
+        [TestCase(true, false, Instruction.SSTORE, false)]
+        [TestCase(true, false, Instruction.SLOAD, false)]
+        [TestCase(true, true, Instruction.SSTORE, true)]
+        [TestCase(true, true, Instruction.SLOAD, true)]
+        public void Should_allow_external_storage_access_only_with_whitelisted_paymaster(bool paymasterValidation, bool whitelisted, Instruction opcodeToTest, bool shouldSucceed)
+        {
+            Address externalContractAddress = TestItem.GetRandomAddress();
+            Address paymasterContractAddress = TestItem.GetRandomAddress();
+            
+            // simple storage access contract
+            byte[] externalContractCalledByPaymasterCode = Prepare.EvmCode
+                .PushData(69)
+                .PushData(1)
+                .Op(opcodeToTest)
+                .Done;
+
+            TestState.CreateAccount(externalContractAddress, 1.Ether());
+            Keccak externalContractDeployedCodeHash = TestState.UpdateCode(externalContractCalledByPaymasterCode);
+            TestState.UpdateCodeHash(externalContractAddress, externalContractDeployedCodeHash, Spec);
+            
+            byte[] paymasterCode = Prepare.EvmCode
+                .Call(externalContractAddress, 70000)
+                .Done;
+            
+            TestState.CreateAccount(paymasterContractAddress, 1.Ether());
+            Keccak paymasterDeployedCodeHash = TestState.UpdateCode(paymasterCode);
+            TestState.UpdateCodeHash(paymasterContractAddress, paymasterDeployedCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Op(paymasterValidation ? Instruction.NUMBER : Instruction.BASEFEE) // switch to paymaster validation with NUMBER
+                .Call(paymasterContractAddress, 100000)
+                .Op(Instruction.STOP)
+                .Done;
+            
+            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
+
+            tracer.Success.Should().Be(shouldSucceed);
+        }
         
-        private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, params byte[] code)
+        [TestCase(false, false, true, false)]
+        [TestCase(false, true, true, false)]
+        [TestCase(true, false, true, false)]
+        [TestCase(true, true, true, true)]
+        [TestCase(false, false, false, true)]
+        [TestCase(false, true, false, true)]
+        [TestCase(true, false, false, true)]
+        [TestCase(true, true, false, true)]
+        public void Should_make_sure_external_contract_extcodehashes_stays_same_after_simulation(bool paymasterValidation, bool whitelisted, bool selfdestruct, bool shouldSucceed)
+        {
+            Address externalContractAddress = TestItem.GetRandomAddress();
+            Address paymasterContractAddress = TestItem.GetRandomAddress();
+            
+            // simple storage access contract
+            byte[] externalContractCalledByPaymasterCode = Prepare.EvmCode
+                .PushData(Address.Zero)
+                .Op(selfdestruct ? Instruction.SELFDESTRUCT : Instruction.DUP1)
+                .Done;
+
+            TestState.CreateAccount(externalContractAddress, 1.Ether());
+            Keccak externalContractDeployedCodeHash = TestState.UpdateCode(externalContractCalledByPaymasterCode);
+            TestState.UpdateCodeHash(externalContractAddress, externalContractDeployedCodeHash, Spec);
+            
+            byte[] paymasterCode = Prepare.EvmCode
+                .PushData("0x01")
+                .PushData("0x69")
+                .Call(externalContractAddress, 70000)
+                .Done;
+            
+            TestState.CreateAccount(paymasterContractAddress, 1.Ether());
+            Keccak paymasterDeployedCodeHash = TestState.UpdateCode(paymasterCode);
+            TestState.UpdateCodeHash(paymasterContractAddress, paymasterDeployedCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Op(paymasterValidation ? Instruction.NUMBER : Instruction.BASEFEE) // switch to paymaster validation with NUMBER
+                .Call(paymasterContractAddress, 100000)
+                .Op(Instruction.STOP)
+                .Done;
+            
+            Keccak initialCodeHash = TestState.GetCodeHash(externalContractAddress);
+            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code, whitelisted);
+            TestState.GetCodeHash(externalContractAddress).Should().Be(initialCodeHash);
+
+
+            //tracer.Success.Should().Be(shouldSucceed);
+        }
+
+        private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, byte[] code, bool paymasterWhitelisted = false, bool firstSimulation = true)
         {
             (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100000, code, addresses);
-            UserOperationTxTracer tracer = new(transaction, TestState, TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, NullLogger.Instance);
+            UserOperationTxTracer tracer = new(transaction, paymasterWhitelisted, firstSimulation, TestState, TestItem.AddressA, TestItem.AddressB, TestItem.AddressD, NullLogger.Instance);
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer, block, transaction);
         }

@@ -140,6 +140,11 @@ namespace Nethermind.Evm.Tracing
             throw new NotImplementedException();
         }
 
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+            throw new NotImplementedException();
+        }
+
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
             throw new NotImplementedException();
