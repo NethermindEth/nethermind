@@ -191,9 +191,15 @@ namespace Nethermind.AccountAbstraction.Source
                 
                 BlockchainBridge.CallOutput callOutput = _userOperationSimulators[entryPoint].EstimateGas(parent, userOperationTransaction, CancellationToken.None);
                 FailedOp? failedOp = txBuilder.DecodeEntryPointOutputError(callOutput.OutputData);
-                if (failedOp is not null || callOutput.Error != null)
+                if (failedOp is not null)
                 {
-                    // TODO punish paymaster
+                    UserOperation opToRemove = userOperationsToInclude[(int)failedOp.Value._opIndex];
+                    _userOperationPools[entryPoint].RemoveUserOperation(opToRemove.RequestId!);
+                    continue;
+                }
+                if (callOutput.Error != null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"AA Simulation error for entryPoint {entryPoint}: {callOutput.Error}");
                     continue;
                 }
                 
