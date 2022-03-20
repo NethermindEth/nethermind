@@ -146,6 +146,11 @@ namespace Nethermind.AccountAbstraction.Executor
             // so simulation of calls using these opcodes does not reliably tell what would happen if these calls are later done on-chain.
             if (depth > 1 && _bannedOpcodes.Contains(opcode))
             {
+                if (_paymasterValidationMode && _paymasterWhitelisted)
+                {
+                    return;
+                }
+                
                 _logger.Info($"AA: Encountered banned opcode {opcode} during simulation at depth {depth} pc {pc}");
                 Success = false;
                 Error ??= $"simulation failed: encountered banned opcode {opcode} at depth {depth} pc {pc}";
@@ -159,6 +164,11 @@ namespace Nethermind.AccountAbstraction.Executor
             else if (opcode == Instruction.CREATE2)
             {
                 numberOfCreate2Calls++;
+
+                if (_paymasterValidationMode && _paymasterWhitelisted)
+                {
+                    return;
+                }
                 
                 if (_hasInitCode)
                 {
