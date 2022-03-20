@@ -225,8 +225,9 @@ namespace Nethermind.AccountAbstraction.Source
 
         public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
         {
+            userOperation.CalculateRequestId(_entryPointAddress, _chainId);
             Metrics.UserOperationsReceived++;
-            if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
+            if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} received");
 
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
             NewReceived?.Invoke(this, userOperationEventArgs);
@@ -234,23 +235,23 @@ namespace Nethermind.AccountAbstraction.Source
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
             {
-                if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} validation succeeded");
-                if (_userOperationSortedPool.TryInsert(userOperation.Hash, userOperation))
+                if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} validation succeeded");
+                if (_userOperationSortedPool.TryInsert(userOperation.RequestId!, userOperation))
                 {
                     Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
-                    if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
+                    if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} inserted into pool");
                     _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));                    
                     NewPending?.Invoke(this, userOperationEventArgs);
                     
-                    return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, _chainId));
+                    return ResultWrapper<Keccak>.Success(userOperation.RequestId!);
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} failed to be inserted into pool");
+                if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} failed to be inserted into pool");
                 return ResultWrapper<Keccak>.Fail("failed to insert userOp into pool");
             }
 
-            if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} validation failed because: {result.Result.Error}");
+            if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} validation failed because: {result.Result.Error}");
 
             return result;
         }
@@ -293,10 +294,10 @@ namespace Nethermind.AccountAbstraction.Source
                         {
                             if (op.Nonce == nonce && op.Paymaster == paymasterAddress)
                             {
-                                if (_logger.IsDebug) _logger.Debug($"UserOperation {op.Hash} removed from pool after being included by miner");
+                                if (_logger.IsDebug) _logger.Debug($"UserOperation {op.RequestId!} removed from pool after being included by miner");
                                 Metrics.UserOperationsIncluded++;
                                 _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
-                                RemoveUserOperation(op.Hash);
+                                RemoveUserOperation(op.RequestId!);
                                 _removedUserOperations.AddOrUpdate(block.Number,
                                     k => new HashSet<UserOperation>() { op },
                                     (k, v) =>
@@ -314,7 +315,7 @@ namespace Nethermind.AccountAbstraction.Source
         private ResultWrapper<Keccak> ValidateUserOperation(UserOperation userOperation)
         {
             // make sure op not already in pool
-            if (_userOperationSortedPool.TryGetValue(userOperation.Hash, out _))
+            if (_userOperationSortedPool.TryGetValue(userOperation.RequestId!, out _))
                 return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
             
 
@@ -367,10 +368,10 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 long blockNumberToDelete = _blockTree.Head!.Number + 10;
                 _userOperationsToDelete.AddOrUpdate(blockNumberToDelete,
-                    k => new HashSet<Keccak>() { userOperation.Hash },
+                    k => new HashSet<Keccak>() { userOperation.RequestId! },
                     (k, v) =>
                     {
-                        v.Add(userOperation.Hash);
+                        v.Add(userOperation.RequestId!);
                         return v;
                     });
             }

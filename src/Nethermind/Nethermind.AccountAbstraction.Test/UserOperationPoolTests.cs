@@ -161,7 +161,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 foreach (UserOperation op in ops)
                 {
-                    _userOperationPool.RemoveUserOperation(op.Hash);
+                    _userOperationPool.RemoveUserOperation(op.RequestId!);
                 }
             }
         }

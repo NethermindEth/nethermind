@@ -282,7 +282,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(userOperation.CalculateRequestId(entryPoint, SpecProvider.ChainId));
+                resultOfUserOperation.GetData().Should().Be(userOperation.RequestId!);
             }
 
             public void SupportedEntryPoints()

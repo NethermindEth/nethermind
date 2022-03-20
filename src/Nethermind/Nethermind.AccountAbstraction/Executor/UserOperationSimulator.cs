@@ -146,7 +146,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 userOperation.AlreadySimulated = true;
             }
 
-            return ResultWrapper<Keccak>.Success(userOperation.Hash);
+            return ResultWrapper<Keccak>.Success(userOperation.RequestId!);
         }
 
         private (bool success, UserOperationAccessList accessList, IDictionary<Address, Keccak> addressesToCodeHashes, string? error) SimulateValidation(
