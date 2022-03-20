@@ -60,7 +60,9 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly ConcurrentDictionary<long, HashSet<Keccak>> _userOperationsToDelete = new();
         private readonly ConcurrentDictionary<long, HashSet<UserOperation>> _removedUserOperations = new();
 
-        private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+        private readonly Channel<BlockReplacementEventArgs> _headBlocksReplacementChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+        private readonly Channel<BlockEventArgs> _headBlockChannel = Channel.CreateUnbounded<BlockEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
+        
         private readonly ulong _chainId;
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
@@ -98,8 +100,10 @@ namespace Nethermind.AccountAbstraction.Source
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
             
             _blockTree.BlockAddedToMain += OnBlockAdded;
+            _blockTree.NewHeadBlock += OnNewHead;
 
-            ProcessNewBlocks();
+            ProcessNewReplacementBlocks();
+            ProcessNewHeadBlocks();
         }
 
         public Address EntryPoint() => _entryPointAddress;
@@ -108,7 +112,21 @@ namespace Nethermind.AccountAbstraction.Source
         {
             try
             {
-                _headBlocksChannel.Writer.TryWrite(e);
+                _headBlocksReplacementChannel.Writer.TryWrite(e);
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError)
+                    _logger.Error(
+                        $"Couldn't correctly add or remove user operations from UserOperationPool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
+            }
+        }
+        
+        private void OnNewHead(object? sender, BlockEventArgs e)
+        {
+            try
+            {
+                _headBlockChannel.Writer.TryWrite(e);
             }
             catch (Exception exception)
             {
@@ -118,22 +136,48 @@ namespace Nethermind.AccountAbstraction.Source
             }
         }
 
-        private void ProcessNewBlocks()
+        private void ProcessNewReplacementBlocks()
         {
             Task.Factory.StartNew(async () =>
             {
-                while (await _headBlocksChannel.Reader.WaitToReadAsync())
+                while (await _headBlocksReplacementChannel.Reader.WaitToReadAsync())
                 {
-                    while (_headBlocksChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
+                    while (_headBlocksReplacementChannel.Reader.TryRead(out BlockReplacementEventArgs? args))
                     {
                         try
                         {
                             ReAddReorganizedUserOperations(args.PreviousBlock);
+                        }
+                        catch (Exception e)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"UserOperationPool failed to update after replacement block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                        }
+                    }
+                }
+            }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error($"UserOperationPool update after block queue failed.", t.Exception);
+                }
+            });
+        }
+        
+        private void ProcessNewHeadBlocks()
+        {
+            Task.Factory.StartNew(async () =>
+            {
+                while (await _headBlockChannel.Reader.WaitToReadAsync())
+                {
+                    while (_headBlockChannel.Reader.TryRead(out BlockEventArgs? args))
+                    {
+                        try
+                        {
                             RemoveProcessedUserOperations(args.Block);
                         }
                         catch (Exception e)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"UserOperationPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
+                            if (_logger.IsDebug) _logger.Debug($"UserOperationPool failed to update after new head block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
                         }
                     }
                 }
@@ -272,6 +316,7 @@ namespace Nethermind.AccountAbstraction.Source
             // make sure op not already in pool
             if (_userOperationSortedPool.TryGetValue(userOperation.Hash, out _))
                 return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
+            
 
             PaymasterStatus paymasterStatus =
                 _paymasterThrottler.GetPaymasterStatus(userOperation.Paymaster);
@@ -347,7 +392,9 @@ namespace Nethermind.AccountAbstraction.Source
         public void Dispose()
         {
             _blockTree.BlockAddedToMain -= OnBlockAdded;
-            _headBlocksChannel.Writer.Complete();
+            _blockTree.NewHeadBlock -= OnNewHead;
+            _headBlocksReplacementChannel.Writer.Complete();
+            _headBlockChannel.Writer.Complete();
         }
 
         public event EventHandler<UserOperationEventArgs>? NewReceived;

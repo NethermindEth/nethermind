@@ -304,69 +304,15 @@ namespace Nethermind.AccountAbstraction.Test
                         new[] {_userOperationEventTopic, Keccak.Zero, new Keccak(senderAddress.Bytes.PadLeft(32)), Keccak.Zero}))
             });
             //_receiptFinder.Get(block).Returns(new[]{receipt});
-            BlockReplacementEventArgs blockReplacementEventArgs = new(block, null);
+            BlockEventArgs blockEventArgs = new(block);
             
             ManualResetEvent manualResetEvent = new(false);
             _userOperationPool.RemoveUserOperation(Arg.Do<Keccak>(o => manualResetEvent.Set()));
-            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockReplacementEventArgs);
+            _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(500);
             
             _userOperationPool.GetUserOperations().Should().HaveCount(0);
         }
-
-        // [Test]
-        // public void should_add_peers()
-        // {
-        //     _userOperationPool = GenerateUserOperationPool(100);
-        //     IList<IUserOperationPoolPeer> peers = GetPeers();
-        //
-        //     foreach (IUserOperationPoolPeer peer in peers)
-        //     {
-        //         _userOperationPool.AddPeer(peer);
-        //     }
-        // }
-
-        // [Test]
-        // public void should_delete_peers()
-        // {
-        //     _userOperationPool = GenerateUserOperationPool(100);
-        //     IList<IUserOperationPoolPeer> peers = GetPeers();
-
-        //     foreach (IUserOperationPoolPeer peer in peers)
-        //     {
-        //         _userOperationPool.AddPeer(peer);
-        //     }
-
-        //     foreach (IUserOperationPoolPeer peer in peers)
-        //     {
-        //         _userOperationPool.RemovePeer(peer.Id);
-        //     }
-        // }
-        
-        // [Test]
-        // public void should_notify_added_peer_about_ops_in_UOpPool()
-        // {
-        //     _userOperationPool = GenerateUserOperationPool();
-        //     UserOperation op = Build.A.UserOperation.SignedAndResolved().TestObject;
-        //     _userOperationPool.AddUserOperation(op);
-        //     IUserOperationPoolPeer uopPoolPeer = Substitute.For<IUserOperationPoolPeer>();
-        //     uopPoolPeer.Id.Returns(TestItem.PublicKeyA);
-        //     _userOperationPool.AddPeer(uopPoolPeer);
-        //     uopPoolPeer.Received().SendNewUserOperations(Arg.Any<IEnumerable<UserOperation>>());
-        // }
-        
-        // [Test]
-        // public void should_send_to_peers_newly_added_uop()
-        // {
-        //     _userOperationPool = GenerateUserOperationPool();
-        //     IUserOperationPoolPeer uopPoolPeer = Substitute.For<IUserOperationPoolPeer>();
-        //     uopPoolPeer.Id.Returns(TestItem.PublicKeyA);
-        //     _userOperationPool.AddPeer(uopPoolPeer);
-        //     UserOperation op = Build.A.UserOperation.WithSender(TestItem.AddressA).SignedAndResolved().TestObject;
-        //     _userOperationPool.AddUserOperation(op);
-        //     uopPoolPeer.Received().SendNewUserOperation(op);
-        // }
-        
 
         private static IEnumerable<UserOperation> BadOperations
         {
