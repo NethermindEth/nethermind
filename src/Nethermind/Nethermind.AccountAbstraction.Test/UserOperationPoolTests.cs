@@ -301,7 +301,7 @@ namespace Nethermind.AccountAbstraction.Test
                 new FilterLog(0, 0, receipt,
                     new LogEntry(new Address(_entryPointContractAddress), 
                         Bytes.Zero32,
-                        new[] {_userOperationEventTopic, Keccak.Zero, new Keccak(senderAddress.Bytes.PadLeft(32)), Keccak.Zero}))
+                        new[] {_userOperationEventTopic, uops[0].RequestId!, Keccak.Zero, Keccak.Zero}))
             });
             //_receiptFinder.Get(block).Returns(new[]{receipt});
             BlockEventArgs blockEventArgs = new(block);

@@ -283,30 +283,25 @@ namespace Nethermind.AccountAbstraction.Source
             // find any userOps included on chain submitted by this miner, delete from the pool
             foreach (FilterLog log in foundLogs)
             {
-                if (log?.Topics[0] == _userOperationEventTopic)
+                if (log.Topics[0] == _userOperationEventTopic)
                 {
-                    Address senderAddress = new(log.Topics[2]);
-                    Address paymasterAddress = new(log.Topics[3]);
-                    UInt256 nonce = new(log.Data.Slice(0, 32), true);
-                    if (_userOperationSortedPool.TryGetBucket(senderAddress, out UserOperation[] opsOfSender))
+                    Keccak requestId = log.Topics[1];
+                    if (_userOperationSortedPool.TryGetValue(requestId, out UserOperation op))
                     {
-                        foreach (UserOperation op in opsOfSender)
+                        if (_logger.IsDebug) _logger.Debug($"UserOperation {op.RequestId!} removed from pool after being included by miner");
+                        Metrics.UserOperationsIncluded++;
+                        if (op.Paymaster != Address.Zero)
                         {
-                            if (op.Nonce == nonce && op.Paymaster == paymasterAddress)
-                            {
-                                if (_logger.IsDebug) _logger.Debug($"UserOperation {op.RequestId!} removed from pool after being included by miner");
-                                Metrics.UserOperationsIncluded++;
-                                _paymasterThrottler.IncrementOpsIncluded(paymasterAddress);
-                                RemoveUserOperation(op.RequestId!);
-                                _removedUserOperations.AddOrUpdate(block.Number,
-                                    k => new HashSet<UserOperation>() { op },
-                                    (k, v) =>
-                                    {
-                                        v.Add(op);
-                                        return v;
-                                    });
-                            }
+                            _paymasterThrottler.IncrementOpsIncluded(op.Paymaster);
                         }
+                        RemoveUserOperation(op.RequestId!);
+                        _removedUserOperations.AddOrUpdate(block.Number,
+                            k => new HashSet<UserOperation>() { op },
+                            (k, v) =>
+                            {
+                                v.Add(op);
+                                return v;
+                            });
                     }
                 }
             }
