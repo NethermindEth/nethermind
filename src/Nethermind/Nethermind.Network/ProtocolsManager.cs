@@ -247,10 +247,7 @@ namespace Nethermind.Network
                     if (peer != null)
                     {
                         peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
-                        if (handler.IsPriority)
-                        {
-                            _syncPool.SetPeerPriority(session.Node.Id, handler.IsPriority);
-                        }
+                        if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
                         if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
                     }
                     else
@@ -334,10 +331,7 @@ namespace Nethermind.Network
                             foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
                             {
                                 handler.RegisterSatelliteProtocol(registration.Value);
-                                if (registration.Value.IsPriority)
-                                {
-                                    handler.IsPriority = true;
-                                }
+                                if (registration.Value.IsPriority) handler.IsPriority = true;
                                 if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                             }
                         }
