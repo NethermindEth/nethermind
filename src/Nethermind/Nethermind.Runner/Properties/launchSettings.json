@@ -174,17 +174,13 @@
       "commandName": "Project",
       "commandLineArgs": "--config xdai_themerge.cfg  --Init.DiagnosticMode MemDb"
     },
-    "Kinstugi": {
+    "Kiln": {
       "commandName": "Project",
       "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Merge.FeeRecipient 0x0000000000000000000000000000000000000000"
     },
     "Goerli ShadowFork": {
       "commandName": "Project",
       "commandLineArgs": "--config goerli_shadowfork.cfg  --Init.DiagnosticMode MemDb --Merge.Enabled true"
-    },
-    "MergeDevnet4": {
-      "commandName": "Project",
-      "commandLineArgs": "--config merge_devnet_4.cfg  --Init.DiagnosticMode MemDb"
     }
   }
 }

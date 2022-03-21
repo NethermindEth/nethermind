@@ -13,7 +13,7 @@ namespace Nethermind.Sockets
 {
     public class SocketClient : ISocketsClient
     {
-        public const int MAX_POOLED_SIZE = 1024 * 1024;
+        public const int MAX_POOLED_SIZE = 5 * 1024 * 1024;
 
         protected readonly ISocketHandler _handler;
         protected readonly IJsonSerializer _jsonSerializer;

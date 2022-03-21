@@ -242,7 +242,7 @@ namespace Nethermind.Mev.Execution
                 Error = error;
             }
 
-            public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+            public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
             {
                 throw new NotSupportedException();
             }

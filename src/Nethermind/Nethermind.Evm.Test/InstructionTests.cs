@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,25 +13,24 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
+using FluentAssertions;
+using NUnit.Framework;
 
-namespace Nethermind.Consensus.Producers
+namespace Nethermind.Evm.Test
 {
-    public class PayloadAttributes
+    public class InstructionTests
     {
-        public UInt256 Timestamp { get; set; }
-        
-        public Keccak PrevRandao { get; set; }
-        
-        public Address SuggestedFeeRecipient { get; set; }
-        
-        public override string ToString()
+        [Test]
+        public void Return_difficulty_name_for_prevrandao_opcode_for_pre_merge()
         {
-            return $"PayloadAttributes: ({nameof(Timestamp)}: {Timestamp}, {nameof(PrevRandao)}: {PrevRandao}, {nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient})";
+            Instruction.PREVRANDAO.GetName(false).Should().Be("DIFFICULTY");
+        }
+        
+        [Test]
+        public void Return_prevrandao_name_for_prevrandao_opcode_for_post_merge()
+        {
+            Instruction.PREVRANDAO.GetName(true).Should().Be("PREVRANDAO");
         }
     }
 }

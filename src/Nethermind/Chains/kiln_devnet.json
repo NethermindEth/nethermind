@@ -1,5 +1,5 @@
 {
-  "name": "mergeDevnet3",
+  "name": "merge-devnet-5",
   "engine": {
     "Ethash": {
       "params": {
@@ -21,8 +21,8 @@
     "accountStartNonce": "0x0",
     "maximumExtraDataSize": "0x20",
     "minGasLimit": "0x1388",
-    "networkID": "0x146902",
-    "MergeForkIdTransition": "0x64",
+    "networkID": "0x1469a2",
+    "MergeForkIdTransition": "0x3e8",
     "eip150Transition": "0x0",
     "eip158Transition": "0x0",
     "eip160Transition": "0x0",
@@ -872,29 +872,41 @@
         "0x0000000000000000000000000000000000000000000000000000000000000040": "0x985e929f70af28d0bdd1a90a808f977f597c7c778c489e98d3bd8910d31ac0f7"
       }
     },
-    "0x0917493ee5d733b20E86838486a7747126CA1bBb": {
+    "0xf97e180c050e5Ab072211Ad2C213Eb5AEE4DF134": {
       "balance": "10000000000000000000000000"
     },
-    "0x9aDDDa0caa0681A7Ba602dc37A522fE47e383dD9": {
+    "0x2cA5F489CC1Fd1CEC24747B64E8dE0F4A6A850E1": {
       "balance": "10000000000000000000000000"
     },
-    "0x8d99dfAa514868804d9e627FD37E8A2ffd823eb1": {
+    "0x7203bd333a874D9d329050ecE393820fCD501eaA": {
       "balance": "10000000000000000000000000"
     },
-    "0xf6c3584882dDAf92334C376Cf94944284bA29794": {
+    "0xA51918aA40D78Ff8be939bf0E8404252875c6aDF": {
       "balance": "10000000000000000000000000"
     },
-    "0xb7Bb9BeA19ECbE938f79c4919ebacaaC6f5E70b8": {
+    "0xAA81078e6b2121dd7A846690DFdD6b10d7658d8B": {
       "balance": "10000000000000000000000000"
     },
-    "0xBa8d8Eb9f0cee321DaD61584b6B4f805CDD518a3": {
+    "0xFA2d31D8f21c1D1633E9BEB641dF77D21D63ccDd": {
+      "balance": "10000000000000000000000000"
+    },
+    "0xf751C9c6d60614226fE57D2cAD6e10C856a2ddA3": {
+      "balance": "10000000000000000000000000"
+    },
+    "0x9cD16887f6A808AEaa65D3c840f059EeA4ca1319": {
+      "balance": "10000000000000000000000000"
+    },
+    "0x2E07043584F11BFF0AC39c927665DF6c6ebaffFB": {
+      "balance": "10000000000000000000000000"
+    },
+    "0x60e771E5eCA8E26690920de669520Da210D64A9B": {
+      "balance": "10000000000000000000000000"
+    },
+    "0xFC4db92C2Cf77CE02fBfd7Da0346d2CbFA66aD59": {
       "balance": "10000000000000000000000000"
     }
   },
   "nodes": [
-    "enode://6b457d42e6301acfae11dc785b43346e195ad0974b394922b842adea5aeb4c55b02410607ba21e4a03ba53e7656091e2f990034ce3f8bad4d0cca1c6398bdbb8@137.184.55.117:30303",
-"enode://588ef56694223ce3212d7c56e5b6f3e8ba46a9c29522fdc6fef15657f505a7314b9bd32f2d53c4564bc6b9259c3d5c79fc96257eff9cd489004c4d9cbb3c0707@137.184.203.157:30303",
-"enode://46b2ecd18c24463413b7328e9a59c72d955874ad5ddb9cd9659d322bedd2758a6cefb8378e2309a028bd3cdf2beca0b18c3457f03e772f35d0cd06c37ce75eee@137.184.213.208:30303"
-
+    "enode://52a817b840207cb79d2c10fa14794d10b706ad2570bed2dd51a1518b3bd4592657d696960579947634bbf4faf06b03b6610ef2b9ac0355a8bf926de12bf866d2@134.209.253.71:30303"
   ]
 }

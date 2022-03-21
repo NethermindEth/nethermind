@@ -51,8 +51,8 @@ public class JwtTest
         // Only for JwtAuthentication class
         var mock = Substitute.For<IClock>();
         mock.GetCurrentTime().Returns(1644994971);
-        IRpcAuthentication authentication = JwtAuthentication.FromHexSecret("736563726574", mock);
-        IRpcAuthentication authenticationWithPrefix = JwtAuthentication.FromHexSecret("0x736563726574", mock);
+        IRpcAuthentication authentication = JwtAuthentication.CreateFromHexSecret("736563726574", mock);
+        IRpcAuthentication authenticationWithPrefix = JwtAuthentication.CreateFromHexSecret("0x736563726574", mock);
         bool actual = authentication.Authenticate(token);
         Assert.AreEqual(expected, actual);
         actual = authenticationWithPrefix.Authenticate(token);
