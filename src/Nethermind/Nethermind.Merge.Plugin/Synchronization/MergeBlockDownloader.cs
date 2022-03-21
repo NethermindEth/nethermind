@@ -36,6 +36,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ILogger _logger;
 
         public MergeBlockDownloader(
+            IPoSSwitcher posSwitcher,
             IBeaconPivot beaconPivot,
             ISyncFeed<BlocksRequest?>? feed, 
             ISyncPeerPool? syncPeerPool, 
@@ -46,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IReceiptStorage? receiptStorage,
             ISpecProvider? specProvider, 
             ILogManager logManager)
-            : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(), logManager)
+            : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, logManager), logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _beaconPivot = beaconPivot;

@@ -209,7 +209,10 @@ namespace Nethermind.Merge.Plugin
                     _syncConfig,
                     _beaconSync, _api.LogManager);
                 _api.Pivot = _beaconPivot;
-                _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(_beaconPivot, _api.SpecProvider,
+                _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(
+                    _poSSwitcher, 
+                    _beaconPivot, 
+                    _api.SpecProvider,
                     _api.BlockTree,
                     _api.ReceiptStorage!,
                     _api.BlockValidator!,

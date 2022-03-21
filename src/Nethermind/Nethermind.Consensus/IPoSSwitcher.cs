@@ -36,6 +36,8 @@ namespace Nethermind.Consensus
         
         Keccak? TerminalBlockHash { get; }
         
+        bool TransitionFinished { get; }
+        
         public Keccak? ConfiguredTerminalBlockHash { get; }
         
         public long? ConfiguredTerminalBlockNumber { get; }

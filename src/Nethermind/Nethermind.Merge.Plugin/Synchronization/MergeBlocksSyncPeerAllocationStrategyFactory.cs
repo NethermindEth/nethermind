@@ -16,6 +16,9 @@
 // 
 
 using System;
+using Nethermind.Consensus;
+using Nethermind.Logging;
+using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -24,6 +27,17 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class MergeBlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest?>
 {
+    private readonly IPoSSwitcher _poSSwitcher;
+    private readonly ILogManager _logManager;
+
+    public MergeBlocksSyncPeerAllocationStrategyFactory(
+        IPoSSwitcher poSSwitcher,
+        ILogManager logManager)
+    {
+        _poSSwitcher = poSSwitcher;
+        _logManager = logManager;
+    }
+    
     public IPeerAllocationStrategy Create(BlocksRequest? request)
     {
         // because of the way the generics cannot handle T / T?
@@ -34,7 +48,11 @@ public class MergeBlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrat
         }
             
         IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
-        TotalDiffStrategy totalDiffStrategy = new(baseStrategy, TotalDiffStrategy.TotalDiffSelectionType.AtLeastTheSame);
-        return totalDiffStrategy;
+        TotalDiffStrategy preMergeAllocationStrategy = new(baseStrategy);
+        BySpeedStrategy postMergeStrategy = new(TransferSpeedType.Bodies, false);
+        MergePeerAllocationStrategy mergeStrategy =
+            new(preMergeAllocationStrategy, postMergeStrategy, _poSSwitcher, _logManager);
+        
+        return mergeStrategy;
     }
 }

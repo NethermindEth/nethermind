@@ -33,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 {
     public class MergeBlockDownloaderFactory : IBlockDownloaderFactory
     {
+        private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBeaconPivot _beaconPivot;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
@@ -45,6 +46,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
 
         public MergeBlockDownloaderFactory(
+            IPoSSwitcher poSSwitcher,
             IBeaconPivot beaconPivot,
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -57,6 +59,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISyncConfig syncConfig,
             ILogManager logManager)
         {
+            _poSSwitcher = poSSwitcher;
             _beaconPivot = beaconPivot;
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -71,7 +74,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
-            return new MergeBlockDownloader(_beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
+            return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
                 _sealValidator, _syncReport, _receiptStorage, _specProvider, _logManager);
         }
     }
