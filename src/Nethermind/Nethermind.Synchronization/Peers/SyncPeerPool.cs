@@ -78,6 +78,14 @@ namespace Nethermind.Synchronization.Peers
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             int peersMaxCount,
+            ILogManager logManager)
+            : this(blockTree, nodeStatsManager, peersMaxCount, 0, logManager)
+        {
+        }
+        
+        public SyncPeerPool(IBlockTree blockTree,
+            INodeStatsManager nodeStatsManager,
+            int peersMaxCount,
             int priorityPeerMaxCount,
             ILogManager logManager)
             : this(blockTree, nodeStatsManager, peersMaxCount, priorityPeerMaxCount, 1000, logManager)
