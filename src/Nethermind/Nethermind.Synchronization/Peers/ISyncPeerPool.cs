@@ -78,6 +78,10 @@ namespace Nethermind.Synchronization.Peers
         /// <param name="syncPeer"></param>
         void RemovePeer(ISyncPeer syncPeer);
 
+        /// <summary>
+        /// Setting given peer as priority.
+        /// </summary>
+        /// <param name="id"></param>
         void SetPeerPriority(PublicKey id);
         
         /// <summary>
