@@ -40,7 +40,6 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionPlugin : IConsensusWrapperPlugin
     {
         private IAccountAbstractionConfig _accountAbstractionConfig = null!;
-        private INetworkConfig _networkConfig = null!;
         private Address _create2FactoryAddress = null!;
         private AbiDefinition _entryPointContractAbi = null!;
         private ILogger _logger = null!;
@@ -184,12 +183,11 @@ namespace Nethermind.AccountAbstraction
         {
             _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
             _accountAbstractionConfig = _nethermindApi.Config<IAccountAbstractionConfig>();
-            _networkConfig = _nethermindApi.Config<INetworkConfig>();
             _logger = _nethermindApi.LogManager.GetClassLogger();
 
             if (_accountAbstractionConfig.Enabled)
             {
-                _networkConfig.PriorityPeersMaxCount = _accountAbstractionConfig.AaPriorityPeersMaxCount;
+                _nethermindApi.Config<INetworkConfig>().PriorityPeersMaxCount = _accountAbstractionConfig.AaPriorityPeersMaxCount;
                 IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
                 foreach (string addressString in entryPointContractAddressesString){
                     bool parsed = Address.TryParse(
