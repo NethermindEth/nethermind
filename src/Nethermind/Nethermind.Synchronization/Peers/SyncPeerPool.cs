@@ -236,7 +236,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
-        public int PriorityPeerCount => _peers.Values.Select(p => p.SyncPeer.IsPriority).Count();
+        public int PriorityPeerCount => _peers.Values.Count(p => p.SyncPeer.IsPriority.Equals(true));
         public int InitializedPeersCount => InitializedPeers.Count();
         public int PeerMaxCount { get; }
         private int PriorityPeerMaxCount { get; }
