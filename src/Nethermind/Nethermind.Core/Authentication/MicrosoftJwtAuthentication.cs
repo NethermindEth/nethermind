@@ -69,7 +69,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
         else
         {
             // Secret exists read from file
-            if (logger.IsInfo) logger.Info("Reading jwt secret from file");
+            if (logger.IsInfo) logger.Info($"Reading jwt secret from file: {fileInfo.FullName}");
             StreamReader stream = new(filePath);
             string hexSecret = stream.ReadToEnd();
             hexSecret = hexSecret.TrimStart().TrimEnd();
