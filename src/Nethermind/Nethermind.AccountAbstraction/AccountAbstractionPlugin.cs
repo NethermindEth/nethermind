@@ -259,7 +259,7 @@ namespace Nethermind.AccountAbstraction
                 ILogManager logManager = _nethermindApi.LogManager ??
                                          throw new ArgumentNullException(nameof(_nethermindApi.LogManager));
 
-                AccountAbstractionPeerManager peerManager = new(_userOperationPools, UserOperationBroadcaster, _logger);
+                AccountAbstractionPeerManager peerManager = new(_userOperationPools, UserOperationBroadcaster, _accountAbstractionConfig.AaPriorityPeersMaxCount, _logger);
 
                 serializer.Register(new UserOperationsMessageSerializer());
                 protocolsManager.AddProtocol(Protocol.AA,

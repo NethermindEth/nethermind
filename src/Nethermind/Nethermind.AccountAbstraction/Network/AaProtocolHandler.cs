@@ -54,7 +54,7 @@ namespace Nethermind.AccountAbstraction.Network
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _userOperationPools = userOperationPools ?? throw new ArgumentNullException(nameof(userOperationPools));
             _peerManager = peerManager;
-            IsPriority = true;
+            IsPriority = peerManager.NumberOfPriorityAaPeers > 0;
         }
 
         public PublicKey Id => _session.Node.Id;
