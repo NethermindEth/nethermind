@@ -93,7 +93,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void SetPeerPriority(PublicKey id, bool isPriority)
+            public void SetPeerPriority(PublicKey id)
             {
             }
 
