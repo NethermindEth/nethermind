@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Authentication;
 using NSubstitute;
@@ -42,8 +43,12 @@ public class JwtTest
     {
         var mock = Substitute.For<IClock>();
         mock.GetCurrentTime().Returns(1644994971);
-        IRpcAuthentication authentication = MicrosoftJwtAuthentication.CreateFromHexSecret("5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", mock);
-        IRpcAuthentication authenticationWithPrefix = MicrosoftJwtAuthentication.CreateFromHexSecret("0x5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", mock);
+        IRpcAuthentication authentication =
+            MicrosoftJwtAuthentication.CreateFromHexSecret(
+                "5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", mock, new TestLogger());
+        IRpcAuthentication authenticationWithPrefix =
+            MicrosoftJwtAuthentication.CreateFromHexSecret(
+                "0x5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", mock, new TestLogger());
         bool actual = authentication.Authenticate(token);
         Assert.AreEqual(expected, actual);
         actual = authenticationWithPrefix.Authenticate(token);
