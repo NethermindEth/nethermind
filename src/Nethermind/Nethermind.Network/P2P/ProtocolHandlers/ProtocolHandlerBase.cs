@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     public abstract class ProtocolHandlerBase : IProtocolHandler
     {
         public abstract string Name { get; }
-        public bool IsPriority;
+        public virtual bool IsPriority => false;
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
         protected ISession Session { get; }

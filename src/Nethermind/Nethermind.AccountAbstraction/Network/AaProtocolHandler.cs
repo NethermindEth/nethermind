@@ -66,6 +66,7 @@ namespace Nethermind.AccountAbstraction.Network
         public override int MessageIdSpaceSize => 4;
 
         public override string Name => "aa";
+        public override bool IsPriority { get; }
 
         protected override TimeSpan InitTimeout => Timeouts.Eth;
 
