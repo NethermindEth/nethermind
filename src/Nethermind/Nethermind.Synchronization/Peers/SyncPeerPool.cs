@@ -298,6 +298,14 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
+        public void SetPeerPriority(PublicKey id, bool isPriority)
+        {
+            if (_peers.TryGetValue(id, out PeerInfo peerInfo))
+            {
+                peerInfo.SyncPeer.IsPriority = isPriority;
+            }
+        }
+
         public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts = AllocationContexts.All, int timeoutMilliseconds = 0)
         {
             int tryCount = 1;
@@ -503,7 +511,7 @@ namespace Nethermind.Synchronization.Peers
                 PeerInfo? worstPeer = null;
                 foreach (PeerInfo peerInfo in NonStaticPeers)
                 {
-                    if (peerInfo.HeadNumber < lowestBlockNumber)
+                    if (peerInfo.HeadNumber < lowestBlockNumber && (!peerInfo.SyncPeer.IsPriority || worstPeer is null))
                     {
                         lowestBlockNumber = peerInfo.HeadNumber;
                         worstPeer = peerInfo;

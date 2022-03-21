@@ -77,6 +77,8 @@ namespace Nethermind.Synchronization.Peers
         /// </summary>
         /// <param name="syncPeer"></param>
         void RemovePeer(ISyncPeer syncPeer);
+
+        void SetPeerPriority(PublicKey id, bool isPriority);
         
         /// <summary>
         /// It is hard to track total difficulty so occasionally we send a total difficulty request to update node information.
