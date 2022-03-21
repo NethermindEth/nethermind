@@ -344,9 +344,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return false;
             }
             
-            var addResult = _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
-            _logger.Info($"{processedBlock} add result {addResult}");
-
+            _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             if (processedBlock == null)
             {

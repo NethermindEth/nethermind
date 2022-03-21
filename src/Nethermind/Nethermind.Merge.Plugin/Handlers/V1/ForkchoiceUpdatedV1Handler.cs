@@ -103,9 +103,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
+                else
+                {
+                    if (_logger.IsWarn) { _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}"); }
+                }
 
                 return ForkchoiceUpdatedV1Result.Syncing;
-                // return ForkchoiceUpdatedV1Result.Error($"Unknown forkchoiceState head hash {forkchoiceState.HeadBlockHash}", ErrorCodes.InvalidParams);
             }
 
             if (_beaconPivot.BeaconPivotExists())
