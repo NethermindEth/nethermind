@@ -30,7 +30,7 @@ namespace Nethermind.AccountAbstraction
         bool Enabled { get; set; }
         
         [ConfigItem(
-            Description = "Max number of additional AccountAbstraction peers.",
+            Description = "Max number of priority AccountAbstraction peers.",
             DefaultValue = "20")]
         int AaPriorityPeersMaxCount { get; set; }
 
