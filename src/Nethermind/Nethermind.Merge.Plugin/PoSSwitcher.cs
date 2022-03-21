@@ -57,6 +57,7 @@ namespace Nethermind.Merge.Plugin
         private Keccak? _terminalBlockHash;
         private BlockHeader? _firstPoSBlockHeader;
 
+        private long? _configuredTerminalBlockNumber;
         private long? _terminalBlockNumber;
         private long? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
@@ -232,11 +233,12 @@ namespace Nethermind.Merge.Plugin
         
         public Keccak? ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHash;
         
-        public long? ConfiguredTerminalBlockNumber => _mergeConfig.TerminalBlockNumber ??
-                                                        _specProvider.MergeBlockNumber - 1;
+        public long? ConfiguredTerminalBlockNumber => _configuredTerminalBlockNumber;
 
         private void LoadTerminalBlock()
         {
+            _configuredTerminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
+                                             _specProvider.MergeBlockNumber - 1;
             _terminalBlockNumber = ConfiguredTerminalBlockNumber;
 
             _terminalBlockExplicitSpecified = _terminalBlockNumber != null;
