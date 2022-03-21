@@ -18,7 +18,6 @@
 using System;
 using Nethermind.Consensus;
 using Nethermind.Logging;
-using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -49,7 +48,7 @@ public class MergeBlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrat
             
         IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
         TotalDiffStrategy preMergeAllocationStrategy = new(baseStrategy);
-        BySpeedStrategy postMergeStrategy = new(TransferSpeedType.Bodies, false);
+        PostMergeBlocksSyncPeerAllocationStrategy postMergeStrategy = new(request.NumberOfLatestBlocksToBeIgnored);
         MergePeerAllocationStrategy mergeStrategy =
             new(preMergeAllocationStrategy, postMergeStrategy, _poSSwitcher, _logManager);
         
