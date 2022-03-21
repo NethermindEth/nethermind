@@ -78,20 +78,23 @@ namespace Nethermind.Synchronization.Peers
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             int peersMaxCount,
+            int priorityPeerMaxCount,
             ILogManager logManager)
-            : this(blockTree, nodeStatsManager, peersMaxCount, 1000, logManager)
+            : this(blockTree, nodeStatsManager, peersMaxCount, priorityPeerMaxCount, 1000, logManager)
         {
         }
 
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             int peersMaxCount,
+            int priorityPeerMaxCount,
             int allocationsUpgradeIntervalInMsInMs,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             PeerMaxCount = peersMaxCount;
+            PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -225,8 +228,10 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
+        public int PriorityPeerCount => _peers.Values.Select(p => p.SyncPeer.IsPriority).Count();
         public int InitializedPeersCount => InitializedPeers.Count();
         public int PeerMaxCount { get; }
+        private int PriorityPeerMaxCount { get; }
 
         public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak blockHash)
         {
@@ -252,6 +257,10 @@ namespace Nethermind.Synchronization.Peers
             PeerInfo peerInfo = new(syncPeer);
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
+            if (syncPeer.IsPriority)
+            {
+                Metrics.PriorityPeers = PriorityPeerCount;
+            }
 
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
@@ -282,6 +291,10 @@ namespace Nethermind.Synchronization.Peers
             }
 
             Metrics.SyncPeers = _peers.Count;
+            if (syncPeer.IsPriority)
+            {
+                Metrics.PriorityPeers = PriorityPeerCount;
+            }
 
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
@@ -511,7 +524,7 @@ namespace Nethermind.Synchronization.Peers
                 PeerInfo? worstPeer = null;
                 foreach (PeerInfo peerInfo in NonStaticPeers)
                 {
-                    if (peerInfo.HeadNumber < lowestBlockNumber && (!peerInfo.SyncPeer.IsPriority || worstPeer is null))
+                    if (peerInfo.HeadNumber < lowestBlockNumber && (!peerInfo.SyncPeer.IsPriority || PriorityPeerCount >= PriorityPeerMaxCount))
                     {
                         lowestBlockNumber = peerInfo.HeadNumber;
                         worstPeer = peerInfo;

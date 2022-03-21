@@ -22,6 +22,7 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionConfig : IAccountAbstractionConfig
     {
         public bool Enabled { get; set; }
+        public int AaPriorityPeersMaxCount { get; set; } = 20;
         public int UserOperationPoolSize { get; set; } = 200;
         public int MaximumUserOperationPerSender { get; set; } = 10;
         public string EntryPointContractAddresses {get; set;} = "";

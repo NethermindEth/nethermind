@@ -364,11 +364,6 @@ namespace Nethermind.Network
             };
         }
 
-        private void SetPriorityIfIsPriority(SyncPeerProtocolHandlerBase handler, bool isPriority)
-        {
-
-        }
-
         private bool RunBasicChecks(ISession session, string protocolCode, int protocolVersion)
         {
             if (session.IsClosing)
