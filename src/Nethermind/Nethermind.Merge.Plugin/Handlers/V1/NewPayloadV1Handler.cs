@@ -247,7 +247,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
                     if (parentPivotProcessed)
                     {
-                        _logger.Info($"Parent pivot processed suggesting block {block}");
+                        _logger.Info($"Parent pivot was processed. Pivot: {_beaconPivot.PivotNumber} {_beaconPivot.PivotHash} Suggesting block {block}");
                         _blockTree.SuggestBlock(block);
                     }
                     else
