@@ -576,7 +576,7 @@ namespace Nethermind.Consensus.Processing
                                                         branchingPoint.Hash) == false;
                 if (_logger.IsInfo)
                     _logger.Info(
-                        $" Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}, postMergeFinishBranchingCondition: {postMergeFinishBranchingCondition}");
+                        $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}, postMergeFinishBranchingCondition: {postMergeFinishBranchingCondition}");
             } while (preMergeFinishBranchingCondition || postMergeFinishBranchingCondition);
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)

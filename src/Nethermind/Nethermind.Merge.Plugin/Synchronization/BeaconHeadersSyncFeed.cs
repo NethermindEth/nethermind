@@ -34,6 +34,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 {
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
+    private readonly ILogger _logger;
     
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
     protected override long HeadersDestinationBlockNumber => _pivot.PivotDestinationNumber;
@@ -46,11 +47,12 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         ISyncReport? syncReport,
         IPivot? pivot,
         IMergeConfig? mergeConfig,
-        ILogManager? logManager) 
+        ILogManager logManager) 
         : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager, true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
         _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
+        _logger = logManager.GetClassLogger();
     }
     
     protected override SyncMode ActivationSyncModes { get; }
@@ -89,6 +91,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
+        _logger.Info($"Adding new header in beacon headers sync {header}"); 
         BlockTreeInsertOptions options = _nextHeaderDiff is null
             ? BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers
             : BlockTreeInsertOptions.None;
@@ -106,6 +109,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             }
         }
 
+        _logger.Info($"New header {header} in beacon headers sync. InsertOutcome: {insertOutcome}");
         return insertOutcome;
     }
 }

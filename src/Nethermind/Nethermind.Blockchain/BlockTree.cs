@@ -285,7 +285,7 @@ namespace Nethermind.Blockchain
             return level is not null;
         }
 
-        private void  LoadBestKnown()
+        private void LoadBestKnown()
         {
             long left = (Head?.Number ?? 0) == 0
                 ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
@@ -625,8 +625,8 @@ namespace Nethermind.Blockchain
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
             if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
-                if (_logger.IsTrace) _logger.Trace($"Block {header.Hash} already known.");
-          //          return AddBlockResult.AlreadyKnown;
+                if (_logger.IsInfo) _logger.Info($"Block {header.Hash} already known."); 
+                    return AddBlockResult.AlreadyKnown;
             }
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
@@ -1446,10 +1446,10 @@ namespace Nethermind.Blockchain
 
         public bool IsKnownBlock(long number, Keccak blockHash)
         {
-            // if (number > BestKnownNumber)
-            // {
-            //     return false;
-            // }
+            if (number > BestKnownNumber)
+            {
+                return false;
+            }
 
             // IsKnownBlock will be mainly called when new blocks are incoming
             // and these are very likely to be all at the head of the chain
