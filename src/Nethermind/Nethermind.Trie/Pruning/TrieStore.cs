@@ -48,8 +48,8 @@ namespace Nethermind.Trie.Pruning
                 Debug.Assert(node.Keccak is not null, "Cannot store in cache nodes without resolved key.");
                 if (_objectsCache.TryAdd(node.Keccak!, node))
                 {
+                    Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
                     _trieStore.MemoryUsedByDirtyCache += node.GetMemorySize(false);
-                    Metrics.CachedNodesCount = _objectsCache.Count;
                 }
             }
 
@@ -103,11 +103,16 @@ namespace Nethermind.Trie.Pruning
 
             private readonly ConcurrentDictionary<Keccak, TrieNode> _objectsCache = new();
 
-            public int Count => _objectsCache.Count;
+            private int _count = 0;
+
+            public int Count => _count;
 
             public void Remove(Keccak hash)
             {
-                _objectsCache.Remove(hash, out _);
+                if (_objectsCache.Remove(hash, out _))
+                {
+                    Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
+                }
             }
 
             public void Dump()
@@ -125,6 +130,7 @@ namespace Nethermind.Trie.Pruning
             public void Clear()
             {
                 _objectsCache.Clear();
+                Metrics.CachedNodesCount = _count = 0;
                 _trieStore.MemoryUsedByDirtyCache = 0;
             }
         }
