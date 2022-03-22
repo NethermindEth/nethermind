@@ -21,6 +21,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -37,6 +38,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockchainProcessor _processor;
         private bool _isInBeaconModeControl = false;
+        private readonly ILogger _logger;
 
         public BeaconSync(
             IBeaconPivot beaconPivot,
@@ -45,7 +47,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISyncProgressResolver syncProgressResolver,
             IBlockCacheService blockCacheService,
             IBlockValidator blockValidator,
-            IBlockchainProcessor processor)
+            IBlockchainProcessor processor,
+            ILogManager logManager)
         {
             _beaconPivot = beaconPivot;
             _blockTree = blockTree;
@@ -54,6 +57,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _blockCacheService = blockCacheService;
             _blockValidator = blockValidator;
             _processor = processor;
+            _logger = logManager.GetClassLogger();
         }
 
         public void SwitchToBeaconModeControl()
@@ -80,10 +84,18 @@ namespace Nethermind.Merge.Plugin.Synchronization
         }
 
         public bool ShouldBeInBeaconModeControl() => _isInBeaconModeControl;
+        
         // TODO: beaconsync use parent hash to check if finished
-        public bool IsBeaconSyncHeadersFinished() => !_beaconPivot.BeaconPivotExists() || (_blockTree.LowestInsertedBeaconHeader?.Number ??
-            _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber || (_blockTree.LowestInsertedBeaconHeader?.Number ??
-                                                     _beaconPivot.PivotNumber) == 1;
+        public bool IsBeaconSyncHeadersFinished()
+        {
+            var finished = !_beaconPivot.BeaconPivotExists() || (_blockTree.LowestInsertedBeaconHeader?.Number ??
+                                                  _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber ||
+                (_blockTree.LowestInsertedBeaconHeader?.Number ??
+                 _beaconPivot.PivotNumber) == 1;
+            
+            if (_logger.IsInfo) _logger.Info($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeader: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
+            return finished;
+        }
 
         public bool FastSyncEnabled => _syncConfig.FastSync;
     }
