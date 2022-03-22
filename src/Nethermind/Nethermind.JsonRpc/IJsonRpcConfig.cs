@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc
         
         [ConfigItem(
             Description = "Defines method names of Json RPC service requests to NOT log. Example: {\"eth_blockNumber\"} will not log \"eth_blockNumber\" requests.",
-            DefaultValue = "null")]
+            DefaultValue = "[engine_newPayloadV1, engine_forkchoiceUpdatedV1]")]
         public string[]? MethodsLoggingFiltering { get; set; }
     }
 }
