@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
-            if (newHeadBlock == null)
+            if (newHeadBlock == null || newHeadBlock.Header.TotalDifficulty == 0)
             {
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
@@ -166,7 +166,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}");
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
-            // TODO: beaconsyn is this needed?
+            // TODO: beaconsync is this needed?
             if (_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock!.Hash!) == false)
             {
                 return ForkchoiceUpdatedV1Result.Syncing;

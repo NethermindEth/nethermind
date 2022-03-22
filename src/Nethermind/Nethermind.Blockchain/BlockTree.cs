@@ -237,8 +237,8 @@ namespace Nethermind.Blockchain
         {
             LoadLowestInsertedBodyNumber();
             LoadLowestInsertedHeader();
-            LoadBestKnown();
             LoadLowestInsertedBeaconHeader();
+            LoadBestKnown();
         }
 
         private void LoadLowestInsertedBodyNumber()
@@ -285,12 +285,13 @@ namespace Nethermind.Blockchain
             return level is not null;
         }
 
-        private void LoadBestKnown()
+        private void  LoadBestKnown()
         {
             long left = (Head?.Number ?? 0) == 0
                 ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
                 : Head.Number;
-            long right = Math.Max(0, left) + BestKnownSearchLimit;
+            long right = _beaconSyncDestinationNumber != LowestInsertedBeaconHeader?.Number && _beaconSyncPivotNumber != null
+                ? _beaconSyncPivotNumber.Value : Math.Max(0, left) + BestKnownSearchLimit;
 
             bool LevelExists(long blockNumber)
             {
@@ -940,7 +941,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < level.BlockInfos.Length; i++)
             {
                 BlockInfo current = level.BlockInfos[i];
-                if (level.BlockInfos[i].TotalDifficulty > bestDifficultySoFar)
+                if (level.BlockInfos[i].TotalDifficulty >= bestDifficultySoFar)
                 {
                     bestDifficultySoFar = current.TotalDifficulty;
                     bestHash = current.BlockHash;
@@ -1446,10 +1447,10 @@ namespace Nethermind.Blockchain
 
         public bool IsKnownBlock(long number, Keccak blockHash)
         {
-            // if (number > BestKnownNumber)
-            // {
-            //     return false;
-            // }
+            if (number > BestKnownNumber)
+            {
+                return false;
+            }
 
             // IsKnownBlock will be mainly called when new blocks are incoming
             // and these are very likely to be all at the head of the chain
