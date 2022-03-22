@@ -105,6 +105,8 @@ namespace Nethermind.Synchronization.Peers
             PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            
+            if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
         }
 
         public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts)
@@ -266,6 +268,7 @@ namespace Nethermind.Synchronization.Peers
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
             if (syncPeer.IsPriority) Metrics.PriorityPeers = PriorityPeerCount;
+            if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
             
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
@@ -297,6 +300,7 @@ namespace Nethermind.Synchronization.Peers
 
             Metrics.SyncPeers = _peers.Count;
             if (syncPeer.IsPriority) Metrics.PriorityPeers = PriorityPeerCount;
+            if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
             
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
