@@ -340,12 +340,15 @@ namespace Nethermind.Consensus.Processing
             {
                 if (lastProcessed!.IsPostMerge == false)
                 {
+                    if (_logger.IsInfo)
+                        _logger.Info(
+                            $"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
                     _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
                 }
                 else
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace(
+                    if (_logger.IsInfo)
+                        _logger.Info(
                             $"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                     _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
                 }
@@ -571,8 +574,8 @@ namespace Nethermind.Consensus.Processing
                 postMergeFinishBranchingCondition = suggestedBlockIsPostMerge &&
                                                     _blockTree.WasProcessed(branchingPoint.Number,
                                                         branchingPoint.Hash) == false;
-                if (_logger.IsTrace)
-                    _logger.Trace(
+                if (_logger.IsInfo)
+                    _logger.Info(
                         $" Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}, postMergeFinishBranchingCondition: {postMergeFinishBranchingCondition}");
             } while (preMergeFinishBranchingCondition || postMergeFinishBranchingCondition);
 
