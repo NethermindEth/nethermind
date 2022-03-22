@@ -459,6 +459,7 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)
                 .TestObject;
+            block.Header.IsPostMerge = true;
             block.Header.Hash = block.CalculateHash();
             await chain.BlockTree.SuggestBlockAsync(block!);
             BlockRequestResult blockRequest = new(block);

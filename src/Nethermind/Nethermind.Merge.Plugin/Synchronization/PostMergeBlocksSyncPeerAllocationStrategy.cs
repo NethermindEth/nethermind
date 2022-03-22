@@ -67,8 +67,7 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
         {
             (this as IPeerAllocationStrategy).CheckAsyncState(info);
             peersCount++;
-
-
+            
             if (info.HeadNumber < (blockTree.BestSuggestedBody?.Number ?? 0) + (_minBlocksAhead ?? 1))
             {
                 // we need to be able to download some blocks ahead

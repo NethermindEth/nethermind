@@ -90,7 +90,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
         BlockTreeInsertOptions options = _nextHeaderDiff is null
-            ? BlockTreeInsertOptions.TotalDifficultyNotNeeded
+            ? BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers
             : BlockTreeInsertOptions.None;
         AddBlockResult insertOutcome = _blockTree.Insert(header, options);
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
