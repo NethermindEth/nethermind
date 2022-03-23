@@ -97,5 +97,49 @@ public class BlockTreeTests
             BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.TotalDifficultyNotNeeded);
         
         Assert.AreEqual(AddBlockResult.Added, insertResult);
+        Assert.AreEqual(9, notSyncedTree.BestKnownNumber);
+    }
+    
+    [Test]
+    public void Can_insert_beacon_headers()
+    {
+        (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
+        
+        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true,
+            BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.TotalDifficultyNotNeeded);
+
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;
+        for (int i = 13; i > 9; --i)
+        {
+            BlockHeader? beaconHeader = syncedTree.FindHeader(i, BlockTreeLookupOptions.None);
+            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, options);
+            Assert.AreEqual(insertOutcome, insertResult);
+        }
+    }
+    
+    [Test]
+    public void Can_fill_beacon_headers_gap()
+    {
+        (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
+        
+        Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true,
+            BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.TotalDifficultyNotNeeded);
+
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;
+        for (int i = 13; i > 9; --i)
+        {
+            BlockHeader? beaconHeader = syncedTree.FindHeader(i, BlockTreeLookupOptions.None);
+            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, options);
+            Assert.AreEqual(AddBlockResult.Added, insertOutcome);
+        }
+        
+        for (int i = 10; i <14; ++i)
+        {
+            Block? block = syncedTree.FindBlock(i, BlockTreeLookupOptions.None);
+            AddBlockResult insertOutcome = notSyncedTree.SuggestBlock(block!);
+            Assert.AreEqual(AddBlockResult.Added, insertOutcome);
+        }
     }
 }
