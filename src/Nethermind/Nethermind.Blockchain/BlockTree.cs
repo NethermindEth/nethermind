@@ -295,13 +295,13 @@ namespace Nethermind.Blockchain
             if (_syncConfig.FastSync)
             {
                 right = _beaconSyncDestinationNumber != LowestInsertedBeaconHeader?.Number &&
-                        _beaconSyncPivotNumber != null
-                    ? _beaconSyncPivotNumber.Value
+                        _beaconSyncDestinationNumber.HasValue
+                    ? _beaconSyncDestinationNumber.Value
                     : Math.Max(0, left) + BestKnownSearchLimit;
             }
             else
             {
-                right = _beaconSyncPivotNumber ?? Math.Max(0, left) + BestKnownSearchLimit;
+                right = LowestInsertedBeaconHeader?.Number ?? Math.Max(0, left) + BestKnownSearchLimit;
             }
 
             bool LevelExists(long blockNumber)
@@ -1614,9 +1614,10 @@ namespace Nethermind.Blockchain
             long currentNum = Math.Min(endNumber, startNumber + batchSize);
 
             // TODO: beaconsync duplicate code
-            BlockHeader? GetParentHeader(BlockHeader current) =>
+            BlockHeader GetParentHeader(BlockHeader current) =>
                 this.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
-                ?? FindBlock(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header;
+                ?? FindBlock(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header
+                ?? throw new InvalidOperationException($"An orphaned block on the chain {current}");
             
             UInt256? BatchSetTotalDifficulty(BlockHeader current)
             {
@@ -1636,10 +1637,6 @@ namespace Nethermind.Blockchain
                             stack.Push(new ValueTuple<BlockHeader, ChainLevelInfo, BlockInfo>(current, level, blockInfo));
                             if (_logger.IsTrace) _logger.Trace($"Calculating total difficulty for {current.ToString(BlockHeader.Format.Short)}");
                             current = GetParentHeader(current);
-                            if (current == null)
-                            {
-                                return 0;
-                            }
                         }
                         else
                         {

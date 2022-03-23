@@ -88,12 +88,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
         // TODO: beaconsync use parent hash to check if finished
         public bool IsBeaconSyncHeadersFinished()
         {
-            var finished = !_beaconPivot.BeaconPivotExists() || (_blockTree.LowestInsertedBeaconHeader?.Number ??
-                                                  _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber ||
-                (_blockTree.LowestInsertedBeaconHeader?.Number ??
-                 _beaconPivot.PivotNumber) == 1;
+            bool finished = !_beaconPivot.BeaconPivotExists()
+                            || (_blockTree.LowestInsertedBeaconHeader?.Number ?? _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber
+                            || (_blockTree.LowestInsertedBeaconHeader?.Number ?? _beaconPivot.PivotNumber) == 1;
             
-            if (_logger.IsInfo) _logger.Info($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeader: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
+            if (_logger.IsInfo) _logger.Info($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;
         }
 

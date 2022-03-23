@@ -95,7 +95,11 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         BlockTreeInsertOptions options = _nextHeaderDiff is null
             ? BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers
             : BlockTreeInsertOptions.None;
-        AddBlockResult insertOutcome = _blockTree.Insert(header, options);
+
+        AddBlockResult insertOutcome = _blockTree.IsKnownBlock(header.Number, header.Hash)
+            ? AddBlockResult.AlreadyKnown
+            : _blockTree.Insert(header, options);
+
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
         {
             _nextHeaderHash = header.ParentHash!;
