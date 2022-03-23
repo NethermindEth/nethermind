@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.Test
                 syncConfig,
                 LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, LimboLogs.Instance);
-            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, LimboLogs.Instance);
+            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, null, LimboLogs.Instance);
             _syncServer = new SyncServer(
                 _stateDb,
                 _codeDb,

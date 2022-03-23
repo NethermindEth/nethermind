@@ -366,6 +366,7 @@ namespace Nethermind.Synchronization.Test
                 nodeStatsManager,
                 StaticSelector.Full,
                 syncConfig,
+                null,
                 logManager);
             SyncServer syncServer = new(
                 stateDb,
