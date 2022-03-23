@@ -204,7 +204,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash);
                     if (!parentProcessed)
                     {
-                        long state = _syncProgressResolver.FindBestFullState();
+                        long state = _syncProgressResolver.FindBestFullState(); // ToDo Sarah: I think we need to findBestFullState only one time because isFastSyncTransition condition
                         if (state > 0)
                         {
                             bool shouldProcess = block.Number > state;
@@ -213,7 +213,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                                 Stack<Block> stack = new();
                                 Block? current = block;
                                 // re-insert block as header is encoded with TD 0
-                                _blockTree.Insert(block);
+                                _blockTree.Insert(block); //ToDo Sarah: can't we do operation similar to SetTotalDifficulty in blockTree instead of reinserting blocks?
                                 BlockHeader parent = parentHeader;
 
                                 while (current.Number > state)
