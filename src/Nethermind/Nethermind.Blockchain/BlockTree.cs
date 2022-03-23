@@ -290,8 +290,19 @@ namespace Nethermind.Blockchain
             long left = (Head?.Number ?? 0) == 0
                 ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
                 : Head.Number;
-            long right = _beaconSyncDestinationNumber != LowestInsertedBeaconHeader?.Number && _beaconSyncPivotNumber != null
-                ? _beaconSyncPivotNumber.Value : Math.Max(0, left) + BestKnownSearchLimit;
+            // TODO: beaconsync when best known pointer be updated if there is beacon sync?
+            long right;
+            if (_syncConfig.FastSync)
+            {
+                right = _beaconSyncDestinationNumber != LowestInsertedBeaconHeader?.Number &&
+                        _beaconSyncPivotNumber != null
+                    ? _beaconSyncPivotNumber.Value
+                    : Math.Max(0, left) + BestKnownSearchLimit;
+            }
+            else
+            {
+                right = _beaconSyncPivotNumber ?? Math.Max(0, left) + BestKnownSearchLimit;
+            }
 
             bool LevelExists(long blockNumber)
             {

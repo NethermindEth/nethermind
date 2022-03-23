@@ -178,7 +178,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
-                _logger.Info($"Inserted block without parent {block}");
+                _logger.Info($"Insert block into cache without parent {block}");
                 _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
                 return NewPayloadV1Result.Accepted;
             }
@@ -257,6 +257,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
                 
                 _blockCacheService.BlockCache.Clear();
+            }
+
+            if (parentHeader.TotalDifficulty == 0)
+            {
+                _logger.Info($"Insert block into cache without parent {block}");
+                _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
+                return NewPayloadV1Result.Accepted;
             }
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
