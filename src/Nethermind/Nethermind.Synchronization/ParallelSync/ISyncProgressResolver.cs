@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.ParallelSync
         
         long FindBestProcessedBlock();
 
-        bool IsSnapGetAccountRangesFinished();
+        bool IsSnapGetRangesFinished();
 
 
         UInt256 ChainDifficulty { get; }

@@ -83,13 +83,22 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = slots.Last().Path;
 
+            string expRootHash = expectedRootHash.ToString();
+
             (bool success, bool moreChildrenToRight) = FillBoundaryTree(tree, expectedRootHash, startingHash, lastHash, proofs);
 
             if (success)
             {
-                foreach (var slot in slots)
+                try
                 {
-                    tree.Set(slot.Path, slot.SlotRlpValue, false);
+                    foreach (var slot in slots)
+                    {
+                        tree.Set(slot.Path, slot.SlotRlpValue, false);
+                    }
+                }
+                catch(Exception ex)
+                {
+                    throw;
                 }
 
                 tree.UpdateRootHash();
@@ -124,13 +133,15 @@ namespace Nethermind.State.Snap
         {
             if (proofs is null || proofs.Length == 0)
             {
-                return (true, true);
+                return (true, false);
             }
 
             if (tree == null)
             {
                 throw new ArgumentNullException(nameof(tree));
             }
+
+            startingHash ??= Keccak.Zero;
 
             Dictionary<Keccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
 
@@ -140,13 +151,13 @@ namespace Nethermind.State.Snap
             Span<byte> rightBoundary = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
 
-            Stack<(TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
+            Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 
             if(dict.TryGetValue(expectedRootHash, out TrieNode root))
             {
                 tree.RootRef = root;
 
-                proofNodesToProcess.Push((root, -1, new List<byte>()));
+                proofNodesToProcess.Push((null, root, -1, new List<byte>()));
             }
             else
             {
@@ -157,20 +168,40 @@ namespace Nethermind.State.Snap
 
             while (proofNodesToProcess.Count > 0)
             {
-                (TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
+                (TrieNode parent, TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
 
                 if (node.IsExtension)
                 {
                     Keccak? childKeccak = node.GetChildHash(0);
-                    
-                    if(childKeccak is not null && dict.TryGetValue(childKeccak, out TrieNode child))
-                    {
-                        node.SetChild(0, child);
 
-                        pathIndex += node.Path.Length;
-                        path.AddRange(node.Path);
-                        proofNodesToProcess.Push((child, pathIndex, path));
-                    }                    
+                    if (childKeccak is not null)
+                    {
+                        if (dict.TryGetValue(childKeccak, out TrieNode child))
+                        {
+                            node.SetChild(0, child);
+
+                            pathIndex += node.Path.Length;
+                            path.AddRange(node.Path);
+                            proofNodesToProcess.Push((node, child, pathIndex, path));
+                        }
+                        else
+                        {
+                            if(Bytes.Comparer.Compare(path.ToArray(), leftBoundary[0..path.Count()].ToArray()) >= 0 
+                                && parent is not null
+                                && parent.IsBranch)
+                            {
+                                for (int i = 0; i < 15; i++)
+                                {
+                                    Keccak? kec = parent.GetChildHash(i);
+                                    if(kec == node.Keccak)
+                                    {
+                                        parent.SetChild(i, null);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (node.IsBranch)
@@ -204,11 +235,10 @@ namespace Nethermind.State.Snap
 
                                 newPath.Add((byte)ci);
 
-                                proofNodesToProcess.Push((child, pathIndex, newPath));
+                                proofNodesToProcess.Push((node, child, pathIndex, newPath));
                             }
                         }
                     }
-
                 }
             }
 
