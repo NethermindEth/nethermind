@@ -161,19 +161,21 @@ namespace Nethermind.Blockchain
             ChainLevelInfo? genesisLevel = LoadLevel(0);
             if (genesisLevel is not null)
             {
+                BlockInfo genesisBlockInfo = genesisLevel.BlockInfos[0];
                 if (genesisLevel.BlockInfos.Length != 1)
                 {
                     // just for corrupted test bases
-                    genesisLevel.BlockInfos = new[] {genesisLevel.BlockInfos[0]};
+                    genesisLevel.BlockInfos = new[] { genesisBlockInfo };
                     _chainLevelInfoRepository.PersistLevel(0, genesisLevel);
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
-                if (genesisLevel.BlockInfos[0].WasProcessed)
+                if (genesisBlockInfo.WasProcessed)
                 {
-                    BlockHeader genesisHeader = FindHeader(genesisLevel.BlockInfos[0].BlockHash, BlockTreeLookupOptions.None);
+                    BlockHeader genesisHeader = FindHeader(genesisBlockInfo.BlockHash, BlockTreeLookupOptions.None);
                     Genesis = genesisHeader;
                     LoadStartBlock();
+                    Head ??= FindBlock(genesisBlockInfo.BlockHash, BlockTreeLookupOptions.None);
                 }
 
                 RecalculateTreeLevels();
@@ -1239,14 +1241,17 @@ namespace Nethermind.Blockchain
 
         public void UpdateHeadBlock(Keccak blockHash)
         {
-            if(_logger.IsError) _logger.Error($"Block tree override detected - updating head block to {blockHash}.");
             BlockHeader? header = FindHeader(blockHash, BlockTreeLookupOptions.None);
-            _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
             if (header is not null)
             {
+                if(_logger.IsError) _logger.Error($"Block tree override detected - updating head block to {blockHash}.");
+                _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
                 BestPersistedState = header.Number;
             }
-            
+            else
+            {
+                if(_logger.IsError) _logger.Error($"Block tree override detected - cannot find block: {blockHash}.");
+            }
         }
 
         private void UpdateHeadBlock(Block block)
