@@ -130,7 +130,8 @@ namespace Nethermind.Trie.Pruning
             public void Clear()
             {
                 _objectsCache.Clear();
-                Metrics.CachedNodesCount = _count = 0;
+                Interlocked.Exchange(ref _count, 0);
+                Metrics.CachedNodesCount = 0;
                 _trieStore.MemoryUsedByDirtyCache = 0;
             }
         }
