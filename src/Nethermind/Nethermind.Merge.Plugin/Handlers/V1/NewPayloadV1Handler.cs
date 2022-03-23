@@ -244,16 +244,25 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
                 else
                 {
-                    bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
-                    if (parentPivotProcessed)
+                    bool wasProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash ?? parentHeader.CalculateHash());
+                    if (!wasProcessed)
                     {
-                        _logger.Info($"Parent pivot was processed. Pivot: {_beaconPivot.PivotNumber} {_beaconPivot.PivotHash} Suggesting block {block}");
-                        _blockTree.SuggestBlock(block);
-                    }
-                    else
-                    {
+                        bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
+                        if (parentPivotProcessed)
+                        {
+                            // ToDo add beaconSync validation
+                            _logger.Info(
+                                $"Parent pivot was processed. Pivot: {_beaconPivot.PivotNumber} {_beaconPivot.PivotHash} Suggesting block {block}");
+                            _blockTree.SuggestBlock(block);
+                        }
+                        else
+                        {
+                            _logger.Info($"Inserted {block}");
+                            _blockTree.Insert(block, true);
+                        }
+                        
                         return NewPayloadV1Result.Syncing;
-                    } 
+                    }
                 }
                 
                 _blockCacheService.BlockCache.Clear();

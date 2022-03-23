@@ -141,5 +141,7 @@ public class BlockTreeTests
             AddBlockResult insertOutcome = notSyncedTree.SuggestBlock(block!);
             Assert.AreEqual(AddBlockResult.Added, insertOutcome);
         }
+        
+        Assert.AreEqual(14, notSyncedTree.BestSuggestedBody);
     }
 }
