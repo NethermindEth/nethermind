@@ -120,7 +120,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             long now = _clock.GetCurrentTime();
             if (Math.Abs(iat - now) <= JwtTokenTtl)
             {
-                if (_logger.IsInfo) _logger.Info($"Authentication: authenticated");
+                if (_logger.IsTrace) _logger.Trace($"Authentication: authenticated. Token: {token}, iat: {iat}, time: {now}");
                 return true;
             }
 
