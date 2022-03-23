@@ -168,7 +168,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             var request = new GetStorageRangeMessage()
             {
                 StoragetRange = range,
-                ResponseBytes = 1000
+                ResponseBytes = BYTES_LIMIT
             };
 
             StorageRangeMessage response = await SendRequest(request, _getStorageRangeRequests, token);

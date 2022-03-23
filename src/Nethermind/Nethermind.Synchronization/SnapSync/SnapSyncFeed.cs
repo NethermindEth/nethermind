@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
-        private const int STORAGE_BATCH_SIZE = 2;
+        private const int STORAGE_BATCH_SIZE = 1000;
 
         private int _accountResponsesCount;
         private int _storageResponsesCount;
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.SnapSync
                         BlockNumber = _bestHeader.Number
                     };
 
-                    if (_storageResponsesCount == 1 || _storageResponsesCount > 0 && _storageResponsesCount % 10 == 0)
+                    if (_storageResponsesCount == 1 || _storageResponsesCount > 0 && _storageResponsesCount % 100 == 0)
                     {
                         _logger.Info($"SNAP - Responses:{_storageResponsesCount}, Slots:{Metrics.SyncedStorageSlots}");
                     }
