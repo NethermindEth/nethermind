@@ -36,7 +36,7 @@ namespace Nethermind.AccountAbstraction
         
         [ConfigItem(
             Description = "Defines the maximum number of UserOperations that can be kept for each sender",
-            DefaultValue = "10")]
+            DefaultValue = "1")]
         int MaximumUserOperationPerSender { get; set; }
 
         [ConfigItem(

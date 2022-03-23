@@ -38,7 +38,8 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             Instruction.GASPRICE, Instruction.GASLIMIT, Instruction.DIFFICULTY, Instruction.TIMESTAMP,
             Instruction.BASEFEE, Instruction.BLOCKHASH, Instruction.NUMBER, Instruction.SELFBALANCE,
-            Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE, Instruction.GAS
+            Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE, Instruction.GAS,
+            Instruction.CREATE
         };
 
         private readonly Address _entryPointAddress;
@@ -268,6 +269,12 @@ namespace Nethermind.AccountAbstraction.Executor
             ExecutionType callType,
             bool isPrecompileCall = false)
         {
+            if (value == 0) return;
+
+            if (from == _sender && to == _entryPointAddress) return;
+            
+            Success = false;
+            Error ??= $"simulation failed: balance write allowed only from sender to entrypoint, instead found from: {from} to: {_entryPointAddress} with value {value}";
         }
 
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)

@@ -128,7 +128,8 @@ namespace Nethermind.Evm.Test
             long blockNumber,
             long gasLimit,
             byte[] code,
-            SenderRecipientAndMiner senderRecipientAndMiner = null)
+            SenderRecipientAndMiner senderRecipientAndMiner = null,
+            int value = 1)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
@@ -146,6 +147,7 @@ namespace Nethermind.Evm.Test
             Transaction transaction = Build.A.Transaction
                 .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
+                .WithValue(value)
                 .To(senderRecipientAndMiner.Recipient)
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
