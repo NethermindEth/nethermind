@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
 
-        private bool IsSnapGetAccountRangesFinished => !SnapSyncEnabled || _syncProgressResolver.IsSnapGetAccountRangesFinished();
+        private bool IsSnapGetAccountRangesFinished => !SnapSyncEnabled || _syncProgressResolver.IsSnapGetRangesFinished();
 
         internal long? LastBlockThatEnabledFullSync { get; set; }
 

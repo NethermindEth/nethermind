@@ -61,19 +61,34 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 SnapSyncBatch request = new SnapSyncBatch();
 
-                // TODO: optimize this
-                List<PathWithAccount> accounts = new(STORAGE_BATCH_SIZE);
-                for (int i = 0; i < STORAGE_BATCH_SIZE && _snapProvider.StoragesToRetrieve.TryDequeue(out PathWithAccount account); i++)
-                {
-                    accounts.Add(account);
-                }
-
-                if (accounts.Count >0)
+                if(_snapProvider.NextSlot.HasValue)
                 {
                     request.StorageRangeRequest = new()
                     {
                         RootHash = _bestHeader.StateRoot,
-                        Accounts = accounts.ToArray(),
+                        Accounts = new PathWithAccount[] { _snapProvider.NextSlot.Value.accountPath},
+                        StartingHash = _snapProvider.NextSlot.Value.nextSlotPath,
+                        BlockNumber = _bestHeader.Number
+                    };
+
+                    // TODO: make it thread safe and handle retry
+                    _snapProvider.NextSlot = null;
+                }
+                else if(_snapProvider.StoragesToRetrieve.Count > 0)
+                {
+                    // TODO: optimize this
+                    List<PathWithAccount> storagesToQuery = storagesToQuery = new(STORAGE_BATCH_SIZE);
+
+                    for (int i = 0; i < STORAGE_BATCH_SIZE && _snapProvider.StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
+                    {
+                        storagesToQuery.Add(storage);
+                    }
+
+                    request.StorageRangeRequest = new()
+                    {
+                        RootHash = _bestHeader.StateRoot,
+                        Accounts = storagesToQuery.ToArray(),
+                        StartingHash = Keccak.Zero,
                         BlockNumber = _bestHeader.Number
                     };
 
@@ -88,7 +103,7 @@ namespace Nethermind.Synchronization.SnapSync
                     //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
                     // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
 
-                    request.AccountRangeRequest = new(_bestHeader.StateRoot, _snapProvider.NextStartingHash, Keccak.MaxValue, _bestHeader.Number);
+                    request.AccountRangeRequest = new(_bestHeader.StateRoot, _snapProvider.NextAccountPath, Keccak.MaxValue, _bestHeader.Number);
 
                     if (_accountResponsesCount == 1 || _accountResponsesCount > 0 && _accountResponsesCount % 10 == 0)
                     {
@@ -134,24 +149,36 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if(batch.StorageRangeResponse is not null)
             {
-                if (batch.StorageRangeResponse.PathsAndSlots.Length == 0 && batch.AccountRangeResponse.Proofs.Length == 0)
+                if (batch.StorageRangeResponse.PathsAndSlots.Length == 0 && batch.StorageRangeResponse.Proofs.Length == 0)
                 {
-                    _logger.Warn($"GetAccountRange: Requested expired RootHash:{batch.AccountRangeRequest.RootHash}");
+                    _logger.Warn($"GetStorageRange: Requested expired RootHash:{batch.StorageRangeRequest.RootHash}");
                 }
                 else
                 {
                     int slotCount = 0;
 
-                    int length = batch.StorageRangeResponse.PathsAndSlots.Length;
+                    int requestLength = batch.StorageRangeRequest.Accounts.Length;
+                    int responseLength = batch.StorageRangeResponse.PathsAndSlots.Length;
 
-                    for (int i = 0; i < length; i++)
+                    for (int i = 0; i < requestLength; i++)
                     {
+                        if (i < responseLength)
+                        {
+                            // only the last can have proofs
+                            byte[][] proofs = null;
+                            if (i == responseLength - 1)
+                            {
+                                proofs = batch.StorageRangeResponse.Proofs;
+                            }
 
-                        // only the last can have proofs
-                        byte[][] proofs = (i == length - 1) ? batch.StorageRangeResponse.Proofs : null;
-                        _snapProvider.AddStorageRange(batch.StorageRangeRequest.BlockNumber.Value, batch.StorageRangeRequest.Accounts[i].Account.StorageRoot, batch.StorageRangeRequest.StartingHash, batch.StorageRangeResponse.PathsAndSlots[i], proofs);
+                            _snapProvider.AddStorageRange(batch.StorageRangeRequest.BlockNumber.Value, batch.StorageRangeRequest.Accounts[i], batch.StorageRangeRequest.Accounts[i].Account.StorageRoot, batch.StorageRangeRequest.StartingHash, batch.StorageRangeResponse.PathsAndSlots[i], proofs);
 
-                        slotCount += batch.StorageRangeResponse.PathsAndSlots[i].Length;
+                            slotCount += batch.StorageRangeResponse.PathsAndSlots[i].Length;
+                        }
+                        else
+                        {
+                            _snapProvider.StoragesToRetrieve.Enqueue(batch.StorageRangeRequest.Accounts[i]);
+                        }
                     }
 
                     if (slotCount > 0)
