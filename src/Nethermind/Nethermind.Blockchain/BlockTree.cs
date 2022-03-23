@@ -1614,10 +1614,9 @@ namespace Nethermind.Blockchain
             long currentNum = Math.Min(endNumber, startNumber + batchSize);
 
             // TODO: beaconsync duplicate code
-            BlockHeader GetParentHeader(BlockHeader current) =>
+            BlockHeader? GetParentHeader(BlockHeader current) =>
                 this.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
-                ?? FindBlock(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header
-                ?? throw new InvalidOperationException($"An orphaned block on the chain {current}");
+                ?? FindBlock(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded)?.Header;
             
             UInt256? BatchSetTotalDifficulty(BlockHeader current)
             {
@@ -1637,6 +1636,10 @@ namespace Nethermind.Blockchain
                             stack.Push(new ValueTuple<BlockHeader, ChainLevelInfo, BlockInfo>(current, level, blockInfo));
                             if (_logger.IsTrace) _logger.Trace($"Calculating total difficulty for {current.ToString(BlockHeader.Format.Short)}");
                             current = GetParentHeader(current);
+                            if (current == null)
+                            {
+                                return 0;
+                            }
                         }
                         else
                         {
