@@ -15,14 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public enum SubscriptionType
+    public struct SubscriptionType
     {
-        NewHeads,
-        Logs,
-        NewPendingTransactions,
-        DroppedPendingTransactions,
-        Syncing
+        public const string NewHeads = "newHeads";
+        public const string Logs = "logs";
+        public const string NewPendingTransactions = "newPendingTransactions";
+        public const string DroppedPendingTransactions = "droppedPendingTransactions";
+        public const string Syncing = "syncing";
     }
 }

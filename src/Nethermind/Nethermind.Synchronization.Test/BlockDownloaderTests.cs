@@ -567,7 +567,7 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransactions(IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
+            public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
             {
                 throw new NotImplementedException();
             }
@@ -1001,7 +1001,7 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
 
-            public void SendNewTransactions(IEnumerable<(Transaction Tx, bool IsPersistent)> txs)
+            public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
             {
                 throw new NotImplementedException();
             }

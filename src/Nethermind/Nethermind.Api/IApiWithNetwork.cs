@@ -18,7 +18,9 @@
 using System.Collections.Generic;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
@@ -55,5 +57,6 @@ namespace Nethermind.Api
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
+        ISubscriptionFactory SubscriptionFactory { get; set; }
     }
 }

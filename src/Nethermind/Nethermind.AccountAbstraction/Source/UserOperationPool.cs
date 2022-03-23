@@ -25,11 +25,11 @@ using System.Threading.Tasks;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
+using Nethermind.AccountAbstraction.Network;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -55,13 +55,13 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly Keccak _userOperationEventTopic;
         private readonly IUserOperationSimulator _userOperationSimulator;
         private readonly UserOperationSortedPool _userOperationSortedPool;
+        private readonly IUserOperationBroadcaster _userOperationBroadcaster;
 
         private readonly ConcurrentDictionary<long, HashSet<Keccak>> _userOperationsToDelete = new();
         private readonly ConcurrentDictionary<long, HashSet<UserOperation>> _removedUserOperations = new();
-        private readonly UserOperationBroadcaster _broadcaster;
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
-
+        private readonly ulong _chainId;
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
             IBlockTree blockTree,
@@ -73,7 +73,10 @@ namespace Nethermind.AccountAbstraction.Source
             IStateProvider stateProvider,
             ITimestamper timestamper,
             IUserOperationSimulator userOperationSimulator,
-            UserOperationSortedPool userOperationSortedPool)
+            UserOperationSortedPool userOperationSortedPool,
+            IUserOperationBroadcaster userOperationBroadcaster,
+            ulong chainId
+            )
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
@@ -85,19 +88,21 @@ namespace Nethermind.AccountAbstraction.Source
             _logger = logger;
             _accountAbstractionConfig = accountAbstractionConfig;
             _userOperationSortedPool = userOperationSortedPool;
+            _userOperationBroadcaster = userOperationBroadcaster;
             _userOperationSimulator = userOperationSimulator;
-                
+            _chainId = chainId;
+
             // topic hash emitted by a successful user operation
-            _userOperationEventTopic = new Keccak("0xc27a60e61c14607957b41fa2dad696de47b2d80e390d0eaaf1514c0cd2034293");
+            _userOperationEventTopic = new Keccak("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
 
             MemoryAllowance.MemPoolSize = accountAbstractionConfig.UserOperationPoolSize;
-
-            _broadcaster = new UserOperationBroadcaster(logger);
-
+            
             _blockTree.BlockAddedToMain += OnBlockAdded;
 
             ProcessNewBlocks();
         }
+
+        public Address EntryPoint() => _entryPointAddress;
 
         private void OnBlockAdded(object? sender, BlockReplacementEventArgs e)
         {
@@ -157,10 +162,31 @@ namespace Nethermind.AccountAbstraction.Source
             return _userOperationSortedPool.GetSnapshot();
         }
 
+        public bool IncludesUserOperationWithSenderAndNonce(Address sender, UInt256 nonce)
+        {
+            if (_userOperationSortedPool.TryGetBucket(sender, out UserOperation[] userOperations))
+            {
+                return userOperations.Any(op => op.Nonce == nonce);
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        public bool CanInsert(UserOperation userOperation)
+        {
+            return _userOperationSortedPool.CanInsert(userOperation);
+        }
+
         public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
         {
             Metrics.UserOperationsReceived++;
             if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} received");
+
+            UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
+            NewReceived?.Invoke(this, userOperationEventArgs);
+            
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
             {
@@ -170,8 +196,10 @@ namespace Nethermind.AccountAbstraction.Source
                     Metrics.UserOperationsPending++;
                     _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} inserted into pool");
-                    _broadcaster.BroadcastOnce(userOperation);
-                    return ResultWrapper<Keccak>.Success(userOperation.Hash);
+                    _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));                    
+                    NewPending?.Invoke(this, userOperationEventArgs);
+                    
+                    return ResultWrapper<Keccak>.Success(userOperation.CalculateRequestId(_entryPointAddress, _chainId));
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.Hash} failed to be inserted into pool");
@@ -198,22 +226,22 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 foreach (var userOperationHash in _userOperationsToDelete[block.Number]) RemoveUserOperation(userOperationHash);
             }
-            
+
             BlockParameter currentBlockParameter = new BlockParameter(block.Number);
             AddressFilter entryPointAddressFilter = new AddressFilter(_entryPointAddress);
-            IEnumerable<FilterLog> foundLogs = _logFinder.FindLogs(new LogFilter(0, 
-                currentBlockParameter, 
+            IEnumerable<FilterLog> foundLogs = _logFinder.FindLogs(new LogFilter(0,
+                currentBlockParameter,
                 currentBlockParameter,
                 entryPointAddressFilter,
-                new SequenceTopicsFilter(new TopicExpression[] {new SpecificTopic(_userOperationEventTopic)})));
+                new SequenceTopicsFilter(new TopicExpression[] { new SpecificTopic(_userOperationEventTopic) })));
 
             // find any userOps included on chain submitted by this miner, delete from the pool
             foreach (FilterLog log in foundLogs)
             {
                 if (log?.Topics[0] == _userOperationEventTopic)
                 {
-                    Address senderAddress = new(log.Topics[1]);
-                    Address paymasterAddress = new(log.Topics[2]);
+                    Address senderAddress = new(log.Topics[2]);
+                    Address paymasterAddress = new(log.Topics[3]);
                     UInt256 nonce = new(log.Data.Slice(0, 32), true);
                     if (_userOperationSortedPool.TryGetBucket(senderAddress, out UserOperation[] opsOfSender))
                     {
@@ -316,29 +344,14 @@ namespace Nethermind.AccountAbstraction.Source
             return success;
         }
 
-        public void AddPeer(IUserOperationPoolPeer peer)
-        {
-            PeerInfo peerInfo = new(peer);
-            if (_broadcaster.AddPeer(peerInfo))
-            {
-                _broadcaster.BroadcastOnce(peerInfo, _userOperationSortedPool.GetSnapshot());
-                
-                if (_logger.IsTrace) _logger.Trace($"Added a peer to User Operation pool: {peer.Id}");
-            }
-        }
-
-        public void RemovePeer(PublicKey nodeId)
-        {
-            if (_broadcaster.RemovePeer(nodeId))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Removed a peer from User Operation pool: {nodeId}");
-            }
-        }
-
         public void Dispose()
         {
             _blockTree.BlockAddedToMain -= OnBlockAdded;
             _headBlocksChannel.Writer.Complete();
         }
+
+        public event EventHandler<UserOperationEventArgs>? NewReceived;
+        public event EventHandler<UserOperationEventArgs>? NewPending;
+
     }
 }

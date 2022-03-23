@@ -112,7 +112,7 @@ namespace Nethermind.Init.Steps
             await Task.WhenAll(_allPending);
         }
 
-        private ConcurrentBag<Task> _allPending = new ConcurrentBag<Task>();
+        private readonly ConcurrentQueue<Task> _allPending = new();
 
         private void RunOneRoundOfInitialization(CancellationToken cancellationToken)
         {
@@ -168,7 +168,7 @@ namespace Nethermind.Init.Steps
 
                 if (step.MustInitialize)
                 {
-                    _allPending.Add(continuationTask);
+                    _allPending.Enqueue(continuationTask);
                 }
                 else
                 {
