@@ -5,9 +5,12 @@ namespace Nethermind.State.Snap
 {
     public interface ISnapProvider
     {
-        public bool MoreAccountsToRight { get; set; }
+        Keccak NextAccountPath { get; set; }
+        bool MoreAccountsToRight { get; set; }
+        (PathWithAccount accountPath, Keccak nextSlotPath)? NextSlot { get; set; }
         ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; }
 
-        //bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null);
+        bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null);
+        bool AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null);
     }
 }

@@ -49,6 +49,7 @@ namespace Nethermind.Synchronization
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISyncConfig _syncConfig;
+        private readonly ISnapProvider _snapProvider;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly ILogManager _logManager;
@@ -81,6 +82,7 @@ namespace Nethermind.Synchronization
             INodeStatsManager nodeStatsManager,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
+            ISnapProvider snapProvider,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -92,6 +94,7 @@ namespace Nethermind.Synchronization
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _logManager = logManager;
@@ -171,9 +174,7 @@ namespace Nethermind.Synchronization
 
         private void StartSnapSyncComponents()
         {
-            TrieStore store = new(_dbProvider.StateDb, _logManager);
-            SnapProvider snapProvider = new(store, _logManager);
-            _snapSyncFeed = new SnapSyncFeed(_syncMode, snapProvider, _blockTree, _logManager);
+            _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _blockTree, _logManager);
             SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _blockTree, _logManager);
             
             Task _ = dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
