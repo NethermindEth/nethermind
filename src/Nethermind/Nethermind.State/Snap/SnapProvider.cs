@@ -20,10 +20,10 @@ namespace Nethermind.State.Snap
         private readonly ITrieStore _store;
         private readonly ILogManager _logManager;
 
-        public Keccak NextStartingHash { get; private set; } = Keccak.Zero;
-        public ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; private set; } = new ConcurrentQueue<PathWithAccount>();
-
-        public bool MoreChildrenToRight { get; set; } = true;
+        public Keccak NextAccountPath { get; private set; } = Keccak.Zero;
+        public (PathWithAccount accountPath, Keccak nextSlotPath)? NextSlot { get; set; }
+        public bool MoreAccountsToRight { get; set; } = true;
+        public ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; private set; } = new();
 
         public SnapProvider(ITrieStore store, ILogManager logManager)
         {
@@ -46,14 +46,14 @@ namespace Nethermind.State.Snap
                     StoragesToRetrieve.Enqueue(item);
                 }
                 
-                NextStartingHash = accounts[accounts.Length - 1].AddressHash;
-                MoreChildrenToRight = moreChildrenToRight;
+                NextAccountPath = accounts[accounts.Length - 1].AddressHash;
+                MoreAccountsToRight = moreChildrenToRight;
             }
 
             return success;
         }
 
-        public bool AddStorageRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
+        public bool AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
         {
             StorageTree tree = new(_store, _logManager);
             (Keccak? calculatedRootHash, bool moreChildrenToRight) =  SnapProviderHelper.AddStorageRange(tree, blockNumber, expectedRootHash, startingHash, slots, proofs);
@@ -62,7 +62,10 @@ namespace Nethermind.State.Snap
 
             if (success)
             {
-                // TODO: set next starting hash and more children info
+                if(moreChildrenToRight)
+                {
+                    NextSlot = (pathWithAccount, slots.Last().Path);
+                }
             }
 
             return success;

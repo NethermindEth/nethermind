@@ -509,7 +509,6 @@ namespace Nethermind.Init.Steps
                 if (t.IsFaulted)
                 {
                     _logger.Error($"ENR discovery failed: {t.Exception}");
-                    
                 }
             });
             
