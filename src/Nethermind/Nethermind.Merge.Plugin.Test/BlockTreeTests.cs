@@ -142,6 +142,6 @@ public class BlockTreeTests
             Assert.AreEqual(AddBlockResult.Added, insertOutcome);
         }
         
-        Assert.AreEqual(14, notSyncedTree.BestSuggestedBody);
+        Assert.AreEqual(13, notSyncedTree.BestSuggestedBody!.Number);
     }
 }
