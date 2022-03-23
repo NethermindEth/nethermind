@@ -38,14 +38,14 @@ namespace Nethermind.Synchronization.SnapSync
 
         private BlockHeader _bestHeader;
         private readonly ISyncModeSelector _syncModeSelector;
-        private readonly SnapProvider _snapProvider;
+        private readonly ISnapProvider _snapProvider;
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Snap;
         
-        public SnapSyncFeed(ISyncModeSelector syncModeSelector, SnapProvider snapProvider, IBlockTree blockTree, ILogManager logManager)
+        public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapProvider snapProvider, IBlockTree blockTree, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.SnapSync
                         _logger.Info($"SNAP - Responses:{_storageResponsesCount}, Slots:{Metrics.SyncedStorageSlots}");
                     }
                 }
-                else
+                else if(_snapProvider.MoreAccountsToRight)
                 {
                     // some contract hardcoded
                     //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
@@ -109,6 +109,10 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         _logger.Info($"SNAP - Responses:{_accountResponsesCount}, Accounts:{Metrics.SyncedAccounts}, next request:{request.AccountRangeRequest.RootHash}:{request.AccountRangeRequest.StartingHash}:{request.AccountRangeRequest.LimitHash}");
                     }
+                }
+                else
+                {
+                    Finish();
                 }
 
 

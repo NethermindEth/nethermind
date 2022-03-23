@@ -314,6 +314,7 @@ namespace Nethermind.Synchronization.Test
                     stats,
                     syncModeSelector,
                     syncConfig,
+                    null,
                     _logManager);
 
                 SyncServer = new SyncServer(

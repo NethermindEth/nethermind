@@ -141,6 +141,7 @@ namespace Nethermind.Init.Steps
                 _api.NodeStatsManager!,
                 _api.SyncModeSelector,
                 _syncConfig,
+                _api.SnapProvider,
                 _api.LogManager);
             _api.DisposeStack.Push(_api.Synchronizer);
 
