@@ -132,7 +132,7 @@ namespace Nethermind.TxPool
         {
             if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
-                GetPersistentTxsToSend(out IList<Transaction> persistentTxsToSend);
+                IList<Transaction> persistentTxsToSend = GetPersistentTxsToSend();
 
                 if (persistentTxsToSend.Count > 0)
                 {
@@ -154,7 +154,7 @@ namespace Nethermind.TxPool
             }
         }
         
-        internal void GetPersistentTxsToSend(out IList<Transaction> persistentTxsToSend)
+        internal IList<Transaction> GetPersistentTxsToSend()
         {
             // PeerNotificationThreshold is a declared in config max percent of transactions in persistent broadcast,
             // which will be sent after processing of every block. numberOfPersistentTxsToBroadcast is equal to
@@ -163,7 +163,7 @@ namespace Nethermind.TxPool
                 Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
                     _persistentTxs.Count);
 
-            persistentTxsToSend = new List<Transaction>(numberOfPersistentTxsToBroadcast);
+            List<Transaction> persistentTxsToSend = new(numberOfPersistentTxsToBroadcast);
 
             foreach (Transaction tx in _persistentTxs.GetFirsts())
             {
@@ -180,6 +180,8 @@ namespace Nethermind.TxPool
                     break;
                 }
             }
+
+            return persistentTxsToSend;
         }
         
         public void StopBroadcast(Keccak txHash)
