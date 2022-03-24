@@ -619,6 +619,9 @@ namespace Nethermind.Blockchain
             BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess,
             bool? setAsMain = null)
         {
+            if (_logger.IsInfo)
+                _logger.Info(
+                    $"Starting sugggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
             bool shouldProcess = (options & BlockTreeSuggestOptions.ShouldProcess) != 0;
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -653,9 +656,9 @@ namespace Nethermind.Blockchain
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
-                return AddBlockResult.UnknownParent;
+                if (_logger.IsInfo)
+                    _logger.Info($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
+            //    return AddBlockResult.UnknownParent;
             }
 
             SetTotalDifficulty(header);
