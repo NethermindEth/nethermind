@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.SnapSync
         private int _accountResponsesCount;
         private int _storageResponsesCount;
 
-        private BlockHeader _bestHeader;
+        private readonly Pivot _pivot;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISnapProvider _snapProvider;
 
@@ -53,6 +53,8 @@ namespace Nethermind.Synchronization.SnapSync
             _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider)); ;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
+            _pivot = new(_blockTree);
+
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
         
@@ -66,10 +68,10 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     request.StorageRangeRequest = new()
                     {
-                        RootHash = _bestHeader.StateRoot,
+                        RootHash = _pivot.GetPivotHeader().StateRoot,
                         Accounts = new PathWithAccount[] { _snapProvider.NextSlot.Value.accountPath},
                         StartingHash = _snapProvider.NextSlot.Value.nextSlotPath,
-                        BlockNumber = _bestHeader.Number
+                        BlockNumber = _pivot.GetPivotHeader().Number
                     };
 
                     // TODO: make it thread safe and handle retry
@@ -87,15 +89,15 @@ namespace Nethermind.Synchronization.SnapSync
 
                     request.StorageRangeRequest = new()
                     {
-                        RootHash = _bestHeader.StateRoot,
+                        RootHash = _pivot.GetPivotHeader().StateRoot,
                         Accounts = storagesToQuery.ToArray(),
                         StartingHash = Keccak.Zero,
-                        BlockNumber = _bestHeader.Number
+                        BlockNumber = _pivot.GetPivotHeader().Number
                     };
 
                     if (_storageResponsesCount == 1 || _storageResponsesCount > 0 && _storageResponsesCount % 100 == 0)
                     {
-                        _logger.Info($"SNAP - ({_bestHeader.StateRoot}) Responses:{_storageResponsesCount}, Slots:{Metrics.SyncedStorageSlots}");
+                        _logger.Info($"SNAP - ({_pivot.GetPivotHeader().StateRoot}) Responses:{_storageResponsesCount}, Slots:{Metrics.SyncedStorageSlots}");
                     }
                 }
                 else if(_snapProvider.MoreAccountsToRight)
@@ -104,18 +106,13 @@ namespace Nethermind.Synchronization.SnapSync
                     //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
                     // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
 
-                    request.AccountRangeRequest = new(_bestHeader.StateRoot, _snapProvider.NextAccountPath, Keccak.MaxValue, _bestHeader.Number);
+                    request.AccountRangeRequest = new(_pivot.GetPivotHeader().StateRoot, _snapProvider.NextAccountPath, Keccak.MaxValue, _pivot.GetPivotHeader().Number);
 
                     if (_accountResponsesCount == 1 || _accountResponsesCount > 0 && _accountResponsesCount % 10 == 0)
                     {
-                        _logger.Info($"SNAP - ({_bestHeader.StateRoot}) Responses:{_accountResponsesCount}, Accounts:{Metrics.SyncedAccounts}, next request:{request.AccountRangeRequest.RootHash}:{request.AccountRangeRequest.StartingHash}:{request.AccountRangeRequest.LimitHash}");
+                        _logger.Info($"SNAP - ({_pivot.GetPivotHeader().StateRoot}) Responses:{_accountResponsesCount}, Accounts:{Metrics.SyncedAccounts}, next request:{request.AccountRangeRequest.RootHash}:{request.AccountRangeRequest.StartingHash}:{request.AccountRangeRequest.LimitHash}");
                     }
                 }
-                else
-                {
-                    Finish();
-                }
-
 
                 return await Task.FromResult(request);
             }
@@ -214,15 +211,14 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if ((e.Current & SyncMode.SnapSync) == SyncMode.SnapSync)
                 {
-                   _bestHeader = _blockTree.BestSuggestedHeader;
-                    if (_bestHeader == null || _bestHeader.Number == 0)
+                    if (_pivot.GetPivotHeader() == null || _pivot.GetPivotHeader().Number == 0)
                     {
                         if (_logger.IsInfo) _logger.Info($"No Best Suggested Header available. Snap Sync not started.");
 
                         return;
                     }
 
-                    if (_logger.IsInfo) _logger.Info($"Starting the SNAP data sync from the {_bestHeader.ToString(BlockHeader.Format.Short)} {_bestHeader.StateRoot} root");
+                    if (_logger.IsInfo) _logger.Info($"Starting the SNAP data sync from the {_pivot.GetPivotHeader().ToString(BlockHeader.Format.Short)} {_pivot.GetPivotHeader().StateRoot} root");
 
                     Activate();
                 }
