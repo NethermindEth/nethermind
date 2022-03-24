@@ -95,7 +95,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (_storageResponsesCount == 1 || _storageResponsesCount > 0 && _storageResponsesCount % 100 == 0)
                     {
-                        _logger.Info($"SNAP - Responses:{_storageResponsesCount}, Slots:{Metrics.SyncedStorageSlots}");
+                        _logger.Info($"SNAP - ({_bestHeader.StateRoot}) Responses:{_storageResponsesCount}, Slots:{Metrics.SyncedStorageSlots}");
                     }
                 }
                 else if(_snapProvider.MoreAccountsToRight)
@@ -108,7 +108,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (_accountResponsesCount == 1 || _accountResponsesCount > 0 && _accountResponsesCount % 10 == 0)
                     {
-                        _logger.Info($"SNAP - Responses:{_accountResponsesCount}, Accounts:{Metrics.SyncedAccounts}, next request:{request.AccountRangeRequest.RootHash}:{request.AccountRangeRequest.StartingHash}:{request.AccountRangeRequest.LimitHash}");
+                        _logger.Info($"SNAP - ({_bestHeader.StateRoot}) Responses:{_accountResponsesCount}, Accounts:{Metrics.SyncedAccounts}, next request:{request.AccountRangeRequest.RootHash}:{request.AccountRangeRequest.StartingHash}:{request.AccountRangeRequest.LimitHash}");
                     }
                 }
                 else
