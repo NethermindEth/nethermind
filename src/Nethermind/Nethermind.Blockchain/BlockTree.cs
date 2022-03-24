@@ -262,7 +262,11 @@ namespace Nethermind.Blockchain
                     .AsRlpValueContext().DecodeLong();
             }
 
-            if (_beaconSyncDestinationNumber.HasValue && _beaconSyncPivotNumber.HasValue)
+            if (!_syncConfig.FastSync)
+            {
+                LowestInsertedBeaconHeader = null;
+            }
+            else if (_beaconSyncDestinationNumber.HasValue && _beaconSyncPivotNumber.HasValue)
             {
                 long left = _beaconSyncDestinationNumber.Value;
                 long right = _beaconSyncPivotNumber.Value;
