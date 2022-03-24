@@ -11,8 +11,6 @@ namespace Nethermind.State.Snap.Storage
 {
     public class SnapStorage
     {
-        private const int MaxLayerCount = 128;
-
         private UInt256 _bottomBlockNumber;
         private SnapLayer _bottomLayer;
         private Dictionary<UInt256, SnapLayer> _layers = new();
@@ -92,7 +90,7 @@ namespace Nethermind.State.Snap.Storage
                 return;
             }
 
-            UInt256 newBottomBlockNumber = maxBlockNumber - MaxLayerCount;
+            UInt256 newBottomBlockNumber = maxBlockNumber - Constants.MaxDistanceFromHead;
 
             if (newBottomBlockNumber <= _bottomBlockNumber)
             {
