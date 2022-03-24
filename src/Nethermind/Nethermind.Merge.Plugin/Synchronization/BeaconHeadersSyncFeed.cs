@@ -100,6 +100,17 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             ? AddBlockResult.AlreadyKnown
             : _blockTree.Insert(header, options);
 
+        if (insertOutcome == AddBlockResult.AlreadyKnown)
+        {
+            if (header.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+            {
+                if (_logger.IsInfo)
+                    _logger.Info(
+                        $" BeaconHeader LowestInsertedBeaconHeader changed, old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
+                _blockTree.LowestInsertedBeaconHeader = header;
+            }
+        }
+
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
         {
             _nextHeaderHash = header.ParentHash!;

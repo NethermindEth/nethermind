@@ -57,7 +57,11 @@ namespace Nethermind.Blockchain
         }
 
 
-        public BlockHeader? LowestInsertedBeaconHeader => _wrapped.LowestInsertedBeaconHeader;
+        public BlockHeader? LowestInsertedBeaconHeader
+        {
+            get => _wrapped.LowestInsertedBeaconHeader;
+            set => _wrapped.LowestInsertedBeaconHeader = value;
+        }
         
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;

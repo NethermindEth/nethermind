@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Lowest header number added in reverse beacon sync insert
         /// </summary>
-        BlockHeader? LowestInsertedBeaconHeader { get; }
+        BlockHeader? LowestInsertedBeaconHeader { get; set; }
 
         /// <summary>
         /// Best downloaded block number (highest number of chain level on the chain)
