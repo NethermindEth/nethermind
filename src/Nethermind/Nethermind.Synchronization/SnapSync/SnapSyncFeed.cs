@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -155,7 +156,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if (batch.StorageRangeResponse.PathsAndSlots.Length == 0 && batch.StorageRangeResponse.Proofs.Length == 0)
                 {
-                    _logger.Warn($"GetStorageRange: Requested expired RootHash:{batch.StorageRangeRequest.RootHash}");
+                    _logger.Warn($"GetStorageRange - expired BlockNumber:{batch.StorageRangeRequest.BlockNumber}, RootHash:{batch.StorageRangeRequest.RootHash}, ({string.Join("|", batch.StorageRangeRequest.Accounts.Select(a => a.AddressHash))}), {batch.StorageRangeRequest.StartingHash}");
                 }
                 else
                 {
@@ -221,7 +222,7 @@ namespace Nethermind.Synchronization.SnapSync
                         return;
                     }
 
-                    if (_logger.IsInfo) _logger.Info($"Starting the snap data sync from the {_bestHeader.ToString(BlockHeader.Format.Short)} {_bestHeader.StateRoot} root");
+                    if (_logger.IsInfo) _logger.Info($"Starting the SNAP data sync from the {_bestHeader.ToString(BlockHeader.Format.Short)} {_bestHeader.StateRoot} root");
 
                     Activate();
                 }
