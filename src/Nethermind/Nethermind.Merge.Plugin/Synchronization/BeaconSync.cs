@@ -92,7 +92,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             || (_blockTree.LowestInsertedBeaconHeader?.Number ?? _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber
                             || (_blockTree.LowestInsertedBeaconHeader?.Number ?? _beaconPivot.PivotNumber) == 1;
             
-            if (_logger.IsInfo) _logger.Info($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
+            if (_logger.IsTrace) _logger.Trace($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;
         }
 
