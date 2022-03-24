@@ -273,6 +273,8 @@ namespace Nethermind.Blockchain
                 LowestInsertedBeaconHeader =
                     BinarySearchBlockHeader(left, right, HasLevel, BinarySearchDirection.Down);
             }
+            
+            if (_logger.IsInfo) _logger.Info($"Loaded LowestInsertedBeaconHeader: {LowestInsertedBeaconHeader}");
         }
 
         private void LoadLowestInsertedHeader()
@@ -549,11 +551,15 @@ namespace Nethermind.Blockchain
                 BestSuggestedBeaconHeader = header;
             }
 
-            if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue)
-                && header.Number >= (_beaconSyncDestinationNumber ?? long.MaxValue)
-                && header.Number <= (_beaconSyncPivotNumber ?? long.MinValue))
+            if (!updateBestPointers)
             {
-                LowestInsertedBeaconHeader = header;
+                if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue)
+                    && header.Number >= (_beaconSyncDestinationNumber ?? long.MaxValue)
+                    && header.Number <= (_beaconSyncPivotNumber ?? long.MinValue))
+                {
+                    if (_logger.IsInfo) _logger.Info($"LowestInsertedBeaconHeader changed, old: {LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
+                    LowestInsertedBeaconHeader = header;
+                }
             }
 
             return AddBlockResult.Added;
