@@ -90,7 +90,7 @@ public class TxBroadcasterTests
         
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        List<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().ToList();
+        _broadcaster.GetPersistentTxsToSend(out IList<Transaction> pickedTxs);
 
         int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         pickedTxs.Count.Should().Be(expectedCount);
@@ -141,7 +141,7 @@ public class TxBroadcasterTests
         
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        List<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().ToList();
+        _broadcaster.GetPersistentTxsToSend(out IList<Transaction> pickedTxs);
 
         int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
@@ -158,6 +158,10 @@ public class TxBroadcasterTests
     
     [TestCase(0)]
     [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(99)]
+    [TestCase(100)]
+    [TestCase(101)]
     [TestCase(1000)]
     [TestCase(-10)]
     public void should_not_pick_1559_txs_with_MaxFeePerGas_lower_than_CurrentBaseFee(int threshold)
@@ -189,9 +193,9 @@ public class TxBroadcasterTests
         
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        List<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().ToList();
+        _broadcaster.GetPersistentTxsToSend(out IList<Transaction> pickedTxs);
 
-        int expectedCount = threshold <= 0 ? 0 : addedTxsCount - currentBaseFeeInGwei;
+        int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
 
         List<Transaction> expectedTxs = new();

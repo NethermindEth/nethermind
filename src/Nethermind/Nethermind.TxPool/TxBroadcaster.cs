@@ -132,37 +132,47 @@ namespace Nethermind.TxPool
         {
             if (_logger.IsDebug) _logger.Debug($"Broadcasting persistent transactions to all peers");
 
-            foreach ((_, ITxPoolPeer peer) in _peers)
+            GetPersistentTxsToSend(out IList<Transaction> persistentTxsToSend);
+
+            if (persistentTxsToSend.Count > 0)
             {
-                Notify(peer, GetPersistentTxsToSend(), true);
+                foreach ((_, ITxPoolPeer peer) in _peers)
+                {
+                    Notify(peer, persistentTxsToSend, true);
+                }
             }
         }
         
-        internal IEnumerable<Transaction> GetPersistentTxsToSend()
+        internal void GetPersistentTxsToSend(out IList<Transaction> persistentTxsToSend)
         {
-            if (_txPoolConfig.PeerNotificationThreshold > 0)
+            if (_txPoolConfig.PeerNotificationThreshold <= 0)
             {
-                // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast,
-                // which will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to
-                // PeerNotificationThreshold multiplication by number of transactions in persistent broadcast, rounded up.
-                int numberOfPersistentTxsToBroadcast =
-                    Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
-                        _persistentTxs.Count);
+                persistentTxsToSend = Array.Empty<Transaction>();
+                return;
+            }
+            
+            // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast,
+            // which will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to
+            // PeerNotificationThreshold multiplication by number of transactions in persistent broadcast, rounded up.
+            int numberOfPersistentTxsToBroadcast =
+                Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
+                    _persistentTxs.Count);
 
-                foreach (Transaction tx in _persistentTxs.GetFirsts())
+            persistentTxsToSend = new List<Transaction>(numberOfPersistentTxsToBroadcast);
+
+            foreach (Transaction tx in _persistentTxs.GetFirsts())
+            {
+                if (numberOfPersistentTxsToBroadcast > 0)
                 {
-                    if (numberOfPersistentTxsToBroadcast > 0)
+                    if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
                     {
-                        if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
-                        {
-                            numberOfPersistentTxsToBroadcast--;
-                            yield return tx;
-                        }
+                        numberOfPersistentTxsToBroadcast--;
+                        persistentTxsToSend.Add(tx);
                     }
-                    else
-                    {
-                        break;
-                    }
+                }
+                else
+                {
+                    break;
                 }
             }
         }
