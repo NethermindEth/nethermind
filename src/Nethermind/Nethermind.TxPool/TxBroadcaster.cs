@@ -156,8 +156,8 @@ namespace Nethermind.TxPool
         
         internal void GetPersistentTxsToSend(out IList<Transaction> persistentTxsToSend)
         {
-            // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast,
-            // which will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to
+            // PeerNotificationThreshold is a declared in config max percent of transactions in persistent broadcast,
+            // which will be sent after processing of every block. numberOfPersistentTxsToBroadcast is equal to
             // PeerNotificationThreshold multiplication by number of transactions in persistent broadcast, rounded up.
             int numberOfPersistentTxsToBroadcast =
                 Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
