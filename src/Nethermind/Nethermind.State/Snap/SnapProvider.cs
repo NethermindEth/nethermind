@@ -20,7 +20,7 @@ namespace Nethermind.State.Snap
         private readonly ITrieStore _store;
         private readonly ILogManager _logManager;
 
-        public Keccak NextAccountPath { get; set; } = new("0xfe00000000000000000000000000000000000000000000000000000000000000");
+        public Keccak NextAccountPath { get; set; } = Keccak.Zero; //new("0xfe00000000000000000000000000000000000000000000000000000000000000");
         public (PathWithAccount accountPath, Keccak nextSlotPath)? NextSlot { get; set; }
         public bool MoreAccountsToRight { get; set; } = true;
         public ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; private set; } = new();
