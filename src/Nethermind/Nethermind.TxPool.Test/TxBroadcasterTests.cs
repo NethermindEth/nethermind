@@ -90,7 +90,7 @@ public class TxBroadcasterTests
 
         _broadcaster.GetPersistentTxsToSend(out IList<Transaction> pickedTxs);
 
-        int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         pickedTxs.Count.Should().Be(expectedCount);
         
         List<Transaction> expectedTxs = new();
@@ -139,7 +139,7 @@ public class TxBroadcasterTests
 
         _broadcaster.GetPersistentTxsToSend(out IList<Transaction> pickedTxs);
 
-        int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
 
         List<Transaction> expectedTxs = new();
@@ -189,7 +189,7 @@ public class TxBroadcasterTests
 
         _broadcaster.GetPersistentTxsToSend(out IList<Transaction> pickedTxs);
 
-        int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
 
         List<Transaction> expectedTxs = new();
