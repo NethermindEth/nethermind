@@ -130,27 +130,32 @@ namespace Nethermind.TxPool
         
         public void BroadcastPersistentTxs()
         {
-            if (_logger.IsDebug) _logger.Debug($"Broadcasting persistent transactions to all peers");
-
-            GetPersistentTxsToSend(out IList<Transaction> persistentTxsToSend);
-
-            if (persistentTxsToSend.Count > 0)
+            if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
-                foreach ((_, ITxPoolPeer peer) in _peers)
+                GetPersistentTxsToSend(out IList<Transaction> persistentTxsToSend);
+
+                if (persistentTxsToSend.Count > 0)
                 {
-                    Notify(peer, persistentTxsToSend, true);
+                    if (_logger.IsDebug) _logger.Debug($"Broadcasting {persistentTxsToSend.Count} persistent transactions to all peers.");
+
+                    foreach ((_, ITxPoolPeer peer) in _peers)
+                    {
+                        Notify(peer, persistentTxsToSend, true);
+                    }
                 }
+                else
+                {
+                    if (_logger.IsDebug) _logger.Debug($"There are currently no transactions able to broadcast.");
+                }
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"PeerNotificationThreshold is not a positive value: {_txPoolConfig.PeerNotificationThreshold}. Skipping broadcasting persistent transactions.");
             }
         }
         
         internal void GetPersistentTxsToSend(out IList<Transaction> persistentTxsToSend)
         {
-            if (_txPoolConfig.PeerNotificationThreshold <= 0)
-            {
-                persistentTxsToSend = Array.Empty<Transaction>();
-                return;
-            }
-            
             // PeerNotificationThreshold is a declared in config percent of transactions in persistent broadcast,
             // which will be sent when timer elapse. numberOfPersistentTxsToBroadcast is equal to
             // PeerNotificationThreshold multiplication by number of transactions in persistent broadcast, rounded up.

@@ -61,14 +61,12 @@ public class TxBroadcasterTests
         _headInfo = Substitute.For<IChainHeadInfoProvider>();
     }
     
-    [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(99)]
     [TestCase(100)]
     [TestCase(101)]
     [TestCase(1000)]
-    [TestCase(-10)]
     public void should_pick_best_persistent_txs_to_broadcast(int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
@@ -105,14 +103,12 @@ public class TxBroadcasterTests
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
     
-    [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(99)]
     [TestCase(100)]
     [TestCase(101)]
     [TestCase(1000)]
-    [TestCase(-10)]
     public void should_not_pick_txs_with_GasPrice_lower_than_CurrentBaseFee(int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
@@ -156,14 +152,12 @@ public class TxBroadcasterTests
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
     
-    [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
     [TestCase(99)]
     [TestCase(100)]
     [TestCase(101)]
     [TestCase(1000)]
-    [TestCase(-10)]
     public void should_not_pick_1559_txs_with_MaxFeePerGas_lower_than_CurrentBaseFee(int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
