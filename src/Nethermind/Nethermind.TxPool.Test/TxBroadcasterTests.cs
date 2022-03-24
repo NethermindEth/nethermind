@@ -63,6 +63,10 @@ public class TxBroadcasterTests
     
     [TestCase(0)]
     [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(99)]
+    [TestCase(100)]
+    [TestCase(101)]
     [TestCase(1000)]
     [TestCase(-10)]
     public void should_pick_best_persistent_txs_to_broadcast(int threshold)
@@ -88,12 +92,25 @@ public class TxBroadcasterTests
 
         List<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().ToList();
 
-        int expectedCount = threshold <= 0 ? 0 : addedTxsCount;
+        int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         pickedTxs.Count.Should().Be(expectedCount);
+        
+        List<Transaction> expectedTxs = new();
+
+        for (int i = 1; i <= expectedCount; i++)
+        {
+            expectedTxs.Add(transactions[addedTxsCount - i]);
+        }
+
+        expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
     
     [TestCase(0)]
     [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(99)]
+    [TestCase(100)]
+    [TestCase(101)]
     [TestCase(1000)]
     [TestCase(-10)]
     public void should_not_pick_txs_with_GasPrice_lower_than_CurrentBaseFee(int threshold)
@@ -126,7 +143,7 @@ public class TxBroadcasterTests
 
         List<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().ToList();
 
-        int expectedCount = threshold <= 0 ? 0 : addedTxsCount - currentBaseFeeInGwei;
+        int expectedCount = threshold <= 0 ? 0 : Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
 
         List<Transaction> expectedTxs = new();
