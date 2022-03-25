@@ -32,8 +32,6 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
-        private const int STORAGE_BATCH_SIZE = 1000;
-
         private int _accountResponsesCount;
         private int _storageResponsesCount;
 
@@ -41,72 +39,43 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISnapProvider _snapProvider;
 
-        private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Snap;
         
         public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapProvider snapProvider, IBlockTree blockTree, ILogManager logManager)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider)); ;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-            _pivot = new(_blockTree);
+            _pivot = new(blockTree, logManager);
 
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
         
-        public override async Task<SnapSyncBatch?> PrepareRequest()
+        public override Task<SnapSyncBatch?> PrepareRequest()
         {
             try
             {
                 SnapSyncBatch request = new SnapSyncBatch();
 
-                if(_snapProvider.NextSlot.HasValue)
+                BlockHeader pivotHeader = _pivot.GetPivotHeader();
+
+                (AccountRange accountRange, StorageRange storageRange) = _snapProvider.ProgressTracker.GetNextRequest(pivotHeader.Number, pivotHeader.StateRoot);
+
+                if (storageRange != null)
                 {
-                    request.StorageRangeRequest = new()
-                    {
-                        RootHash = _pivot.GetPivotHeader().StateRoot,
-                        Accounts = new PathWithAccount[] { _snapProvider.NextSlot.Value.accountPath},
-                        StartingHash = _snapProvider.NextSlot.Value.nextSlotPath,
-                        BlockNumber = _pivot.GetPivotHeader().Number
-                    };
-
-                    // TODO: make it thread safe and handle retry
-                    _snapProvider.NextSlot = null;
-                }
-                else if(_snapProvider.StoragesToRetrieve.Count > 0)
-                {
-                    // TODO: optimize this
-                    List<PathWithAccount> storagesToQuery = storagesToQuery = new(STORAGE_BATCH_SIZE);
-
-                    for (int i = 0; i < STORAGE_BATCH_SIZE && _snapProvider.StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
-                    {
-                        storagesToQuery.Add(storage);
-                    }
-
-                    request.StorageRangeRequest = new()
-                    {
-                        RootHash = _pivot.GetPivotHeader().StateRoot,
-                        Accounts = storagesToQuery.ToArray(),
-                        StartingHash = Keccak.Zero,
-                        BlockNumber = _pivot.GetPivotHeader().Number
-                    };
+                    request.StorageRangeRequest = storageRange;
 
                     if (_storageResponsesCount == 1 || _storageResponsesCount > 0 && _storageResponsesCount % 100 == 0)
                     {
                         _logger.Info($"SNAP - ({_pivot.GetPivotHeader().StateRoot}) Responses:{_storageResponsesCount}, Slots:{Metrics.SyncedStorageSlots}");
                     }
                 }
-                else if(_snapProvider.MoreAccountsToRight)
+                else if (accountRange != null)
                 {
-                    // some contract hardcoded
-                    //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
-                    // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
-
-                    request.AccountRangeRequest = new(_pivot.GetPivotHeader().StateRoot, _snapProvider.NextAccountPath, Keccak.MaxValue, _pivot.GetPivotHeader().Number);
+                    request.AccountRangeRequest = accountRange;
 
                     if (_accountResponsesCount == 1 || _accountResponsesCount > 0 && _accountResponsesCount % 10 == 0)
                     {
@@ -114,12 +83,12 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                 }
 
-                return await Task.FromResult(request);
+                return Task.FromResult(request);
             }
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return await Task.FromResult<SnapSyncBatch>(null);
+                return Task.FromResult<SnapSyncBatch>(null);
             }
         }
 
@@ -153,7 +122,9 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if (batch.StorageRangeResponse.PathsAndSlots.Length == 0 && batch.StorageRangeResponse.Proofs.Length == 0)
                 {
-                    _logger.Warn($"GetStorageRange - expired BlockNumber:{batch.StorageRangeRequest.BlockNumber}, RootHash:{batch.StorageRangeRequest.RootHash}, ({string.Join("|", batch.StorageRangeRequest.Accounts.Select(a => a.AddressHash))}), {batch.StorageRangeRequest.StartingHash}");
+                    _logger.Warn($"GetStorageRange - expired BlockNumber:{batch.StorageRangeRequest.BlockNumber}, RootHash:{batch.StorageRangeRequest.RootHash}, (Accounts:{batch.StorageRangeRequest.Accounts.Count()}), {batch.StorageRangeRequest.StartingHash}");
+
+                    _snapProvider.ProgressTracker.NextSlotRange.Enqueue(batch.StorageRangeRequest);
                 }
                 else
                 {
@@ -179,7 +150,7 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                         else
                         {
-                            _snapProvider.StoragesToRetrieve.Enqueue(batch.StorageRangeRequest.Accounts[i]);
+                            _snapProvider.ProgressTracker.StoragesToRetrieve.Enqueue(batch.StorageRangeRequest.Accounts[i]);
                         }
                     }
 
