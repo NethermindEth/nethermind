@@ -163,14 +163,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 _logManager.GetClassLogger()
             );
 
-            if (!_stateProvider.AccountExists(Address.Zero))
-            {
-                _stateProvider.CreateAccount(Address.Zero, 100.Ether());
-                _stateProvider.Commit(_specProvider.GetSpec(parent.Number + 1));
-                _stateProvider.CommitTree(parent.Number);
-            }
-            
-            transactionProcessor.Execute(transaction, parent, txTracer);
+            transactionProcessor.Trace(transaction, parent, txTracer);
 
             FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(txTracer.Output);
 
