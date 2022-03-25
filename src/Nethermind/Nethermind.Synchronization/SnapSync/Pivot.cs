@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Logging;
 using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
@@ -13,16 +14,20 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private readonly IBlockTree _blockTree;
         private BlockHeader _bestHeader;
+        private readonly ILogger _logger;
 
-        public Pivot(IBlockTree blockTree)
+        public Pivot(IBlockTree blockTree, ILogManager logManager)
         {
             _blockTree = blockTree;
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public BlockHeader GetPivotHeader()
         {
-            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead)
+            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 1)
             {
+                _logger.Warn($"SNAP - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
+
                 _bestHeader = _blockTree.BestSuggestedHeader;
             }
 
