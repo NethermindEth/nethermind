@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using NSubstitute;
@@ -200,5 +201,34 @@ public class TxBroadcasterTests
         }
 
         expectedTxs.Should().BeEquivalentTo(pickedTxs, o => o.Excluding(transaction => transaction.MaxFeePerGas));
+    }
+
+    [Test]
+    public void should_pick_tx_with_lowest_nonce_from_bucket()
+    {
+        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 5 };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee.Returns(0.GWei());
+
+        const int addedTxsCount = 5;
+        Transaction[] transactions = new Transaction[addedTxsCount];
+
+        for (int i = 0; i < addedTxsCount; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithNonce((UInt256)i)
+                .WithGasPrice(i.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+                
+            _broadcaster.Broadcast(transactions[i], true);
+        }
+        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
+        pickedTxs.Count.Should().Be(1);
+        
+        List<Transaction> expectedTxs = new() { transactions[0] };
+        expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
 }
