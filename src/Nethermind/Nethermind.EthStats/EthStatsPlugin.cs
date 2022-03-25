@@ -36,6 +36,7 @@ namespace Nethermind.EthStats
         private IEthStatsClient _ethStatsClient = null!;
         private IEthStatsIntegration _ethStatsIntegration = null!;
         private INethermindApi _api = null!;
+        private ILogger _logger = null!;
 
         private bool _isOn;
 
@@ -57,17 +58,18 @@ namespace Nethermind.EthStats
 
             IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
             _isOn = _ethStatsConfig.Enabled;
+            _logger = getFromAPi.LogManager.GetClassLogger();
 
             if (!_isOn)
             {
-                ILogger? logger = getFromAPi.LogManager.GetClassLogger();
+               
                 if (!initConfig.WebSocketsEnabled)
                 {
-                    logger.Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
+                    _logger.Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
                 }
                 else
                 {
-                    logger.Warn($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
+                    _logger.Warn($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
                 }
             }
 
@@ -83,9 +85,9 @@ namespace Nethermind.EthStats
             if (_isOn)
             {
                 string instanceId = $"{_ethStatsConfig.Name}-{Keccak.Compute(getFromAPi.Enode!.Info)}";
-                if (_api.LogManager.GetClassLogger().IsInfo)
+                if (_logger.IsInfo)
                 {
-                    _api.LogManager.GetClassLogger().Info($"Initializing ETH Stats for the instance: {instanceId}, server: {_ethStatsConfig.Server}");
+                    _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {_ethStatsConfig.Server}");
                 }
                 MessageSender sender = new(instanceId, _api.LogManager);
                 const int reconnectionInterval = 5000;
