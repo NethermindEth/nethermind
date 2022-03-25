@@ -50,5 +50,10 @@ namespace Nethermind.Api.Extensions
                 }
             }
         }
+
+        public void OrderPlugins(IPluginConfig pluginConfig)
+        {
+            throw new NotImplementedException();
+        }
     }
 }
