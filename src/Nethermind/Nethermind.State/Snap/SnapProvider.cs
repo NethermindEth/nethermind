@@ -19,16 +19,15 @@ namespace Nethermind.State.Snap
     {
         private readonly ITrieStore _store;
         private readonly ILogManager _logManager;
+        private readonly ILogger _logger;
 
-        public Keccak NextAccountPath { get; set; } = Keccak.Zero; //new("0xfe00000000000000000000000000000000000000000000000000000000000000");
-        public (PathWithAccount accountPath, Keccak nextSlotPath)? NextSlot { get; set; }
-        public bool MoreAccountsToRight { get; set; } = true;
-        public ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; private set; } = new();
+        public ProgressTracker ProgressTracker { get; set; } = new();
 
         public SnapProvider(ITrieStore store, ILogManager logManager)
         {
             _store = store;
-            _logManager = logManager;
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger();
         }
 
 
@@ -43,11 +42,15 @@ namespace Nethermind.State.Snap
             {
                 foreach (var item in accountsWithStorage)
                 {
-                    StoragesToRetrieve.Enqueue(item);
+                    ProgressTracker.StoragesToRetrieve.Enqueue(item);
                 }
-                
-                NextAccountPath = accounts[accounts.Length - 1].AddressHash;
-                MoreAccountsToRight = moreChildrenToRight;
+
+                ProgressTracker.NextAccountPath = accounts[accounts.Length - 1].AddressHash;
+                ProgressTracker.MoreAccountsToRight = moreChildrenToRight;
+            }
+            else
+            {
+                _logger.Warn($"SNAP - AddAccountRange failed, {blockNumber}:{expectedRootHash}, startingHash:{startingHash}");
             }
 
             return success;
@@ -64,7 +67,32 @@ namespace Nethermind.State.Snap
             {
                 if(moreChildrenToRight)
                 {
-                    NextSlot = (pathWithAccount, slots.Last().Path);
+                    StorageRange range = new()
+                    {
+                        Accounts = new[] { pathWithAccount },
+                        StartingHash = slots.Last().Path
+                    };
+
+                    ProgressTracker.NextSlotRange.Enqueue(range);
+                }
+            }
+            else
+            {
+                _logger.Warn($"SNAP - AddStorageRange failed, {blockNumber}:{expectedRootHash}, startingHash:{startingHash}");
+
+                if (startingHash > Keccak.Zero)
+                {
+                    StorageRange range = new()
+                    {
+                        Accounts = new[] { pathWithAccount },
+                        StartingHash = startingHash
+                    };
+
+                    ProgressTracker.NextSlotRange.Enqueue(range);
+                }
+                else
+                {
+                    ProgressTracker.StoragesToRetrieve.Enqueue(pathWithAccount);
                 }
             }
 
