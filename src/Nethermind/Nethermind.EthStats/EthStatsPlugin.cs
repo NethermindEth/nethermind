@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Grpc.Core.Logging;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Core;
@@ -25,6 +26,7 @@ using Nethermind.EthStats.Integrations;
 using Nethermind.EthStats.Senders;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.EthStats
 {
@@ -54,18 +56,18 @@ namespace Nethermind.EthStats
             _ethStatsConfig = getFromAPi.Config<IEthStatsConfig>();
 
             IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
-            _isOn = initConfig.WebSocketsEnabled &&
-                    _ethStatsConfig.Enabled;
+            _isOn = _ethStatsConfig.Enabled;
 
             if (!_isOn)
             {
+                ILogger? logger = getFromAPi.LogManager.GetClassLogger();
                 if (!initConfig.WebSocketsEnabled)
                 {
-                    getFromAPi.LogManager.GetClassLogger().Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
+                    logger.Warn($"{nameof(EthStatsPlugin)} disabled due to {nameof(initConfig.WebSocketsEnabled)} set to false");
                 }
                 else
                 {
-                    getFromAPi.LogManager.GetClassLogger().Warn($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
+                    logger.Warn($"{nameof(EthStatsPlugin)} plugin disabled due to {nameof(EthStatsConfig)} settings set to false");
                 }
             }
 
