@@ -114,9 +114,7 @@ namespace Nethermind.Api.Extensions
         public void OrderPlugins(IPluginConfig pluginConfig)
         {
             if (pluginConfig.PluginOrder == null) return;
-            
-            Console.WriteLine($"Order: {pluginConfig.PluginOrder.Length}");
-            pluginConfig.PluginOrder.ToList().ForEach(Console.WriteLine);
+
             Dictionary<string, int> order = pluginConfig.PluginOrder.Select((s, i) => new {s, i})
                 .ToDictionary(elem => elem.s.ToLower() + "plugin", elem => elem.i);
             _pluginTypes.Sort((f, s) =>
