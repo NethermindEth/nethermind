@@ -1,0 +1,64 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.State.Snap
+{
+    public class ProgressTracker
+    {
+        private const int STORAGE_BATCH_SIZE = 1000;
+
+        public Keccak NextAccountPath { get; set; } = Keccak.Zero; //new("0xfe00000000000000000000000000000000000000000000000000000000000000");
+        public ConcurrentQueue<StorageRange> NextSlotRange { get; set; } = new();        
+        public ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; private set; } = new();
+
+        public bool MoreAccountsToRight { get; set; } = true;
+
+        public (AccountRange accountRange, StorageRange storageRange) GetNextRequest(long blockNumber, Keccak rootHash)
+        {
+            if (NextSlotRange.TryDequeue(out StorageRange storageRange))
+            {
+                storageRange.RootHash = rootHash;
+                storageRange.BlockNumber = blockNumber;
+
+                return (null, storageRange);
+            }
+            else if (StoragesToRetrieve.Count > 0)
+            {
+                // TODO: optimize this
+                List<PathWithAccount> storagesToQuery = storagesToQuery = new(STORAGE_BATCH_SIZE);
+
+                for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
+                {
+                    storagesToQuery.Add(storage);
+                }
+
+                StorageRange storageRange2 = new()
+                {
+                    RootHash = rootHash,
+                    Accounts = storagesToQuery.ToArray(),
+                    StartingHash = Keccak.Zero,
+                    BlockNumber = blockNumber
+                };
+
+                return (null, storageRange2);
+            }
+            else if (MoreAccountsToRight)
+            {
+                // some contract hardcoded
+                //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
+                // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
+
+                AccountRange accountRange = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
+
+                return (accountRange, null);
+            }
+
+            return (null, null);
+        }
+    }
+}
