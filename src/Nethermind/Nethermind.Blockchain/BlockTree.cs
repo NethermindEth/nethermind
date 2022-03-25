@@ -260,12 +260,8 @@ namespace Nethermind.Blockchain
                 _beaconSyncPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?
                     .AsRlpValueContext().DecodeLong();
             }
-
-            if (!_syncConfig.FastSync)
-            {
-                LowestInsertedBeaconHeader = null;
-            }
-            else if (_beaconSyncDestinationNumber.HasValue && _beaconSyncPivotNumber.HasValue)
+            
+            if (_beaconSyncDestinationNumber.HasValue && _beaconSyncPivotNumber.HasValue)
             {
                 long left = _beaconSyncDestinationNumber.Value;
                 long right = _beaconSyncPivotNumber.Value;
@@ -297,16 +293,18 @@ namespace Nethermind.Blockchain
                 : Head.Number;
             // TODO: beaconsync when best known pointer be updated if there is beacon sync?
             long right;
+            bool previousSyncFinished = _beaconSyncDestinationNumber >= LowestInsertedBeaconHeader?.Number
+                                        || LowestInsertedBeaconHeader?.Number == 1
+                                        || !_beaconSyncDestinationNumber.HasValue;
             if (_syncConfig.FastSync)
             {
-                right = _beaconSyncDestinationNumber != LowestInsertedBeaconHeader?.Number &&
-                        _beaconSyncDestinationNumber.HasValue
-                    ? _beaconSyncDestinationNumber.Value
-                    : Math.Max(0, left) + BestKnownSearchLimit;
+                right = previousSyncFinished
+                    ? Math.Max(0, left) + BestKnownSearchLimit
+                    : _beaconSyncDestinationNumber.Value;
             }
             else
             {
-                right = LowestInsertedBeaconHeader?.Number ?? Math.Max(0, left) + BestKnownSearchLimit;
+                right = (previousSyncFinished || LowestInsertedHeader == null) ? Math.Max(0, left) + BestKnownSearchLimit : LowestInsertedHeader.Number;
             }
 
             bool LevelExists(long blockNumber)

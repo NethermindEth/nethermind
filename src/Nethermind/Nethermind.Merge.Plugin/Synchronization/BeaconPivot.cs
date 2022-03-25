@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
@@ -53,7 +55,21 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
-            PivotDestinationNumber = 0;
+            
+            long destination = _metadataDb
+                .Get(MetadataDbKeys.BeaconSyncDestinationNumber)
+                .AsRlpStream()
+                .DecodeLong();
+            long? lastInserted = _blockTree.LowestInsertedBeaconHeader?.Number;
+            if (lastInserted == 1 || lastInserted <= destination)
+            {
+                PivotDestinationNumber = 0;
+            }
+            else
+            {
+                _currentBeaconPivot = _blockTree.LowestInsertedBeaconHeader;
+            }
+            
         }
 
         public long PivotNumber => _currentBeaconPivot?.Number ?? _syncConfig.PivotNumberParsed;
@@ -68,17 +84,27 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public void EnsurePivot(BlockHeader? blockHeader)
         {
             bool beaconPivotExists = BeaconPivotExists();
-            // if (beaconPivotExists && blockHeader != null)
-            // {
-            //     _currentBeaconPivot = blockHeader;
-            //     PivotDestinationNumber = CalculatePivotDestinationNumber(_currentBeaconPivot, blockHeader);
-            // }
+            // check that the previous sync (if any) has completed before setting new pivot
+            if (beaconPivotExists && blockHeader != null && PivotNumber < blockHeader.Number)
+            {
+                bool previousSyncFinished = _blockTree.LowestInsertedBeaconHeader?.Number == 1
+                                            || _blockTree.LowestInsertedBeaconHeader?.Number <= PivotDestinationNumber;
+                if (previousSyncFinished)
+                {
+                    PivotDestinationNumber = PivotNumber + 1;
+                    _currentBeaconPivot = blockHeader;
+                    
+                    _metadataDb.Set(MetadataDbKeys.BeaconSyncDestinationNumber, Rlp.Encode(PivotDestinationNumber).Bytes);
+                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(PivotNumber).Bytes);
+                }
+            }
             
             if (!beaconPivotExists && blockHeader != null)
             {
                 _currentBeaconPivot = blockHeader;
                 if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
-                PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? 0 : _syncConfig.PivotNumberParsed + 1;
+                PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? (_blockTree.BestSuggestedHeader?.Number ?? 0) : _syncConfig.PivotNumberParsed + 1;
+
                 _metadataDb.Set(MetadataDbKeys.BeaconSyncDestinationNumber, Rlp.Encode(PivotDestinationNumber).Bytes);
                 _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(PivotNumber).Bytes);
             }

@@ -90,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
-            if (newHeadBlock == null || !_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+            if (newHeadBlock == null)
             {
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {

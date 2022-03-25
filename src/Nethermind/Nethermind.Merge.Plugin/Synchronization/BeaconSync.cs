@@ -98,9 +98,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
         // TODO: beaconsync use parent hash to check if finished
         public bool IsBeaconSyncHeadersFinished()
         {
-            bool finished = !_beaconPivot.BeaconPivotExists()
-                            || (_blockTree.LowestInsertedBeaconHeader?.Number ?? _beaconPivot.PivotNumber) <= _beaconPivot.PivotDestinationNumber
-                            || (_blockTree.LowestInsertedBeaconHeader?.Number ?? _beaconPivot.PivotNumber) == 1;
+            bool previousSyncFinished = _blockTree.LowestInsertedBeaconHeader == null
+                                        || (_blockTree.LowestInsertedBeaconHeader.Number <=
+                                            _beaconPivot.PivotDestinationNumber)
+                                        || (_blockTree.LowestInsertedBeaconHeader.Number == 1);
+            bool currentSyncFinished = !_beaconPivot.BeaconPivotExists()
+                            || _beaconPivot.PivotNumber <= _beaconPivot.PivotDestinationNumber
+                            || _beaconPivot.PivotNumber == 1;
+            bool finished = previousSyncFinished && currentSyncFinished;
             
             if (_logger.IsTrace) _logger.Trace($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;
