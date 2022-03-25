@@ -180,6 +180,53 @@ namespace Nethermind.AccountAbstraction.Test
                 TestState.GetCodeHash(externalContractAddress).Should().NotBe(initialCodeHash);
             }
         }
+        
+        [TestCase(200, true, true)]
+        [TestCase(30000, false, false)]
+        public void Should_not_allow_inner_call_to_run_out_of_gas(long gasLimit, bool shouldRunOutOfGas, bool shouldError)
+        {
+            Address externalContractAddress = TestItem.GetRandomAddress();
+            Address paymasterContractAddress = TestItem.GetRandomAddress();
+            
+            // simple storage access contract
+            byte[] externalContractCalledByPaymasterCode = Prepare.EvmCode
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.LOG0)
+                .Done;
+
+            TestState.CreateAccount(externalContractAddress, 1.Ether());
+            Keccak externalContractDeployedCodeHash = TestState.UpdateCode(externalContractCalledByPaymasterCode);
+            TestState.UpdateCodeHash(externalContractAddress, externalContractDeployedCodeHash, Spec);
+            
+            byte[] paymasterCode = Prepare.EvmCode
+                .Call(externalContractAddress, gasLimit)
+                .PushData(0)
+                .Op(Instruction.MSTORE)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+            
+            TestState.CreateAccount(paymasterContractAddress, 1.Ether());
+            Keccak paymasterDeployedCodeHash = TestState.UpdateCode(paymasterCode);
+            TestState.UpdateCodeHash(paymasterContractAddress, paymasterDeployedCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Call(paymasterContractAddress, 100000)
+                .PushData(32)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.RETURNDATACOPY)
+                .PushData(1)
+                .PushData(31)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
+            tracer.Output.Should().BeEquivalentTo(shouldRunOutOfGas ? Bytes.FromHexString("0x00") : Bytes.FromHexString("0x01"));
+            tracer.Error.Should().Be(shouldError ? "simulation failed: a call during simulation ran out of gas" : null);
+        }
 
         private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, byte[] code, bool paymasterWhitelisted = false, bool firstSimulation = true)
         {

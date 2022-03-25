@@ -283,6 +283,11 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void ReportActionError(EvmExceptionType evmExceptionType)
         {
+            if (evmExceptionType == EvmExceptionType.OutOfGas)
+            {
+                Success = false;
+                Error ??= "simulation failed: a call during simulation ran out of gas";
+            }
         }
 
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)

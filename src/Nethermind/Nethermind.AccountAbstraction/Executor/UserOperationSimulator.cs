@@ -113,7 +113,6 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
             }
             
-            
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
             ReadOnlyTxProcessingEnv txProcessingEnv =
                 new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
@@ -163,8 +162,16 @@ namespace Nethermind.AccountAbstraction.Executor
                 _entryPointContractAddress,
                 _logManager.GetClassLogger()
             );
-            transactionProcessor.Execute(transaction, parent, txTracer);
+
+            if (!_stateProvider.AccountExists(Address.Zero))
+            {
+                _stateProvider.CreateAccount(Address.Zero, 100.Ether());
+                _stateProvider.Commit(_specProvider.GetSpec(parent.Number + 1));
+                _stateProvider.CommitTree(parent.Number);
+            }
             
+            transactionProcessor.Execute(transaction, parent, txTracer);
+
             FailedOp? failedOp = _userOperationTxBuilder.DecodeEntryPointOutputError(txTracer.Output);
 
             string? error = null;
