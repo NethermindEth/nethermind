@@ -19,13 +19,15 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
+using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
+using Nethermind.Mev;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -92,6 +94,30 @@ public class PluginLoaderTests
             typeof(EthashPlugin),
             typeof(AuRaPlugin),
             typeof(CliquePlugin)
+        };
+        CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
+    }
+    
+    [Test]
+    public void default_config()
+    {
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        IPluginLoader loader = new PluginLoader("", fileSystem,
+            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin),
+            typeof(MergePlugin), typeof(MevPlugin));
+        loader.Load(new TestLogManager());
+        IPluginConfig pluginConfig =
+            new PluginConfig();
+        loader.OrderPlugins(pluginConfig);
+
+        var expected = new List<Type>
+        {
+            typeof(MergePlugin),
+            typeof(MevPlugin),
+            typeof(HealthChecksPlugin),
+            typeof(HivePlugin),
+            typeof(EthashPlugin),
+            typeof(NethDevPlugin)
         };
         CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
     }
