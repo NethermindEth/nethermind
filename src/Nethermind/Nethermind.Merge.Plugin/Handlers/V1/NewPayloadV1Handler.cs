@@ -188,7 +188,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (parentHeader.TotalDifficulty == 0 && _beaconSyncStrategy.IsBeaconSyncHeadersFinished())
                 {
                     parentHeader.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
-                } else {
+                } else if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished()) {
                     return NewPayloadV1Result.Syncing;
                 }
                 
