@@ -190,7 +190,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                                                                .LowestInsertedReceiptBlockNumber ??
                                                                            long.MaxValue) <= _receiptsBarrier);
 
-        public bool IsSnapGetRangesFinished() => !_snapProvider.ProgressTracker.MoreAccountsToRight && _snapProvider.ProgressTracker.StoragesToRetrieve.Count == 0;
+        public bool IsSnapGetRangesFinished() => _snapProvider.ProgressTracker.IsSnapGetRangesFinished();
 
         private bool IsFastBlocks()
         {
