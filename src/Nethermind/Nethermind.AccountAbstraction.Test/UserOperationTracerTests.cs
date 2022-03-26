@@ -53,7 +53,6 @@ namespace Nethermind.AccountAbstraction.Test
         [TestCase(Instruction.AND, true)]
         public void Should_fail_if_banned_opcode_is_used_when_call_depth_is_more_than_one(Instruction instruction, bool success)
         {
-            //GASPRICE, GASLIMIT, DIFFICULTY, TIMESTAMP, BASEFEE, BLOCKHASH, NUMBER, BALANCE, ORIGIN
             byte[] deployedCode = Prepare.EvmCode
                 .PushData("0x01")
                 .PushData("0x69")
@@ -226,6 +225,38 @@ namespace Nethermind.AccountAbstraction.Test
             (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
             tracer.Output.Should().BeEquivalentTo(shouldRunOutOfGas ? Bytes.FromHexString("0x00") : Bytes.FromHexString("0x01"));
             tracer.Error.Should().Be(shouldError ? "simulation failed: a call during simulation ran out of gas" : null);
+        }
+        
+        [TestCase(Instruction.DELEGATECALL, true)]
+        [TestCase(Instruction.CALL, true)]
+        [TestCase(Instruction.STATICCALL, true)]
+        [TestCase(Instruction.DUP1, false)]
+        public void Should_allow_gas_only_if_followed_by_call(Instruction instruction, bool success)
+        {
+            byte[] deployedCode = Prepare.EvmCode
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0) // value
+                .PushData(TestItem.AddressF)
+                .Op(Instruction.GAS)
+                .Op(instruction)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            Keccak deployedCodeHash = TestState.UpdateCode(deployedCode);
+            TestState.UpdateCodeHash(TestItem.AddressC, deployedCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .Call(TestItem.AddressC, 70000)
+                .Op(Instruction.STOP)
+                .Done;
+
+            (UserOperationTxTracer tracer, _, _) = ExecuteAndTraceAccessCall(SenderRecipientAndMiner.Default, code);
+            
+            tracer.Success.Should().Be(success);
         }
 
         private (UserOperationTxTracer trace, Block block, Transaction transaction) ExecuteAndTraceAccessCall(SenderRecipientAndMiner addresses, byte[] code, bool paymasterWhitelisted = false, bool firstSimulation = true)

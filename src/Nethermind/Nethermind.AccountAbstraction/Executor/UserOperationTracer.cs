@@ -38,8 +38,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             Instruction.GASPRICE, Instruction.GASLIMIT, Instruction.DIFFICULTY, Instruction.TIMESTAMP,
             Instruction.BASEFEE, Instruction.BLOCKHASH, Instruction.NUMBER, Instruction.SELFBALANCE,
-            Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE, Instruction.GAS,
-            Instruction.CREATE
+            Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE, Instruction.CREATE
         };
 
         private readonly Address _entryPointAddress;
@@ -53,6 +52,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private bool _paymasterValidationMode;
         private int numberOfCreate2Calls = 0;
+        private bool _nextOpcodeMustBeCall; // GAS is allowed only if it followed immediately by a CALL, DELEGATECALL, STATICCALL, or CALLCODE
         
         public UserOperationTxTracer(
             Transaction? transaction,
@@ -143,6 +143,25 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
+            if (_nextOpcodeMustBeCall)
+            {
+                _nextOpcodeMustBeCall = false;
+
+                if (opcode != Instruction.CALL &&
+                    opcode != Instruction.STATICCALL &&
+                    opcode != Instruction.DELEGATECALL &&
+                    opcode != Instruction.CALLCODE)
+                {
+                    Success = false;
+                    Error ??= $"simulation error: GAS opcode was called at depth {depth} pc {pc} but was not immediately followed by CALL, DELEGATECALL, STATICCALL, or CALLCODE";
+                }
+            }
+            
+            if (depth > 1 && opcode == Instruction.GAS)
+            {
+                _nextOpcodeMustBeCall = true;
+            }
+            
             // spec: These opcodes are forbidden because their outputs may differ between simulation and execution,
             // so simulation of calls using these opcodes does not reliably tell what would happen if these calls are later done on-chain.
             if (depth > 1 && _bannedOpcodes.Contains(opcode))
