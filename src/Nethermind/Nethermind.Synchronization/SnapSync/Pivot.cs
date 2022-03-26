@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public BlockHeader GetPivotHeader()
         {
-            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 10)
+            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= 20) //Constants.MaxDistanceFromHead - 10
             {
                 _logger.Warn($"SNAP - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
 
