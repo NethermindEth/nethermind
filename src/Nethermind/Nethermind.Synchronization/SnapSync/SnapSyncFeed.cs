@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.SnapSync
                 else
                 {
                     _emptyRequestCount++;
-                    if(_emptyRequestCount % 1000 == 0)
+                    if(_emptyRequestCount % 100 == 0)
                     {
                         _logger.Info($"SNAP - emptyRequestCount:{_emptyRequestCount}");
                     }
