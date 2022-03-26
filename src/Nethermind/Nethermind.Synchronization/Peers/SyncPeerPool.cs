@@ -79,16 +79,16 @@ namespace Nethermind.Synchronization.Peers
             INodeStatsManager nodeStatsManager,
             int peersMaxCount,
             ILogManager logManager)
-            : this(blockTree, nodeStatsManager, peersMaxCount, 0, logManager)
+            : this(blockTree, nodeStatsManager, peersMaxCount, 1000, logManager)
         {
         }
         
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             int peersMaxCount,
-            int priorityPeerMaxCount,
+            int allocationsUpgradeIntervalInMsInMs,
             ILogManager logManager)
-            : this(blockTree, nodeStatsManager, peersMaxCount, priorityPeerMaxCount, 1000, logManager)
+            : this(blockTree, nodeStatsManager, peersMaxCount, 0, allocationsUpgradeIntervalInMsInMs, logManager)
         {
         }
 
