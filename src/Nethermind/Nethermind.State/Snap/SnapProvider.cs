@@ -42,7 +42,7 @@ namespace Nethermind.State.Snap
             {
                 foreach (var item in accountsWithStorage)
                 {
-                    ProgressTracker.StoragesToRetrieve.Enqueue(item);
+                    ProgressTracker.EnqueueAccountStorage(item);
                 }
 
                 ProgressTracker.NextAccountPath = accounts[accounts.Length - 1].AddressHash;
@@ -73,7 +73,7 @@ namespace Nethermind.State.Snap
                         StartingHash = slots.Last().Path
                     };
 
-                    ProgressTracker.NextSlotRange.Enqueue(range);
+                    ProgressTracker.EnqueueAccountStorage(range);
                 }
             }
             else
@@ -88,11 +88,11 @@ namespace Nethermind.State.Snap
                         StartingHash = startingHash
                     };
 
-                    ProgressTracker.NextSlotRange.Enqueue(range);
+                    ProgressTracker.EnqueueAccountStorage(range);
                 }
                 else
                 {
-                    ProgressTracker.StoragesToRetrieve.Enqueue(pathWithAccount);
+                    ProgressTracker.EnqueueAccountStorage(pathWithAccount);
                 }
             }
 

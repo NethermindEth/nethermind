@@ -12,9 +12,11 @@ namespace Nethermind.State.Snap
     {
         private const int STORAGE_BATCH_SIZE = 1000;
 
+        private AccountRange AccountRangeRequested;
+
         public Keccak NextAccountPath { get; set; } = Keccak.Zero; //new("0xfe00000000000000000000000000000000000000000000000000000000000000");
-        public ConcurrentQueue<StorageRange> NextSlotRange { get; set; } = new();        
-        public ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; private set; } = new();
+        private ConcurrentQueue<StorageRange> NextSlotRange { get; set; } = new();
+        private ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; set; } = new();
 
         public bool MoreAccountsToRight { get; set; } = true;
 
@@ -47,18 +49,38 @@ namespace Nethermind.State.Snap
 
                 return (null, storageRange2);
             }
-            else if (MoreAccountsToRight)
+            else if (MoreAccountsToRight && AccountRangeRequested is null)
             {
                 // some contract hardcoded
                 //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
                 // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
 
-                AccountRange accountRange = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
+                AccountRangeRequested = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
 
-                return (accountRange, null);
+                return (AccountRangeRequested, null);
             }
 
             return (null, null);
+        }
+
+        public void EnqueueAccountStorage(PathWithAccount storage)
+        {
+            StoragesToRetrieve.Enqueue(storage);
+        }
+
+        public void EnqueueAccountStorage(StorageRange storageRange)
+        {
+            NextSlotRange.Enqueue(storageRange);
+        }
+
+        public void ReportRequestFinished(AccountRange accountRange)
+        {
+            AccountRangeRequested = null;
+        }
+
+        public bool IsSnapGetRangesFinished()
+        {
+            return !MoreAccountsToRight && StoragesToRetrieve.Count == 0 && AccountRangeRequested == null && NextSlotRange.Count == 0;
         }
     }
 }
