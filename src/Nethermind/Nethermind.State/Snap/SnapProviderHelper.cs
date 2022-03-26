@@ -143,7 +143,7 @@ namespace Nethermind.State.Snap
 
             startingHash ??= Keccak.Zero;
 
-            Dictionary<Keccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
+            (TrieNode root, Dictionary<Keccak, TrieNode> dict) = CreateProofDict(proofs, tree.TrieStore);
 
             Dictionary<Keccak, TrieNode> processed = new();
             Span<byte> leftBoundary = stackalloc byte[64];
@@ -153,16 +153,19 @@ namespace Nethermind.State.Snap
 
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 
-            if(dict.TryGetValue(expectedRootHash, out TrieNode root))
-            {
-                tree.RootRef = root;
+            //if(dict.TryGetValue(expectedRootHash, out TrieNode root))
+            //{
+            //    tree.RootRef = root;
 
-                proofNodesToProcess.Push((null, root, -1, new List<byte>()));
-            }
-            else
-            {
-                return (false, true);
-            }
+            //    proofNodesToProcess.Push((null, root, -1, new List<byte>()));
+            //}
+            //else
+            //{
+            //    return (false, true);
+            //}
+
+            tree.RootRef = root;
+            proofNodesToProcess.Push((null, root, -1, new List<byte>()));
 
             bool moreChildrenToRight = false;
 
@@ -245,8 +248,9 @@ namespace Nethermind.State.Snap
             return (true, moreChildrenToRight);
         }
 
-        private static Dictionary<Keccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
+        private static (TrieNode root, Dictionary<Keccak, TrieNode> dict) CreateProofDict(byte[][] proofs, ITrieStore store)
         {
+            TrieNode root = null;
             Dictionary<Keccak, TrieNode> dict = new();
 
             for (int i = 0; i < proofs.Length; i++)
@@ -258,9 +262,14 @@ namespace Nethermind.State.Snap
                 node.ResolveKey(store, i == 0);
 
                 dict[node.Keccak] = node;
+
+                if (i == 0)
+                {
+                    root = node;
+                }
             }
 
-            return dict;
+            return (root, dict);
         }
     }
 }
