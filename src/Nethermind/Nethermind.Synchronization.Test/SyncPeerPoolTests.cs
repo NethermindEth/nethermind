@@ -182,6 +182,48 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.DropUselessPeers(true);
             Assert.True(peers.Any(p => p.DisconnectRequested));
         }
+        
+        [TestCase(0)]
+        [TestCase(10)]
+        [TestCase(24)]
+        public async Task Will_not_disconnect_any_priority_peer_if_their_amount_is_lower_than_max(byte number)
+        {
+            const int peersMaxCount = 25;
+            const int priorityPeersMaxCount = 25;
+            await using Context ctx = new();
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            var peers = await SetupPeers(ctx, peersMaxCount);
+            
+            // setting priority to all peers except one - peers[number]
+            for (int i = 0; i < priorityPeersMaxCount; i++)
+            {
+                if (i != number)
+                {
+                    ctx.Pool.SetPeerPriority(peers[i].Id);
+                }
+            }
+            await WaitForPeersInitialization(ctx);
+            ctx.Pool.DropUselessPeers(true);
+            Assert.True(peers[number].DisconnectRequested);
+        }
+        
+        [Test]
+        public async Task Can_disconnect_priority_peer_if_their_amount_is_max()
+        {
+            const int peersMaxCount = 25;
+            const int priorityPeersMaxCount = 25;
+            await using Context ctx = new();
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            var peers = await SetupPeers(ctx, peersMaxCount);
+            
+            foreach (SimpleSyncPeerMock peer in peers)
+            {
+                ctx.Pool.SetPeerPriority(peer.Id);
+            }
+            await WaitForPeersInitialization(ctx);
+            ctx.Pool.DropUselessPeers(true);
+            Assert.True(peers.Any(p => p.DisconnectRequested));
+        }
 
         [Test]
         public async Task Cannot_remove_when_stopped()
