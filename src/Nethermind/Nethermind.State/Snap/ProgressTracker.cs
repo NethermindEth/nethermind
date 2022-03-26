@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.State.Snap
 {
@@ -14,11 +15,18 @@ namespace Nethermind.State.Snap
 
         private AccountRange AccountRangeRequested;
 
+        private readonly ILogger _logger;
+
         public Keccak NextAccountPath { get; set; } = Keccak.Zero; //new("0xfe00000000000000000000000000000000000000000000000000000000000000");
         private ConcurrentQueue<StorageRange> NextSlotRange { get; set; } = new();
         private ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; set; } = new();
 
         public bool MoreAccountsToRight { get; set; } = true;
+
+        public ProgressTracker(ILogManager logManager)
+        {
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        }
 
         public (AccountRange accountRange, StorageRange storageRange) GetNextRequest(long blockNumber, Keccak rootHash)
         {
@@ -27,12 +35,14 @@ namespace Nethermind.State.Snap
                 storageRange.RootHash = rootHash;
                 storageRange.BlockNumber = blockNumber;
 
+                _logger.Info($"SNAP - NextSlotRange:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count}");
+
                 return (null, storageRange);
             }
             else if (StoragesToRetrieve.Count > 0)
             {
                 // TODO: optimize this
-                List<PathWithAccount> storagesToQuery = storagesToQuery = new(STORAGE_BATCH_SIZE);
+                List<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
 
                 for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
                 {
@@ -47,6 +57,8 @@ namespace Nethermind.State.Snap
                     BlockNumber = blockNumber
                 };
 
+                _logger.Info($"SNAP - StoragesToRetrieve:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count}");
+
                 return (null, storageRange2);
             }
             else if (MoreAccountsToRight && AccountRangeRequested is null)
@@ -56,6 +68,8 @@ namespace Nethermind.State.Snap
                 // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
 
                 AccountRangeRequested = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
+
+                _logger.Info($"SNAP - AccountRangeRequested:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count}");
 
                 return (AccountRangeRequested, null);
             }
@@ -75,6 +89,8 @@ namespace Nethermind.State.Snap
 
         public void ReportRequestFinished(AccountRange accountRange)
         {
+            //_logger.Info($"SNAP - {AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count}");
+
             AccountRangeRequested = null;
         }
 

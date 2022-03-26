@@ -153,6 +153,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
                     else
                     {
+                        Logger.Info($"SNAP - peer NOT allocated");
                         SyncResponseHandlingResult result = Feed.HandleResponse(request);
                         ReactToHandlingResult(request, result, null);
                     }

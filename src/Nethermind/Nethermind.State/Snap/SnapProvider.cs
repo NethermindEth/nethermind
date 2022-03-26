@@ -21,13 +21,14 @@ namespace Nethermind.State.Snap
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
-        public ProgressTracker ProgressTracker { get; set; } = new();
+        public ProgressTracker ProgressTracker { get; set; }
 
         public SnapProvider(ITrieStore store, ILogManager logManager)
         {
             _store = store;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
+            ProgressTracker = new(_logManager);
         }
 
 
