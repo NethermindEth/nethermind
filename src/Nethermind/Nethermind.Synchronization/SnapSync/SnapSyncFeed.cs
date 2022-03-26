@@ -32,8 +32,11 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
+        private const SnapSyncBatch EmptyBatch = null;
         private int _accountResponsesCount;
         private int _storageResponsesCount;
+        private int _emptyRequestCount;
+        private int _retriesCount;
 
         private readonly Pivot _pivot;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -82,13 +85,23 @@ namespace Nethermind.Synchronization.SnapSync
                         _logger.Info($"SNAP - ({_pivot.GetPivotHeader().StateRoot}) Responses:{_accountResponsesCount}, Accounts:{Metrics.SyncedAccounts}, next request:{request.AccountRangeRequest.RootHash}:{request.AccountRangeRequest.StartingHash}:{request.AccountRangeRequest.LimitHash}");
                     }
                 }
+                else
+                {
+                    _emptyRequestCount++;
+                    if(_emptyRequestCount % 1000 == 0)
+                    {
+                        _logger.Info($"SNAP - emptyRequestCount:{_emptyRequestCount}");
+                    }
+
+                    return Task.FromResult(EmptyBatch);
+                }
 
                 return Task.FromResult(request);
             }
             catch (Exception e)
             {
                 _logger.Error("Error when preparing a batch", e);
-                return Task.FromResult<SnapSyncBatch>(null);
+                return Task.FromResult(EmptyBatch);
             }
         }
 
@@ -100,7 +113,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return SyncResponseHandlingResult.InternalError;
             }
 
-            if(batch.AccountRangeResponse is not null)
+            if (batch.AccountRangeResponse is not null)
             {
                 if (batch.AccountRangeResponse.PathAndAccounts.Length == 0 && batch.AccountRangeResponse.Proofs.Length == 0)
                 {
@@ -116,6 +129,8 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                 }
 
+                _snapProvider.ProgressTracker.ReportRequestFinished(batch.AccountRangeRequest);
+
                 _accountResponsesCount++;
             }
             else if(batch.StorageRangeResponse is not null)
@@ -124,7 +139,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     _logger.Warn($"GetStorageRange - expired BlockNumber:{batch.StorageRangeRequest.BlockNumber}, RootHash:{batch.StorageRangeRequest.RootHash}, (Accounts:{batch.StorageRangeRequest.Accounts.Count()}), {batch.StorageRangeRequest.StartingHash}");
 
-                    _snapProvider.ProgressTracker.NextSlotRange.Enqueue(batch.StorageRangeRequest);
+                    _snapProvider.ProgressTracker.EnqueueAccountStorage(batch.StorageRangeRequest);
                 }
                 else
                 {
@@ -150,7 +165,7 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                         else
                         {
-                            _snapProvider.ProgressTracker.StoragesToRetrieve.Enqueue(batch.StorageRangeRequest.Accounts[i]);
+                            _snapProvider.ProgressTracker.EnqueueAccountStorage(batch.StorageRangeRequest.Accounts[i]);
                         }
                     }
 
@@ -165,7 +180,26 @@ namespace Nethermind.Synchronization.SnapSync
             else
             {
                 //if (_logger.IsInfo) _logger.Info("SNAP peer not assigned to handle request");
-                return SyncResponseHandlingResult.NoProgress;
+
+                // Retry
+                if (batch.AccountRangeRequest != null)
+                {
+                    _snapProvider.ProgressTracker.ReportRequestFinished(batch.AccountRangeRequest);
+                }
+                else if (batch.StorageRangeRequest is not null)
+                {
+                    _snapProvider.ProgressTracker.EnqueueAccountStorage(batch.StorageRangeRequest);
+                }
+
+                _retriesCount++;
+                if (_retriesCount % 10 == 0)
+                {
+                    _logger.Info($"SNAP - retriesCount:{_retriesCount}");
+                }
+
+                // Other option - What if the peer didn't respond? Timeout
+                return SyncResponseHandlingResult.NotAssigned;
+                //return SyncResponseHandlingResult.NoProgress;
             }
 
             return SyncResponseHandlingResult.OK;
