@@ -42,6 +42,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
+        private readonly IBetterPeersStrategy _betterPeersStrategy;
         private readonly bool _needToWaitForHeaders;
         protected readonly ILogger _logger;
 
@@ -78,6 +79,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             IBeaconSyncStrategy beaconSyncStrategy,
+            IBetterPeersStrategy betterPeersStrategy,
             ILogManager logManager,
             bool needToWaitForHeaders = false)
         {
@@ -85,6 +87,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
+            _betterPeersStrategy = betterPeersStrategy ?? throw new ArgumentNullException(nameof(betterPeersStrategy));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _needToWaitForHeaders = needToWaitForHeaders;
 

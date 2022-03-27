@@ -58,7 +58,7 @@ namespace Nethermind.Api
         ISpecProvider? SpecProvider { get; set; }
         ISyncModeSelector? SyncModeSelector { get; set; }
         ISyncProgressResolver? SyncProgressResolver { get; set; }
-        ITotalDifficultyDependentMethods? BestPeerStrategy { get; set; }
+        IBetterPeersStrategy? BestPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
 

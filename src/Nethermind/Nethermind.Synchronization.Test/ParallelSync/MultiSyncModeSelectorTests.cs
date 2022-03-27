@@ -528,7 +528,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             ISyncConfig syncConfig = new SyncConfig() {FastSyncCatchUpHeightDelta = 2};
             syncConfig.FastSync = true;
             
-            MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, LimboLogs.Instance);
+            TotalDifficultyBasedBetterPeersStrategy bestPeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
+            MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
             selector.DisableTimer();
             syncProgressResolver.FindBestProcessedBlock().Returns(Scenario.ChainHead.Number);
             selector.Update();

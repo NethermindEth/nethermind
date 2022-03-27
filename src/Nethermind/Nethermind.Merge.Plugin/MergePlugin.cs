@@ -205,9 +205,13 @@ namespace Nethermind.Merge.Plugin
                     _api.SpecProvider, _api.LogManager);
                 _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.DbProvider.MetadataDb, _api.LogManager);
                 
-                _api.SyncModeSelector = new MultiSyncModeSelector(_api.SyncProgressResolver, _api.SyncPeerPool,
+                _api.SyncModeSelector = new MultiSyncModeSelector(
+                    _api.SyncProgressResolver,
+                    _api.SyncPeerPool,
                     _syncConfig,
-                    _beaconSync, _api.LogManager);
+                    _beaconSync,
+                    _api.BestPeerStrategy!,
+                    _api.LogManager);
                 _api.Pivot = _beaconPivot;
                 _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(
                     _poSSwitcher, 

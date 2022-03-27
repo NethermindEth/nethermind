@@ -42,7 +42,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISyncPeerPool _syncPeerPool;
-        private readonly ITotalDifficultyDependentMethods _totalDifficultyDependentMethods;
+        private readonly IBetterPeersStrategy _betterPeersStrategy;
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
 
@@ -59,7 +59,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             INodeStatsManager nodeStatsManager,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
-            ITotalDifficultyDependentMethods totalDifficultyDependentMethods,
+            IBetterPeersStrategy betterPeersStrategy,
             ILogManager logManager)
         {
             _poSSwitcher = poSSwitcher;
@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
-            _totalDifficultyDependentMethods = totalDifficultyDependentMethods;
+            _betterPeersStrategy = betterPeersStrategy;
             _logManager = logManager;
 
             _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, beaconPivot, logManager);
@@ -79,7 +79,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
-                _sealValidator, _syncReport, _receiptStorage, _specProvider, _totalDifficultyDependentMethods, _logManager);
+                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeersStrategy, _logManager);
         }
     }
 }

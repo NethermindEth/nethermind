@@ -827,10 +827,10 @@ namespace Nethermind.Synchronization.Test
             return new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, new BlocksSyncPeerAllocationStrategyFactory(), CreatePeerChoiceStrategy(), LimboLogs.Instance);
         }
         
-        private ITotalDifficultyDependentMethods CreatePeerChoiceStrategy()
+        private IBetterPeersStrategy CreatePeerChoiceStrategy()
         {
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            return new TotalDifficultyDependentMethods(syncProgressResolver, LimboLogs.Instance);
+            return new TotalDifficultyBasedBetterPeersStrategy(syncProgressResolver, LimboLogs.Instance);
         }
 
         [Flags]
@@ -878,7 +878,9 @@ namespace Nethermind.Synchronization.Test
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     LimboLogs.Instance);
-                SyncModeSelector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, syncConfig, No.BeaconSync , LimboLogs.Instance);
+                TotalDifficultyBasedBetterPeersStrategy bestPeerStrategy =
+                    new TotalDifficultyBasedBetterPeersStrategy(syncProgressResolver, LimboLogs.Instance);
+                SyncModeSelector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
                 Feed = new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
 
                 ResponseBuilder = new ResponseBuilder(BlockTree, TestHeaderMapping);

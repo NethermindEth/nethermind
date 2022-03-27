@@ -691,8 +691,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             overwrite.Invoke();
                         }
-
-                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, No.BeaconSync, LimboLogs.Instance, _needToWaitForHeaders);
+                        
+                        TotalDifficultyBasedBetterPeersStrategy bestPeerStrategy = new(SyncProgressResolver, LimboLogs.Instance);
+                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance, _needToWaitForHeaders);
                         selector.DisableTimer();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);

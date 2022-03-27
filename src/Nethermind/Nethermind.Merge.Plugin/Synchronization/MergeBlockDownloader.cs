@@ -57,9 +57,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISyncReport? syncReport, 
             IReceiptStorage? receiptStorage,
             ISpecProvider specProvider,
-            ITotalDifficultyDependentMethods totalDifficultyDependentMethods,
+            IBetterPeersStrategy betterPeersStrategy,
             ILogManager logManager)
-            : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, logManager), totalDifficultyDependentMethods, logManager)
+            : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, logManager), betterPeersStrategy, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));

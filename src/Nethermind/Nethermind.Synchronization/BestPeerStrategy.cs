@@ -15,36 +15,47 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Specs;
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization;
 
 
-public interface ITotalDifficultyDependentMethods
+/*
+* The class provides an abstraction for checks connected with TotalDifficulty across Nethermind.Synchronization.csproj.
+* This abstraction is needed for The Merge, because we need to rewrite most of the TotalDifficulty checks.
+* Because of many formats, we had to implement many similar methods.
+ * 
+ */
+
+public interface IBetterPeersStrategy
 {
     bool IsHeaderBetterThanPeer(BlockHeader? header, PeerInfo? peerInfo);
 
     bool IsPeerBetterThanHeader(BlockHeader? header, PeerInfo? peerInfo);
 
-    bool ShouldUpdatePeer((UInt256 TotalDifficulty, long Number) newValues, ISyncPeer peerInfo);
+    bool IsNotWorseThanPeer((UInt256 TotalDifficulty, long Number) newValues, ISyncPeer peerInfo);
+
+    (UInt256? maxPeerDifficulty, long? number) FindBestPeer(IEnumerable<PeerInfo> initializedPeers);
+
+    bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo);
+
+    bool IsBetterPeer((UInt256 TotalDifficulty, long Number) bestPeerInfo, long bestHeader);
 }
 
 
-public class TotalDifficultyDependentMethods : ITotalDifficultyDependentMethods
+public class TotalDifficultyBasedBetterPeersStrategy : IBetterPeersStrategy
 {
   //  private readonly ITotalDifficultyChecks _totalDifficultyChecks;
     private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly ILogger _logger;
     
-    public TotalDifficultyDependentMethods(
+    public TotalDifficultyBasedBetterPeersStrategy(
        // ITotalDifficultyChecks totalDifficultyChecks,
         ISyncProgressResolver syncProgressResolver,
         ILogManager logManager)
@@ -64,72 +75,63 @@ public class TotalDifficultyDependentMethods : ITotalDifficultyDependentMethods
         return Compare(header, peerInfo) < 0;
     }
 
-    public bool ShouldUpdatePeer((UInt256 TotalDifficulty, long Number) newValues, ISyncPeer peerInfo)
+    public bool IsNotWorseThanPeer((UInt256 TotalDifficulty, long Number) newValues, ISyncPeer peerInfo)
     {
-        return newValues.TotalDifficulty >= peerInfo.TotalDifficulty;
-        // BlockHeader? parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
-        //     if (parent != null && parent.TotalDifficulty != 0)
-        // {
-        //     UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-        //     if (newTotalDifficulty >= syncPeer.TotalDifficulty)
-        //     {
-
+        return newValues.TotalDifficulty.CompareTo(peerInfo.TotalDifficulty) >= 0;
     }
 
-    public int Compare(BlockHeader? header, PeerInfo? peerInfo)
+    public (UInt256? maxPeerDifficulty, long? number) FindBestPeer(IEnumerable<PeerInfo> initializedPeers)
+    {
+        UInt256? maxPeerDifficulty = null;
+        long? number = 0;
+    
+        foreach (PeerInfo peer in initializedPeers)
+        {
+            UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
+            if (peer.TotalDifficulty > currentMax || peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
+            {
+                // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
+                UInt256 realTotalDifficulty =
+                    _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peer.TotalDifficulty;
+                if (realTotalDifficulty > currentMax ||
+                    peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
+                {
+                    maxPeerDifficulty = realTotalDifficulty;
+                    number = peer.HeadNumber;
+                }
+            }
+        }
+    
+        return (maxPeerDifficulty, number);
+    }
+
+    public bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo)
+    {
+        UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
+        return bestPeerInfo.TotalDifficulty.CompareTo(localChainDifficulty) > 0;
+    }
+
+    public bool IsBetterPeer((UInt256 TotalDifficulty, long Number) bestPeerInfo, long bestHeader)
+    {
+        UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
+        bool desiredPeerKnown = IsBetterThanLocalChain(bestPeerInfo)
+                                || bestPeerInfo.TotalDifficulty == localChainDifficulty && bestPeerInfo.Number > bestHeader;
+        if (desiredPeerKnown)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace($"   Best peer [{bestPeerInfo.Number},{bestPeerInfo.TotalDifficulty}] " +
+                              $"> local [{bestHeader},{localChainDifficulty}]");
+        }
+
+        return desiredPeerKnown;
+    }
+    
+    
+    private int Compare(BlockHeader? header, PeerInfo? peerInfo)
     {
         UInt256 headerDifficulty = header?.TotalDifficulty ?? 0;
         UInt256 peerDifficulty = peerInfo?.TotalDifficulty ?? 0;
-        if (headerDifficulty > peerDifficulty) return 1;
-        else if (headerDifficulty == peerDifficulty) return 0;
-        else return -1;
+        return headerDifficulty.CompareTo(peerDifficulty);
     }
-    
-    // private (UInt256? maxPeerDifficulty, long? number) FindBestPeer()
-    // {
-    //     UInt256? maxPeerDifficulty = null;
-    //     long? number = 0;
-    //
-    //     foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
-    //     {
-    //         UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
-    //         if (peer.TotalDifficulty > currentMax || peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
-    //         {
-    //             // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
-    //             var realTotalDifficulty =
-    //                 _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peer.TotalDifficulty;
-    //             if (realTotalDifficulty > currentMax ||
-    //                 peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
-    //             {
-    //                 maxPeerDifficulty = realTotalDifficulty;
-    //                 number = peer.HeadNumber;
-    //             }
-    //         }
-    //     }
-    //
-    //     return (maxPeerDifficulty, number);
-    // }
-    //
-    // protected virtual bool AnyDesiredPeerKnown(Snapshot best)
-    // {
-    //     UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
-    //     bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty
-    //                                || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
-    //     if (anyDesiredPeerKnown)
-    //     {
-    //         if (_logger.IsTrace)
-    //             _logger.Trace($"   Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
-    //                           $"> local [{best.Header},{localChainDifficulty}]");
-    //     }
-    //
-    //     return anyDesiredPeerKnown;
-    // }
-
-    // private void AnyPeers()
-    // {
-    //     bool anyPeers = peerBlock.Value > 0 &&
-    //                     peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
-    //     newModes = anyPeers ? SyncMode.Full : SyncMode.Disconnected;
-    // }
     
 }
