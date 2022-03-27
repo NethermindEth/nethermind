@@ -299,7 +299,7 @@ namespace Nethermind.Synchronization.Test
                     new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
-                SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
+                SyncPeerPool = new SyncPeerPool(BlockTree, stats, new TotalDifficultyDependentMethods(null, LimboLogs.Instance), 25, _logManager);
 
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
@@ -321,6 +321,7 @@ namespace Nethermind.Synchronization.Test
                     syncModeSelector,
                     syncConfig,
                     pivot,
+                    new TotalDifficultyDependentMethods(syncProgressResolver, _logManager),
                     _logManager);
                 Synchronizer = new Synchronizer(
                     dbProvider,

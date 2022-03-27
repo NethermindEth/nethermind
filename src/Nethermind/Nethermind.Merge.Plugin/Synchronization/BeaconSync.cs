@@ -15,14 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 
@@ -33,31 +37,37 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
-        private readonly ISyncProgressResolver _syncProgressResolver;
-        private readonly IBlockCacheService _blockCacheService;
-        private readonly IBlockValidator _blockValidator;
-        private readonly IBlockchainProcessor _processor;
+        private readonly IDb _metadataDb;
         private bool _isInBeaconModeControl = false;
+        private bool _danglingChainMerged;
         private readonly ILogger _logger;
 
         public BeaconSync(
             IBeaconPivot beaconPivot,
             IBlockTree blockTree,
             ISyncConfig syncConfig,
-            ISyncProgressResolver syncProgressResolver,
-            IBlockCacheService blockCacheService,
-            IBlockValidator blockValidator,
-            IBlockchainProcessor processor,
+            IDb metadataDb,
             ILogManager logManager)
         {
             _beaconPivot = beaconPivot;
             _blockTree = blockTree;
             _syncConfig = syncConfig;
-            _syncProgressResolver = syncProgressResolver;
-            _blockCacheService = blockCacheService;
-            _blockValidator = blockValidator;
-            _processor = processor;
+            _metadataDb = metadataDb;
             _logger = logManager.GetClassLogger();
+
+            Initialize();
+        }
+
+        private void Initialize()
+        {
+            LoadDanglingChainMerged();
+        }
+
+        private void LoadDanglingChainMerged()
+        {
+            DanglingChainMerged =
+                _metadataDb.Get(MetadataDbKeys.DanglingChainMerged)?
+                    .AsRlpValueContext().DecodeBool() ?? true;
         }
 
         public void SwitchToBeaconModeControl()
@@ -96,6 +106,19 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return finished;
         }
 
+        public bool DanglingChainMerged
+        {
+            get => _danglingChainMerged;
+            set
+            {
+                _danglingChainMerged = value;
+                if (value)
+                {
+                    _metadataDb.Set(MetadataDbKeys.DanglingChainMerged, Rlp.Encode(value).Bytes);
+                }
+            }
+        }
+
         public bool FastSyncEnabled => _syncConfig.FastSync;
     }
 
@@ -104,5 +127,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         void SwitchToBeaconModeControl();
 
         void InitSyncing();
+        
+        bool DanglingChainMerged { get; set; }
     }
 }

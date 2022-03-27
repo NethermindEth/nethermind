@@ -45,5 +45,6 @@ public enum BlockTreeSuggestOptions
 {
     None = 0,
     ShouldProcess = 1,
-    
+    FillBlockGap = 2,
+    ProcessOnly = 4
 }

@@ -31,6 +31,7 @@ using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Api
@@ -57,6 +58,7 @@ namespace Nethermind.Api
         ISpecProvider? SpecProvider { get; set; }
         ISyncModeSelector? SyncModeSelector { get; set; }
         ISyncProgressResolver? SyncProgressResolver { get; set; }
+        ITotalDifficultyDependentMethods? BestPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
 

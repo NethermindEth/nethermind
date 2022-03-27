@@ -320,7 +320,7 @@ namespace Nethermind.Synchronization.Test
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
-            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, 25, logManager);
+            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyDependentMethods(null, LimboLogs.Instance), 25, logManager);
 
             StateProvider devState = new(trieStore, codeDb, logManager);
             StorageProvider devStorage = new(trieStore, devState, logManager);
@@ -367,6 +367,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 syncConfig,
                 pivot,
+                new TotalDifficultyDependentMethods(resolver, LimboLogs.Instance),
                 logManager);
             Synchronizer synchronizer = new(
                 dbProvider,

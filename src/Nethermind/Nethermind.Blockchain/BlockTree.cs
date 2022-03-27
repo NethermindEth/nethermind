@@ -82,11 +82,10 @@ namespace Nethermind.Blockchain
         public Block? Head { get; private set; }
         public BlockHeader? BestSuggestedHeader { get; private set; }
         public Block? BestSuggestedBody { get; private set; }
-
+        public BlockHeader? LowestInsertedHeader { get; private set; }
         public BlockHeader? BestSuggestedBeaconHeader { get; private set; }
 
         public Block? BestSuggestedBeaconBody { get; private set; }
-        public BlockHeader? LowestInsertedHeader { get; private set; }
         public BlockHeader? LowestInsertedBeaconHeader { get; set; }
 
         private long? _beaconSyncPivotNumber;
@@ -247,7 +246,7 @@ namespace Nethermind.Blockchain
                 _blockDb.Get(LowestInsertedBodyNumberDbEntryAddress)?
                     .AsRlpValueContext().DecodeLong();
         }
-
+        
         public void LoadLowestInsertedBeaconHeader()
         {
             if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncDestinationNumber))

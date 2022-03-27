@@ -183,6 +183,7 @@ namespace Nethermind.Api
         public ISyncModeSelector? SyncModeSelector { get; set; }
         
         public ISyncProgressResolver? SyncProgressResolver { get; set; }
+        public ITotalDifficultyDependentMethods? BestPeerStrategy { get; set; }
         public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }

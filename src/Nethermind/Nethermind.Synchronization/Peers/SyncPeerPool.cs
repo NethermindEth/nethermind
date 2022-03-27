@@ -61,6 +61,7 @@ namespace Nethermind.Synchronization.Peers
             = new();
         
         private readonly INodeStatsManager _stats;
+        private readonly ITotalDifficultyDependentMethods _totalDifficultyDependentMethods;
         private readonly int _allocationsUpgradeIntervalInMs;
 
         private bool _isStarted;
@@ -77,20 +78,23 @@ namespace Nethermind.Synchronization.Peers
 
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
+            ITotalDifficultyDependentMethods totalDifficultyDependentMethods,
             int peersMaxCount,
             ILogManager logManager)
-            : this(blockTree, nodeStatsManager, peersMaxCount, 1000, logManager)
+            : this(blockTree, nodeStatsManager, totalDifficultyDependentMethods, peersMaxCount, 1000, logManager)
         {
         }
 
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
+            ITotalDifficultyDependentMethods totalDifficultyDependentMethods,
             int peersMaxCount,
             int allocationsUpgradeIntervalInMsInMs,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+            _totalDifficultyDependentMethods = totalDifficultyDependentMethods ?? throw new ArgumentNullException(nameof(totalDifficultyDependentMethods));
             PeerMaxCount = peersMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -579,7 +583,7 @@ namespace Nethermind.Synchronization.Peers
                             if (parent != null && parent.TotalDifficulty != 0)
                             {
                                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-                                if (newTotalDifficulty >= syncPeer.TotalDifficulty)
+                                if (_totalDifficultyDependentMethods.ShouldUpdatePeer((newTotalDifficulty, header.Number), syncPeer))
                                 {
                                     syncPeer.TotalDifficulty = newTotalDifficulty;
                                     syncPeer.HeadNumber = header.Number;

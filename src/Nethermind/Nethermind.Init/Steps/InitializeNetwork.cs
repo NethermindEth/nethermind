@@ -111,11 +111,7 @@ namespace Nethermind.Init.Steps
                 _networkConfig.NettyArenaOrder.ToString());
 
             CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
-
-            int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-            _api.SyncPeerPool =
-                new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, _api.LogManager);
-            _api.DisposeStack.Push(_api.SyncPeerPool);
+            
 
             SyncProgressResolver syncProgressResolver = new(
                 _api.BlockTree!,
@@ -126,6 +122,12 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
             
             _api.SyncProgressResolver = syncProgressResolver;
+            _api.BestPeerStrategy = new TotalDifficultyDependentMethods(_api.SyncProgressResolver, _api.LogManager);
+            
+            int maxPeersCount = _networkConfig.ActivePeersMaxCount;
+            _api.SyncPeerPool =
+                new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, _api.BestPeerStrategy, maxPeersCount, _api.LogManager);
+            _api.DisposeStack.Push(_api.SyncPeerPool);
 
             IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
             foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
@@ -142,11 +144,12 @@ namespace Nethermind.Init.Steps
                 _api.ReceiptStorage!,
                 _api.BlockValidator!,
                 _api.SealValidator!,
-                _api.SyncPeerPool,
+                _api.SyncPeerPool!,
                 _api.NodeStatsManager!,
                 _api.SyncModeSelector!,
                 _syncConfig,
                 _api.Pivot,
+                _api.BestPeerStrategy!,
                 _api.LogManager);
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,

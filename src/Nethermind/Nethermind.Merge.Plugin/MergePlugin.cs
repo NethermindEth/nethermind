@@ -203,7 +203,7 @@ namespace Nethermind.Merge.Plugin
                     Always.Valid, _api.LogManager);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
                     _api.SpecProvider, _api.LogManager);
-                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.SyncProgressResolver, _blockCacheService,  _api.BlockValidator, _api.BlockchainProcessor, _api.LogManager);
+                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.DbProvider.MetadataDb, _api.LogManager);
                 
                 _api.SyncModeSelector = new MultiSyncModeSelector(_api.SyncProgressResolver, _api.SyncPeerPool,
                     _syncConfig,
@@ -221,6 +221,7 @@ namespace Nethermind.Merge.Plugin
                     _api.NodeStatsManager!,
                     _api.SyncModeSelector!,
                     _syncConfig,
+                    _api.BestPeerStrategy!,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(
                     _api.DbProvider, 

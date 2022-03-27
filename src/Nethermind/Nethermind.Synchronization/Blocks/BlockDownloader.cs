@@ -47,15 +47,16 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly ISpecProvider _specProvider;
+        private readonly ITotalDifficultyDependentMethods _totalDifficultyDependentMethods;
         private readonly ILogger _logger;
         private readonly Random _rnd = new();
 
         private bool _cancelDueToBetterPeer;
         private AllocationWithCancellation _allocationWithCancellation;
 
-        private SyncBatchSize _syncBatchSize;
+        protected SyncBatchSize _syncBatchSize;
         private int _sinceLastTimeout;
-        private readonly int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
+        protected readonly int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
 
         public BlockDownloader(
             ISyncFeed<BlocksRequest?>? feed,
@@ -67,6 +68,7 @@ namespace Nethermind.Synchronization.Blocks
             IReceiptStorage? receiptStorage,
             ISpecProvider? specProvider,
             IPeerAllocationStrategyFactory<BlocksRequest?> blockSyncPeerAllocationStrategyFactory,
+            ITotalDifficultyDependentMethods totalDifficultyDependentMethods,
             ILogManager? logManager)
             : base(feed, syncPeerPool, blockSyncPeerAllocationStrategyFactory, logManager)
         {
@@ -76,6 +78,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _totalDifficultyDependentMethods = totalDifficultyDependentMethods ?? throw new ArgumentNullException(nameof(totalDifficultyDependentMethods));;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId, logManager), _specProvider);
@@ -242,7 +245,7 @@ namespace Nethermind.Synchronization.Blocks
             return headersSynced;
         }
 
-        public async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
+        public virtual async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
             CancellationToken cancellation)
         {
             if (bestPeer == null)
@@ -429,7 +432,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 
-        private async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+        protected async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
             Task<BlockHeader[]> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
@@ -443,7 +446,7 @@ namespace Nethermind.Synchronization.Blocks
             return headers;
         }
 
-        private async Task RequestBodies(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
+        protected async Task RequestBodies(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
         {
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
@@ -461,7 +464,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        private async Task RequestReceipts(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
+        protected async Task RequestReceipts(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
         {
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
@@ -558,19 +561,19 @@ namespace Nethermind.Synchronization.Blocks
                 throw new AggregateException(exceptions);
             }
         }
-
-        private bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
+        
+        protected virtual void UpdatePeerInfo(PeerInfo peerInfo, BlockHeader header)
         {
-            static void UpdatePeerInfo(PeerInfo peerInfo, BlockHeader header)
+            if (header.Hash is not null && header.TotalDifficulty is not null && _totalDifficultyDependentMethods.IsHeaderBetterThanPeer(header, peerInfo))
             {
-                if (header.Hash is not null && header.TotalDifficulty is not null && header.TotalDifficulty > peerInfo.TotalDifficulty)
-                {
-                    peerInfo.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
-                    peerInfo.SyncPeer.HeadNumber = header.Number;
-                    peerInfo.SyncPeer.HeadHash = header.Hash;
-                }
+                peerInfo.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
+                peerInfo.SyncPeer.HeadNumber = header.Number;
+                peerInfo.SyncPeer.HeadHash = header.Hash;
             }
+        }
 
+        protected bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
+        {
             switch (addResult)
             {
                 // this generally should not happen as there is a consistency check before
@@ -722,7 +725,7 @@ namespace Nethermind.Synchronization.Blocks
 
             PeerInfo? newPeer = e.Current;
             BlockHeader? bestSuggested = _blockTree.BestSuggestedHeader;
-            if ((newPeer?.TotalDifficulty ?? 0) > (bestSuggested?.TotalDifficulty ?? 0))
+            if (_totalDifficultyDependentMethods.IsPeerBetterThanHeader(bestSuggested, newPeer))
             {
                 Feed.Activate();
             }

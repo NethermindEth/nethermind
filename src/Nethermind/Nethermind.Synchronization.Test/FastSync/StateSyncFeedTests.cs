@@ -291,7 +291,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             ctx = new SafeContext();
             BlockTree blockTree = Build.A.BlockTree().OfChainLength((int) BlockTree.BestSuggestedHeader.Number).TestObject;
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), 25, LimboLogs.Instance);
+            ctx.Pool = new SyncPeerPool(blockTree, new NodeStatsManager(timerFactory, LimboLogs.Instance), new TotalDifficultyDependentMethods(null, LimboLogs.Instance), 25, LimboLogs.Instance);
             ctx.Pool.Start();
             ctx.Pool.AddPeer(syncPeer);
 
