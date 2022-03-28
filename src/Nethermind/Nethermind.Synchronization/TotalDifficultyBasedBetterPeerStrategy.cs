@@ -15,16 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization;
-
 
 /*
 * The class provides an abstraction for checks connected with TotalDifficulty across Nethermind.Synchronization.csproj.
@@ -38,6 +35,8 @@ public interface IBetterPeerStrategy
     int Compare(BlockHeader? header, ISyncPeer? peerInfo);
 
     int Compare((UInt256 TotalDifficulty, long Number) value, ISyncPeer? peerInfo);
+
+    int Compare((UInt256 TotalDifficulty, long Number) valueX, (UInt256 TotalDifficulty, long Number) valueY);
 
     bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo);
 
@@ -69,6 +68,11 @@ public class TotalDifficultyBasedBetterPeerStrategy : IBetterPeerStrategy
     {
         UInt256 peerDifficulty = peerInfo?.TotalDifficulty ?? 0;
         return value.TotalDifficulty.CompareTo(peerDifficulty);
+    }
+    
+    public int Compare((UInt256 TotalDifficulty, long Number) valueX, (UInt256 TotalDifficulty, long Number) valueY)
+    {
+        return valueX.TotalDifficulty.CompareTo(valueY.TotalDifficulty);
     }
     
     public bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo)

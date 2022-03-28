@@ -60,6 +60,14 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
         return value.Number.CompareTo(peerInfo?.HeadNumber ?? 0);
     }
 
+    public int Compare((UInt256 TotalDifficulty, long Number) valueX, (UInt256 TotalDifficulty, long Number) valueY)
+    {
+        if (ShouldApplyPreMergeLogic(valueX.TotalDifficulty, valueY.TotalDifficulty))
+            return _preMergeBetterPeerStrategy.Compare(valueX, valueY);
+
+        return valueX.Number.CompareTo(valueY.Number);
+    }
+
     public bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo)
     {
         UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;

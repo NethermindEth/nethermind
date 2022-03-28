@@ -42,6 +42,9 @@ public class AuRaBetterPeerStrategy : IBetterPeerStrategy
     public int Compare((UInt256 TotalDifficulty, long Number) value, ISyncPeer? peerInfo)
         => _betterPeerStrategy.Compare(value, peerInfo);
 
+    public int Compare((UInt256 TotalDifficulty, long Number) valueX, (UInt256 TotalDifficulty, long Number) valueY)
+        => _betterPeerStrategy.Compare(valueX, valueY);
+
     public bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo) =>
         _betterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo);
 

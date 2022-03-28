@@ -522,17 +522,32 @@ namespace Nethermind.Synchronization.ParallelSync
                 best.Header == best.Block) // and we do not need to catch up to headers anymore 
             && best.Processed < best.State; // not processed the block yet
 
-        private bool AnyDesiredPeerKnown(Snapshot best) =>
-             _betterPeerStrategy.IsDesiredPeer((best.PeerDifficulty, best.PeerBlock), best.Header);
+        protected virtual bool AnyDesiredPeerKnown(Snapshot best)
+        {
+            UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
+            bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty
+                                       || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
+            if (anyDesiredPeerKnown)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace($"   Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
+                                  $"> local [{best.Header},{localChainDifficulty}]");
+            }
+
+            return anyDesiredPeerKnown;
+        }
+        // private bool AnyDesiredPeerKnown(Snapshot best) =>
+        //      _betterPeerStrategy.IsDesiredPeer((best.PeerDifficulty, best.PeerBlock), best.Header);
 
 
         private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
 
+        
         private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
         {
             UInt256? maxPeerDifficulty = null;
             long? number = 0;
-
+        
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
                 UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
@@ -542,10 +557,12 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (isNewPeerBetterThanCurrentMax)
                 {
                     // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
-                    UInt256? localTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash);
-                    UInt256 realTotalDifficulty = (localTotalDifficulty == 0 ? peer.TotalDifficulty : localTotalDifficulty) ?? peer.TotalDifficulty;
+                    UInt256 realTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peer.TotalDifficulty;
+                    
+                    // during the beacon header sync our realTotalDifficulty could be 0. We're using peer.TotalDifficulty in this case
+                    realTotalDifficulty = realTotalDifficulty == 0 ? peer.TotalDifficulty : realTotalDifficulty;
                     bool isRealPeerBetterThanCurrentMax =
-                        _betterPeerStrategy.Compare((realTotalDifficulty, currentMaxNumber), peer.SyncPeer) < 0;
+                        _betterPeerStrategy.Compare(((currentMax, currentMaxNumber)), (realTotalDifficulty == 0 ? peer.TotalDifficulty : realTotalDifficulty, peer.HeadNumber)) < 0;
                     if (isRealPeerBetterThanCurrentMax)
                     {
                         maxPeerDifficulty = realTotalDifficulty;
@@ -553,7 +570,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
                 }
             }
-
+        
             return (maxPeerDifficulty, number);
         }
 
