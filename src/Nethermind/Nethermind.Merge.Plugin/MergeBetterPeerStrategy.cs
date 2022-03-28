@@ -81,7 +81,7 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
     {
         UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
         if (ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, localChainDifficulty))
-            return _preMergeBetterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo); 
+            return _preMergeBetterPeerStrategy.IsDesiredPeer(bestPeerInfo, bestHeader); 
         
         return bestPeerInfo.Number > bestHeader;
     }
