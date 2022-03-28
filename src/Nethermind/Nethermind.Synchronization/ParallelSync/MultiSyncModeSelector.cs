@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
-        private readonly IBetterPeersStrategy _betterPeersStrategy;
+        private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly bool _needToWaitForHeaders;
         protected readonly ILogger _logger;
 
@@ -79,7 +79,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
             IBeaconSyncStrategy beaconSyncStrategy,
-            IBetterPeersStrategy betterPeersStrategy,
+            IBetterPeerStrategy betterPeerStrategy,
             ILogManager logManager,
             bool needToWaitForHeaders = false)
         {
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _betterPeersStrategy = betterPeersStrategy ?? throw new ArgumentNullException(nameof(betterPeersStrategy));
+            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _needToWaitForHeaders = needToWaitForHeaders;
 
@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         else if (!FastSyncEnabled)
                         {
                             bool anyPeers = peerBlock.Value > 0 &&
-                                            peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
+                                            _betterPeerStrategy.IsBetterThanLocalChain((peerDifficulty ?? 0, peerBlock ?? 0));
                             newModes = anyPeers ? SyncMode.Full : SyncMode.Disconnected;
                             reason = "No Useful Peers";
                         }
@@ -522,20 +522,9 @@ namespace Nethermind.Synchronization.ParallelSync
                 best.Header == best.Block) // and we do not need to catch up to headers anymore 
             && best.Processed < best.State; // not processed the block yet
 
-        protected virtual bool AnyDesiredPeerKnown(Snapshot best)
-        {
-            UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
-            bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty
-                                       || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
-            if (anyDesiredPeerKnown)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"   Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
-                                  $"> local [{best.Header},{localChainDifficulty}]");
-            }
+        private bool AnyDesiredPeerKnown(Snapshot best) =>
+             _betterPeerStrategy.IsDesiredPeer((best.PeerDifficulty, best.PeerBlock), best.Header);
 
-            return anyDesiredPeerKnown;
-        }
 
         private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
 
@@ -547,13 +536,17 @@ namespace Nethermind.Synchronization.ParallelSync
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
                 UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
-                 if (peer.TotalDifficulty > currentMax || peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
+                long currentMaxNumber = number ?? 0;
+                bool isNewPeerBetterThanCurrentMax =
+                    _betterPeerStrategy.Compare((currentMax, currentMaxNumber), peer.SyncPeer) < 0;
+                if (isNewPeerBetterThanCurrentMax)
                 {
                     // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
-                    var realTotalDifficulty =
-                        _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peer.TotalDifficulty;
-                    if (realTotalDifficulty > currentMax ||
-                        peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
+                    UInt256? localTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash);
+                    UInt256 realTotalDifficulty = (localTotalDifficulty == 0 ? peer.TotalDifficulty : localTotalDifficulty) ?? peer.TotalDifficulty;
+                    bool isRealPeerBetterThanCurrentMax =
+                        _betterPeerStrategy.Compare((realTotalDifficulty, currentMaxNumber), peer.SyncPeer) < 0;
+                    if (isRealPeerBetterThanCurrentMax)
                     {
                         maxPeerDifficulty = realTotalDifficulty;
                         number = peer.HeadNumber;

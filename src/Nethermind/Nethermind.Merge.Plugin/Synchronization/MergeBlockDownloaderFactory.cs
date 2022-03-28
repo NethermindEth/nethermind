@@ -42,7 +42,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISyncPeerPool _syncPeerPool;
-        private readonly IBetterPeersStrategy _betterPeersStrategy;
+        private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
 
@@ -59,7 +59,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             INodeStatsManager nodeStatsManager,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
-            IBetterPeersStrategy betterPeersStrategy,
+            IBetterPeerStrategy betterPeerStrategy,
             ILogManager logManager)
         {
             _poSSwitcher = poSSwitcher;
@@ -70,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
-            _betterPeersStrategy = betterPeersStrategy;
+            _betterPeerStrategy = betterPeerStrategy;
             _logManager = logManager;
 
             _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, beaconPivot, logManager);
@@ -79,7 +79,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
-                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeersStrategy, _logManager);
+                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _logManager);
         }
     }
 }

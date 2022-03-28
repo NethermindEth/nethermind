@@ -299,7 +299,7 @@ namespace Nethermind.Synchronization.Test
                     new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
-                SyncPeerPool = new SyncPeerPool(BlockTree, stats, new TotalDifficultyBasedBetterPeersStrategy(null, LimboLogs.Instance), 25, _logManager);
+                SyncPeerPool = new SyncPeerPool(BlockTree, stats, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, _logManager);
 
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
@@ -309,7 +309,7 @@ namespace Nethermind.Synchronization.Test
                     syncConfig,
                     _logManager);
                 
-                TotalDifficultyBasedBetterPeersStrategy bestPeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
+                TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool,
                     syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
                 Pivot pivot = new (syncConfig);
@@ -323,7 +323,7 @@ namespace Nethermind.Synchronization.Test
                     syncModeSelector,
                     syncConfig,
                     pivot,
-                    new TotalDifficultyBasedBetterPeersStrategy(syncProgressResolver, _logManager),
+                    new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, _logManager),
                     _logManager);
                 Synchronizer = new Synchronizer(
                     dbProvider,

@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly ISpecProvider _specProvider;
-        private readonly IBetterPeersStrategy _betterPeersStrategy;
+        private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly ILogger _logger;
         private readonly Random _rnd = new();
 
@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.Blocks
             IReceiptStorage? receiptStorage,
             ISpecProvider? specProvider,
             IPeerAllocationStrategyFactory<BlocksRequest?> blockSyncPeerAllocationStrategyFactory,
-            IBetterPeersStrategy betterPeersStrategy,
+            IBetterPeerStrategy betterPeerStrategy,
             ILogManager? logManager)
             : base(feed, syncPeerPool, blockSyncPeerAllocationStrategyFactory, logManager)
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.Blocks
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _betterPeersStrategy = betterPeersStrategy ?? throw new ArgumentNullException(nameof(betterPeersStrategy));;
+            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(_specProvider.ChainId, logManager), _specProvider);
@@ -564,7 +564,7 @@ namespace Nethermind.Synchronization.Blocks
         
         protected virtual void UpdatePeerInfo(PeerInfo peerInfo, BlockHeader header)
         {
-            if (header.Hash is not null && header.TotalDifficulty is not null && _betterPeersStrategy.IsHeaderBetterThanPeer(header, peerInfo))
+            if (header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peerInfo?.SyncPeer) > 0)
             {
                 peerInfo.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
                 peerInfo.SyncPeer.HeadNumber = header.Number;
@@ -725,7 +725,7 @@ namespace Nethermind.Synchronization.Blocks
 
             PeerInfo? newPeer = e.Current;
             BlockHeader? bestSuggested = _blockTree.BestSuggestedHeader;
-            if (_betterPeersStrategy.IsPeerBetterThanHeader(bestSuggested, newPeer))
+            if (_betterPeerStrategy.Compare(bestSuggested, newPeer?.SyncPeer) < 0)
             {
                 Feed.Activate();
             }

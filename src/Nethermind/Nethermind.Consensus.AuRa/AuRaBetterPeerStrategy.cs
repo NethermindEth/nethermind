@@ -25,35 +25,29 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Consensus.AuRa;
 
-public class AuRaBetterPeerStrategy : IBetterPeersStrategy
+public class AuRaBetterPeerStrategy : IBetterPeerStrategy
 {
-    private readonly IBetterPeersStrategy _betterPeersStrategy;
+    private readonly IBetterPeerStrategy _betterPeerStrategy;
     private readonly ILogger _logger;
 
-    public AuRaBetterPeerStrategy(IBetterPeersStrategy betterPeersStrategy, ILogManager logManager)
+    public AuRaBetterPeerStrategy(IBetterPeerStrategy betterPeerStrategy, ILogManager logManager)
     {
-        _betterPeersStrategy = betterPeersStrategy;
+        _betterPeerStrategy = betterPeerStrategy;
         _logger = logManager.GetClassLogger();
     }
 
-    public bool IsHeaderBetterThanPeer(BlockHeader? header, PeerInfo? peerInfo) =>
-        _betterPeersStrategy.IsHeaderBetterThanPeer(header, peerInfo);
+    public int Compare(BlockHeader? header, ISyncPeer? peerInfo)
+        => _betterPeerStrategy.Compare(header, peerInfo);
 
-    public bool IsPeerBetterThanHeader(BlockHeader? header, PeerInfo? peerInfo) =>
-        _betterPeersStrategy.IsPeerBetterThanHeader(header, peerInfo);
-
-    public bool IsNotWorseThanPeer((UInt256 TotalDifficulty, long Number) newValues, ISyncPeer peerInfo) =>
-        _betterPeersStrategy.IsNotWorseThanPeer(newValues, peerInfo);
-
-    public (UInt256? maxPeerDifficulty, long? number) FindBestPeer(IEnumerable<PeerInfo> initializedPeers) =>
-        _betterPeersStrategy.FindBestPeer(initializedPeers);
+    public int Compare((UInt256 TotalDifficulty, long Number) value, ISyncPeer? peerInfo)
+        => _betterPeerStrategy.Compare(value, peerInfo);
 
     public bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo) =>
-        _betterPeersStrategy.IsBetterThanLocalChain(bestPeerInfo);
+        _betterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo);
 
-    public bool IsBetterPeer((UInt256 TotalDifficulty, long Number) bestPeerInfo, long bestHeader)
+    public bool IsDesiredPeer((UInt256 TotalDifficulty, long Number) bestPeerInfo, long bestHeader)
     {
-        if (_betterPeersStrategy.IsBetterPeer(bestPeerInfo, bestHeader))
+        if (_betterPeerStrategy.IsDesiredPeer(bestPeerInfo, bestHeader))
         {
             // We really, really don't trust parity when its saying it has same block level with higher difficulty in AuRa, its lying most of the times in AuRa.
             // This is because if its different block we already imported, but on same level, it will have lower difficulty (AuRa specific).

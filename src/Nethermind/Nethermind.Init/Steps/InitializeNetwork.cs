@@ -122,7 +122,7 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
             
             _api.SyncProgressResolver = syncProgressResolver;
-            _api.BestPeerStrategy = new TotalDifficultyBasedBetterPeersStrategy(_api.SyncProgressResolver, _api.LogManager);
+            _api.BestPeerStrategy = new TotalDifficultyBasedBetterPeerStrategy(_api.SyncProgressResolver, _api.LogManager);
             
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _api.SyncPeerPool =

@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization.Test
             {
                 BlockTree = Substitute.For<IBlockTree>();
                 Stats = Substitute.For<INodeStatsManager>();
-                Pool = new SyncPeerPool(BlockTree, Stats, new TotalDifficultyBasedBetterPeersStrategy(null, LimboLogs.Instance), 25, 50, LimboLogs.Instance);
+                Pool = new SyncPeerPool(BlockTree, Stats, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, 50, LimboLogs.Instance);
             }
 
             public async ValueTask DisposeAsync()

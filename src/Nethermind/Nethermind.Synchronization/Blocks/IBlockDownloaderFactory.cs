@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISyncPeerPool _syncPeerPool;
-        private readonly IBetterPeersStrategy _betterPeersStrategy;
+        private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
 
@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.Blocks
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             IPivot pivot,
-            IBetterPeersStrategy betterPeersStrategy,
+            IBetterPeerStrategy betterPeerStrategy,
             ILogManager logManager)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.Blocks
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
-            _betterPeersStrategy = betterPeersStrategy ?? throw new ArgumentNullException(nameof(betterPeersStrategy));
+            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _logManager = logManager;
 
             _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, pivot, logManager);
@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.Blocks
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new(syncFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport,
-                _receiptStorage, _specProvider, new BlocksSyncPeerAllocationStrategyFactory(), _betterPeersStrategy, _logManager);
+                _receiptStorage, _specProvider, new BlocksSyncPeerAllocationStrategyFactory(), _betterPeerStrategy, _logManager);
         }
     }
     

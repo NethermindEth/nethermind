@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.Peers
             = new();
         
         private readonly INodeStatsManager _stats;
-        private readonly IBetterPeersStrategy _betterPeersStrategy;
+        private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly int _allocationsUpgradeIntervalInMs;
 
         private bool _isStarted;
@@ -78,23 +78,23 @@ namespace Nethermind.Synchronization.Peers
 
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
-            IBetterPeersStrategy betterPeersStrategy,
+            IBetterPeerStrategy betterPeerStrategy,
             int peersMaxCount,
             ILogManager logManager)
-            : this(blockTree, nodeStatsManager, betterPeersStrategy, peersMaxCount, 1000, logManager)
+            : this(blockTree, nodeStatsManager, betterPeerStrategy, peersMaxCount, 1000, logManager)
         {
         }
 
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
-            IBetterPeersStrategy betterPeersStrategy,
+            IBetterPeerStrategy betterPeerStrategy,
             int peersMaxCount,
             int allocationsUpgradeIntervalInMsInMs,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            _betterPeersStrategy = betterPeersStrategy ?? throw new ArgumentNullException(nameof(betterPeersStrategy));
+            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             PeerMaxCount = peersMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -583,7 +583,10 @@ namespace Nethermind.Synchronization.Peers
                             if (parent != null && parent.TotalDifficulty != 0)
                             {
                                 UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-                                if (_betterPeersStrategy.IsNotWorseThanPeer((newTotalDifficulty, header.Number), syncPeer))
+                                bool newValueIsNotWorseThanPeer =
+                                    _betterPeerStrategy.Compare((newTotalDifficulty, header.Number),
+                                        syncPeer) >=0;
+                                if (newValueIsNotWorseThanPeer)
                                 {
                                     syncPeer.TotalDifficulty = newTotalDifficulty;
                                     syncPeer.HeadNumber = header.Number;
