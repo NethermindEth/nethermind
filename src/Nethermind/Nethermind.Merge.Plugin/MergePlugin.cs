@@ -198,11 +198,13 @@ namespace Nethermind.Merge.Plugin
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
                 if (_api.BetterPeerStrategy is null) throw new ArgumentNullException(nameof(_api.BetterPeerStrategy));
+                if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
+                if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
 
                 // ToDo strange place for validators initialization
-                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider,
-                    Always.Valid, _api.LogManager);
-                _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
+                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
+                _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
+                _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
                 _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.DbProvider.MetadataDb, _api.LogManager);
 
