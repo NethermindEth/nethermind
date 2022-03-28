@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
@@ -33,6 +34,7 @@ using Nethermind.Network;
 using Nethermind.TxPool;
 using Websocket.Client;
 using Block = Nethermind.Core.Block;
+using Timer = System.Timers.Timer;
 using Transaction = Nethermind.EthStats.Messages.Models.Transaction;
 
 namespace Nethermind.EthStats.Integrations
@@ -62,7 +64,7 @@ namespace Nethermind.EthStats.Integrations
         private bool _connected;
         private long _lastBlockProcessedTimestamp;
         private Timer? _timer;
-        private const int ThrottlingThreshold = 25;
+        private const int ThrottlingThreshold = 250;
         private const int SendStatsInterval = 1000;
 
         public EthStatsIntegration(
@@ -146,13 +148,11 @@ namespace Nethermind.EthStats.Integrations
 
         private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
-            if (!_connected)
+            if (_connected)
             {
-                return;
+                if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
+                SendStatsAsync();
             }
-
-            if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
-            SendStatsAsync();
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -164,7 +164,7 @@ namespace Nethermind.EthStats.Integrations
                 return;
             }
 
-            long timestamp = new DateTimeOffset(DateTime.UtcNow).ToUnixTimeMilliseconds();
+            long timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             if (timestamp - _lastBlockProcessedTimestamp < ThrottlingThreshold)
             {
                 return;
