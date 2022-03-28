@@ -122,11 +122,11 @@ namespace Nethermind.Init.Steps
                 _api.LogManager);
             
             _api.SyncProgressResolver = syncProgressResolver;
-            _api.BestPeerStrategy = new TotalDifficultyBasedBetterPeerStrategy(_api.SyncProgressResolver, _api.LogManager);
+            _api.BetterPeerStrategy = new TotalDifficultyBasedBetterPeerStrategy(_api.SyncProgressResolver, _api.LogManager);
             
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _api.SyncPeerPool =
-                new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, _api.BestPeerStrategy, maxPeersCount, _api.LogManager);
+                new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
             IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
@@ -149,7 +149,7 @@ namespace Nethermind.Init.Steps
                 _api.SyncModeSelector!,
                 _syncConfig,
                 _api.Pivot,
-                _api.BestPeerStrategy!,
+                _api.BetterPeerStrategy!,
                 _api.LogManager);
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
@@ -252,7 +252,7 @@ namespace Nethermind.Init.Steps
         }
 
         protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
-            => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BestPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
+            => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
 
         private Task StartDiscovery()
         {

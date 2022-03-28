@@ -197,6 +197,7 @@ namespace Nethermind.Merge.Plugin
                     throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
+                if (_api.BetterPeerStrategy is null) throw new ArgumentNullException(nameof(_api.BetterPeerStrategy));
 
                 // ToDo strange place for validators initialization
                 _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider,
@@ -204,13 +205,15 @@ namespace Nethermind.Merge.Plugin
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, Always.Valid,
                     _api.SpecProvider, _api.LogManager);
                 _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.DbProvider.MetadataDb, _api.LogManager);
-                
+
+                _api.BetterPeerStrategy =
+                    new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.SyncProgressResolver, _poSSwitcher);
                 _api.SyncModeSelector = new MultiSyncModeSelector(
                     _api.SyncProgressResolver,
                     _api.SyncPeerPool,
                     _syncConfig,
                     _beaconSync,
-                    _api.BestPeerStrategy!,
+                    _api.BetterPeerStrategy!,
                     _api.LogManager);
                 _api.Pivot = _beaconPivot;
                 _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(
@@ -225,7 +228,7 @@ namespace Nethermind.Merge.Plugin
                     _api.NodeStatsManager!,
                     _api.SyncModeSelector!,
                     _syncConfig,
-                    _api.BestPeerStrategy!,
+                    _api.BetterPeerStrategy!,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(
                     _api.DbProvider, 

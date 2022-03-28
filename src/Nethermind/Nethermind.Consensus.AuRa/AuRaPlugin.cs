@@ -61,7 +61,7 @@ namespace Nethermind.Consensus.AuRa
         {
             if (_nethermindApi is not null)
             {
-                _nethermindApi.BestPeerStrategy = new AuRaBetterPeerStrategy(_nethermindApi.BestPeerStrategy!, _nethermindApi.LogManager);
+                _nethermindApi.BetterPeerStrategy = new AuRaBetterPeerStrategy(_nethermindApi.BetterPeerStrategy!, _nethermindApi.LogManager);
             }
 
             return Task.CompletedTask;
