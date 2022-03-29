@@ -52,7 +52,11 @@ namespace Nethermind.Trie.Pruning
         {
             return Array.Empty<byte>();
         }
-        
+
+        public void Prune()
+        { }
+
+
         public void Dispose() { }
     }
 }
