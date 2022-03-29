@@ -25,6 +25,8 @@ namespace Nethermind.Trie.Pruning
         
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root);
 
+        void Prune();
+
         void HackPersistOnShutdown();
         
         IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore);
