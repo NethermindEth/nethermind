@@ -69,6 +69,9 @@ namespace Nethermind.Blockchain
         /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
         long BestKnownNumber { get; }
+        
+        
+        long BestKnownBeaconNumber { get; }
 
         /// <summary>
         /// Inserts a disconnected block header (without body)

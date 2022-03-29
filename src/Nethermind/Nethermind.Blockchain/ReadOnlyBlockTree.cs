@@ -65,6 +65,7 @@ namespace Nethermind.Blockchain
         
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
+        public long BestKnownBeaconNumber => _wrapped.BestKnownBeaconNumber;
         public Block Head => _wrapped.Head;
         public void MarkChainAsProcessed(Block[] blocks) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
         public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, UInt256? startingTotalDifficulty = null) => throw new InvalidOperationException();

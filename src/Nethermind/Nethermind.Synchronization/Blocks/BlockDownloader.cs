@@ -561,19 +561,18 @@ namespace Nethermind.Synchronization.Blocks
                 throw new AggregateException(exceptions);
             }
         }
-        
-        protected virtual void UpdatePeerInfo(PeerInfo peerInfo, BlockHeader header)
-        {
-            if (header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peerInfo?.SyncPeer) > 0)
-            {
-                peerInfo.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
-                peerInfo.SyncPeer.HeadNumber = header.Number;
-                peerInfo.SyncPeer.HeadHash = header.Hash;
-            }
-        }
 
         protected bool HandleAddResult(PeerInfo peerInfo, BlockHeader block, bool isFirstInBatch, AddBlockResult addResult)
         {
+            void UpdatePeerInfo(PeerInfo peer, BlockHeader header)
+            {
+                if (header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peer?.SyncPeer) > 0)
+                {
+                    peer.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
+                    peer.SyncPeer.HeadNumber = header.Number;
+                    peer.SyncPeer.HeadHash = header.Hash;
+                }
+            }
             switch (addResult)
             {
                 // this generally should not happen as there is a consistency check before

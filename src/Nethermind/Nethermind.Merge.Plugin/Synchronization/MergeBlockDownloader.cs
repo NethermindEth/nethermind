@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -84,7 +85,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             long preMergeUpperDownloadBoundary = base.GetUpperDownloadBoundary(bestPeer, blocksRequest);
             return _beaconPivot.BeaconPivotExists()
-                ? Math.Min(preMergeUpperDownloadBoundary, _beaconPivot.PivotNumber)
+                ? _blockTree.BestKnownBeaconNumber
                 : preMergeUpperDownloadBoundary;
         }
 
@@ -100,6 +101,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public override async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
             CancellationToken cancellation)
         {
+            if (_beaconPivot.BeaconPivotExists() == false)
+                return await base.DownloadBlocks(bestPeer, blocksRequest, cancellation);
+            
+            
             if (bestPeer == null)
             {
                 string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
@@ -125,7 +130,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             while(ImprovementRequirementSatisfied(bestPeer!) && HasMoreToSync())
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-
+                
                 long upperDownloadBoundary = GetUpperDownloadBoundary(bestPeer, blocksRequest);
                 long blocksLeft = upperDownloadBoundary - currentNumber;
                 int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
@@ -203,7 +208,18 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         }
                     }
 
-                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None)))
+                    bool blockExists = _blockTree.FindBlock(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) == null;
+                    bool isOnMainChain = _blockTree.IsMainChain(currentBlock.Header);
+                    BlockTreeSuggestOptions suggestOptions = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+                    if (blockExists && isOnMainChain == false)
+                        continue;
+
+                    if (blockExists == false)
+                        _blockTree.Insert(currentBlock);
+                    if (isOnMainChain && blockExists)
+                        suggestOptions |= BlockTreeSuggestOptions.TryProcessKnownBlock;
+
+                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, suggestOptions)))
                     {
                         if (downloadReceipts)
                         {
@@ -245,15 +261,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             }
 
             return blocksSynced;
-        }
-        protected override void UpdatePeerInfo(PeerInfo peerInfo, BlockHeader header)
-        {
-            if (header.Hash is not null && header.TotalDifficulty is not null && header.TotalDifficulty > peerInfo.TotalDifficulty)
-            {
-                peerInfo.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
-                peerInfo.SyncPeer.HeadNumber = header.Number;
-                peerInfo.SyncPeer.HeadHash = header.Hash;
-            }
         }
     }
 }
