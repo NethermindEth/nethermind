@@ -51,6 +51,7 @@ namespace Nethermind.State.Snap
             }
             else
             {
+                _store.Prune();
                 _logger.Warn($"SNAP - AddAccountRange failed, {blockNumber}:{expectedRootHash}, startingHash:{startingHash}");
             }
 
@@ -79,6 +80,7 @@ namespace Nethermind.State.Snap
             }
             else
             {
+                _store.Prune();
                 _logger.Warn($"SNAP - AddStorageRange failed, {blockNumber}:{expectedRootHash}, startingHash:{startingHash}");
 
                 if (startingHash > Keccak.Zero)
