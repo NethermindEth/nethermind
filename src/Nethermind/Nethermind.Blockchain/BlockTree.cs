@@ -29,6 +29,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -86,10 +87,18 @@ namespace Nethermind.Blockchain
         public BlockHeader? BestSuggestedBeaconHeader { get; private set; }
 
         public Block? BestSuggestedBeaconBody { get; private set; }
-        public BlockHeader? LowestInsertedBeaconHeader { get; set; }
 
-        private long? _beaconSyncPivotNumber;
-        private long? _beaconSyncDestinationNumber;
+        public BlockHeader? LowestInsertedBeaconHeader
+        {
+            get => _lowestInsertedBeaconHeader;
+            set
+            {
+                _lowestInsertedBeaconHeader = value;
+                _metadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+            }
+        }
+
+        private BlockHeader? _lowestInsertedBeaconHeader;
 
         private long? _lowestInsertedReceiptBlock;
         private long? _highestPersistedState;
@@ -249,24 +258,11 @@ namespace Nethermind.Blockchain
         
         public void LoadLowestInsertedBeaconHeader()
         {
-            if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncDestinationNumber))
+            if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedBeaconHeaderHash))
             {
-                _beaconSyncDestinationNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncDestinationNumber)?
-                    .AsRlpValueContext().DecodeLong();
-            }
-
-            if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncPivotNumber))
-            {
-                _beaconSyncPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?
-                    .AsRlpValueContext().DecodeLong();
-            }
-            
-            if (_beaconSyncDestinationNumber.HasValue && _beaconSyncPivotNumber.HasValue)
-            {
-                long left = _beaconSyncDestinationNumber.Value;
-                long right = _beaconSyncPivotNumber.Value;
-                LowestInsertedBeaconHeader =
-                    BinarySearchBlockHeader(left, right, HasLevel, BinarySearchDirection.Down);
+                Keccak? lowestBeaconHeaderHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedBeaconHeaderHash)?
+                    .AsRlpStream().DecodeKeccak();
+                _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
             if (_logger.IsInfo) _logger.Info($"Loaded LowestInsertedBeaconHeader: {LowestInsertedBeaconHeader}");
