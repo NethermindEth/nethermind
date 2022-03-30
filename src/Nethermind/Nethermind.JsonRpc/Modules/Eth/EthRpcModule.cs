@@ -369,8 +369,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null)
         {
-            _rpcConfig.NoBaseFee = true;
-            return new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+            JsonRpcConfig rpcConfig = _rpcConfig.Clone();
+            rpcConfig.NoBaseFee = true;
+            return new CallTxExecutor(_blockchainBridge, _blockFinder, rpcConfig)
                 .ExecuteTx(transactionCall, blockParameter);
         }
 
