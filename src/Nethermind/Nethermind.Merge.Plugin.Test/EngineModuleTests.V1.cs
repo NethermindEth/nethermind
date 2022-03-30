@@ -552,7 +552,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak? startingHead = chain.BlockTree.HeadHash;
             BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
             Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
-            await chain.BlockTree.SuggestBlockAsync(block);
+            await rpc.engine_newPayloadV1(new BlockRequestResult(block));
 
             ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
