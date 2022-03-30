@@ -31,6 +31,19 @@ namespace Nethermind.State.Snap
             ProgressTracker = new(_logManager);
         }
 
+        public SnapProvider(IKeyValueStoreWithBatching keyValueStore, ILogManager logManager)
+        {
+            _store = new TrieStore(
+                    keyValueStore,
+                    No.Pruning,
+                    Persist.EveryBlock,
+                    logManager);
+
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger();
+            ProgressTracker = new(_logManager);
+        }
+
 
         public bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {

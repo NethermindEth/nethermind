@@ -115,7 +115,7 @@ namespace Nethermind.Init.Steps
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
-            _api.SnapProvider = new SnapProvider(_api.TrieStore, _api.LogManager);
+            _api.SnapProvider = new SnapProvider(_api.MainStateDbWithCache, _api.LogManager);
 
             SyncProgressResolver syncProgressResolver = new(
                 _api.BlockTree!,
