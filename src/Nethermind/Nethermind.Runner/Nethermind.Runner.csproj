@@ -104,8 +104,8 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.*" />
-    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.dll" />
+    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.*;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.*" />
+    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.dll;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.dll" />
   </ItemGroup>
   <ItemGroup>
     <GitHash Include="git-hash" />
@@ -129,8 +129,6 @@
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild">
     <Message Text="---&gt; Copying Plugins After Build" Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
-    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.dll')" SkipUnchangedFiles="true" />
-    <Copy SourceFiles="$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb" DestinationFolder="$(OutDir)plugins" Condition="Exists('$(SolutionDir)Nethermind.Dsl\bin\$(Configuration)\$(TargetFramework)\Nethermind.Dsl.pdb')" SkipUnchangedFiles="true" />
   </Target>
 
     <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish">

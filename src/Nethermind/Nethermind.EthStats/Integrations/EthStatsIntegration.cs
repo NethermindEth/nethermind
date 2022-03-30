@@ -23,7 +23,6 @@ using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.EthStats.Messages;
 using Nethermind.EthStats.Messages.Models;
 using Nethermind.Facade.Eth;
@@ -152,6 +151,7 @@ namespace Nethermind.EthStats.Integrations
             {
                 if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
                 SendStatsAsync();
+                SendPendingAsync(_txPool.GetPendingTransactionsCount());
             }
         }
 
@@ -179,7 +179,6 @@ namespace Nethermind.EthStats.Integrations
             if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'block', 'pending' messages...");
             _lastBlockProcessedTimestamp = timestamp;
             SendBlockAsync(block);
-            SendPendingAsync(_txPool.GetPendingTransactionsCount());
         }
 
         public void Dispose()
