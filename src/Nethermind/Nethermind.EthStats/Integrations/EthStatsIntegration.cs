@@ -151,7 +151,8 @@ namespace Nethermind.EthStats.Integrations
             {
                 if (_logger.IsDebug) _logger.Debug("ETH Stats sending 'stats' message...");
                 SendStatsAsync();
-            	SendPendingAsync(_txPool.GetPendingTransactionsCount());
+                SendPendingAsync(_txPool.GetPendingTransactionsCount());
+            }
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
