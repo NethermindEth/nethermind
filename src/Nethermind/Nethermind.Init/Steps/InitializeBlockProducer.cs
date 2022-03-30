@@ -36,8 +36,7 @@ namespace Nethermind.Init.Steps
 
         public async Task Execute(CancellationToken _)
         {
-            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
-            if (miningConfig.Enabled)
+            if (_api.BlockProductionPolicy.ShouldStartBlockProduction())
             {
                 _api.BlockProducer = await BuildProducer();
             }
