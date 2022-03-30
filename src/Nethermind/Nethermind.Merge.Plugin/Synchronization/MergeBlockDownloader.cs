@@ -219,7 +219,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     BlockTreeSuggestOptions suggestOptions = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
                     if (_logger.IsInfo) _logger.Info($"Current block {currentBlock}, BlockExists {blockExists} IsOnMainChain: {isOnMainChain} BeaconPivot: {_beaconPivot.PivotNumber}");
                     if (blockExists && isOnMainChain == false)
+                    {
+                        currentNumber += 1;
                         continue;
+                    }
 
                     if (blockExists == false)
                         _blockTree.Insert(currentBlock);
