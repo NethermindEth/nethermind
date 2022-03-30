@@ -150,21 +150,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private bool ShouldSkipGasPricing(IReleaseSpec spec, Transaction transaction)
         {
-            if (spec.IsEip1559Enabled)
+            if (!spec.IsEip1559Enabled) return transaction.GasPrice.IsZero;
+            
+            if (transaction.IsEip1559)
             {
-                if (transaction.IsEip1559)
-                {
-                    return transaction.MaxFeePerGas.IsZero && transaction.MaxPriorityFeePerGas.IsZero;
-                }
-                else
-                {
-                    return transaction.GasPrice.IsZero;
-                }
+                return transaction.MaxFeePerGas.IsZero && transaction.MaxPriorityFeePerGas.IsZero;
             }
-            else
-            {
-                return transaction.GasPrice.IsZero;
-            }
+                
+            return transaction.GasPrice.IsZero;
+
         }
 
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer,
@@ -182,6 +176,7 @@ namespace Nethermind.Evm.TransactionProcessing
             bool notSystemTransaction = !transaction.IsSystem();
             bool deleteCallerAccount = false;
             bool noBaseFee = (executionOptions & ExecutionOptions.NoBaseFee) == ExecutionOptions.NoBaseFee;
+            bool validatePricing = !noValidation || noBaseFee;
 
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             if (!notSystemTransaction)
@@ -195,7 +190,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (!noBaseFee || transaction.MaxFeePerGas > 0 || transaction.MaxPriorityFeePerGas > 0)
             {
-                if ((!noValidation || noBaseFee) && transaction.MaxFeePerGas < block.BaseFeePerGas)
+                if (validatePricing && transaction.MaxFeePerGas < block.BaseFeePerGas)
                 {
                     TraceLogInvalidTx(transaction, "MAX FEE PER GAS LESS THAN BLOCK BASE FEE");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, 
@@ -203,7 +198,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     return;
                 }
 
-                if ((!noValidation || noBaseFee) && transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas)
+                if (validatePricing && transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas)
                 {
                     TraceLogInvalidTx(transaction, "MAX FEE PER GAS LESS THAN MAX PRIORITY FEE PER GAS");
                     QuickFail(transaction, block, txTracer, eip658NotEnabled, 
@@ -303,8 +298,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!noBaseFee || !skipGasPricing)
                 {
                     UInt256 senderBalance = _stateProvider.GetBalance(caller);
-                    if ((!noValidation || noBaseFee) && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
-                                          senderReservedGasPayment + value > senderBalance))
+                    if (validatePricing && ((ulong)intrinsicGas * effectiveGasPrice + value > senderBalance ||
+                                            senderReservedGasPayment + value > senderBalance))
                     {
                         TraceLogInvalidTx(transaction,
                             $"INSUFFICIENT_SENDER_BALANCE: ({caller})_BALANCE = {senderBalance}");
@@ -312,7 +307,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         return;
                     }
 
-                    if ((!noValidation || noBaseFee) && spec.IsEip1559Enabled && !transaction.IsFree() &&
+                    if (validatePricing && spec.IsEip1559Enabled && !transaction.IsFree() &&
                         senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + value)
                     {
                         TraceLogInvalidTx(transaction,
