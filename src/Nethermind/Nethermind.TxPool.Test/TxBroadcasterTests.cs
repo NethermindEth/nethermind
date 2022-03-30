@@ -28,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using NSubstitute;
@@ -61,10 +62,12 @@ public class TxBroadcasterTests
         _headInfo = Substitute.For<IChainHeadInfoProvider>();
     }
     
-    [TestCase(0)]
     [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(99)]
+    [TestCase(100)]
+    [TestCase(101)]
     [TestCase(1000)]
-    [TestCase(-10)]
     public void should_pick_best_persistent_txs_to_broadcast(int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
@@ -86,16 +89,27 @@ public class TxBroadcasterTests
         
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        List<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().ToList();
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
 
-        int expectedCount = threshold <= 0 ? 0 : addedTxsCount;
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
         pickedTxs.Count.Should().Be(expectedCount);
+        
+        List<Transaction> expectedTxs = new();
+
+        for (int i = 1; i <= expectedCount; i++)
+        {
+            expectedTxs.Add(transactions[addedTxsCount - i]);
+        }
+
+        expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
     
-    [TestCase(0)]
     [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(99)]
+    [TestCase(100)]
+    [TestCase(101)]
     [TestCase(1000)]
-    [TestCase(-10)]
     public void should_not_pick_txs_with_GasPrice_lower_than_CurrentBaseFee(int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
@@ -124,9 +138,9 @@ public class TxBroadcasterTests
         
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        List<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().ToList();
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
 
-        int expectedCount = threshold <= 0 ? 0 : addedTxsCount - currentBaseFeeInGwei;
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
 
         List<Transaction> expectedTxs = new();
@@ -139,10 +153,12 @@ public class TxBroadcasterTests
         expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
     
-    [TestCase(0)]
     [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(99)]
+    [TestCase(100)]
+    [TestCase(101)]
     [TestCase(1000)]
-    [TestCase(-10)]
     public void should_not_pick_1559_txs_with_MaxFeePerGas_lower_than_CurrentBaseFee(int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
@@ -172,9 +188,9 @@ public class TxBroadcasterTests
         
         _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
 
-        List<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend().ToList();
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
 
-        int expectedCount = threshold <= 0 ? 0 : addedTxsCount - currentBaseFeeInGwei;
+        int expectedCount = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount - currentBaseFeeInGwei);
         pickedTxs.Count.Should().Be(expectedCount);
 
         List<Transaction> expectedTxs = new();
@@ -185,5 +201,34 @@ public class TxBroadcasterTests
         }
 
         expectedTxs.Should().BeEquivalentTo(pickedTxs, o => o.Excluding(transaction => transaction.MaxFeePerGas));
+    }
+
+    [Test]
+    public void should_pick_tx_with_lowest_nonce_from_bucket()
+    {
+        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 5 };
+        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
+        _headInfo.CurrentBaseFee.Returns(0.GWei());
+
+        const int addedTxsCount = 5;
+        Transaction[] transactions = new Transaction[addedTxsCount];
+
+        for (int i = 0; i < addedTxsCount; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithNonce((UInt256)i)
+                .WithGasPrice(i.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+                
+            _broadcaster.Broadcast(transactions[i], true);
+        }
+        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
+
+        IList<Transaction> pickedTxs = _broadcaster.GetPersistentTxsToSend();
+        pickedTxs.Count.Should().Be(1);
+        
+        List<Transaction> expectedTxs = new() { transactions[0] };
+        expectedTxs.Should().BeEquivalentTo(pickedTxs);
     }
 }
