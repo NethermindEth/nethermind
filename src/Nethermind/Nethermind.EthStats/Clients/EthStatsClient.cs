@@ -37,7 +37,7 @@ namespace Nethermind.EthStats.Clients
         private IWebsocketClient? _client;
 
         public EthStatsClient(
-            string urlFromConfig,
+            string? urlFromConfig,
             int reconnectionInterval,
             IMessageSender? messageSender,
             ILogManager? logManager)
@@ -51,34 +51,38 @@ namespace Nethermind.EthStats.Clients
         internal string BuildUrl()
         {
             string websocketUrl = _urlFromConfig;
-            if (!websocketUrl.StartsWith("wss") && !websocketUrl.StartsWith("ws"))
+            Uri? websocketUri;
+            if (!Uri.TryCreate(_urlFromConfig, UriKind.Absolute, out websocketUri))
             {
-                if (!websocketUrl.Contains("://"))
-                    ThrowIncorrectUrl();
-
-                string[] splitUrl = websocketUrl.Split("://");
-                if (splitUrl.Length != 2)
-                    ThrowIncorrectUrl();
-                
-                string scheme = splitUrl[0];
-                string host = splitUrl[1];
-                
-                switch (scheme)
-                {
-                    case "https":
-                        websocketUrl = $"wss://{host}";
-                        break;
-                    case "http":
-                        websocketUrl = $"ws://{host}";
-                        break;
-                    default:
-                        ThrowIncorrectUrl();
-                        break;
-                }
-                
-                if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {websocketUrl}");
+                ThrowIncorrectUrl();
             }
+            if (websocketUri!.Scheme != Uri.UriSchemeWs && websocketUri!.Scheme != Uri.UriSchemeWss)
+            {
+                UriBuilder uriBuilder = null!;
+                if (websocketUri.Scheme == Uri.UriSchemeHttp)
+                {
+                    uriBuilder = new UriBuilder(websocketUri)
+                    {
+                        Scheme = Uri.UriSchemeWs,
+                        Port = websocketUri.IsDefaultPort ? -1 : websocketUri.Port
+                    };
+                }
+                else if (websocketUri.Scheme == Uri.UriSchemeHttps)
+                {
+                    uriBuilder = new UriBuilder(websocketUri)
+                    {
+                        Scheme = Uri.UriSchemeWss,
+                        Port = websocketUri.IsDefaultPort ? -1 : websocketUri.Port
+                    };
+                }
+                else
+                {
+                    ThrowIncorrectUrl();
+                }
+                websocketUrl = uriBuilder.ToString();
+                if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {websocketUrl}");
 
+            }
             return websocketUrl;
         }
 
@@ -115,17 +119,17 @@ namespace Nethermind.EthStats.Clients
             {
                 if (!_client.Url.AbsoluteUri.EndsWith("/api"))
                 {
-                    if(_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {websocketUrl}. Adding '/api' at the end and trying again.");
+                    if (_logger.IsInfo) _logger.Info($"Failed to connect to ethstats at {websocketUrl}. Adding '/api' at the end and trying again.");
                     _client.Url = new Uri(websocketUrl + "/api");
                 }
                 else
                 {
-                    if(_logger.IsWarn) _logger.Warn($"Failed to connect to ethstats at {websocketUrl}. Trying once again."); 
+                    if (_logger.IsWarn) _logger.Warn($"Failed to connect to ethstats at {websocketUrl}. Trying once again.");
                 }
 
                 await _client.StartOrFail();
             }
-            
+
             if (_logger.IsDebug) _logger.Debug($"Started ETH stats.");
 
             return _client;
@@ -145,8 +149,8 @@ namespace Nethermind.EthStats.Clients
             long latency = clientTime >= serverTime ? clientTime - serverTime : serverTime - clientTime;
             string pong = $"\"primus::pong::{serverTime}\"";
             if (_logger.IsDebug) _logger.Debug($"Sending 'pong' message to ETH stats...");
-            
-            if(_client is not null)
+
+            if (_client is not null)
             {
                 _client.Send(pong);
                 await _messageSender.SendAsync(_client, new LatencyMessage(latency));

@@ -30,13 +30,14 @@ namespace Nethermind.EthStats.Test
         [TestCase("ws://localhost/api", "ws://localhost/api")]
         [TestCase("http://localhost/api", "ws://localhost/api")]
         [TestCase("https://localhost:8000/api", "wss://localhost:8000/api")]
+        [TestCase("http://test://", "ws://test//")]
         public void Build_url_should_return_expected_results(string configUrl, string expectedUrl)
         {
             EthStatsClient ethClient = new(configUrl, 5000, Substitute.For<IMessageSender>(), LimboLogs.Instance);
             Assert.AreEqual(expectedUrl, ethClient.BuildUrl());
         }
-        
-        [TestCase("http://test://")]
+
+        [TestCase("http://test:://")]
         [TestCase("ftp://localhost")]
         [TestCase("http:/")]
         [TestCase("localhost")]
