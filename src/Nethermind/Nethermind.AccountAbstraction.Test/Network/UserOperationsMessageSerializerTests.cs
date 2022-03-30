@@ -57,8 +57,8 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 Signature = new byte[] {1, 2, 3}
             });
 
-            UserOperationsMessage message = new(new[] {userOperation});
-            TestZero(serializer, message, "f841f83f9400000000000000000000000000000000000000018203e8820304820102050607080194000000000000000000000000000000000000000282050683010203");
+            UserOperationsMessage message = new(new[] {new UserOperationWithEntryPoint(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b"))});
+            TestZero(serializer, message, "f856f8549400000000000000000000000000000000000000018203e88203048201020506070801940000000000000000000000000000000000000002820506830102039490f3e1105e63c877bf9587de5388c23cdb702c6b");
 
             // Meaning of RLP above:
             // f8
@@ -85,8 +85,8 @@ namespace Nethermind.AccountAbstraction.Test.Network
             // 83 = 131 = 128 + 3 (length of Signature)
             // 010203 (Signature)
 
-            message = new(new[] {userOperation, userOperation});
-            TestZero(serializer, message, "f882f83f9400000000000000000000000000000000000000018203e8820304820102050607080194000000000000000000000000000000000000000282050683010203f83f9400000000000000000000000000000000000000018203e8820304820102050607080194000000000000000000000000000000000000000282050683010203");
+            message = new(new[] {new UserOperationWithEntryPoint(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b")), new UserOperationWithEntryPoint(userOperation, new Address("0xdb8b5f6080a8e466b64a8d7458326cb650b3353f"))});
+            TestZero(serializer, message, "f8acf8549400000000000000000000000000000000000000018203e88203048201020506070801940000000000000000000000000000000000000002820506830102039490f3e1105e63c877bf9587de5388c23cdb702c6bf8549400000000000000000000000000000000000000018203e882030482010205060708019400000000000000000000000000000000000000028205068301020394db8b5f6080a8e466b64a8d7458326cb650b3353f");
             
             // Meaning of RLP above:
             // f8
@@ -103,7 +103,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
         public void Can_handle_empty()
         {
             UserOperationsMessageSerializer serializer = new();
-            UserOperationsMessage message = new(new UserOperation[] { });
+            UserOperationsMessage message = new(new UserOperationWithEntryPoint[] { });
 
             SerializerTester.TestZero(serializer, message);
         }
@@ -111,7 +111,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
         [Test]
         public void To_string_empty()
         {
-            UserOperationsMessage message = new(new UserOperation[] { });
+            UserOperationsMessage message = new(new UserOperationWithEntryPoint[] { });
             _ = message.ToString();
         }
 

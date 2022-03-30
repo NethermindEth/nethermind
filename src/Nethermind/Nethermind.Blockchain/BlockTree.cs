@@ -161,19 +161,21 @@ namespace Nethermind.Blockchain
             ChainLevelInfo? genesisLevel = LoadLevel(0);
             if (genesisLevel is not null)
             {
+                BlockInfo genesisBlockInfo = genesisLevel.BlockInfos[0];
                 if (genesisLevel.BlockInfos.Length != 1)
                 {
                     // just for corrupted test bases
-                    genesisLevel.BlockInfos = new[] {genesisLevel.BlockInfos[0]};
+                    genesisLevel.BlockInfos = new[] { genesisBlockInfo };
                     _chainLevelInfoRepository.PersistLevel(0, genesisLevel);
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
-                if (genesisLevel.BlockInfos[0].WasProcessed)
+                if (genesisBlockInfo.WasProcessed)
                 {
-                    BlockHeader genesisHeader = FindHeader(genesisLevel.BlockInfos[0].BlockHash, BlockTreeLookupOptions.None);
+                    BlockHeader genesisHeader = FindHeader(genesisBlockInfo.BlockHash, BlockTreeLookupOptions.None);
                     Genesis = genesisHeader;
                     LoadStartBlock();
+                    Head ??= FindBlock(genesisBlockInfo.BlockHash, BlockTreeLookupOptions.None);
                 }
 
                 RecalculateTreeLevels();
@@ -504,6 +506,9 @@ namespace Nethermind.Blockchain
 
         private AddBlockResult Suggest(Block? block, BlockHeader header, bool shouldProcess = true, bool? setAsMain = null)
         {
+            
+            if (_logger.IsInfo) _logger.Info($"Suggesting block BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}  Block {block?.ToString(Block.Format.FullHashAndNumber)}");
+
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
             if (header.StateRoot is null && !header.IsGenesis)
@@ -563,9 +568,9 @@ namespace Nethermind.Blockchain
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
                 UpdateOrCreateLevel(header.Number, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+
             }
 
-            if (_logger.IsInfo) _logger.Info($"Suggesting block BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}  Block {block?.ToString(Block.Format.FullHashAndNumber)}");
             if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
             {
                 if (header.IsGenesis)
@@ -1340,8 +1345,17 @@ namespace Nethermind.Blockchain
 
         public void UpdateHeadBlock(Keccak blockHash)
         {
-            if(_logger.IsError) _logger.Error($"Block tree override detected - updating head block to {blockHash}.");
-            _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
+            BlockHeader? header = FindHeader(blockHash, BlockTreeLookupOptions.None);
+            if (header is not null)
+            {
+                if(_logger.IsError) _logger.Error($"Block tree override detected - updating head block to {blockHash}.");
+                _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
+                BestPersistedState = header.Number;
+            }
+            else
+            {
+                if(_logger.IsError) _logger.Error($"Block tree override detected - cannot find block: {blockHash}.");
+            }
         }
 
         private void UpdateHeadBlock(Block block)

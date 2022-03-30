@@ -17,7 +17,7 @@
 
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
-using Nethermind.Network.P2P;
+using Nethermind.Core;
 using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.AccountAbstraction.Network
@@ -27,13 +27,25 @@ namespace Nethermind.AccountAbstraction.Network
         public override int PacketType { get; } = AaMessageCode.UserOperations;
         public override string Protocol { get; } = "aa";
         
-        public IList<UserOperation> UserOperations { get; }
+        public IList<UserOperationWithEntryPoint> UserOperationsWithEntryPoint { get; }
 
-        public UserOperationsMessage(IList<UserOperation> userOperations)
+        public UserOperationsMessage(IList<UserOperationWithEntryPoint> userOperations)
         {
-            UserOperations = userOperations;
+            UserOperationsWithEntryPoint = userOperations;
         }
 
-        public override string ToString() => $"{nameof(UserOperationsMessage)}({UserOperations?.Count})";
+        public override string ToString() => $"{nameof(UserOperationsMessage)}({UserOperationsWithEntryPoint?.Count})";
+    }
+
+    public class UserOperationWithEntryPoint
+    {
+        public UserOperation UserOperation { get; }
+        public Address EntryPoint { get; }
+
+        public UserOperationWithEntryPoint(UserOperation userOperation, Address entryPoint)
+        {
+            UserOperation = userOperation;
+            EntryPoint = entryPoint;
+        }
     }
 }

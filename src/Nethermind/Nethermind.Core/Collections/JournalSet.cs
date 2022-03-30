@@ -28,7 +28,7 @@ namespace Nethermind.Core.Collections
     /// <remarks>Due to snapshots <see cref="Remove"/> is not supported.</remarks>
     public class JournalSet<T> : IReadOnlySet<T>, ICollection<T>, IJournal<int>
     {
-        private readonly Dictionary<int, T> _dictionary = new();
+        private readonly List<T> _items = new();
         private readonly HashSet<T> _set = new();
         public int TakeSnapshot() => Position;
 
@@ -41,15 +41,16 @@ namespace Nethermind.Core.Collections
                 throw new InvalidOperationException($"{nameof(JournalCollection<T>)} tried to restore snapshot {snapshot} beyond current position {Count}");
             }
 
-            int index = snapshot + 1;
-            
+            int current = Position;
+
             // we use dictionary to remove items added after snapshot
-            for (int i = Position; i >= index; i--)
+            for (int i = snapshot + 1; i <= current; i++)
             {
-                T item = _dictionary[i];
-                _dictionary.Remove(i);
+                T item = _items[i];
                 _set.Remove(item);
             }
+
+            _items.RemoveRange(snapshot + 1, current - snapshot);
         }
 
         public bool Add(T item)
@@ -57,7 +58,7 @@ namespace Nethermind.Core.Collections
             if (_set.Add(item))
             {
                 // we use dictionary in order to track item positions
-                _dictionary.Add(Position, item);
+                _items.Add(item);
                 return true;
             }
 
@@ -66,7 +67,7 @@ namespace Nethermind.Core.Collections
 
         public void Clear()
         {
-            _dictionary.Clear();
+            _items.Clear();
             _set.Clear();
         }
 

@@ -25,7 +25,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(ReviewBlockTree))]
+    [RunnerStepDependencies(typeof(InitializeBlockProducer), typeof(ReviewBlockTree))]
     public class StartBlockProducer : IStep
     {
         protected IApiWithBlockchain _api;

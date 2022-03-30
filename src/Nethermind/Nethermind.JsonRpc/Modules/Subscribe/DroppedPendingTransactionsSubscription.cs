@@ -25,7 +25,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     {
         private readonly ITxPool _txPool;
 
-        public DroppedPendingTransactionsSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, ITxPool? txPool, ILogManager? logManager) : base(jsonRpcDuplexClient)
+        public DroppedPendingTransactionsSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient,
+            ITxPool? txPool, 
+            ILogManager? logManager) 
+            : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -40,21 +44,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             {
                 JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
                 JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if(_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");
             });
         }
-        
-        protected override string GetErrorMsg()
-        {
-            return $"DroppedPendingTransactions subscription {Id}: Failed Task.Run after EvictedPending event.";
-        }
-        
-        public override SubscriptionType Type => SubscriptionType.DroppedPendingTransactions;
+
+        public override string Type => SubscriptionType.DroppedPendingTransactions;
 
         public override void Dispose()
         {
-            base.Dispose();
             _txPool.EvictedPending -= OnEvicted;
+            base.Dispose();
             if(_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will no longer track DroppedPendingTransactions");
         }
     }

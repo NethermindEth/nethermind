@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Config
 {
     public interface IAuraConfig : IConfig
     {
-        [ConfigItem(Description = "If 'true' then Nethermind if mining will seal empty blocks.", DefaultValue = "false")]
+        [ConfigItem(Description = "If 'true' then Nethermind if mining will seal empty blocks.", DefaultValue = "true")]
         bool ForceSealing { get; set; }
         
         [ConfigItem(Description = "If 'true' then you can run Nethermind only private chains. Do not use with existing Parity AuRa chains.", DefaultValue = "false")]

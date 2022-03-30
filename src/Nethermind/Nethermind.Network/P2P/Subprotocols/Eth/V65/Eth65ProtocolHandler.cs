@@ -126,8 +126,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             return new PooledTransactionsMessage(txs);
         }
         
-        public override void SendNewTransactions(IEnumerable<Transaction> txs)
+        public override void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)
         {
+            if (sendFullTx)
+            {
+                base.SendNewTransactions(txs, true);
+                return;
+            }
+            
             using ArrayPoolList<Keccak> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
 
             foreach (Transaction tx in txs)

@@ -478,8 +478,8 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
             bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty
-                                       || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header
-                                       || best.PeerBlock > best.Block; // TODO: this should be only if we are in the post merge world 
+                                       || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
+                                      // || best.PeerBlock > best.Block; // TODO: this should be only if we are in the post merge world 
             if (anyDesiredPeerKnown)
             {
                 if (_logger.IsTrace)
@@ -492,6 +492,29 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
 
+        // private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
+        // {
+        //     UInt256? maxPeerDifficulty = null;
+        //     long? number = 0;
+        //
+        //     foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+        //     {
+        //         UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
+        //         if (peer.TotalDifficulty > currentMax || peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
+        //         {
+        //             // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
+        //             var realTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peer.TotalDifficulty;
+        //             if (realTotalDifficulty > currentMax || peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
+        //             {
+        //                 maxPeerDifficulty = realTotalDifficulty;
+        //                 number = peer.HeadNumber;
+        //             }
+        //         }
+        //     }
+        //
+        //     return (maxPeerDifficulty, number);
+        // }
+        
         private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
         {
             UInt256? maxPeerDifficulty = null;
@@ -500,11 +523,11 @@ namespace Nethermind.Synchronization.ParallelSync
             foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
             {
                 UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
-                if (peer.TotalDifficulty > currentMax || peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
+                if (peer.TotalDifficulty > currentMax)
                 {
                     // we don't trust parity TotalDifficulty, so we are checking if we know the hash and get our total difficulty
                     var realTotalDifficulty = _syncProgressResolver.GetTotalDifficulty(peer.HeadHash) ?? peer.TotalDifficulty;
-                    if (realTotalDifficulty > currentMax || peer.TotalDifficulty == currentMax && peer.HeadNumber > number)
+                    if (realTotalDifficulty > currentMax)
                     {
                         maxPeerDifficulty = realTotalDifficulty;
                         number = peer.HeadNumber;

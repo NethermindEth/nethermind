@@ -19,8 +19,8 @@ using System;
 using System.Collections.Generic;
 using DotNetty.Common.Utilities;
 using Nethermind.AccountAbstraction.Broadcaster;
-using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
@@ -39,17 +39,20 @@ namespace Nethermind.AccountAbstraction.Network
     public class AaProtocolHandler : ProtocolHandlerBase, IZeroProtocolHandler, IUserOperationPoolPeer
     {
         private readonly ISession _session;
-        private readonly IUserOperationPool _userOperationPool;
+        private IDictionary<Address, IUserOperationPool> _userOperationPools;
+        private readonly IAccountAbstractionPeerManager _peerManager;
 
         public AaProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
-            IUserOperationPool userOperationPool,
+            IDictionary<Address, IUserOperationPool> userOperationPools,
+            IAccountAbstractionPeerManager peerManager,
             ILogManager logManager)
             : base(session, nodeStatsManager, serializer, logManager)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
-            _userOperationPool = userOperationPool ?? throw new ArgumentNullException(nameof(userOperationPool));
+            _userOperationPools = userOperationPools ?? throw new ArgumentNullException(nameof(userOperationPools));
+            _peerManager = peerManager;
         }
 
         public PublicKey Id => _session.Node.Id;
@@ -76,13 +79,13 @@ namespace Nethermind.AccountAbstraction.Network
         {
             ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
 
-            _userOperationPool.AddPeer(this);
+            _peerManager.AddPeer(this);
             _session.Disconnected += SessionDisconnected;
         }
 
         private void SessionDisconnected(object? sender, DisconnectEventArgs e)
         {
-            _userOperationPool.RemovePeer(Id);
+            _peerManager.RemovePeer(Id);
             _session.Disconnected -= SessionDisconnected;
         }
 
@@ -114,27 +117,33 @@ namespace Nethermind.AccountAbstraction.Network
 
         private void Handle(UserOperationsMessage uopMsg)
         {
-            IList<UserOperation> userOperations = uopMsg.UserOperations;
+            IList<UserOperationWithEntryPoint> userOperations = uopMsg.UserOperationsWithEntryPoint;
             for (int i = 0; i < userOperations.Count; i++)
             {
-                UserOperation uop = userOperations[i];
-                ResultWrapper<Keccak> result = _userOperationPool.AddUserOperation(uop);
-
-                if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} sent {uop.Hash} uop and it was {result}");
+                UserOperationWithEntryPoint uop = userOperations[i];
+                if (_userOperationPools.TryGetValue(uop.EntryPoint, out IUserOperationPool? pool))
+                {
+                    ResultWrapper<Keccak> result = pool.AddUserOperation(uop.UserOperation);
+                    if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} sent {uop.UserOperation.Hash} uop to pool for entryPoint {uop.EntryPoint} and it was {result}");
+                }
+                else
+                {
+                    if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} could not sent {uop.UserOperation.Hash} uop to pool for entryPoint {uop.EntryPoint}, pool does not support the entryPoint");
+                }
             }
         }
 
-        public void SendNewUserOperation(UserOperation uop)
+        public void SendNewUserOperation(UserOperationWithEntryPoint uop)
         {
             SendMessage(new[] { uop });
         }
 
-        public void SendNewUserOperations(IEnumerable<UserOperation> uops)
+        public void SendNewUserOperations(IEnumerable<UserOperationWithEntryPoint> uops)
         {
             const int maxCapacity = 256;
-            using ArrayPoolList<UserOperation> uopsToSend = new(maxCapacity);
+            using ArrayPoolList<UserOperationWithEntryPoint> uopsToSend = new(maxCapacity);
 
-            foreach (UserOperation uop in uops)
+            foreach (UserOperationWithEntryPoint uop in uops)
             {
                 if (uopsToSend.Count == maxCapacity)
                 {
@@ -142,7 +151,8 @@ namespace Nethermind.AccountAbstraction.Network
                     uopsToSend.Clear();
                 }
 
-                if (uop.Hash is not null)
+                // TODO: Why this check
+                if (uop.UserOperation.Hash is not null)
                 {
                     uopsToSend.Add(uop);
                     TxPool.Metrics.PendingTransactionsSent++;
@@ -155,7 +165,7 @@ namespace Nethermind.AccountAbstraction.Network
             }
         }
 
-        private void SendMessage(IList<UserOperation> uopsToSend)
+        private void SendMessage(IList<UserOperationWithEntryPoint> uopsToSend)
         {
             UserOperationsMessage msg = new(uopsToSend);
             Send(msg);

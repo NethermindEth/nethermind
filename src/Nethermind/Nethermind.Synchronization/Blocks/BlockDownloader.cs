@@ -262,10 +262,10 @@ namespace Nethermind.Synchronization.Blocks
 
             bool PreMergeDifficultyRequirementSatisfied()
                 => bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
-            bool PostMergeRequirementSatisfied()
-                => bestPeer!.HeadNumber > (_blockTree.BestSuggestedHeader?.Number ?? 0);
+            // bool PostMergeRequirementSatisfied()
+            //     => bestPeer!.HeadNumber > (_blockTree.BestSuggestedHeader?.Number ?? 0);
             bool ImprovementRequirementSatisfied()
-                => PreMergeDifficultyRequirementSatisfied() || PostMergeRequirementSatisfied();
+                => PreMergeDifficultyRequirementSatisfied(); //|| PostMergeRequirementSatisfied();
             bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
             while(ImprovementRequirementSatisfied() && HasMoreToSync())

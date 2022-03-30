@@ -74,12 +74,16 @@ namespace Nethermind.Core
         {
             if (value != null)
             {
-                byte[] bytes = Extensions.Bytes.FromHexString(value);
-                if (bytes?.Length == ByteLength)
+                try
                 {
-                    address = new Address(bytes);
-                    return true;
+                    byte[] bytes = Extensions.Bytes.FromHexString(value);
+                    if (bytes?.Length == ByteLength)
+                    {
+                        address = new Address(bytes);
+                        return true;
+                    }
                 }
+                catch (IndexOutOfRangeException) { }
             }
 
             address = default;

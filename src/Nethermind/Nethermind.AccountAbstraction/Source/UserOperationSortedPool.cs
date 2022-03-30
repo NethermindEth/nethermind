@@ -16,7 +16,6 @@
 // 
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -60,6 +59,11 @@ namespace Nethermind.AccountAbstraction.Source
             }
 
             return !CanInsert(op.Hash, op);
+        }
+
+        public bool CanInsert(UserOperation userOperation)
+        {
+            return CanInsert(userOperation.Hash, userOperation);
         }
     }
 }
