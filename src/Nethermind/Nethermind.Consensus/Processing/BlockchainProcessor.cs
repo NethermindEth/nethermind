@@ -574,8 +574,8 @@ namespace Nethermind.Consensus.Processing
                 postMergeFinishBranchingCondition = suggestedBlockIsPostMerge &&
                                                     _blockTree.WasProcessed(branchingPoint.Number,
                                                         branchingPoint.Hash) == false;
-                if (_logger.IsInfo)
-                    _logger.Info(
+                if (_logger.IsTrace)
+                    _logger.Trace(
                         $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}, postMergeFinishBranchingCondition: {postMergeFinishBranchingCondition}");
             } while (preMergeFinishBranchingCondition || postMergeFinishBranchingCondition);
 
