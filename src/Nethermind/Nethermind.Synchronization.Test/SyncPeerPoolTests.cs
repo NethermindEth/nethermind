@@ -277,10 +277,25 @@ namespace Nethermind.Synchronization.Test
             var syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
             ctx.Pool.AddPeer(syncPeer);
+            await Task.Delay(100);
             ctx.Pool.RefreshTotalDifficulty(syncPeer, null);
             await Task.Delay(100);
 
             await syncPeer.Received(2).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
+        }
+        
+        [Test, Retry(3)]
+        public async Task Should_send_only_newest_GetHeadBlockHeader_request()
+        {
+            await using Context ctx = new();
+            ctx.Pool.Start();
+            var syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+            ctx.Pool.AddPeer(syncPeer);
+            ctx.Pool.RefreshTotalDifficulty(syncPeer, null);
+            await Task.Delay(100);
+
+            await syncPeer.Received(1).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
         }
 
         private void SetupSpeedStats(Context ctx, PublicKey publicKey, int transferSpeed)
