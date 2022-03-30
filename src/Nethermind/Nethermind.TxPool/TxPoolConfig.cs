@@ -18,7 +18,7 @@ namespace Nethermind.TxPool
 {
     public class TxPoolConfig : ITxPoolConfig
     {
-        public int PeerNotificationThreshold { get; set; } = 1;
+        public int PeerNotificationThreshold { get; set; } = 5;
         public int Size { get; set; } = 2048;
         public int HashCacheSize { get; set; } = 512 * 1024;
         public long? GasLimit { get; set; } = null;
