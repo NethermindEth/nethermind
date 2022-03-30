@@ -385,6 +385,13 @@ namespace Nethermind.Mev.Source
                 }
             }
 
+            var simulatedBundlesToRemove = _simulatedBundles.Where(b => b.Key <= blockNumber).ToList();
+            foreach (KeyValuePair<long, ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext>> simulatedBundleBucket in simulatedBundlesToRemove)
+            {
+                StopSimulations(simulatedBundleBucket.Value.Values);
+                _simulatedBundles.TryRemove(simulatedBundleBucket.Key, out _);
+            }
+
             IEnumerable<Address> megabundleKeysToRemove = _megabundles
                 .Where(m => m.Value.BlockNumber <= blockNumber)
                 .Select(m => m.Key);

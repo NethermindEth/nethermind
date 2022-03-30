@@ -165,6 +165,7 @@ namespace Nethermind.TxPool
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block.Transactions);
                             UpdateBuckets();
+                            _broadcaster.BroadcastPersistentTxs();
                             Metrics.TransactionCount = _transactions.Count;
                         }
                         catch (Exception e)
@@ -320,14 +321,7 @@ namespace Nethermind.TxPool
                 }
             }
 
-            if (isPersistentBroadcast)
-            {
-                _broadcaster.StartBroadcast(tx);
-            }
-            else
-            {
-                _broadcaster.BroadcastOnce(tx);
-            }
+            _broadcaster.Broadcast(tx, isPersistentBroadcast);
 
             _hashCache.SetLongTerm(tx.Hash!);
             NewPending?.Invoke(this, new TxEventArgs(tx));

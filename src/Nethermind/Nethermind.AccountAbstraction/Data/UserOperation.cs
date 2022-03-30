@@ -18,13 +18,14 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Abi;
 
 namespace Nethermind.AccountAbstraction.Data
 {
     public class UserOperation
     {
-        private static readonly UserOperationDecoder _decoder = new();
-
+        private static readonly UserOperationAbiPacker _packer = new();
+        private static readonly AbiEncoder _abiEncoder = new();
         public UserOperation(UserOperationRpc userOperationRpc)
         {
             Sender = userOperationRpc.Sender;
@@ -41,13 +42,19 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
-
-            Hash = CalculateHash(this);
+            Hash = CalculateHash();
         }
-        
-        public static Keccak CalculateHash(UserOperation userOperation)
+
+        public Keccak CalculateHash()
         {
-            return Keccak.Compute(_decoder.Encode(userOperation).Bytes);
+            return Keccak.Compute(_packer.Pack(this));
+        }
+
+        private readonly AbiSignature _idSignature = new AbiSignature("RequestId", AbiType.Bytes32, AbiAddress.Instance, AbiType.UInt256);
+        
+        public Keccak CalculateRequestId(Address entryPointAddress, ulong chainId)
+        {
+            return Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, Hash, entryPointAddress, chainId));
         }
 
         public UserOperationAbi Abi => new()
@@ -65,7 +72,7 @@ namespace Nethermind.AccountAbstraction.Data
             PaymasterData = PaymasterData,
             Signature = Signature!
         };
-
+        
         public Keccak Hash { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
@@ -81,21 +88,5 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
         public bool AlreadySimulated { get; set; }
-    }
-
-    public struct UserOperationAbi
-    {
-        public Address Sender { get; set; }
-        public UInt256 Nonce { get; set; }
-        public byte[] InitCode { get; set; }
-        public byte[] CallData { get; set; }
-        public UInt256 CallGas { get; set; }
-        public UInt256 VerificationGas { get; set; }
-        public UInt256 PreVerificationGas { get; set; }
-        public UInt256 MaxFeePerGas { get; set; }
-        public UInt256 MaxPriorityFeePerGas { get; set; }
-        public Address Paymaster { get; set; }
-        public byte[] PaymasterData { get; set; }
-        public byte[] Signature { get; set; }
     }
 }

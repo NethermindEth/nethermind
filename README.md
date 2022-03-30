@@ -26,6 +26,7 @@ It syncs fully on:
 * `Goerli`
 * `Rinkeby`
 * `Ropsten`
+* `Sepolia`
 * `xDai`
 * `Poacore`
 * `Sokol`

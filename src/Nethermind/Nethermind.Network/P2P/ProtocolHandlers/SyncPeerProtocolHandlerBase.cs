@@ -223,7 +223,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             SendMessage(new[]{tx});
         }
 
-        public virtual void SendNewTransactions(IEnumerable<Transaction> txs)
+        public virtual void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
         {
             const int maxCapacity = 256;
             using ArrayPoolList<Transaction> txsToSend = new(maxCapacity);

@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Serialization.Rlp;
+using Nethermind.AccountAbstraction.Network;
 
 namespace Nethermind.AccountAbstraction.Data
 {
@@ -23,7 +24,7 @@ namespace Nethermind.AccountAbstraction.Data
     {
         private static readonly UserOperationDecoder _userOperationDecoder = new();
 
-        public static void Encode(this RlpStream rlpStream, UserOperation? value)
+        public static void Encode(this RlpStream rlpStream, UserOperationWithEntryPoint? value)
         {
             _userOperationDecoder.Encode(rlpStream, value);
         }

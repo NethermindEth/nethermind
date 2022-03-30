@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Collections.Generic;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Mev.Data;
 using Nethermind.Mev.Source;

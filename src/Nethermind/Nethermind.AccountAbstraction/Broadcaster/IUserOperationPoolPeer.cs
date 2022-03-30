@@ -16,7 +16,7 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Data;
+using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.AccountAbstraction.Broadcaster
@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Broadcaster
     {
         public PublicKey Id { get; }
         public string Enode => string.Empty;
-        void SendNewUserOperation(UserOperation uop);
-        void SendNewUserOperations(IEnumerable<UserOperation> uops);
+        void SendNewUserOperation(UserOperationWithEntryPoint uop);
+        void SendNewUserOperations(IEnumerable<UserOperationWithEntryPoint> uops);
     }
 }

@@ -32,6 +32,7 @@ namespace Nethermind.JsonRpc.Modules
         IReadOnlyCollection<string> Enabled { get; }
 
         IReadOnlyCollection<string> All { get; }
+        JsonSerializer Serializer { get; }
 
         ModuleResolution Check(string methodName, JsonRpcContext context);
         

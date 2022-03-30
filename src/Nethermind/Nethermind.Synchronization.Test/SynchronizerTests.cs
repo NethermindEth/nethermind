@@ -194,7 +194,7 @@ namespace Nethermind.Synchronization.Test
 
             public PublicKey Id => Node.Id;
             
-            public void SendNewTransactions(IEnumerable<Transaction> txs) { }
+            public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
             public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
             {
@@ -261,7 +261,7 @@ namespace Nethermind.Synchronization.Test
 
         public class SyncingContext
         {
-            public static ConcurrentBag<SyncingContext> AllInstances = new();
+            public static ConcurrentQueue<SyncingContext> AllInstances = new();
 
             private Dictionary<string, ISyncPeer> _peers = new();
             private BlockTree BlockTree { get; }
@@ -357,7 +357,7 @@ namespace Nethermind.Synchronization.Test
                 Synchronizer.Start();
                 Synchronizer.SyncEvent += SynchronizerOnSyncEvent;
 
-                AllInstances.Add(this);
+                AllInstances.Enqueue(this);
             }
 
             private void SynchronizerOnSyncEvent(object sender, SyncEventArgs e)

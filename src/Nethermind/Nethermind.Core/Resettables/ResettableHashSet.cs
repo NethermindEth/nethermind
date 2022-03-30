@@ -23,8 +23,8 @@ namespace Nethermind.Core.Resettables
     public class ResettableHashSet<T> : ICollection<T>, IReadOnlyCollection<T>
     {
         private int _currentCapacity;
-        private int _startCapacity;
-        private int _resetRatio;
+        private readonly int _startCapacity;
+        private readonly int _resetRatio;
 
         private HashSet<T> _wrapped;
 

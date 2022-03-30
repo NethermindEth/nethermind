@@ -266,9 +266,8 @@ namespace Nethermind.Synchronization.Blocks
             long currentNumber = GetCurrentNumber(bestPeer);
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-
-
-        bool HasMoreToSync()
+            
+            bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
             while(ImprovementRequirementSatisfied(bestPeer!) && HasMoreToSync())
             {

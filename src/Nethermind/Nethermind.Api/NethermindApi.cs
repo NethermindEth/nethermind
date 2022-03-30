@@ -44,8 +44,10 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Authentication;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
@@ -216,7 +218,8 @@ namespace Nethermind.Api
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
-
+        
+        public ISubscriptionFactory SubscriptionFactory { get; set; }
         public ProtectedPrivateKey? NodeKey { get; set; }
 
         /// <summary>

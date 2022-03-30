@@ -130,7 +130,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             Instruction.GASPRICE, Instruction.GASLIMIT, Instruction.PREVRANDAO, Instruction.TIMESTAMP,
             Instruction.BASEFEE, Instruction.BLOCKHASH, Instruction.NUMBER, Instruction.SELFBALANCE,
-            Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE
+            Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE, Instruction.GAS
         };
 
         private readonly Address _create2FactoryAddress;
