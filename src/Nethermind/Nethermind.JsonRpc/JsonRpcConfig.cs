@@ -50,5 +50,7 @@ namespace Nethermind.JsonRpc
         public long? MaxRequestBodySize { get; set; } = 30000000;
         public int? EthModuleConcurrentInstances { get; set; } = null;
         public bool NoBaseFee { get; set; } = false;
+        public JsonRpcConfig Clone() => (JsonRpcConfig)MemberwiseClone();
+
     }
 }
