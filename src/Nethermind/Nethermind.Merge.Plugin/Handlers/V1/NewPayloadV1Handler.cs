@@ -62,7 +62,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
-        private bool synced = false;
+        private long _state = 0;
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
@@ -114,7 +114,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidBlockHash;
             }
             
-            if (_beaconPivot.BeaconPivotExists())
+            if (!_beaconSyncStrategy.IsBeaconSyncFinished())
             {
                 if (_blockCacheService.BlockCache.ContainsKey(block.Hash))
                 {
@@ -155,18 +155,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                         while (stack.TryPop(out Block? child))
                         {
-                            if (child.Hash == _beaconPivot.PivotHash)
-                            {
-                                // header will be inserted with beacon headers sync
-                                _blockTree.Insert(child);
-                            }
-                            else
-                            {
-                                _blockTree.Insert(child, true, insertOptions);
-                            }
+                            _blockTree.Insert(child, true, insertOptions);
                         }
                     }
-
+                    
                     _blockCacheService.ProcessDestination = block.Hash;
                     if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
                     {
@@ -183,13 +175,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Accepted;
             }
 
-            if (_beaconPivot.BeaconPivotExists())
+            if (!_beaconSyncStrategy.IsBeaconSyncFinished())
             {
                 if (_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
                 {
                     parentHeader.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
-                } else if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished()) {
-                    return NewPayloadV1Result.Syncing;
                 }
                 
                 if (parentHeader.TotalDifficulty == 0)
@@ -267,13 +257,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
                 
                 _blockCacheService.BlockCache.Clear();
-            }
-
-            if (parentHeader.TotalDifficulty == 0)
-            {
-                _logger.Info($"Insert block into cache without parent {block}");
-                _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
-                return NewPayloadV1Result.Accepted;
             }
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||

@@ -55,21 +55,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
-            
-            long destination = _metadataDb
-                .Get(MetadataDbKeys.BeaconSyncDestinationNumber)
-                .AsRlpStream()
-                .DecodeLong();
-            long? lastInserted = _blockTree.LowestInsertedBeaconHeader?.Number;
-            if (lastInserted == 1 || lastInserted <= destination)
-            {
-                PivotDestinationNumber = 0;
-            }
-            else
-            {
-                _currentBeaconPivot = _blockTree.LowestInsertedBeaconHeader;
-            }
-            
+            _currentBeaconPivot = _blockTree.LowestInsertedBeaconHeader;
         }
 
         public long PivotNumber => _currentBeaconPivot?.Number ?? _syncConfig.PivotNumberParsed;
@@ -84,29 +70,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public void EnsurePivot(BlockHeader? blockHeader)
         {
             bool beaconPivotExists = BeaconPivotExists();
-            // check that the previous sync (if any) has completed before setting new pivot
-            if (beaconPivotExists && blockHeader != null && PivotNumber < blockHeader.Number)
+            if (blockHeader != null)
             {
-                bool previousSyncFinished = _blockTree.LowestInsertedBeaconHeader?.Number == 1
-                                            || _blockTree.LowestInsertedBeaconHeader?.Number <= PivotDestinationNumber;
-                if (previousSyncFinished)
+                if (beaconPivotExists && PivotNumber > blockHeader.Number)
                 {
-                    PivotDestinationNumber = PivotNumber + 1;
-                    _currentBeaconPivot = blockHeader;
-                    
-                    _metadataDb.Set(MetadataDbKeys.BeaconSyncDestinationNumber, Rlp.Encode(PivotDestinationNumber).Bytes);
-                    _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(PivotNumber).Bytes);
+                    return;
                 }
-            }
-            
-            if (!beaconPivotExists && blockHeader != null)
-            {
+                
                 _currentBeaconPivot = blockHeader;
+                _blockTree.LowestInsertedBeaconHeader = blockHeader;
                 if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
-                PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? (_blockTree.BestSuggestedHeader?.Number ?? 0) : _syncConfig.PivotNumberParsed + 1;
-
-                _metadataDb.Set(MetadataDbKeys.BeaconSyncDestinationNumber, Rlp.Encode(PivotDestinationNumber).Bytes);
-                _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(PivotNumber).Bytes);
             }
         }
 
@@ -137,16 +110,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_pivotParent != null)
                 _pivotParentProcessed = _blockTree.WasProcessed(_pivotParent.Number,
                     _pivotParent.Hash ?? _pivotParent.CalculateHash());
-        }
-
-        private long CalculatePivotDestinationNumber(BlockHeader oldPivotHeader, BlockHeader newPivotHeader)
-        {
-            if (newPivotHeader.Number > oldPivotHeader.Number)
-            {
-                return Math.Max(PivotDestinationNumber, oldPivotHeader.Number + 1);
-            }
-
-            return PivotDestinationNumber;
         }
     }
 

@@ -287,21 +287,8 @@ namespace Nethermind.Blockchain
             long left = (Head?.Number ?? 0) == 0
                 ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
                 : Head.Number;
-            // TODO: beaconsync when best known pointer be updated if there is beacon sync?
-            long right;
-            bool previousSyncFinished = _beaconSyncDestinationNumber >= LowestInsertedBeaconHeader?.Number
-                                        || LowestInsertedBeaconHeader?.Number == 1
-                                        || !_beaconSyncDestinationNumber.HasValue;
-            if (_syncConfig.FastSync)
-            {
-                right = previousSyncFinished
-                    ? Math.Max(0, left) + BestKnownSearchLimit
-                    : _beaconSyncDestinationNumber.Value;
-            }
-            else
-            {
-                right = (previousSyncFinished || LowestInsertedHeader == null) ? Math.Max(0, left) + BestKnownSearchLimit : LowestInsertedHeader.Number;
-            }
+            // TODO: beaconsync waiting for binary search based on metadata
+            long right = Math.Max(0, left) + BestKnownSearchLimit;
 
             bool LevelExists(long blockNumber)
             {
@@ -534,24 +521,26 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (header.Number > BestKnownBeaconNumber)
+            bool updateBeaconPointers = (options & BlockTreeInsertOptions.SkipUpdateBeaconPointers) == 0;
+            if (updateBeaconPointers)
             {
-                BestKnownBeaconNumber = header.Number;
-            }
+                if (header.Number > BestKnownBeaconNumber)
+                {
+                    BestKnownBeaconNumber = header.Number;
+                }
 
-            if (header.Number > (BestSuggestedBeaconHeader?.Number ?? 0))
-            {
-                BestSuggestedBeaconHeader = header;
-            }
-
-            if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue)
-                && header.Number >= (_beaconSyncDestinationNumber ?? long.MaxValue)
-                && header.Number <= (_beaconSyncPivotNumber ?? long.MinValue))
-            {
-                if (_logger.IsInfo)
-                    _logger.Info(
-                        $"LowestInsertedBeaconHeader changed, old: {LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
-                LowestInsertedBeaconHeader = header;
+                if (header.Number > (BestSuggestedBeaconHeader?.Number ?? 0))
+                {
+                    BestSuggestedBeaconHeader = header;
+                }
+                
+                if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info(
+                            $"LowestInsertedBeaconHeader changed, old: {LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
+                    LowestInsertedBeaconHeader = header;
+                }
             }
 
             return AddBlockResult.Added;

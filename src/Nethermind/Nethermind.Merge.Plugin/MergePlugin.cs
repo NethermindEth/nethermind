@@ -72,7 +72,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
 
-
+ 
                 _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
                 _poSSwitcher = new PoSSwitcher(_mergeConfig,
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
@@ -167,6 +167,7 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockConfirmationManager,
                         payloadPreparationService,
                         _blockCacheService,
+                        _beaconSync,
                         _beaconSync,
                         _beaconPivot,
                         _api.LogManager),

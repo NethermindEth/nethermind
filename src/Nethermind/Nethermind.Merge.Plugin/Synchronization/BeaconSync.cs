@@ -15,20 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing;
-using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Merge.Plugin.Synchronization
 {
@@ -75,9 +68,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _isInBeaconModeControl = true;
         }
 
-        public void InitSyncing()
+        public void InitSyncing(BlockHeader? blockHeader)
         {
             _isInBeaconModeControl = false;
+            _beaconPivot.EnsurePivot(blockHeader);
+            DanglingChainMerged = false;
         }
 
         public bool Enabled => true;
@@ -95,21 +90,22 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool ShouldBeInBeaconModeControl() => _isInBeaconModeControl;
         
-        // TODO: beaconsync use parent hash to check if finished
         public bool IsBeaconSyncHeadersFinished()
         {
-            bool previousSyncFinished = _blockTree.LowestInsertedBeaconHeader == null
-                                        || (_blockTree.LowestInsertedBeaconHeader.Number <=
-                                            _beaconPivot.PivotDestinationNumber)
-                                        || (_blockTree.LowestInsertedBeaconHeader.Number == 1);
-            bool currentSyncFinished = !_beaconPivot.BeaconPivotExists()
-                            || _beaconPivot.PivotNumber <= _beaconPivot.PivotDestinationNumber
-                            || _beaconPivot.PivotNumber == 1;
-            bool finished = previousSyncFinished && currentSyncFinished;
+            bool finished = _blockTree.LowestInsertedBeaconHeader == null || _blockTree.LowestInsertedBeaconHeader.Number == 1;
             
             if (_logger.IsTrace) _logger.Trace($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;
         }
+        
+        // At this point, beacon headers sync is finished and has found an ancestor that exists in the block tree
+        // the sync is finished when the block body gap is filled and processed
+        // in the case of fast sync, this is the gap between the state sync head with beacon block head
+        public bool IsBeaconSyncFinished()
+        {
+            return DanglingChainMerged;
+        }
+        
 
         public bool DanglingChainMerged
         {
@@ -131,7 +127,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         void SwitchToBeaconModeControl();
 
-        void InitSyncing();
+        void InitSyncing(BlockHeader? blockHeader);
         
         bool DanglingChainMerged { get; set; }
     }
