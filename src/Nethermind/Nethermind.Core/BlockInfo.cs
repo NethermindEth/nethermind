@@ -19,6 +19,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
+    public enum FinalizationStatus
+    {
+        None = 0,
+        Finalized = 1,
+        Invalid,
+    }
+
     public class BlockInfo
     {
         public BlockInfo(Keccak blockHash, in UInt256 totalDifficulty)
@@ -32,9 +39,18 @@ namespace Nethermind.Core
         public bool WasProcessed { get; set; }
         
         public Keccak BlockHash { get; }
-        
-        public bool IsFinalized { get; set; }
-        
+
+        public bool IsFinalized
+        {
+            get => FinalizationStatus == FinalizationStatus.Finalized;
+            set
+            {
+                FinalizationStatus = FinalizationStatus.Finalized;
+            }
+        }
+
+        public FinalizationStatus FinalizationStatus { get; set; }
+
         /// <summary>
         /// This property is not serialized
         /// </summary>

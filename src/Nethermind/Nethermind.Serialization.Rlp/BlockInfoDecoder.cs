@@ -48,10 +48,10 @@ namespace Nethermind.Serialization.Rlp
             bool wasProcessed = rlpStream.DecodeBool();
             UInt256 totalDifficulty = rlpStream.DecodeUInt256();
 
-            bool isFinalized = false;
+            FinalizationStatus finalizationStatus = FinalizationStatus.None;
             if (_chainWithFinalization)
             {
-                isFinalized = rlpStream.DecodeBool();
+                finalizationStatus = (FinalizationStatus)rlpStream.DecodeInt();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -67,7 +67,7 @@ namespace Nethermind.Serialization.Rlp
             BlockInfo blockInfo = new(blockHash, totalDifficulty)
             {
                 WasProcessed = wasProcessed,
-                IsFinalized = isFinalized
+                FinalizationStatus = finalizationStatus,
             };
 
             return blockInfo;
@@ -92,7 +92,7 @@ namespace Nethermind.Serialization.Rlp
             
             if (_chainWithFinalization)
             {
-                elements[3] = Rlp.Encode(item.IsFinalized);
+                elements[3] = Rlp.Encode((int)item.FinalizationStatus);
             }
 
             return Rlp.Encode(elements);
@@ -116,11 +116,11 @@ namespace Nethermind.Serialization.Rlp
             Keccak? blockHash = decoderContext.DecodeKeccak();
             bool wasProcessed = decoderContext.DecodeBool();
             UInt256 totalDifficulty = decoderContext.DecodeUInt256();
-            bool isFinalized = false;
+            FinalizationStatus finalizationStatus = FinalizationStatus.None;
 
             if (_chainWithFinalization)
             {
-                isFinalized = decoderContext.DecodeBool();
+                finalizationStatus = (FinalizationStatus)decoderContext.DecodeInt();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp
             BlockInfo blockInfo = new(blockHash, totalDifficulty)
             {
                 WasProcessed = wasProcessed,
-                IsFinalized = isFinalized
+                FinalizationStatus = finalizationStatus
             };
             
             return blockInfo;
