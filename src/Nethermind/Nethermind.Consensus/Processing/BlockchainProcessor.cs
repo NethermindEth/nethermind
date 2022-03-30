@@ -340,15 +340,15 @@ namespace Nethermind.Consensus.Processing
             {
                 if (lastProcessed!.IsPostMerge == false)
                 {
-                    if (_logger.IsInfo)
-                        _logger.Info(
+                    if (_logger.IsTrace)
+                        _logger.Trace(
                             $"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
                     _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
                 }
                 else
                 {
                     if (_logger.IsInfo)
-                        _logger.Info(
+                        _logger.Trace(
                             $"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                     _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
                 }
