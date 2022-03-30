@@ -68,6 +68,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
+        public JsonSerializer Serializer => _provider.Serializer;
         public IReadOnlyCollection<JsonConverter> Converters => _provider.Converters;
         public IReadOnlyCollection<string> Enabled => _provider.All;
         public IReadOnlyCollection<string> All => _provider.All;

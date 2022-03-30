@@ -23,7 +23,7 @@ namespace Nethermind.Api
     {
         public bool EnableUnsecuredDevWallet { get; set; } = false;
         public bool KeepDevWalletInMemory { get; set; } = false;
-        public bool WebSocketsEnabled { get; set; } = false;
+        public bool WebSocketsEnabled { get; set; } = true;
         public bool DiscoveryEnabled { get; set; } = true;
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;

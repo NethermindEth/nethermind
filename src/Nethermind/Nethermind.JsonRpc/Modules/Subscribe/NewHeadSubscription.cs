@@ -32,12 +32,17 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ISpecProvider _specProvider;
 
 
-        public NewHeadSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, ILogManager? logManager, ISpecProvider specProvider, Filter? filter = null) 
+        public NewHeadSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient, 
+            IBlockTree? blockTree, 
+            ILogManager? logManager,
+            ISpecProvider specProvider, 
+            TransactionsOption? options = null) 
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _includeTransactions = filter?.IncludeTransactions ?? false;
+            _includeTransactions = options?.IncludeTransactions ?? false;
             _specProvider = specProvider;
 
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
@@ -55,17 +60,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        protected override string GetErrorMsg()
-        {
-            return $"NewHeads subscription {Id}: Failed Task.Run after BlockAddedToMain event.";
-        }
-
-        public override SubscriptionType Type => SubscriptionType.NewHeads;
+        public override string Type => SubscriptionType.NewHeads;
         
         public override void Dispose()
         {
-            base.Dispose();
             _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
+            base.Dispose();
             if(_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will no longer track BlockAddedToMain");
         }
     }

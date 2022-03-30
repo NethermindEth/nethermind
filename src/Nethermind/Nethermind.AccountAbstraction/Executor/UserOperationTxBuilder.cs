@@ -55,7 +55,7 @@ namespace Nethermind.AccountAbstraction.Executor
         }
 
         public Transaction BuildTransaction(long gaslimit, byte[] callData, Address sender, BlockHeader parent, IReleaseSpec spec,
-            bool systemTransaction)
+            UInt256 nonce, bool systemTransaction)
         {
             Transaction transaction = systemTransaction ? new SystemTransaction() : new Transaction();
 
@@ -65,7 +65,7 @@ namespace Nethermind.AccountAbstraction.Executor
             transaction.GasLimit = gaslimit;
             transaction.To = _entryPointContractAddress;
             transaction.ChainId = _specProvider.ChainId;
-            transaction.Nonce = _stateProvider.GetNonce(_signer.Address);
+            transaction.Nonce = nonce;
             transaction.Value = 0;
             transaction.Data = callData;
             transaction.Type = TxType.EIP1559;
@@ -78,7 +78,11 @@ namespace Nethermind.AccountAbstraction.Executor
             return transaction;
         }
 
-        public Transaction BuildTransactionFromUserOperations(IEnumerable<UserOperation> userOperations, BlockHeader parent, long gasLimit,
+        public Transaction BuildTransactionFromUserOperations(
+            IEnumerable<UserOperation> userOperations, 
+            BlockHeader parent, 
+            long gasLimit,
+            UInt256 nonce,
             IReleaseSpec spec)
         {
             byte[] computedCallData;
@@ -105,7 +109,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             Transaction transaction =
-                BuildTransaction(gasLimit, computedCallData, _signer.Address, parent, spec, false);
+                BuildTransaction(gasLimit, computedCallData, _signer.Address, parent, spec, nonce, false);
 
             return transaction;
         }

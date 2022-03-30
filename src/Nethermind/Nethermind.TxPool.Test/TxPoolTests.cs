@@ -952,16 +952,16 @@ namespace Nethermind.TxPool.Test
             var address = TestItem.AddressA;
             const int reservationsCount = 1000;
             _txPool = CreatePool();
-            ConcurrentBag<UInt256> nonces = new();
+            ConcurrentQueue<UInt256> nonces = new();
             
             var result = Parallel.For(0, reservationsCount, i =>
             {
-                nonces.Add(_txPool.ReserveOwnTransactionNonce(address));
+                nonces.Enqueue(_txPool.ReserveOwnTransactionNonce(address));
             });
 
             result.IsCompleted.Should().BeTrue();
             UInt256 nonce = _txPool.ReserveOwnTransactionNonce(address);
-            nonces.Add(nonce);
+            nonces.Enqueue(nonce);
             nonce.Should().Be(new UInt256(reservationsCount));
             nonces.OrderBy(n => n).Should().BeEquivalentTo(Enumerable.Range(0, reservationsCount + 1).Select(i => new UInt256((uint)i)));
         }
@@ -1018,7 +1018,7 @@ namespace Nethermind.TxPool.Test
             ITxPoolPeer txPoolPeer = Substitute.For<ITxPoolPeer>();
             txPoolPeer.Id.Returns(TestItem.PublicKeyA);
             _txPool.AddPeer(txPoolPeer);
-            txPoolPeer.Received().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>());
+            txPoolPeer.Received().SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
         }
         
         [Test]
@@ -1030,7 +1030,7 @@ namespace Nethermind.TxPool.Test
             _txPool.AddPeer(txPoolPeer);
             Transaction tx = AddTransactionToPool();
             await Task.Delay(500);
-            txPoolPeer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>());
+            txPoolPeer.Received(1).SendNewTransactions(Arg.Any<IEnumerable<Transaction>>(), false);
         }
 
         [Test]

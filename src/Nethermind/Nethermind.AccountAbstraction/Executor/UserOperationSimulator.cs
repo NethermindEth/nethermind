@@ -162,6 +162,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 Address.Zero, 
                 parent, 
                 spec, 
+                _stateProvider.GetNonce(Address.Zero),
                 true);
 
             return transaction;

@@ -31,7 +31,11 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private bool _lastIsSyncing;
         
-        public SyncingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, IBlockTree? blockTree, IEthSyncingInfo ethSyncingInfo, ILogManager? logManager) 
+        public SyncingSubscription(
+            IJsonRpcDuplexClient jsonRpcDuplexClient, 
+            IBlockTree? blockTree, 
+            IEthSyncingInfo ethSyncingInfo, 
+            ILogManager? logManager) 
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -81,19 +85,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             });
         }
 
-        protected override string GetErrorMsg()
-        {
-            return $"Syncing subscription {Id}: Failed Task.Run.";
-        }
-        
-        public override SubscriptionType Type => SubscriptionType.Syncing;
+        public override string Type => SubscriptionType.Syncing;
         public override void Dispose()
         {
-            base.Dispose();
             _blockTree.NewBestSuggestedBlock -= OnConditionsChange;
-            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
-
             _blockTree.NewHeadBlock -= OnConditionsChange;
+            base.Dispose();
+            
+            if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewBestSuggestedBlocks");
             if(_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will no longer track NewHeadBlocks");
         }
     }

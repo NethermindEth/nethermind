@@ -14,10 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Newtonsoft.Json;
+
 namespace Nethermind.JsonRpc
 {
     public interface IJsonRpcParam
     {
-        void FromJson(string jsonValue);
+        void FromJson(JsonSerializer serializer, string jsonValue);
     }
 }

@@ -521,27 +521,13 @@ namespace Nethermind.Synchronization.ParallelSync
             && (best.State == best.Header ||
                 best.Header == best.Block) // and we do not need to catch up to headers anymore 
             && best.Processed < best.State; // not processed the block yet
-
-        protected virtual bool AnyDesiredPeerKnown(Snapshot best)
-        {
-            UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
-            bool anyDesiredPeerKnown = best.PeerDifficulty > localChainDifficulty
-                                       || best.PeerDifficulty == localChainDifficulty && best.PeerBlock > best.Header;
-            if (anyDesiredPeerKnown)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace($"   Best peer [{best.PeerBlock},{best.PeerDifficulty}] " +
-                                  $"> local [{best.Header},{localChainDifficulty}]");
-            }
-
-            return anyDesiredPeerKnown;
-        }
-        // private bool AnyDesiredPeerKnown(Snapshot best) =>
-        //      _betterPeerStrategy.IsDesiredPeer((best.PeerDifficulty, best.PeerBlock), best.Header);
+        
+        private bool AnyDesiredPeerKnown(Snapshot best) =>
+             _betterPeerStrategy.IsDesiredPeer((best.PeerDifficulty, best.PeerBlock), best.Header);
 
 
         private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
-
+        
         
         private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
         {
