@@ -217,6 +217,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     bool blockExists = _blockTree.FindBlock(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) == null;
                     bool isOnMainChain = _blockTree.IsMainChain(currentBlock.Header);
                     BlockTreeSuggestOptions suggestOptions = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+                    if (_logger.IsInfo) _logger.Info($"Current block {currentBlock}, BlockExists {blockExists} IsOnMainChain: {isOnMainChain} BeaconPivot: {_beaconPivot.PivotNumber}");
                     if (blockExists && isOnMainChain == false)
                         continue;
 
