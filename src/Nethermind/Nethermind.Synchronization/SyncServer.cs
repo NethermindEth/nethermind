@@ -312,9 +312,7 @@ namespace Nethermind.Synchronization
             
             if (number > syncPeer.HeadNumber)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
+                if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}.");
                 syncPeer.HeadNumber = number;
                 syncPeer.HeadHash = hash;
 
@@ -329,6 +327,14 @@ namespace Nethermind.Synchronization
                 {
                     _pool.RefreshTotalDifficulty(syncPeer);
                 }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"HINT Not updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}, block already known.");
+                }
+            }
+            else
+            {
+                if (_logger.IsTrace) _logger.Trace($"HINT Not updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}.");
             }
         }
 
