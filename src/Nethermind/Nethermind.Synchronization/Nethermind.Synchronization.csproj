@@ -18,4 +18,8 @@
       <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="ConcurrentHashSet" Version="1.3.0" />
+    </ItemGroup>
+
 </Project>
