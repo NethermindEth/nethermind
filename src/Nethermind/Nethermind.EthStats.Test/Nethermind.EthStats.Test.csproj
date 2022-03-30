@@ -23,7 +23,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.AccountAbstraction.Test\Nethermind.AccountAbstraction.Test.csproj" />
       <ProjectReference Include="..\Nethermind.EthStats\Nethermind.EthStats.csproj" />
     </ItemGroup>
 
