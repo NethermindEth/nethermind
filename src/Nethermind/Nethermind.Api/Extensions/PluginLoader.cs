@@ -113,17 +113,14 @@ namespace Nethermind.Api.Extensions
 
         public void OrderPlugins(IPluginConfig pluginConfig)
         {
-            if (pluginConfig.PluginOrder == null) return;
-
-            Dictionary<string, int> order = pluginConfig.PluginOrder.Select((s, i) => new {s, i})
-                .ToDictionary(elem => elem.s.ToLower() + "plugin", elem => elem.i);
+            List<string> order = pluginConfig.PluginOrder.Select(s => s.ToLower() + "plugin").ToList();
             _pluginTypes.Sort((f, s) =>
             {
-                bool fInOrder = order.ContainsKey(f.Name.ToLower());
-                bool sInOrder = order.ContainsKey(s.Name.ToLower());
-                if (!fInOrder)
+                int fPos = order.IndexOf(f.Name.ToLower());
+                int sPos = order.IndexOf(s.Name.ToLower());
+                if (fPos == -1)
                 {
-                    if (!sInOrder)
+                    if (sPos == -1)
                     {
                         return f.Name.CompareTo(s.Name);
                     }
@@ -131,13 +128,12 @@ namespace Nethermind.Api.Extensions
                     return 1;
                 }
 
-                if (!sInOrder)
+                if (sPos == -1)
                 {
                     return -1;
                 }
 
-
-                return order[f.Name.ToLower()].CompareTo(order[s.Name.ToLower()]);
+                return fPos.CompareTo(sPos);
             });
         }
     }
