@@ -29,21 +29,23 @@ namespace Nethermind.Core.Authentication;
 public class MicrosoftJwtAuthentication : IRpcAuthentication
 {
     private readonly SecurityKey _securityKey;
+    private readonly ILogger _logger;
     private readonly IClock _clock;
     private const string JwtMessagePrefix = "Bearer ";
     private const int JwtTokenTtl = 5;
     private const int JwtSecretLength = 64;
 
-    public MicrosoftJwtAuthentication(byte[] secret, IClock clock)
+    public MicrosoftJwtAuthentication(byte[] secret, IClock clock, ILogger logger)
     {
         _securityKey = new SymmetricSecurityKey(secret);
+        _logger = logger;
         _clock = clock;
     }
 
-    public static MicrosoftJwtAuthentication CreateFromHexSecret(string hexSecret, IClock clock)
+    public static MicrosoftJwtAuthentication CreateFromHexSecret(string hexSecret, IClock clock, ILogger logger)
     {
         byte[] decodedSecret = DecodeSecret(hexSecret);
-        return new MicrosoftJwtAuthentication(decodedSecret, clock);
+        return new MicrosoftJwtAuthentication(decodedSecret, clock, logger);
     }
 
     public static MicrosoftJwtAuthentication CreateFromFileOrGenerate(string filePath, IClock clock, ILogger logger)
@@ -52,7 +54,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
         if (!fileInfo.Exists || fileInfo.Length == 0)
         {
             // Generate secret;
-            logger.Info("Generating jwt secret");
+            if (logger.IsInfo) logger.Info("Generating jwt secret");
             byte[] secret = new byte[JwtSecretLength / 2];
             Random rnd = new();
             rnd.NextBytes(secret);
@@ -62,12 +64,12 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             writer.Write(hexSecret);
             writer.Close();
             logger.Info($"Secret have been written to {fileInfo.FullName}");
-            return new MicrosoftJwtAuthentication(secret, clock);
+            return new MicrosoftJwtAuthentication(secret, clock, logger);
         }
         else
         {
             // Secret exists read from file
-            logger.Info("Reading jwt secret from file");
+            if (logger.IsInfo) logger.Info($"Reading jwt secret from file: {fileInfo.FullName}");
             StreamReader stream = new(filePath);
             string hexSecret = stream.ReadToEnd();
             hexSecret = hexSecret.TrimStart().TrimEnd();
@@ -75,7 +77,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             {
                 throw new FormatException("Secret should be a 64 digit hexadecimal number");
             }
-            return CreateFromHexSecret(hexSecret, clock);
+            return CreateFromHexSecret(hexSecret, clock, logger);
         }
     }
 
@@ -86,8 +88,17 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
 
     public bool Authenticate(string? token)
     {
-        if (token == null) return false;
-        if (!token.StartsWith(JwtMessagePrefix)) return false;
+        if (token == null)
+        {
+            if (_logger.IsInfo) _logger.Info("Authentication: token is null"); 
+            return false;
+        }
+
+        if (!token.StartsWith(JwtMessagePrefix))
+        {
+            if (_logger.IsInfo) _logger.Info("Authentication: token doesn't start with 'Bearer '");
+            return false;
+        }
         token = token.Remove(0, JwtMessagePrefix.Length);
         TokenValidationParameters tokenValidationParameters = new TokenValidationParameters
         {
@@ -101,15 +112,24 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
 
         try
         {
-            JwtSecurityTokenHandler handler = new JwtSecurityTokenHandler();
+            JwtSecurityTokenHandler handler = new ();
             SecurityToken securityToken;
             handler.ValidateToken(token, tokenValidationParameters, out securityToken);
             JwtSecurityToken jwtToken = handler.ReadJwtToken(token);
             long iat = ((DateTimeOffset)jwtToken.IssuedAt).ToUnixTimeSeconds();
-            return Math.Abs(iat - _clock.GetCurrentTime()) <= JwtTokenTtl;
+            long now = _clock.GetCurrentTime();
+            if (Math.Abs(iat - now) <= JwtTokenTtl)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Authentication: authenticated. Token: {token}, iat: {iat}, time: {now}");
+                return true;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Authentication: incorrect 'iat': {iat}, now: {now}");
+            return false;
         }
         catch (Exception e)
         {
+            if (_logger.IsInfo) _logger.Info($"Authentication: authentication error: {e.Message}");
             return false;
         }
     }
