@@ -19,5 +19,5 @@ namespace Nethermind.Api.Extensions;
 
 public class PluginConfig : IPluginConfig
 {
-    public string[] PluginOrder { get; set; } = {"Merge", "MEV", "HealthChecks", "Hive"};
+    public string[] PluginOrder { get; set; } = {"Clique", "Aura", "Ethash", "Merge", "MEV", "HealthChecks", "Hive"};
 }

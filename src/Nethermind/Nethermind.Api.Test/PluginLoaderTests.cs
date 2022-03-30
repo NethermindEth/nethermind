@@ -40,7 +40,7 @@ public class PluginLoaderTests
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader("", fileSystem, typeof(AuRaPlugin), typeof(CliquePlugin),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin));
+            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
         loader.Load(new TestLogManager());
         loader.OrderPlugins(new PluginConfig {PluginOrder = Array.Empty<string>()});
         var expected = new List<Type>
@@ -48,8 +48,9 @@ public class PluginLoaderTests
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
+            typeof(NethDevPlugin),
             typeof(HivePlugin),
-            typeof(NethDevPlugin)
+            typeof(TestPlugin)
         };
         CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
     }
@@ -59,19 +60,20 @@ public class PluginLoaderTests
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader("", fileSystem, typeof(AuRaPlugin), typeof(CliquePlugin),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin));
+            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
         loader.Load(new TestLogManager());
         IPluginConfig pluginConfig =
-            new PluginConfig {PluginOrder = new[] {"Hive", "NethDev", "Ethash", "Clique", "Aura"}};
+            new PluginConfig {PluginOrder = new[] {"Hive", "TestPlugin", "NethDev", "Ethash", "Clique", "Aura"}};
         loader.OrderPlugins(pluginConfig);
 
         var expected = new List<Type>
         {
-            typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(CliquePlugin),
-            typeof(AuRaPlugin)
+            typeof(AuRaPlugin),
+            typeof(HivePlugin),
+            typeof(TestPlugin)
         };
         CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
     }
@@ -81,7 +83,7 @@ public class PluginLoaderTests
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
         IPluginLoader loader = new PluginLoader("", fileSystem, typeof(AuRaPlugin), typeof(CliquePlugin),
-            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin));
+            typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
         loader.Load(new TestLogManager());
         IPluginConfig pluginConfig =
             new PluginConfig() {PluginOrder = new[] {"Hive", "NethDev", "Ethash"}};
@@ -89,11 +91,12 @@ public class PluginLoaderTests
 
         var expected = new List<Type>
         {
-            typeof(HivePlugin),
             typeof(NethDevPlugin),
             typeof(EthashPlugin),
             typeof(AuRaPlugin),
-            typeof(CliquePlugin)
+            typeof(CliquePlugin),
+            typeof(HivePlugin),
+            typeof(TestPlugin)
         };
         CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
     }
@@ -112,12 +115,12 @@ public class PluginLoaderTests
 
         var expected = new List<Type>
         {
+            typeof(EthashPlugin),
             typeof(MergePlugin),
+            typeof(NethDevPlugin),
             typeof(MevPlugin),
             typeof(HealthChecksPlugin),
-            typeof(HivePlugin),
-            typeof(EthashPlugin),
-            typeof(NethDevPlugin)
+            typeof(HivePlugin)
         };
         CollectionAssert.AreEqual(expected, loader.PluginTypes.ToList());
     }
