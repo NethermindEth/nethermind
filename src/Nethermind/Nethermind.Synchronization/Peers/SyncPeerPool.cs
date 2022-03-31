@@ -591,9 +591,9 @@ namespace Nethermind.Synchronization.Peers
                                     syncPeer.TotalDifficulty = newTotalDifficulty;
                                     syncPeer.HeadNumber = header.Number;
                                     syncPeer.HeadHash = header.Hash!;
+                                    
+                                    NotifyPeers(header);
                                 }
-                                
-                                NotifyPeers(header);
                             }
                             else if (header.Number > syncPeer.HeadNumber)
                             {
