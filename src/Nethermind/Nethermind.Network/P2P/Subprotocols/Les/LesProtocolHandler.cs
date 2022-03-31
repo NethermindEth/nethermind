@@ -313,6 +313,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             Send(announceMessage);
         }
 
+        public override void NotifyOfNewBlock(Keccak hash, long number)
+        {
+        }
+
         Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
             return Task.FromResult(_lastSentBlock);

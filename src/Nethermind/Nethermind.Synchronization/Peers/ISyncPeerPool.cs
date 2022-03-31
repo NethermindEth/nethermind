@@ -100,5 +100,7 @@ namespace Nethermind.Synchronization.Peers
         PeerInfo? GetPeer(Node node);
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
+        
+        bool PassBlockHint { get; set; }
     }
 }

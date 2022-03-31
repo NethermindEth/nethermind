@@ -97,6 +97,11 @@ namespace Nethermind.Synchronization.Test
             throw new NotImplementedException();
         }
 
+        public void NotifyOfNewBlock(Keccak hash, long number)
+        {
+            throw new NotImplementedException();
+        }
+
         public PublicKey Id => Node.Id;
 
         public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx)

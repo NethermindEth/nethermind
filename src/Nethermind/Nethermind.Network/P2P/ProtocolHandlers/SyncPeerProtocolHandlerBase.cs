@@ -218,6 +218,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
 
+        public abstract void NotifyOfNewBlock(Keccak hash, long number);
+
         public void SendNewTransaction(Transaction tx)
         {
             SendMessage(new[]{tx});

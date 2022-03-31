@@ -43,7 +43,13 @@ namespace Nethermind.Hive
             return Task.CompletedTask;
         }
 
-        public Task InitNetworkProtocol() => Task.CompletedTask;
+        public Task InitNetworkProtocol()
+        {
+            if (_api.SyncPeerPool == null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
+            
+            _api.SyncPeerPool.PassBlockHint = true;
+            return Task.CompletedTask;
+        }
 
         public async Task InitRpcModules()
         { 
