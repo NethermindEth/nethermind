@@ -45,7 +45,7 @@ namespace Nethermind.Core
             get => FinalizationStatus == FinalizationStatus.Finalized;
             set
             {
-                FinalizationStatus = FinalizationStatus.Finalized;
+                FinalizationStatus = value ? FinalizationStatus.Finalized : FinalizationStatus.None;
             }
         }
 
