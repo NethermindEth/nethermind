@@ -619,6 +619,7 @@ namespace Nethermind.Synchronization.Peers
         {
             if (PassBlockHint)
             {
+                _blockTree.SuggestHeader(header);
                 foreach (PeerInfo peer in AllPeers)
                 {
                     peer.SyncPeer.NotifyOfNewBlock(header.Hash!, header.Number);
