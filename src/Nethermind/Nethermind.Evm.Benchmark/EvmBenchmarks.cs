@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Benchmark
         [GlobalSetup]
         public void GlobalSetup()
         {
-            ByteCode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE"));
+            ByteCode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE") ?? string.Empty);
             Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
 
             TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
