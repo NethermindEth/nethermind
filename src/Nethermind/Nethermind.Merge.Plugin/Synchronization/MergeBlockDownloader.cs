@@ -215,19 +215,19 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     }
 
                     bool blockExists = _blockTree.FindBlock(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null;
-                    bool headerExists = _blockTree.FindHeader(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null;
+                    bool isKnownBlock = _blockTree.IsKnownBlock(currentBlock.Number, currentBlock.Hash) != null;
                     bool isOnMainChain = true;
                     BlockTreeSuggestOptions suggestOptions = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
-                    if (_logger.IsInfo) _logger.Info($"Current block {currentBlock}, BlockExists {blockExists} IsOnMainChain: {isOnMainChain} BeaconPivot: {_beaconPivot.PivotNumber}");
+                    if (_logger.IsInfo) _logger.Info($"Current block {currentBlock}, BlockExists {blockExists} IsOnMainChain: {isOnMainChain} BeaconPivot: {_beaconPivot.PivotNumber}, IsKnwonBlock: {isKnownBlock}");
                     if (blockExists && isOnMainChain == false)
                     {
                         currentNumber += 1;
                         continue;
                     }
 
-                    if (blockExists == false && headerExists)
+                    if (blockExists == false && isKnownBlock)
                         _blockTree.Insert(currentBlock);
-                    if (isOnMainChain && headerExists)
+                    if (isOnMainChain && isKnownBlock)
                         suggestOptions |= BlockTreeSuggestOptions.TryProcessKnownBlock;
 
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, suggestOptions)))
