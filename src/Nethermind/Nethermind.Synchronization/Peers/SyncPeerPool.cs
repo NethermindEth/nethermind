@@ -623,11 +623,6 @@ namespace Nethermind.Synchronization.Peers
                 {
                     Block block = new(header, new BlockBody());
                     _blockTree.SuggestBlock(block);
-
-                    foreach (PeerInfo peer in AllPeers)
-                    {
-                        peer.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
-                    }
                 }
             }
         }
