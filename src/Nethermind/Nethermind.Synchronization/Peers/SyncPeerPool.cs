@@ -250,12 +250,22 @@ namespace Nethermind.Synchronization.Peers
             }
             
             PeerInfo peerInfo = new(syncPeer);
-            _peers.TryAdd(syncPeer.Node.Id, peerInfo);
-            Metrics.SyncPeers = _peers.Count;
-
-            if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
-            _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer));
+            if (_peers.TryAdd(syncPeer.Node.Id, peerInfo))
+            {
+                Metrics.SyncPeers = _peers.Count;
+            }
+            
+            BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is not null)
+            {
+                syncPeer.HeadNumber = header.Number;
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
+                _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer));
+            }
         }
 
         public void RemovePeer(ISyncPeer syncPeer)
