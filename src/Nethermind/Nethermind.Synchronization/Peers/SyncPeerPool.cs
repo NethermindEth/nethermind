@@ -621,7 +621,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 if (header.UnclesHash == Keccak.OfAnEmptySequenceRlp && header.TxRoot == Keccak.EmptyTreeHash)
                 {
-                    _blockTree.SuggestBlock(new Block(header, new BlockBody(Array.Empty<Transaction>(), Array.Empty<BlockHeader>())));
+                    _blockTree.SuggestBlock(new Block(header, new BlockBody()));
                 }
                 else
                 {
