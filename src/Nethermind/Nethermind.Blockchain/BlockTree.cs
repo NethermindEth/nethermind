@@ -625,7 +625,7 @@ namespace Nethermind.Blockchain
             bool tryProcessKnownBlock = (options & BlockTreeSuggestOptions.TryProcessKnownBlock) != 0;
             if (_logger.IsInfo)
                 _logger.Info(
-                    $"Starting suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {tryProcessKnownBlock}");
+                    $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {tryProcessKnownBlock}");
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
             if (header.StateRoot is null && !header.IsGenesis)
@@ -654,7 +654,7 @@ namespace Nethermind.Blockchain
             if (!tryProcessKnownBlock && isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
                 if (_logger.IsInfo) _logger.Info($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} already known.");
-            //         return AddBlockResult.AlreadyKnown;
+                     return AddBlockResult.AlreadyKnown;
             }
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))

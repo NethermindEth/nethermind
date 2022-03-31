@@ -227,7 +227,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                     if (blockExists == false && headerExists)
                         _blockTree.Insert(currentBlock);
-                    if (isOnMainChain && blockExists)
+                    if (isOnMainChain && headerExists)
                         suggestOptions |= BlockTreeSuggestOptions.TryProcessKnownBlock;
 
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, suggestOptions)))
