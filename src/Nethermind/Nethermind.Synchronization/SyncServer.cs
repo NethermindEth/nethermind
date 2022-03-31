@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -325,7 +326,7 @@ namespace Nethermind.Synchronization
                     /* do not add as this is a hint only */
                 }
 
-                // if (!_blockTree.IsKnownBlock(number, hash))
+                if (!_blockTree.IsKnownBlock(number, hash))
                 {
                     _pool.RefreshTotalDifficulty(syncPeer, hash);
                 }
