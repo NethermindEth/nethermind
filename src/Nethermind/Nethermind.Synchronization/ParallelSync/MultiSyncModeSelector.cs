@@ -132,11 +132,17 @@ namespace Nethermind.Synchronization.ParallelSync
                     Snapshot best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value);
                     if (!FastSyncEnabled)
                     {
-
                         bool anyPeers = peerBlock.Value > 0 &&
                                         peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
-                        newModes = anyPeers ? SyncMode.Full : SyncMode.Disconnected;
-                        reason = "No Useful Peers";
+                        if (anyPeers)
+                        {
+                            newModes = SyncMode.Full;
+                        }
+                        else
+                        {                        
+                            newModes = SyncMode.Disconnected;
+                            reason = "No Useful Peers";
+                        }
                     }
                     else
                     {
@@ -182,7 +188,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
                 }
             }
-
 
             UpdateSyncModes(newModes, reason);
         }
