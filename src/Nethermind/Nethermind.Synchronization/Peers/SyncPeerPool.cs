@@ -250,10 +250,8 @@ namespace Nethermind.Synchronization.Peers
             }
             
             PeerInfo peerInfo = new(syncPeer);
-            if (_peers.TryAdd(syncPeer.Node.Id, peerInfo))
-            {
-                Metrics.SyncPeers = _peers.Count;
-            }
+            _peers.TryAdd(syncPeer.Node.Id, peerInfo);
+            Metrics.SyncPeers = _peers.Count;
             
             BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is not null)
