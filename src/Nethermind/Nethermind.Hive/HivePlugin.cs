@@ -7,8 +7,10 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Hive
 {
@@ -46,9 +48,22 @@ namespace Nethermind.Hive
         public Task InitNetworkProtocol()
         {
             if (_api.SyncPeerPool == null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
-            
-            _api.SyncPeerPool.PassBlockHint = true;
+
+            _api.SyncPeerPool.PeerRefreshed += OnPeerRefreshed;
             return Task.CompletedTask;
+        }
+
+        private async void OnPeerRefreshed(object? sender, PeerRefreshedEventArgs e)
+        {
+            foreach (PeerInfo peer in _api.SyncPeerPool!.AllPeers)
+            {
+                peer.SyncPeer.NotifyOfNewBlock(e.BlockHeader.Hash!, e.BlockHeader.Number);
+                BlockBody[] body = await peer.SyncPeer.GetBlockBodies(new[] { e.SyncPeer.HeadHash }, CancellationToken.None);
+                if (body.Length == 1)
+                {
+                    _api.BlockTree!.SuggestBlock(new Block(e.BlockHeader, body[0]));
+                }
+            }
         }
 
         public async Task InitRpcModules()
