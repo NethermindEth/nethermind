@@ -106,32 +106,7 @@ namespace Nethermind.Evm.Benchmark
             _worldState = new WorldState(_stateProvider, _storageProvider);
             Console.WriteLine(MuirGlacier.Instance);
             _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
-        }
-
-        [Benchmark]
-        public void ExecuteCode()
-        {
-            _environment = new ExecutionEnvironment
-                {
-                    ExecutingAccount = Address.Zero,
-                    CodeSource = Address.Zero,
-                    Caller = Address.Zero,
-                    CodeInfo = new CodeInfo(Bytecode),
-                    Value = 0,
-                    TransferValue = 0,
-                    TxExecutionContext = new TxExecutionContext(_header, Address.Zero, 0)
-                };
-
-            _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);
             
-            _virtualMachine.Run(_evmState, _worldState, _txTracer);
-            _stateProvider.Reset();
-            _storageProvider.Reset();
-        }
-        
-        [Benchmark(Baseline = true)]
-        public void No_machine_running()
-        {
             _environment = new ExecutionEnvironment
             {
                 ExecutingAccount = Address.Zero,
@@ -144,7 +119,19 @@ namespace Nethermind.Evm.Benchmark
             };
         
             _evmState = new EvmState(100_000_000L, _environment, ExecutionType.Transaction, true, _worldState.TakeSnapshot(), false);
-            
+        }
+
+        [Benchmark]
+        public void ExecuteCode()
+        {
+            _virtualMachine.Run(_evmState, _worldState, _txTracer);
+            _stateProvider.Reset();
+            _storageProvider.Reset();
+        }
+        
+        [Benchmark(Baseline = true)]
+        public void No_machine_running()
+        {
             _stateProvider.Reset();
             _storageProvider.Reset();
         }
