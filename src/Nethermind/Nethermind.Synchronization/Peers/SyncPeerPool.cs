@@ -168,6 +168,7 @@ namespace Nethermind.Synchronization.Peers
 
         public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
         public event EventHandler<PeerBlockNotificationEventArgs>? NotifyPeerBlock;
+        public event EventHandler<PeerHeadRefreshedEventArgs>? PeerRefreshed;
 
         public void WakeUpAll()
         {
@@ -592,7 +593,7 @@ namespace Nethermind.Synchronization.Peers
                                     syncPeer.HeadNumber = header.Number;
                                     syncPeer.HeadHash = header.Hash!;
                                     
-                                    NotifyPeersIfBodyIsEmpty(header);
+                                    PeerRefreshed?.Invoke(this, new PeerHeadRefreshedEventArgs(syncPeer, header));
                                 }
                             }
                             else if (header.Number > syncPeer.HeadNumber)
@@ -611,20 +612,6 @@ namespace Nethermind.Synchronization.Peers
                         delaySource.Dispose();
                     }
                 }, token);
-        }
-        
-        public bool PassBlockHint { get; set; } = false;
-
-        private void NotifyPeersIfBodyIsEmpty(BlockHeader header)
-        {
-            if (PassBlockHint)
-            {
-                if (header.UnclesHash == Keccak.OfAnEmptySequenceRlp && header.TxRoot == Keccak.EmptyTreeHash)
-                {
-                    Block block = new(header, new BlockBody());
-                    _blockTree.SuggestBlock(block);
-                }
-            }
         }
 
         /// <summary>

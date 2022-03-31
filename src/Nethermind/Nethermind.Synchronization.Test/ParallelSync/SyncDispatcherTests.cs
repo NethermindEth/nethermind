@@ -112,8 +112,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             }
 
             public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
-
-            public bool PassBlockHint { get; set; }
+            public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
         }
 
         private class TestBatch
