@@ -154,11 +154,6 @@ namespace Nethermind.Synchronization.Test
                 HintNewBlock(block.Hash, block.Number);
         }
 
-        public void NotifyOfNewBlock(Keccak hash, long number)
-        {
-            HintNewBlock(hash, number);
-        }
-
         public void SendNewBlock(Block block)
         {
             _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, this));

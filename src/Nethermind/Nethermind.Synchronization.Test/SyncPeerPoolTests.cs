@@ -115,10 +115,6 @@ namespace Nethermind.Synchronization.Test
             {
             }
 
-            public void NotifyOfNewBlock(Keccak hash, long number)
-            {
-            }
-
             public PublicKey Id => Node.Id;
             
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }

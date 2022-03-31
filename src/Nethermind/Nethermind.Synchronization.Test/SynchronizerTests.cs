@@ -187,10 +187,6 @@ namespace Nethermind.Synchronization.Test
                     ReceivedBlocks.Push(block);
             }
 
-            public void NotifyOfNewBlock(Keccak hash, long number)
-            {
-            }
-
             public ConcurrentStack<Block> ReceivedBlocks { get; } = new();
             
             public event EventHandler Disconnected;

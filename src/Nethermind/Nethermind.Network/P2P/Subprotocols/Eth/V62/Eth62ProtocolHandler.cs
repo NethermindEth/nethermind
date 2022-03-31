@@ -253,11 +253,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        public override void NotifyOfNewBlock(Keccak hash, long number)
-        {
-            HintNewBlock(hash, number);
-        }
-
         private void SendNewBlock(Block block)
         {
             if (!block.TotalDifficulty.HasValue)
