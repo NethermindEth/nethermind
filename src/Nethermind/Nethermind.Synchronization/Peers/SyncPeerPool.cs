@@ -592,7 +592,7 @@ namespace Nethermind.Synchronization.Peers
                                     syncPeer.HeadNumber = header.Number;
                                     syncPeer.HeadHash = header.Hash!;
                                     
-                                    NotifyPeers(header);
+                                    NotifyPeersIfBodyIsEmpty(header);
                                 }
                             }
                             else if (header.Number > syncPeer.HeadNumber)
@@ -615,7 +615,7 @@ namespace Nethermind.Synchronization.Peers
         
         public bool PassBlockHint { get; set; } = false;
 
-        private void NotifyPeers(BlockHeader header)
+        private void NotifyPeersIfBodyIsEmpty(BlockHeader header)
         {
             if (PassBlockHint)
             {
