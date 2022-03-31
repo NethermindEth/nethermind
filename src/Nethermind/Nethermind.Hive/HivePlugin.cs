@@ -55,15 +55,14 @@ namespace Nethermind.Hive
 
         private async void OnPeerRefreshed(object? sender, PeerRefreshedEventArgs e)
         {
-            BlockBody[] body = await e.SyncPeer.GetBlockBodies(new[] { e.SyncPeer.HeadHash }, CancellationToken.None);
-            if (body.Length == 1)
-            {
-                _api.BlockTree!.SuggestBlock(new Block(e.BlockHeader, body[0]));
-            }
-            
             foreach (PeerInfo peer in _api.SyncPeerPool!.AllPeers)
             {
                 peer.SyncPeer.NotifyOfNewBlock(e.BlockHeader.Hash!, e.BlockHeader.Number);
+                BlockBody[] body = await peer.SyncPeer.GetBlockBodies(new[] { e.SyncPeer.HeadHash }, CancellationToken.None);
+                if (body.Length == 1)
+                {
+                    _api.BlockTree!.SuggestBlock(new Block(e.BlockHeader, body[0]));
+                }
             }
         }
 
