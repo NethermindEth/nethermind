@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -27,6 +27,8 @@ namespace Nethermind.Stats.Model
     public class Node : IFormattable
     {
         private string _clientId;
+        private string _paddedHost;
+        private string _paddedPort;
 
         /// <summary>
         /// Node public key - same as in enode. 
@@ -106,6 +108,10 @@ namespace Nethermind.Stats.Model
             Host = address.Address.MapToIPv4().ToString();
             Port = address.Port;
             Address = address;
+            // xxx.xxx.xxx.xxx = 15
+            _paddedHost = Host.PadLeft(15, ' ');
+            // Port are up to 65535 => 5 chars
+            _paddedPort = Port.ToString().PadLeft(5, ' ');
         }
 
         private void SetIPEndPoint(string host, int port)
@@ -138,12 +144,12 @@ namespace Nethermind.Stats.Model
         {
             return format switch
             {
-                "s" => $"{Host}:{Port}",
-                "c" => $"[Node|{Host}:{Port}|{ClientId}|{EthDetails}]",
-                "f" => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
-                "e" => $"enode://{Id.ToString(false)}@{Host}:{Port}",
-                "p" => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
-                _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
+                "s" => $"{_paddedHost}:{_paddedPort}",
+                "c" => $"[Node|{_paddedHost}:{_paddedPort}|{EthDetails}|{ClientId}]",
+                "f" => $"enode://{Id.ToString(false)}@{_paddedHost}:{_paddedPort}|{ClientId}",
+                "e" => $"enode://{Id.ToString(false)}@{_paddedHost}:{_paddedPort}",
+                "p" => $"enode://{Id.ToString(false)}@{_paddedHost}:{_paddedPort}|{Id.Address}",
+                _ => $"enode://{Id.ToString(false)}@{_paddedHost}:{_paddedPort}"
             };
         }
 

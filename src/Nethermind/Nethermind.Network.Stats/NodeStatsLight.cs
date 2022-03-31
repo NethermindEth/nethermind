@@ -182,6 +182,20 @@ namespace Nethermind.Stats
             });
         }
 
+        public string GetPaddedAverageTransferSpeed(TransferSpeedType transferSpeedType, int padding = 5)
+        {
+            string paddedEmpty = "0".PadLeft(padding, ' ');
+            return (transferSpeedType switch
+            {
+                TransferSpeedType.Latency => _averageLatency?.ToString("0").PadLeft(padding, ' ') ?? paddedEmpty,
+                TransferSpeedType.NodeData => _averageNodesTransferSpeed?.ToString("0").PadLeft(padding, ' ') ?? paddedEmpty,
+                TransferSpeedType.Headers => _averageHeadersTransferSpeed?.ToString("0").PadLeft(padding, ' ') ?? paddedEmpty,
+                TransferSpeedType.Bodies => _averageBodiesTransferSpeed?.ToString("0").PadLeft(padding, ' ') ?? paddedEmpty,
+                TransferSpeedType.Receipts => _averageReceiptsTransferSpeed?.ToString("0").PadLeft(padding, ' ') ?? paddedEmpty,
+                _ => throw new ArgumentOutOfRangeException()
+            });
+        }
+
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()
         {
             if (IsDelayedDueToDisconnect())
