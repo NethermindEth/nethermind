@@ -75,7 +75,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         protected override long GetCurrentNumber(PeerInfo bestPeer)
         {
             long currentNumber = _beaconPivot.BeaconPivotExists()
-                ? Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1))
+                ? Math.Max(0, Math.Min(_blockTree.BestSuggestedBody.Number, bestPeer.HeadNumber - 1))
                 : base.GetCurrentNumber(bestPeer);
             if (_logger.IsInfo) _logger.Info($"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody.Number}");
             return currentNumber;
@@ -214,7 +214,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         }
                     }
 
-                    bool blockExists = _blockTree.FindBlock(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) == null;
+                    bool blockExists = _blockTree.FindBlock(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null;
+                    bool headerExists = _blockTree.FindHeader(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null;
                     bool isOnMainChain = _blockTree.IsMainChain(currentBlock.Header);
                     BlockTreeSuggestOptions suggestOptions = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
                     if (_logger.IsInfo) _logger.Info($"Current block {currentBlock}, BlockExists {blockExists} IsOnMainChain: {isOnMainChain} BeaconPivot: {_beaconPivot.PivotNumber}");
@@ -224,7 +225,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         continue;
                     }
 
-                    if (blockExists == false)
+                    if (blockExists == false && headerExists)
                         _blockTree.Insert(currentBlock);
                     if (isOnMainChain && blockExists)
                         suggestOptions |= BlockTreeSuggestOptions.TryProcessKnownBlock;
