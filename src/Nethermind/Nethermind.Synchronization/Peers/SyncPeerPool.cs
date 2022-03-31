@@ -622,11 +622,11 @@ namespace Nethermind.Synchronization.Peers
                 if (header.UnclesHash == Keccak.OfAnEmptySequenceRlp && header.TxRoot == Keccak.EmptyTreeHash)
                 {
                     Block block = new(header, new BlockBody());
-                    _blockTree.SuggestBlock(block, false);
+                    _blockTree.SuggestBlock(block);
 
                     foreach (PeerInfo peer in AllPeers)
                     {
-                        peer.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.Low);
+                        peer.SyncPeer.NotifyOfNewBlock(block, SendBlockPriority.High);
                     }
                 }
             }
