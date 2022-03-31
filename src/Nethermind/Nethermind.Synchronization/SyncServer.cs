@@ -325,7 +325,7 @@ namespace Nethermind.Synchronization
                     /* do not add as this is a hint only */
                 }
 
-                if (!_blockTree.IsKnownBlock(number, hash))
+                // if (!_blockTree.IsKnownBlock(number, hash))
                 {
                     _pool.RefreshTotalDifficulty(syncPeer, hash);
                 }
