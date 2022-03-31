@@ -101,6 +101,6 @@ namespace Nethermind.Synchronization.Peers
 
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
         
-        event EventHandler<PeerRefreshedEventArgs> PeerRefreshed;
+        bool PassBlockHint { get; set; }
     }
 }

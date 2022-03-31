@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,16 +19,17 @@ using System;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 
-namespace Nethermind.Synchronization.Peers;
-
-public class PeerBlockNotificationEventArgs : EventArgs
+namespace Nethermind.Synchronization.Peers
 {
-    public ISyncPeer SyncPeer { get; }
-    public Block Block { get; }
-
-    public PeerBlockNotificationEventArgs(ISyncPeer syncPeer, Block block)
+    public class PeerBlockNotificationEventArgs : EventArgs
     {
-        SyncPeer = syncPeer;
-        Block = block;
+        public ISyncPeer SyncPeer { get; }
+        public Block Block { get; }
+
+        public PeerBlockNotificationEventArgs(ISyncPeer syncPeer, Block block)
+        {
+            SyncPeer = syncPeer;
+            Block = block;
+        }
     }
 }
