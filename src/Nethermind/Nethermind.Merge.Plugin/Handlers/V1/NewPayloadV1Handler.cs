@@ -58,7 +58,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockCacheService _blockCacheService;
         private readonly ISyncProgressResolver _syncProgressResolver;
-        private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
@@ -75,7 +74,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBeaconPivot beaconPivot,
             IBlockCacheService blockCacheService,
             ISyncProgressResolver syncProgressResolver,
-            IBlockProcessingQueue blockProcessingQueue,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -88,7 +86,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
             _syncProgressResolver = syncProgressResolver;
-            _blockProcessingQueue = blockProcessingQueue;
             _logger = logManager.GetClassLogger();
         }
 
@@ -113,63 +110,23 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return NewPayloadV1Result.InvalidBlockHash;
             }
-            
-            if (!_beaconSyncStrategy.IsBeaconSyncFinished())
+
+            if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
             {
-                if (_blockCacheService.BlockCache.ContainsKey(block.Hash))
-                {
-                    return NewPayloadV1Result.Syncing;
-                }
-
-                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.SkipUpdateBestPointers |
-                                                       BlockTreeInsertOptions.TotalDifficultyNotNeeded |
-                                                       BlockTreeInsertOptions.NotOnMainChain;
-
-                if (!_blockTree.IsKnownBlock(block.Number, block.Hash))
-                {
-                    if (block.ParentHash == _blockCacheService.ProcessDestination)
-                    {
-                        _blockTree.Insert(block, true, insertOptions);
-                    }
-                    else
-                    {
-                        Block? current = block;
-                        Stack<Block> stack = new();
-                        while (current != null)
-                        {
-                            stack.Push(current);
-                            if (current.Hash == _beaconPivot.PivotHash)
-                            {
-                                break;
-                            }
-
-                            _blockCacheService.BlockCache.TryGetValue(current.ParentHash, out Block? parentBlock);
-                            current = parentBlock;
-                        }
-
-                        if (current == null)
-                        {
-                            _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
-                            return NewPayloadV1Result.Accepted;
-                        }
-
-                        while (stack.TryPop(out Block? child))
-                        {
-                            _blockTree.Insert(child, true, insertOptions);
-                        }
-                    }
-                    
-                    _blockCacheService.ProcessDestination = block.Hash;
-                    if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
-                    {
-                        return NewPayloadV1Result.Syncing;
-                    }
-                }
+                bool inserted = TryInsertDanglingBlock(block);
+                return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
             }
-
+            
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader == null)
             {
+                // possible that headers sync finished before this was called, so blocks in cache weren't inserted
+                if (!_beaconSyncStrategy.IsBeaconSyncFinished())
+                {
+                    bool inserted = TryInsertDanglingBlock(block);
+                    return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
+                }
+
                 _logger.Info($"Insert block into cache without parent {block}");
                 _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
                 return NewPayloadV1Result.Accepted;
@@ -177,11 +134,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (!_beaconSyncStrategy.IsBeaconSyncFinished())
             {
-                if (_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
-                {
-                    parentHeader.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
-                }
-                
                 if (parentHeader.TotalDifficulty == 0)
                 {
                     parentHeader.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
@@ -190,53 +142,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 // TODO: beaconsync add TDD and validation checks
                 block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
                 block.Header.IsPostMerge = true;
-                if (_beaconSyncStrategy.FastSyncEnabled)
+                bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash ?? parentHeader.CalculateHash());
+                if (!parentProcessed)
                 {
-                    bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash);
-                    if (!parentProcessed)
+                    if (_beaconSyncStrategy.FastSyncEnabled)
                     {
-                        long state = _syncProgressResolver.FindBestFullState(); // ToDo Sarah: I think we need to findBestFullState only one time because isFastSyncTransition condition
-                        if (state > 0)
-                        {
-                            bool shouldProcess = block.Number > state;
-                            if (shouldProcess)
-                            {
-                                Stack<Block> stack = new();
-                                Block? current = block;
-                                // re-insert block as header is encoded with TD 0
-                                _blockTree.Insert(block); //ToDo Sarah: can't we do operation similar to SetTotalDifficulty in blockTree instead of reinserting blocks?
-                                BlockHeader parent = parentHeader;
-
-                                while (current.Number > state)
-                                {
-                                    if (_blockTree.WasProcessed(current.Number, current.Hash))
-                                    {
-                                        break;
-                                    }
-                                    
-                                    stack.Push(current);
-                                    current = _blockTree.FindBlock(parent.Hash,
-                                        BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                                    parent = _blockTree.FindHeader(current.ParentHash);
-                                    current.Header.TotalDifficulty = parent.TotalDifficulty + current.Difficulty;
-                                    // re-insert block as header is originally encoded with TD 0
-                                    _blockTree.Insert(current);
-                                }
-
-                                while (stack.TryPop(out Block child))
-                                {
-                                    _blockTree.SuggestBlock(child);
-                                }
-                            }
-                        }
-
-                        return NewPayloadV1Result.Syncing;
+                        TryProcessChainFromStateSyncBlock(parentHeader, block);
                     }
-                }
-                else
-                {
-                    bool wasProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.Hash ?? parentHeader.CalculateHash());
-                    if (!wasProcessed)
+                    else
                     {
                         bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
                         if (parentPivotProcessed)
@@ -251,11 +164,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                             _logger.Info($"Inserted {block}");
                             _blockTree.Insert(block, true);
                         }
-                        
-                        return NewPayloadV1Result.Syncing;
-                    }
+                    } 
+                    return NewPayloadV1Result.Syncing;
                 }
-                
+
                 _blockCacheService.BlockCache.Clear();
             }
 
@@ -340,19 +252,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private bool ValidateAndProcess(Block block, BlockHeader parent, out Block? processedBlock)
         {
-            block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
-            processedBlock = null;
-            block.Header.IsPostMerge = true;
-            if (_blockValidator.ValidateSuggestedBlock(block) == false)
-            {
-                if (_logger.IsWarn)
-                {
-                    _logger.Warn(
-                        $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
-                }
-
-                return false;
-            }
+            bool valid = ValidateBlock(block, parent, out processedBlock);
+            if (!valid) return false;
             
             _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
@@ -368,6 +269,24 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             return true;
+        }
+
+        private bool ValidateBlock(Block block, BlockHeader parent, out Block? processedBlock)
+        {
+            block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
+            processedBlock = null;
+            block.Header.IsPostMerge = true;
+            bool isValid = _blockValidator.ValidateSuggestedBlock(block);
+            if (!isValid)
+            {
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn(
+                        $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
+                }
+            }
+
+            return isValid;
         }
 
         private ProcessingOptions GetProcessingOptions()
@@ -430,6 +349,88 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             return false;
+        }
+
+        private bool TryInsertDanglingBlock(Block block)
+        {
+            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.SkipUpdateBestPointers |
+                                                   BlockTreeInsertOptions.TotalDifficultyNotNeeded |
+                                                   BlockTreeInsertOptions.NotOnMainChain;
+
+            if (!_blockTree.IsKnownBlock(block.Number, block.Hash ?? block.CalculateHash()))
+            {
+                // last block inserted is parent of current block, part of the same chain
+                if (block.ParentHash == _blockCacheService.ProcessDestination)
+                {
+                    _blockTree.Insert(block, true, insertOptions);
+                }
+                else
+                {
+                    Block? current = block;
+                    Stack<Block> stack = new();
+                    while (current != null)
+                    {
+                        stack.Push(current);
+                        _blockCacheService.BlockCache.TryGetValue(current.ParentHash, out Block? parentBlock);
+                        current = parentBlock;
+                        if (current.Hash == _beaconPivot.PivotHash ||
+                            _blockTree.IsKnownBlock(current.Number, current.Hash))
+                        {
+                            break;
+                        }
+                    }
+
+                    if (current == null)
+                    {
+                        // block not part of beacon pivot chain, save in cache
+                        _blockCacheService.BlockCache.TryAdd(block.Hash, block);
+                        return false;
+                    }
+
+                    while (stack.TryPop(out Block? child))
+                    {
+                        _blockTree.Insert(child, true, insertOptions);
+                    }
+                }
+
+                _blockCacheService.ProcessDestination = block.Hash;
+            }
+
+            return true;
+        }
+
+        private void TryProcessChainFromStateSyncBlock(BlockHeader parentHeader, Block block)
+        {
+            long state = _state == 0 ? _syncProgressResolver.FindBestFullState() : _state; // ToDo Sarah: I think we need to findBestFullState only one time because isFastSyncTransition condition
+            if (state > 0)
+            {
+                bool shouldProcess = block.Number > state;
+                if (shouldProcess)
+                {
+                    Stack<Block> stack = new();
+                    Block? current = block;
+                    BlockHeader parent = parentHeader;
+
+                    while (current.Number > state)
+                    {
+                        if (_blockTree.WasProcessed(current.Number, current.Hash))
+                        {
+                            break;
+                        }
+                                
+                        stack.Push(current);
+                        current = _blockTree.FindBlock(parent.Hash,
+                            BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                        parent = _blockTree.FindHeader(current.ParentHash);
+                        current.Header.TotalDifficulty = parent.TotalDifficulty + current.Difficulty;
+                    }
+
+                    while (stack.TryPop(out Block child))
+                    {
+                        _blockTree.SuggestBlock(child);
+                    }
+                }
+            }
         }
 
         [Flags]

@@ -85,14 +85,14 @@ public class BeaconHeadersSyncTests
             PivotNumber = "1000",
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
-        };
+         };
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new (Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, new MergeConfig() {Enabled = true},  LimboLogs.Instance);
         await feed.PrepareRequest();
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1001).TestObject);
         HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
-        feed.CurrentState.Should().Be(SyncFeedState.Finished);
+        feed.CurrentState.Should().Be(SyncFeedState.Dormant);
         measuredProgress.HasEnded.Should().BeTrue();
     }
 

@@ -157,7 +157,6 @@ namespace Nethermind.Merge.Plugin
                         _beaconPivot,
                         _blockCacheService,
                         _api.SyncProgressResolver,
-                        _api.BlockProcessingQueue,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,

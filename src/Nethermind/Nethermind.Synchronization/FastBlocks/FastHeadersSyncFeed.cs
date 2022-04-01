@@ -75,12 +75,11 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
         
         protected virtual BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedHeader;
-        protected virtual long HeadersDestinationBlockNumber => 0;
 
         protected virtual MeasuredProgress HeadersSyncProgressReport => _syncReport.FastBlocksHeaders;
-        
-        private bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 
-                                             (HeadersDestinationBlockNumber == 0 ? 1 : HeadersDestinationBlockNumber);
+
+        protected virtual long HeadersDestinationNumber => 0;
+        protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 1;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader != null;
 
         private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response?.Length ?? 0);
@@ -138,18 +137,15 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Headers;
-
+        
         private bool ShouldBuildANewBatch()
         {
-            bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
+            bool destinationHeaderRequested = _lowestRequestedHeaderNumber == HeadersDestinationNumber;
 
-            bool destinationHeaderRequested = _lowestRequestedHeaderNumber == HeadersDestinationBlockNumber;
-            
             bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
             bool noBatchesLeft = AllHeadersDownloaded
                                  || destinationHeaderRequested
-                                 || genesisHeaderRequested
                                  || MemoryInQueue >= MemoryAllowance.FastBlocksMemory
                                  || isImmediateSync && AnyHeaderDownloaded;
 
@@ -157,8 +153,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (AllHeadersDownloaded || isImmediateSync && AnyHeaderDownloaded)
                 {
-                    Finish();
-                    PostFinishCleanUp();
+                    FinishAndCleanUp();
                 }
 
                 return false;
@@ -167,7 +162,13 @@ namespace Nethermind.Synchronization.FastBlocks
             return true;
         }
 
-        protected virtual void PostFinishCleanUp()
+        protected virtual void FinishAndCleanUp()
+        {
+            Finish();
+            PostFinishCleanUp();
+        }
+        
+        protected void PostFinishCleanUp()
         {
             // if block 0 is requested, it not included in the sync report
             long lowestHeaderNumberInclusive = _lowestRequestedHeaderNumber == 0 ? 0 : 1;
@@ -221,8 +222,8 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             HeadersSyncBatch batch = new();
             batch.MinNumber = _lowestRequestedHeaderNumber - 1;
-            batch.StartNumber = Math.Max(HeadersDestinationBlockNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
-            batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationBlockNumber, _headersRequestSize);
+            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
+            batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
             _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }
