@@ -77,6 +77,8 @@ namespace Nethermind.Specs.ChainSpecStyle
         public IDictionary<long, Address> RandomnessContractAddress { get; set; }
         
         public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; }
+        
+        public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; }
 
         public enum ValidatorType
         {
