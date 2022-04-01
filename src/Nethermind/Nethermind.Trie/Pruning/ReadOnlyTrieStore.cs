@@ -40,6 +40,8 @@ namespace Nethermind.Trie.Pruning
 
         public byte[] LoadRlp(Keccak hash) => _trieStore.LoadRlp(hash, _readOnlyStore);
 
+        public bool IsPersisted(Keccak keccak) => _trieStore.IsPersisted(keccak);
+
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
         {
             return new ReadOnlyTrieStore(_trieStore, keyValueStore);

@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -24,6 +25,8 @@ namespace Nethermind.Trie.Pruning
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo);
         
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root);
+
+        bool IsPersisted(Keccak keccak);
 
         void HackPersistOnShutdown();
         
