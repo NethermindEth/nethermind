@@ -31,18 +31,25 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = accounts.Last().AddressHash;
 
-            (Keccak rootHash, bool moreChildrenToRight) = FillBoundaryTree(tree, expectedRootHash, startingHash, lastHash, proofs);
+            (Keccak rootHash, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
 
-            foreach (var account in accounts)
+            try
             {
-                if(account.Account.HasStorage)
+                foreach (var account in accounts)
                 {
-                    accountsWithStorage.Add(account);
-                }
+                    if (account.Account.HasStorage)
+                    {
+                        accountsWithStorage.Add(account);
+                    }
 
-                tree.Set(account.AddressHash, account.Account);
+                    tree.Set(account.AddressHash, account.Account);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw;
             }
 
             tree.UpdateRootHash();
@@ -79,7 +86,7 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = slots.Last().Path;
 
-            (Keccak rootHash, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
+            (Keccak rootHash, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash:expectedRootHash, proofs);
 
             // TODO: try-catch not needed, just for debug
             try
@@ -96,11 +103,11 @@ namespace Nethermind.State.Snap
 
             tree.UpdateRootHash();
 
-            if (tree.RootHash != rootHash)
-            {
-                // TODO: log incorrect range
-                return (Keccak.EmptyTreeHash, true); ;
-            }
+            //if (tree.RootHash != rootHash)
+            //{
+            //    // TODO: log incorrect range
+            //    return (Keccak.EmptyTreeHash, true); ;
+            //}
 
             try
             {
