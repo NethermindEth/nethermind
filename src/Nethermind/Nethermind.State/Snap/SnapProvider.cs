@@ -64,7 +64,6 @@ namespace Nethermind.State.Snap
             }
             else
             {
-                _store.Prune();
                 _logger.Warn($"SNAP - AddAccountRange failed, {blockNumber}:{expectedRootHash}, startingHash:{startingHash}");
             }
 
@@ -73,10 +72,12 @@ namespace Nethermind.State.Snap
 
         public bool AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
         {
-            StorageTree tree = new(_store, _logManager);
-            (Keccak? calculatedRootHash, bool moreChildrenToRight) =  SnapProviderHelper.AddStorageRange(tree, blockNumber, expectedRootHash, startingHash, slots, proofs);
+            // TODO: use expectedRootHash (StorageRootHash from Account), it can change when PIVOT changes
 
-            bool success = expectedRootHash == calculatedRootHash;
+            StorageTree tree = new(_store, _logManager);
+            (Keccak? calculatedRootHash, bool moreChildrenToRight) =  SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, proofs:proofs);
+
+            bool success = calculatedRootHash != Keccak.EmptyTreeHash;
 
             if (success)
             {
@@ -93,7 +94,6 @@ namespace Nethermind.State.Snap
             }
             else
             {
-                _store.Prune();
                 _logger.Warn($"SNAP - AddStorageRange failed, {blockNumber}:{expectedRootHash}, startingHash:{startingHash}");
 
                 if (startingHash > Keccak.Zero)

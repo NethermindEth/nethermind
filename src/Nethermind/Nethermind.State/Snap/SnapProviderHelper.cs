@@ -31,109 +31,101 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = accounts.Last().AddressHash;
 
-            (bool success, bool moreChildrenToRight) = FillBoundaryTree(tree, expectedRootHash, startingHash, lastHash, proofs);
+            (Keccak rootHash, bool moreChildrenToRight) = FillBoundaryTree(tree, expectedRootHash, startingHash, lastHash, proofs);
 
-            IList<PathWithAccount> accountsWithStorage = null;
-            if (success)
+            IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
+
+            foreach (var account in accounts)
             {
-                accountsWithStorage = new List<PathWithAccount>();
-
-                foreach (var account in accounts)
+                if(account.Account.HasStorage)
                 {
-                    if(account.Account.HasStorage)
-                    {
-                        accountsWithStorage.Add(account);
-                    }
-
-                    tree.Set(account.AddressHash, account.Account);
+                    accountsWithStorage.Add(account);
                 }
 
-                tree.UpdateRootHash();
+                tree.Set(account.AddressHash, account.Account);
+            }
 
-                if (tree.RootHash != expectedRootHash)
+            tree.UpdateRootHash();
+
+            if (tree.RootHash != expectedRootHash)
+            {
+                // TODO: log incorrect range
+                return (Keccak.EmptyTreeHash, true, null);
+            }
+
+            try
+            {
+                Interlocked.Exchange(ref _accCommitInProgress, 1);
+
+                lock (_syncCommit)
                 {
-                    // TODO: log incorrect range
-                    return (Keccak.EmptyTreeHash, true, null);
+                    tree.Commit(blockNumber);
                 }
 
-                try
-                {
-                    Interlocked.Exchange(ref _accCommitInProgress, 1);
+                Interlocked.Exchange(ref _accCommitInProgress, 0);
+            }
+            catch (Exception ex)
+            {
 
-                    lock (_syncCommit)
-                    {
-                        tree.Commit(blockNumber);
-                    }
-
-                    Interlocked.Exchange(ref _accCommitInProgress, 0);
-                }
-                catch (Exception ex)
-                {
-
-                    throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
-                }
+                throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
             }
 
             return (tree.RootHash, moreChildrenToRight, accountsWithStorage);
         }
 
-        public static (Keccak? rootHash, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
+        public static (Keccak? rootHash, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash = null, byte[][] proofs = null)
         {
             // TODO: Check the slots boundaries and sorting
 
             Keccak lastHash = slots.Last().Path;
 
-            string expRootHash = expectedRootHash.ToString();
+            (Keccak rootHash, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
-            (bool success, bool moreChildrenToRight) = FillBoundaryTree(tree, expectedRootHash, startingHash, lastHash, proofs);
-
-            if (success)
+            // TODO: try-catch not needed, just for debug
+            try
             {
-                try
+                foreach (var slot in slots)
                 {
-                    foreach (var slot in slots)
-                    {
-                        tree.Set(slot.Path, slot.SlotRlpValue, false);
-                    }
+                    tree.Set(slot.Path, slot.SlotRlpValue, false);
                 }
-                catch(Exception ex)
+            }
+            catch(Exception ex)
+            {
+                throw;
+            }
+
+            tree.UpdateRootHash();
+
+            if (tree.RootHash != rootHash)
+            {
+                // TODO: log incorrect range
+                return (Keccak.EmptyTreeHash, true); ;
+            }
+
+            try
+            {
+                Interlocked.Exchange(ref _slotCommitInProgress, 1);
+
+                lock (_syncCommit)
                 {
-                    throw;
+                    tree.Commit(blockNumber);
                 }
 
-                tree.UpdateRootHash();
-
-                if (tree.RootHash != expectedRootHash)
-                {
-                    // TODO: log incorrect range
-                    return (Keccak.EmptyTreeHash, true); ;
-                }
-
-                try
-                {
-                    Interlocked.Exchange(ref _slotCommitInProgress, 1);
-
-                    lock (_syncCommit)
-                    {
-                        tree.Commit(blockNumber);
-                    }
-
-                    Interlocked.Exchange(ref _slotCommitInProgress, 0);
-                }
-                catch (Exception ex)
-                {
-                    throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
-                }
+                Interlocked.Exchange(ref _slotCommitInProgress, 0);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
             }
 
             return (tree.RootHash, moreChildrenToRight);
         }
 
-        private static (bool success, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak expectedRootHash, Keccak startingHash, Keccak endHash, byte[][] proofs = null)
+        private static (Keccak expectedRootHash, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak startingHash, Keccak endHash, Keccak expectedRootHash = null, byte[][] proofs = null)
         {
             if (proofs is null || proofs.Length == 0)
             {
-                return (true, false);
+                return (expectedRootHash, false);
             }
 
             if (tree == null)
@@ -143,7 +135,9 @@ namespace Nethermind.State.Snap
 
             startingHash ??= Keccak.Zero;
 
-            (TrieNode root, Dictionary<Keccak, TrieNode> dict) = CreateProofDict(proofs, tree.TrieStore);
+            (TrieNode root, Dictionary<Keccak, TrieNode> dict) = CreateProofDict(proofs, tree.TrieStore, expectedRootHash);
+
+            Keccak rootHash = new Keccak(root.Keccak.Bytes);
 
             Dictionary<Keccak, TrieNode> processed = new();
             Span<byte> leftBoundary = stackalloc byte[64];
@@ -152,17 +146,6 @@ namespace Nethermind.State.Snap
             Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
 
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
-
-            //if(dict.TryGetValue(expectedRootHash, out TrieNode root))
-            //{
-            //    tree.RootRef = root;
-
-            //    proofNodesToProcess.Push((null, root, -1, new List<byte>()));
-            //}
-            //else
-            //{
-            //    return (false, true);
-            //}
 
             tree.RootRef = root;
             proofNodesToProcess.Push((null, root, -1, new List<byte>()));
@@ -245,10 +228,10 @@ namespace Nethermind.State.Snap
                 }
             }
 
-            return (true, moreChildrenToRight);
+            return (rootHash, moreChildrenToRight);
         }
 
-        private static (TrieNode root, Dictionary<Keccak, TrieNode> dict) CreateProofDict(byte[][] proofs, ITrieStore store)
+        private static (TrieNode root, Dictionary<Keccak, TrieNode> dict) CreateProofDict(byte[][] proofs, ITrieStore store, Keccak expectedRootHash = null)
         {
             TrieNode root = null;
             Dictionary<Keccak, TrieNode> dict = new();
@@ -263,7 +246,7 @@ namespace Nethermind.State.Snap
 
                 dict[node.Keccak] = node;
 
-                if (i == 0)
+                if (i == 0 || expectedRootHash == node.Keccak)
                 {
                     root = node;
                 }
