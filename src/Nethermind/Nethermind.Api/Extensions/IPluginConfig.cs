@@ -15,18 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Collections.Generic;
-using Nethermind.Logging;
+using Nethermind.Config;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.Api.Extensions;
+
+public interface IPluginConfig : IConfig
 {
-    public interface IPluginLoader
-    {
-        IEnumerable<Type> PluginTypes { get; }
-
-        void Load(ILogManager logManager);
-
-        public void OrderPlugins(IPluginConfig pluginConfig);
-    }
+    [ConfigItem(Description = "Order of plugin initialization", DefaultValue = "[Clique, Aura, Ethash, Merge, MEV, HealthChecks, Hive]")]
+    string[] PluginOrder { get; set; }
 }
