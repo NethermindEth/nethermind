@@ -31,7 +31,7 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = accounts.Last().AddressHash;
 
-            (Keccak rootHash, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
+            (Keccak rootHash, Dictionary<Keccak, TrieNode> boundaryDict, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
 
@@ -64,6 +64,8 @@ namespace Nethermind.State.Snap
             {
                 Interlocked.Exchange(ref _accCommitInProgress, 1);
 
+                StitchBoundaries(boundaryDict, tree.TrieStore);
+
                 lock (_syncCommit)
                 {
                     tree.Commit(blockNumber);
@@ -86,7 +88,7 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = slots.Last().Path;
 
-            (Keccak rootHash, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash:expectedRootHash, proofs);
+            (Keccak rootHash, Dictionary<Keccak, TrieNode> boundaryDict, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash:expectedRootHash, proofs);
 
             // TODO: try-catch not needed, just for debug
             try
@@ -113,6 +115,8 @@ namespace Nethermind.State.Snap
             {
                 Interlocked.Exchange(ref _slotCommitInProgress, 1);
 
+                StitchBoundaries(boundaryDict, tree.TrieStore);
+
                 lock (_syncCommit)
                 {
                     tree.Commit(blockNumber);
@@ -128,11 +132,11 @@ namespace Nethermind.State.Snap
             return (tree.RootHash, moreChildrenToRight);
         }
 
-        private static (Keccak expectedRootHash, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak startingHash, Keccak endHash, Keccak expectedRootHash = null, byte[][] proofs = null)
+        private static (Keccak expectedRootHash, Dictionary<Keccak, TrieNode> boundaryDict, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak startingHash, Keccak endHash, Keccak expectedRootHash = null, byte[][] proofs = null)
         {
             if (proofs is null || proofs.Length == 0)
             {
-                return (expectedRootHash, false);
+                return (expectedRootHash, null, false);
             }
 
             if (tree == null)
@@ -235,7 +239,7 @@ namespace Nethermind.State.Snap
                 }
             }
 
-            return (rootHash, moreChildrenToRight);
+            return (rootHash, dict, moreChildrenToRight);
         }
 
         private static (TrieNode root, Dictionary<Keccak, TrieNode> dict) CreateProofDict(byte[][] proofs, ITrieStore store, Keccak expectedRootHash = null)
@@ -260,6 +264,60 @@ namespace Nethermind.State.Snap
             }
 
             return (root, dict);
+        }
+
+        private static void StitchBoundaries(Dictionary<Keccak, TrieNode> boundaryDict, ITrieStore store)
+        {
+            if(boundaryDict == null || boundaryDict.Count == 0)
+            {
+                return;
+            }
+
+            foreach (var node in boundaryDict.Values)
+            {
+                if(!node.IsPersisted)
+                {
+                    if(node.IsExtension)
+                    {
+                        if(DoChildExist(node, 1, store))
+                        {
+                            node.IsBoundaryProofNode = false;
+                        }
+                    }
+
+                    if (node.IsBranch)
+                    {
+                        bool isBoundaryProofNode = false;
+                        for (int i = 0; i <= 15; i++)
+                        {
+                            if (!DoChildExist(node, i, store))
+                            {
+                                isBoundaryProofNode = true;
+                                break;
+                            }
+                        }
+
+                        node.IsBoundaryProofNode = isBoundaryProofNode;
+                    }
+                }
+            }
+        }
+
+        private static bool DoChildExist(TrieNode node, int childIndex, ITrieStore store)
+        {
+            var data = node.GetData(childIndex) as TrieNode;
+            if (data != null)
+            {
+                return true;
+            }
+
+            Keccak childKeccak = node.GetChildHash(childIndex);
+            if(childKeccak is null)
+            {
+                return true;
+            }
+
+            return store.IsPersisted(childKeccak);
         }
     }
 }
