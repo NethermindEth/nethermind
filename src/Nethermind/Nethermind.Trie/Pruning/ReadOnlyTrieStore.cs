@@ -56,9 +56,6 @@ namespace Nethermind.Trie.Pruning
             add { }
             remove { }
         }
-
-        public void Prune() { }
-
         public void Dispose() { }
     }
 }
