@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,9 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections;
-using System.Reflection.PortableExecutable;
-using System.Threading;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
@@ -27,22 +24,30 @@ namespace Nethermind.Evm.CodeAnalysis
         private const int SampledCodeLength = 10_001;
         private const int PercentageOfPush1 = 40;
         private const int NumberOfSamples = 100;
-        private static Random _rand = new();
         
-        public byte[] MachineCode { get; set; }
-        public IPrecompile? Precompile { get; set; }
+        public byte[] MachineCode { get; }
+        public IPrecompile? Precompile => _data as IPrecompile;
+
+        /// <summary>
+        /// Raw additional data stored for this.
+        /// </summary>
+        public object? Data => _data;
+
+        private readonly object? _data;
+
         private ICodeInfoAnalyzer? _analyzer;
 
-        public CodeInfo(byte[] code)
+        public CodeInfo(byte[] code, object? data = null)
         {
             MachineCode = code;
+            _data = data;
         }
 
-        public bool IsPrecompile => Precompile != null;
+        public bool IsPrecompile => _data is IPrecompile;
         
         public CodeInfo(IPrecompile precompile)
         {
-            Precompile = precompile;
+            _data = precompile;
             MachineCode = Array.Empty<byte>();
         }
 
@@ -69,7 +74,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 // we check (by sampling randomly) how many PUSH1 instructions are in the code
                 for (int i = 0; i < NumberOfSamples; i++)
                 {
-                    byte instruction = MachineCode[_rand.Next(0, MachineCode.Length)];
+                    byte instruction = MachineCode[Random.Shared.Next(0, MachineCode.Length)];
 
                     // PUSH1
                     if (instruction == 0x60)

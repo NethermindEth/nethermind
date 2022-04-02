@@ -12,9 +12,17 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="DynaMD" Version="1.0.9.1" />
+    <PackageReference Include="Iced" Version="1.17.0" />
+    <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="2.0.226801" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\Math.Gmp.Native\MathGmp.Native\MathGmp.Native.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="IL\" />
   </ItemGroup>
 </Project>
