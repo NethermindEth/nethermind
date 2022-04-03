@@ -118,11 +118,11 @@ namespace Nethermind.AccountAbstraction.Source
                 {
                     //if (_logger.IsDebug) commented out for testing
                     {
-                        _logger.Debug($"UserOperation {userOperation.Hash} resimulation unsuccessful: {result.Result.Error}");
+                        _logger.Debug($"UserOperation {userOperation.RequestId!} resimulation unsuccessful: {result.Result.Error}");
                         // TODO: Remove logging, just for testing
-                        _logger.Info($"UserOperation {userOperation.Hash} resimulation unsuccessful: {result.Result.Error}");
+                        _logger.Info($"UserOperation {userOperation.RequestId!} resimulation unsuccessful: {result.Result.Error}");
 
-                        bool removeResult = _userOperationPools[entryPoint].RemoveUserOperation(userOperation.Hash);
+                        bool removeResult = _userOperationPools[entryPoint].RemoveUserOperation(userOperation.RequestId!);
                         if (_logger.IsDebug)
                         {
                             _logger.Debug(
@@ -191,9 +191,15 @@ namespace Nethermind.AccountAbstraction.Source
                 
                 BlockchainBridge.CallOutput callOutput = _userOperationSimulators[entryPoint].EstimateGas(parent, userOperationTransaction, CancellationToken.None);
                 FailedOp? failedOp = txBuilder.DecodeEntryPointOutputError(callOutput.OutputData);
-                if (failedOp is not null || callOutput.Error != null)
+                if (failedOp is not null)
                 {
-                    // TODO punish paymaster
+                    UserOperation opToRemove = userOperationsToInclude[(int)failedOp.Value._opIndex];
+                    _userOperationPools[entryPoint].RemoveUserOperation(opToRemove.RequestId!);
+                    continue;
+                }
+                if (callOutput.Error != null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"AA Simulation error for entryPoint {entryPoint}: {callOutput.Error}");
                     continue;
                 }
                 

@@ -1816,6 +1816,12 @@ namespace Nethermind.Evm
                         
                         byte[] value = _storage.Get(storageCell);
                         stack.PushBytes(value);
+                        
+                        if (_txTracer.IsTracingOpLevelStorage)
+                        {
+                            _txTracer.LoadOperationStorage(storageCell.Address, storageIndex, value);
+                        }
+                        
                         break;
                     }
                     case Instruction.SSTORE:
