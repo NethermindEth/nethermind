@@ -1097,7 +1097,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             // New payload unknown parent hash
             BlockRequestResult blockRequestResult2A = CreateBlockRequest(blockRequestResult1, TestItem.AddressA);
-            blockRequestResult2A.ParentHash.Bytes[0] = (byte)(255 - blockRequestResult2A.ParentHash.Bytes[0]);
+            blockRequestResult2A.ParentHash = TestItem.KeccakB;
             TryCalculateHash(blockRequestResult2A, out Keccak? hash);
             blockRequestResult2A.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> newPayloadResult2A = await rpc.engine_newPayloadV1(blockRequestResult2A);
