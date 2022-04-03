@@ -196,7 +196,15 @@ namespace Nethermind.AccountAbstraction.Source
             {
                 foreach (UserOperation op in _removedUserOperations[previousBlock.Number])
                 {
-                    AddUserOperation(op);
+                    ResultWrapper<Keccak> result = AddUserOperation(op);
+                    if (result.Result == Result.Success)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"UserOperation {op.RequestId!} added to pool after reorg");
+                    }
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info($"UserOperation {op.RequestId!} failed to be added to pool after reorg");
+                    }
                 }
             }
         }
@@ -288,7 +296,7 @@ namespace Nethermind.AccountAbstraction.Source
                     Keccak requestId = log.Topics[1];
                     if (_userOperationSortedPool.TryGetValue(requestId, out UserOperation op))
                     {
-                        if (_logger.IsDebug) _logger.Debug($"UserOperation {op.RequestId!} removed from pool after being included by miner");
+                        if (_logger.IsInfo) _logger.Info($"UserOperation {op.RequestId!} removed from pool after being included by miner");
                         Metrics.UserOperationsIncluded++;
                         if (op.Paymaster != Address.Zero)
                         {

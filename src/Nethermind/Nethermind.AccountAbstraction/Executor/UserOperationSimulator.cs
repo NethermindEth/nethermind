@@ -122,34 +122,31 @@ namespace Nethermind.AccountAbstraction.Executor
             Transaction simulateValidationTransaction =
                 BuildSimulateValidationTransaction(userOperation, parent, currentSpec);
             
-            (
-                    bool validationSuccess, 
-                    UserOperationAccessList validationAccessList, 
-                    IDictionary<Address, Keccak> addressesToCodeHashes, 
-                    string? error
-            ) = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
+            UserOperationSimulationResult simulationResult = SimulateValidation(simulateValidationTransaction, userOperation, parent, transactionProcessor);
 
-            if (!validationSuccess)
-                return ResultWrapper<Keccak>.Fail(error ?? "unknown simulation failure");
+            if (!simulationResult.Success)
+                return ResultWrapper<Keccak>.Fail(simulationResult.Error ?? "unknown simulation failure");
 
             if (userOperation.AlreadySimulated)
             {
                 // if previously simulated we must make sure it doesn't access any more than it did on the first round
-                if (!userOperation.AccessList.AccessListContains(validationAccessList.Data))
+                if (!userOperation.AccessList.AccessListContains(simulationResult.AccessList.Data))
                     return ResultWrapper<Keccak>.Fail("access list exceeded");
             }
             else
             {
-                userOperation.AccessList = validationAccessList;
-                userOperation.AddressesToCodeHashes = addressesToCodeHashes;
+                userOperation.AccessList = simulationResult.AccessList;
+                userOperation.AddressesToCodeHashes = simulationResult.AddressesToCodeHashes;
                 userOperation.AlreadySimulated = true;
             }
 
             return ResultWrapper<Keccak>.Success(userOperation.RequestId!);
         }
 
-        private (bool success, UserOperationAccessList accessList, IDictionary<Address, Keccak> addressesToCodeHashes, string? error) SimulateValidation(
-            Transaction transaction, UserOperation userOperation, BlockHeader parent,
+        private UserOperationSimulationResult SimulateValidation(
+            Transaction transaction, 
+            UserOperation userOperation, 
+            BlockHeader parent,
             ITransactionProcessor transactionProcessor)
         {
             bool paymasterWhitelisted = _whitelistedPaymasters.Contains(userOperation.Paymaster);
@@ -175,7 +172,7 @@ namespace Nethermind.AccountAbstraction.Executor
                     error = failedOp.ToString()!;
                 else
                     error = txTracer.Error;
-                return (false, UserOperationAccessList.Empty, ImmutableDictionary<Address, Keccak>.Empty, error);
+                return UserOperationSimulationResult.Failed(error);
             }
 
             UserOperationAccessList userOperationAccessList = new(txTracer.AccessedStorage);
@@ -186,7 +183,13 @@ namespace Nethermind.AccountAbstraction.Executor
                 addressesToCodeHashes[accessedAddress] = _stateProvider.GetCodeHash(accessedAddress);
             }
 
-            return (true, userOperationAccessList, addressesToCodeHashes, error);
+            return new UserOperationSimulationResult()
+            {
+                Success = true,
+                AccessList = userOperationAccessList,
+                AddressesToCodeHashes = addressesToCodeHashes,
+                Error = error
+            };
         }
 
         private Transaction BuildSimulateValidationTransaction(
