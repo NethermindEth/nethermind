@@ -232,7 +232,7 @@ namespace Nethermind.Merge.Plugin
 
         public Keccak? TerminalBlockHash => _terminalBlockHash;
         
-        public Keccak? ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHash;
+        public Keccak ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
         
         public long? ConfiguredTerminalBlockNumber => _configuredTerminalBlockNumber;
 
@@ -245,8 +245,8 @@ namespace Nethermind.Merge.Plugin
             _terminalBlockExplicitSpecified = _terminalBlockNumber != null;
             _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
 
-            _terminalBlockHash = _mergeConfig.TerminalBlockHash != Keccak.Zero
-                ? _mergeConfig.TerminalBlockHash
+            _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
+                ? _mergeConfig.TerminalBlockHashParsed
                 : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
             if (_terminalBlockNumber != null)
