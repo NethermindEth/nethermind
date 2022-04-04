@@ -371,13 +371,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     while (current != null)
                     {
                         stack.Push(current);
-                        _blockCacheService.BlockCache.TryGetValue(current.ParentHash, out Block? parentBlock);
-                        current = parentBlock;
                         if (current.Hash == _beaconPivot.PivotHash ||
                             _blockTree.IsKnownBlock(current.Number, current.Hash))
                         {
                             break;
                         }
+                        _blockCacheService.BlockCache.TryGetValue(current.ParentHash, out Block? parentBlock);
+                        current = parentBlock;
                     }
 
                     if (current == null)

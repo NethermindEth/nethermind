@@ -93,8 +93,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public bool IsBeaconSyncHeadersFinished()
         {
             bool finished = _blockTree.LowestInsertedBeaconHeader == null
-                            || _blockTree.LowestInsertedBeaconHeader?.Number == 1
-                            || _blockTree.LowestInsertedHeader?.Number <= _syncConfig.PivotNumberParsed + 1;
+                            || _blockTree.LowestInsertedBeaconHeader?.Number == 0
+                            || _blockTree.LowestInsertedBeaconHeader?.Number <= _syncConfig.PivotNumberParsed + 1;
             
             if (_logger.IsTrace) _logger.Trace($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;

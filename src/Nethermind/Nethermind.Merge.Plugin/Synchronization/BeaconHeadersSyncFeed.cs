@@ -38,7 +38,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     private bool _mergedChain;
 
-    protected override long HeadersDestinationNumber => _syncConfig.PivotNumberParsed;
+    protected override long HeadersDestinationNumber => _syncConfig.PivotNumberParsed + 1;
     protected override bool AllHeadersDownloaded => _mergedChain 
         || (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed + 1;
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
@@ -67,7 +67,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     public override AllocationContexts Contexts => AllocationContexts.Headers;
     public override void InitializeFeed()
     {
-        _blockTree.LoadLowestInsertedBeaconHeader();
         _pivotNumber = _pivot.PivotNumber;
         
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
@@ -94,13 +93,15 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         FallAsleep();
         PostFinishCleanUp();
     }
-    
+
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
-        _logger.Info($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}"); 
-        BlockTreeInsertOptions options = _nextHeaderDiff is null
-            ? BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers
-            : BlockTreeInsertOptions.None;
+        _logger.Info($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers;
+        if (_nextHeaderDiff is null)
+        {
+            options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
+        }
 
         AddBlockResult insertOutcome = _blockTree.IsKnownBlock(header.Number, header.Hash)
             ? AddBlockResult.AlreadyKnown
@@ -108,7 +109,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         // Found existing block in the block tree
         if (insertOutcome == AddBlockResult.AlreadyKnown)
         {
-            if ((_blockTree.LowestInsertedHeader?.Number ?? _syncConfig.PivotNumberParsed) > 0)
+            if (_syncConfig.FastSync)
             {
                 if (_blockTree.LowestInsertedHeader != null
                     && _blockTree.LowestInsertedHeader.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))

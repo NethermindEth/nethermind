@@ -62,17 +62,17 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again 
         /// </summary>
-        private readonly ConcurrentQueue<HeadersSyncBatch> _pending = new();
+        protected readonly ConcurrentQueue<HeadersSyncBatch> _pending = new();
 
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet  
         /// </summary>
-        private readonly ConcurrentDictionary<HeadersSyncBatch, object> _sent = new();
+        protected readonly ConcurrentDictionary<HeadersSyncBatch, object> _sent = new();
 
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
         /// </summary>
-        private readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
+        protected readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
         
         protected virtual BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedHeader;
 
@@ -117,10 +117,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
-            BlockHeader lowestInserted = LowestInsertedBlockHeader;
-            long startNumber = lowestInserted?.Number ?? _pivotNumber;
-            Keccak startHeaderHash = lowestInserted?.Hash ?? _syncConfig.PivotHashParsed;
-            UInt256 startTotalDifficulty = lowestInserted?.TotalDifficulty ?? _syncConfig.PivotTotalDifficultyParsed;
+            bool useSyncPivot = _blockTree.LowestInsertedHeader == null || _blockTree.LowestInsertedHeader.Number > _pivotNumber;
+            BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
+            long startNumber = useSyncPivot ? _pivotNumber : lowestInserted.Number;
+            Keccak startHeaderHash = useSyncPivot ? _syncConfig.PivotHashParsed : lowestInserted.Hash;
+            UInt256? startTotalDifficulty = useSyncPivot ? syncConfig.PivotTotalDifficultyParsed : lowestInserted?.TotalDifficulty;
 
             _nextHeaderHash = startHeaderHash;
             _nextHeaderDiff = startTotalDifficulty;
@@ -170,9 +171,7 @@ namespace Nethermind.Synchronization.FastBlocks
         
         protected void PostFinishCleanUp()
         {
-            // if block 0 is requested, it not included in the sync report
-            long lowestHeaderNumberInclusive = _lowestRequestedHeaderNumber == 0 ? 0 : 1;
-            HeadersSyncProgressReport.Update(_pivotNumber - _lowestRequestedHeaderNumber + lowestHeaderNumberInclusive);
+            HeadersSyncProgressReport.Update(_pivotNumber);
             HeadersSyncProgressReport.MarkEnd();
             _dependencies.Clear(); // there may be some dependencies from wrong branches
             _pending.Clear(); // there may be pending wrong branches
