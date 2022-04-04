@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -197,11 +198,10 @@ public class BlockTreeTests
 
                 public ScenarioBuilder SuggestBlocks(long low, long high)
                 {
-                    BlockTreeInsertOptions options = BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;
-                    for (long i = low; i >= high; i++)
+                    for (long i = low; i <= high; i++)
                     {
                         Block? beaconBlock = _syncedTree!.FindBlock(i, BlockTreeLookupOptions.None);
-                        AddBlockResult insertResult = _notSyncedTree!.Insert(beaconBlock!, true, options);
+                        AddBlockResult insertResult = _notSyncedTree!.SuggestBlock(beaconBlock!);
                         Assert.AreEqual(AddBlockResult.Added, insertResult);
                     }
                     return this;
@@ -237,21 +237,39 @@ public class BlockTreeTests
                 public ScenarioBuilder AssertBestKnownNumber(long expected)
                 {
                     Assert.AreEqual(expected,_notSyncedTree!.BestKnownNumber);
-                    // Console.WriteLine("BestKnownNumber:"+_notSyncedTree!.BestKnownNumber);
                     return this;
                 }
 
                 public ScenarioBuilder AssertBestSuggestedHeader(long expected)
                 {
                     Assert.AreEqual(expected,_notSyncedTree!.BestSuggestedHeader!.Number);
-                    // Console.WriteLine("BestSuggestedHeader:"+_notSyncedTree!.BestSuggestedHeader!.Number);
                     return this;
                 }
 
                 public ScenarioBuilder AssertBestSuggestedBody(long expected)
                 {
                     Assert.AreEqual(expected,_notSyncedTree!.BestSuggestedBody!.Number);
-                    // Console.WriteLine("BestSuggestedBody:"+_notSyncedTree!.BestSuggestedBody!.Number);
+                    return this;
+                }
+
+                public ScenarioBuilder AssertLowestInsertedBeaconHeader(long expected)
+                {
+                    Assert.IsNotNull(_notSyncedTree);
+                    Assert.IsNotNull(_notSyncedTree!.LowestInsertedBeaconHeader);
+                    Assert.AreEqual(expected,_notSyncedTree!.LowestInsertedBeaconHeader!.Number);
+                    Console.WriteLine("LowestInsertedBeaconHeader:"+_notSyncedTree!.LowestInsertedBeaconHeader!.Number);
+                    return this;
+                }
+                
+                public ScenarioBuilder print()
+                {
+                    // Console.WriteLine("LowestInsertedBeaconHeader:"+_notSyncedTree!.LowestInsertedBeaconHeader.Number);
+                    Console.WriteLine("Head:"+_notSyncedTree!.Head!.Number);
+                    Console.WriteLine("BestSuggestedHeader:"+_notSyncedTree!.BestSuggestedHeader.Number);
+                    Console.WriteLine("BestSuggestedBody:"+_notSyncedTree!.BestSuggestedBody.Number);
+                    // Console.WriteLine("LowestInsertedHeader:"+_notSyncedTree!.LowestInsertedHeader.Number);
+                    Console.WriteLine("BestKnownNumber:"+_notSyncedTree!.BestKnownNumber);
+                    Console.WriteLine("BestKnownBeaconNumber:"+_notSyncedTree!.BestKnownBeaconNumber);
                     return this;
                 }
                 
@@ -264,7 +282,7 @@ public class BlockTreeTests
         }
         
     [Test]
-    public void Best_pointers_are_set_on_restart()
+    public void Best_pointers_are_set_on_restart_with_gap()
     {
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20)
@@ -275,6 +293,53 @@ public class BlockTreeTests
             .AssertBestSuggestedBody(9);
     }
     
+    [Test]
+    public void pointers_are_set_on_restart_during_header_sync()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(6, 6)
+            .Restart()
+            .AssertLowestInsertedBeaconHeader(6);
+    }
     
+    [Test]
+    public void pointers_are_set_on_restart_after_header_sync_finished()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .Restart()
+            .AssertLowestInsertedBeaconHeader(1);
+    }
+    
+    [Test]
+    public void pointers_are_set_on_restart_during_filling_block_gap()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .SuggestBlocks(4, 4)
+            .Restart()
+            .AssertBestSuggestedBody(4)
+            .AssertLowestInsertedBeaconHeader(1);
+    }
+    
+    [Test]
+    public void pointers_are_set_on_restart_after_filling_block_gap_finished()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .SuggestBlocks(4, 6)
+            .Restart()
+            .AssertBestSuggestedBody(6)
+            .AssertLowestInsertedBeaconHeader(1);
+    }
     
 }
+
