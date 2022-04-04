@@ -17,8 +17,6 @@
 
 using System;
 using System.Runtime.InteropServices;
-using Nethermind.Logging;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
@@ -33,8 +31,8 @@ public enum DatabaseScheme
 {
     MemoryDb,
     RocksDb,
-    RocksDbReadOnly,
-    MemoryDbReadOnly
+    MemoryDbReadOnly,
+    RocksDbReadOnly
 }
     
 public enum CommitScheme
@@ -48,129 +46,15 @@ public struct RustVerkle
     public CommitScheme commitScheme;
     public DatabaseScheme databaseScheme;
     public IntPtr trie;
+    public RustVerkleDb db;
 }
 
-public interface IVerkleTrieStore :IDisposable
+public struct RustVerkleDb
 {
-    void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo);
-        
-    void FinishBlockCommit(TrieType trieType, long blockNumber);
-
-    void HackPersistOnShutdown();
-    
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-        
-    IVerkleReadOnlyVerkleTrieStore AsReadOnly();
-    byte[]? GetValue(Span<byte> rawKey);
-    byte[]? GetValue(byte[] rawKey);
-    Span<byte>  GetValueSpan(Span<byte> rawKey);
-    Span<byte>  GetValueSpan(byte[] rawKey);
-    void SetValue(Span<byte> rawKey, Span<byte> value);
-    void SetValue(byte[] rawKey, byte[] value);
-    byte[] GetStateRoot();
+    public DatabaseScheme databaseScheme;
+    public IntPtr db;
 }
 
-public interface IVerkleReadOnlyVerkleTrieStore : IVerkleTrieStore
-{
-    void ClearTempChanges();
-}
-
-public class VerkleTrieStore: IVerkleTrieStore
-{
-    private readonly RustVerkle _verkleTrie;
-    private readonly ILogger _logger;
-    
-    public VerkleTrieStore(DatabaseScheme databaseScheme, CommitScheme commitScheme, ILogManager? logManager)
-    {
-        _verkleTrie = RustVerkleLib.VerkleTrieNew(databaseScheme, commitScheme);
-        _logger = logManager?.GetClassLogger<VerkleTrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
-    }
-
-    public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo)
-    {
-        
-    }
-
-    public void FinishBlockCommit(TrieType trieType, long blockNumber)
-    {
-        RustVerkleLib.VerkleTrieFlush(_verkleTrie);
-    }
-
-    public void HackPersistOnShutdown()
-    {
-        RustVerkleLib.VerkleTrieFlush(_verkleTrie);
-    }
-    
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
-    {
-        add { }
-        remove { }
-    }
-
-    public IVerkleReadOnlyVerkleTrieStore AsReadOnly()
-    {
-        return new ReadOnlyVerkleTrieStore(_verkleTrie);
-    }
-    
-    public void Dispose()
-    {
-        if (_logger.IsDebug) _logger.Debug("Disposing trie");
-        RustVerkleLib.VerkleTrieFlush(_verkleTrie);
-    }
-
-    public byte[]? GetValue(Span<byte> rawKey) => RustVerkleLib.VerkleTrieGet(_verkleTrie, rawKey);
-    public byte[]? GetValue(byte[] rawKey) => RustVerkleLib.VerkleTrieGet(_verkleTrie, rawKey);
-    public Span<byte>  GetValueSpan(Span<byte> rawKey) => RustVerkleLib.VerkleTrieGetSpan(_verkleTrie, rawKey);
-    public Span<byte>  GetValueSpan(byte[] rawKey) => RustVerkleLib.VerkleTrieGetSpan(_verkleTrie, rawKey);
-    public void SetValue(Span<byte> rawKey, Span<byte> value) => RustVerkleLib.VerkleTrieInsert(_verkleTrie, rawKey, value);
-    public void SetValue(byte[] rawKey, byte[] value) => RustVerkleLib.VerkleTrieInsert(_verkleTrie, rawKey, value);
-    public byte[] GetStateRoot() => RustVerkleLib.VerkleTrieGetStateRoot(_verkleTrie);
-
-}
-
-public class ReadOnlyVerkleTrieStore: IVerkleReadOnlyVerkleTrieStore
-{
-    private readonly RustVerkle _verkleTrie;
-    
-    public ReadOnlyVerkleTrieStore(DatabaseScheme databaseScheme, CommitScheme commitScheme)
-    {
-        _verkleTrie = RustVerkleLib.VerkleTrieNew(databaseScheme, commitScheme);
-    }
-    
-    public ReadOnlyVerkleTrieStore(RustVerkle verkleTrie)
-    {
-        _verkleTrie = verkleTrie;
-    }
-
-    public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo) { }
-
-    public void FinishBlockCommit(TrieType trieType, long blockNumber) { }
-
-    public void HackPersistOnShutdown() { }
-    
-    public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
-    {
-        add { }
-        remove { }
-    }
-
-    public IVerkleReadOnlyVerkleTrieStore AsReadOnly()
-    {
-        return new ReadOnlyVerkleTrieStore(_verkleTrie);
-    }
-
-    public void Dispose() {}
-    
-    public byte[]? GetValue(Span<byte> rawKey) => RustVerkleLib.VerkleTrieGet(_verkleTrie, rawKey);
-    public byte[]? GetValue(byte[] rawKey) => RustVerkleLib.VerkleTrieGet(_verkleTrie, rawKey);
-    public Span<byte>  GetValueSpan(Span<byte> rawKey) => RustVerkleLib.VerkleTrieGetSpan(_verkleTrie, rawKey);
-    public Span<byte>  GetValueSpan(byte[] rawKey) => RustVerkleLib.VerkleTrieGetSpan(_verkleTrie, rawKey);
-    public void SetValue(Span<byte> rawKey, Span<byte> value) => RustVerkleLib.VerkleTrieInsert(_verkleTrie, rawKey, value);
-    public void SetValue(byte[] rawKey, byte[] value) => RustVerkleLib.VerkleTrieInsert(_verkleTrie, rawKey, value);
-    public byte[] GetStateRoot() => RustVerkleLib.VerkleTrieGetStateRoot(_verkleTrie);
-    
-    public void ClearTempChanges() => RustVerkleLib.VerkleTrieClear(_verkleTrie);
-}
 
 public static class RustVerkleLib {
     
@@ -181,6 +65,18 @@ public static class RustVerkleLib {
     
     [DllImport("rust_verkle")]
     private static extern IntPtr verkle_trie_new(DatabaseScheme databaseScheme, CommitScheme commitScheme, [MarshalAs(UnmanagedType.LPUTF8Str)] string pathname);
+    
+    [DllImport("rust_verkle")]
+    private static extern IntPtr create_verkle_db(DatabaseScheme databaseScheme, [MarshalAs(UnmanagedType.LPUTF8Str)] string pathname);
+    
+    [DllImport("rust_verkle")]
+    private static extern IntPtr create_read_only_verkle_db(IntPtr db);
+    
+    [DllImport("rust_verkle")]
+    private static extern void clear_temp_changes_read_only_db(IntPtr db);
+    
+    [DllImport("rust_verkle")]
+    private static extern IntPtr create_trie_from_db(CommitScheme commitScheme, IntPtr db);
 
     [DllImport("rust_verkle")]
     private static extern unsafe IntPtr verkle_trie_get(IntPtr verkleTrie, byte *  key);
@@ -209,7 +105,45 @@ public static class RustVerkleLib {
     private static extern IntPtr verkle_trie_flush(IntPtr verkleTrie);
     [DllImport("rust_verkle")]
     private static extern IntPtr verkle_trie_clear(IntPtr verkleTrie);
+
+    public static RustVerkleDb VerkleDbNew(
+        DatabaseScheme databaseScheme = DatabaseScheme.MemoryDb,
+        string pathname = "./db/verkle_db")
+    {
+        IntPtr db = create_verkle_db(databaseScheme, pathname);
+        RustVerkleDb verkleDb = new();
+        verkleDb.db = db;
+        verkleDb.databaseScheme = databaseScheme;
+        return verkleDb;
+    }
     
+    public static RustVerkleDb VerkleTrieGetReadOnlyDb(RustVerkleDb db)
+    {
+        IntPtr _roDb = create_read_only_verkle_db(db.db);
+        RustVerkleDb roDb = new();
+        roDb.db = _roDb;
+        roDb.databaseScheme = db.databaseScheme == DatabaseScheme.MemoryDb? DatabaseScheme.MemoryDbReadOnly : DatabaseScheme.RocksDbReadOnly;
+        return roDb;
+    }
+    
+    public static void VerkleTrieClearTempChanges(RustVerkleDb db)
+    {
+        clear_temp_changes_read_only_db(db.db);
+    }
+
+    public static RustVerkle VerkleTrieNewFromDb(RustVerkleDb db,
+        CommitScheme commitScheme = CommitScheme.TestCommitment)
+    {
+        IntPtr trie = create_trie_from_db(commitScheme, db.db);
+        RustVerkle verkleTrie = new();
+        verkleTrie.trie = trie;
+        verkleTrie.commitScheme = commitScheme;
+        verkleTrie.databaseScheme = db.databaseScheme;
+        verkleTrie.db = db;
+        return verkleTrie;
+    }
+
+
     public static RustVerkle VerkleTrieNew(
         DatabaseScheme databaseScheme = DatabaseScheme.MemoryDb,
         CommitScheme commitScheme = CommitScheme.TestCommitment,
@@ -402,10 +336,6 @@ public static class RustVerkleLib {
     
     public static void VerkleTrieFlush(RustVerkle verkleTrie)
     {
-        if (verkleTrie.databaseScheme == DatabaseScheme.RocksDbReadOnly)
-        {
-            throw new InvalidOperationException("Readonly trie cannot be flushed");
-        }
         verkle_trie_flush(verkleTrie.trie);
     }
     

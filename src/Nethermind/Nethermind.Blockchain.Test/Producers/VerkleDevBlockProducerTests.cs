@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 specProvider,
                 NullBloomStorage.Instance,
                 LimboLogs.Instance);
-            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, LimboLogs.Instance);
             VerkleStateProvider stateProvider = new (trieStore, LimboLogs.Instance, dbProvider.RegisteredDbs[DbNames.Code]);
             VerkleStorageProvider storageProvider = new(stateProvider, LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);

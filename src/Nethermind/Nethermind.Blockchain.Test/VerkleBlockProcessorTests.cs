@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test
         public void Prepared_block_contains_author_field()
         {
             IDb codeDb = new MemDb();
-            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, LimboLogs.Instance);
             VerkleStateProvider stateProvider = new VerkleStateProvider(trieStore, LimboLogs.Instance, codeDb);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Test
         {
             IDb codeDb = new MemDb();
             
-            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, LimboLogs.Instance);
             VerkleStateProvider stateProvider = new VerkleStateProvider(trieStore, LimboLogs.Instance, codeDb);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain.Test
         public void Recovers_state_on_cancel()
         {
             IDb codeDb = new MemDb();
-            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, LimboLogs.Instance);
             VerkleStateProvider stateProvider = new VerkleStateProvider(trieStore, LimboLogs.Instance, codeDb);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(

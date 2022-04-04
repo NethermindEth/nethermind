@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test
         public new void Proper_transactions_selected(ProperTransactionsSelectedTestCase testCase)
         {
             MemDb codeDb = new();
-            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, LimboLogs.Instance);
             VerkleStateProvider stateProvider = new(trieStore, LimboLogs.Instance, codeDb);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 

@@ -39,6 +39,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -279,14 +280,14 @@ namespace Nethermind.AuRa.Test.Contract
                 TxPoolTxSource txPoolTxSource = base.CreateTxPoolTxSource();
                 
                 TxPriorityContract = new TxPriorityContract(AbiEncoder.Instance, TestItem.AddressA, 
-                    new VerkleReadOnlyTxProcessingEnv(DbProvider, TrieStore.AsReadOnly(), BlockTree, SpecProvider, LimboLogs.Instance));
+                    new VerkleReadOnlyTxProcessingEnv(DbProvider, TrieStore.AsReadOnly(), BlockTree, SpecProvider, NUnitLogManager.Instance));
 
                 Priorities = new DictionaryContractDataStore<TxPriorityContract.Destination>(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),  
                     TxPriorityContract.Priorities, 
                     BlockTree,
                     ReceiptStorage,
-                    LimboLogs.Instance,
+                    NUnitLogManager.Instance,
                     GetPrioritiesLocalDataStore());
                 
                 MinGasPrices = new DictionaryContractDataStore<TxPriorityContract.Destination>(
@@ -294,14 +295,14 @@ namespace Nethermind.AuRa.Test.Contract
                     TxPriorityContract.MinGasPrices,
                     BlockTree,
                     ReceiptStorage,
-                    LimboLogs.Instance,
+                    NUnitLogManager.Instance,
                     GetMinGasPricesLocalDataStore());
                 
                 SendersWhitelist = new ContractDataStoreWithLocalData<Address>(new HashSetContractDataStoreCollection<Address>(),
                     TxPriorityContract.SendersWhitelist, 
                     BlockTree,
                     ReceiptStorage,
-                    LimboLogs.Instance,
+                    NUnitLogManager.Instance,
                     GetWhitelistLocalDataStore());
                 
                 return txPoolTxSource;
@@ -320,7 +321,7 @@ namespace Nethermind.AuRa.Test.Contract
         {
             protected override async Task AddBlocksOnStart()
             {
-                EthereumEcdsa ecdsa = new(ChainSpec.ChainId, LimboLogs.Instance);
+                EthereumEcdsa ecdsa = new(ChainSpec.ChainId, NUnitLogManager.Instance);
 
                 await AddBlock(
                     SignTransactions(ecdsa, TestItem.PrivateKeyA, 0,
@@ -382,7 +383,7 @@ namespace Nethermind.AuRa.Test.Contract
             protected override Task<VerkleTestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
             {
                 TempFile = TempPath.GetTempFile();
-                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), LimboLogs.Instance, Interval);
+                LocalDataSource = new TxPriorityContract.LocalDataSource(TempFile.Path, new EthereumJsonSerializer(), new FileSystem(), NUnitLogManager.Instance, Interval);
 
                 FileSemaphore = new SemaphoreSlim(0);
                 Semaphore = new SemaphoreSlim(0);

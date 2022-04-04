@@ -102,7 +102,7 @@ namespace Nethermind.AuRa.Test
         private AuRaBlockProcessor CreateProcessor(ITxFilter txFilter = null)
         {
             IDb codeDb = new MemDb();
-            VerkleTrieStore TrieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+            VerkleTrieStore TrieStore = new (DatabaseScheme.MemoryDb,  LimboLogs.Instance);
             VerkleStateProvider stateProvider = new (TrieStore, LimboLogs.Instance, codeDb);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             return new AuRaBlockProcessor(

@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test
         public void Setup()
         {
             IDbProvider memDbProvider = TestMemDbProvider.Init();
-            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+            VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, LimboLogs.Instance);
             VerkleStateProvider stateProvider = new(trieStore, LimboLogs.Instance, memDbProvider.CodeDb);
             VerkleStorageProvider storageProvider = new (stateProvider, LimboLogs.Instance);
             ChainLevelInfoRepository chainLevelInfoRepository = new (memDbProvider);

@@ -60,7 +60,7 @@ public class VerkleGenesisLoaderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, chainspecFilePath);
         ChainSpec chainSpec = LoadChainSpec(path);
         IDb codeDb = new MemDb();
-        VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+        VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, LimboLogs.Instance);
         VerkleStateProvider stateProvider = new(trieStore, LimboLogs.Instance, codeDb);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<long>()).Returns(Berlin.Instance);

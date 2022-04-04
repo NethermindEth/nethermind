@@ -45,7 +45,7 @@ public class VerkleTransactionsExecutorTests: TransactionsExecutorTestsBase
     public new void Proper_transactions_selected(TransactionSelectorTestsBase.ProperTransactionsSelectedTestCase testCase)
     {
         MemDb codeDb = new();
-        VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, CommitScheme.TestCommitment, LimboLogs.Instance);
+        VerkleTrieStore trieStore = new (DatabaseScheme.MemoryDb, LimboLogs.Instance);
         VerkleStateProvider stateProvider = new(trieStore, LimboLogs.Instance, codeDb);
         IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
