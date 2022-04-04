@@ -178,6 +178,10 @@
       "commandName": "Project",
       "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb"
     },
+    "Kiln_FastSync": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kiln_fastsync.cfg  --Init.DiagnosticMode MemDb"
+    },
     "Goerli ShadowFork": {
       "commandName": "Project",
       "commandLineArgs": "--config goerli_shadowfork.cfg  --Init.DiagnosticMode MemDb --Merge.Enabled true"
