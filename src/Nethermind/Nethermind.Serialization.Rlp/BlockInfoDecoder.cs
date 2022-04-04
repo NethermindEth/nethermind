@@ -23,16 +23,6 @@ namespace Nethermind.Serialization.Rlp
 {
     public class BlockInfoDecoder : IRlpStreamDecoder<BlockInfo>, IRlpValueDecoder<BlockInfo>
     {
-        private readonly bool _chainWithFinalization;
-
-        public BlockInfoDecoder(bool chainWithFinalization)
-        {
-            _chainWithFinalization = chainWithFinalization;
-        }
-
-        // ReSharper disable once UnusedMember.Global this is needed for auto-registration
-        public BlockInfoDecoder() : this(false) { }
-        
         public BlockInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
@@ -48,10 +38,11 @@ namespace Nethermind.Serialization.Rlp
             bool wasProcessed = rlpStream.DecodeBool();
             UInt256 totalDifficulty = rlpStream.DecodeUInt256();
 
-            FinalizationStatus finalizationStatus = FinalizationStatus.None;
-            if (_chainWithFinalization)
+            BlockMetadata metadata = BlockMetadata.None;
+            // if we hadn't reached the end of the stream, assume we have metadata to decode
+            if (rlpStream.Position != lastCheck)
             {
-                finalizationStatus = (FinalizationStatus)rlpStream.DecodeInt();
+                metadata = (BlockMetadata)rlpStream.DecodeInt();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -67,7 +58,7 @@ namespace Nethermind.Serialization.Rlp
             BlockInfo blockInfo = new(blockHash, totalDifficulty)
             {
                 WasProcessed = wasProcessed,
-                FinalizationStatus = finalizationStatus,
+                Metadata = metadata,
             };
 
             return blockInfo;
@@ -85,14 +76,15 @@ namespace Nethermind.Serialization.Rlp
                 return Rlp.OfEmptySequence;
             }
             
-            Rlp[] elements = new Rlp[_chainWithFinalization ? 4 : 3];
+            bool hasMetadata = item.Metadata != BlockMetadata.None;
+            
+            Rlp[] elements = new Rlp[hasMetadata ? 4 : 3];
             elements[0] = Rlp.Encode(item.BlockHash);
             elements[1] = Rlp.Encode(item.WasProcessed);
             elements[2] = Rlp.Encode(item.TotalDifficulty);
-            
-            if (_chainWithFinalization)
+            if (hasMetadata)
             {
-                elements[3] = Rlp.Encode((int)item.FinalizationStatus);
+                elements[3] = Rlp.Encode((int)item.Metadata);
             }
 
             return Rlp.Encode(elements);
@@ -116,11 +108,12 @@ namespace Nethermind.Serialization.Rlp
             Keccak? blockHash = decoderContext.DecodeKeccak();
             bool wasProcessed = decoderContext.DecodeBool();
             UInt256 totalDifficulty = decoderContext.DecodeUInt256();
-            FinalizationStatus finalizationStatus = FinalizationStatus.None;
 
-            if (_chainWithFinalization)
+            BlockMetadata metadata = BlockMetadata.None;
+            // if we hadn't reached the end of the stream, assume we have metadata to decode
+            if (decoderContext.Position != lastCheck)
             {
-                finalizationStatus = (FinalizationStatus)decoderContext.DecodeInt();
+                metadata = (BlockMetadata)decoderContext.DecodeInt();
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
@@ -136,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
             BlockInfo blockInfo = new(blockHash, totalDifficulty)
             {
                 WasProcessed = wasProcessed,
-                FinalizationStatus = finalizationStatus
+                Metadata = metadata
             };
             
             return blockInfo;

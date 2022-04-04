@@ -54,7 +54,7 @@ namespace Nethermind.AuRa.Test
 
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns(new Address[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC});
             
-            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
+            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder();
         }
 
         [Test]

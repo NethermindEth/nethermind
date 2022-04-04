@@ -31,14 +31,6 @@ namespace Nethermind.Core.Test.Encoding
         {
             Roundtrip(valueDecode);
         }
-        
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Can_do_roundtrip_with_finalization(bool valueDecode)
-        {
-            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
-            Roundtrip(valueDecode);
-        }
 
         [TestCase(true, true, true)]
         [TestCase(true, true, false)]
@@ -50,7 +42,6 @@ namespace Nethermind.Core.Test.Encoding
         [TestCase(false, false, false)]
         public void Is_Backwards_compatible(bool valueDecode, bool chainWithFinalization, bool isFinalized)
         {
-            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(chainWithFinalization);
             RoundtripBackwardsCompatible(valueDecode, chainWithFinalization, isFinalized);
         }
 
@@ -79,15 +70,13 @@ namespace Nethermind.Core.Test.Encoding
         {
             BlockInfo blockInfo = new(TestItem.KeccakA, 1);
             blockInfo.WasProcessed = true;
-            if (chainWithFinalization)
-                blockInfo.IsFinalized = isFinalized;
+            blockInfo.IsFinalized = isFinalized;
 
             Rlp rlp = BlockInfoEncodeDeprecated(blockInfo, chainWithFinalization);
             BlockInfo decoded = valueDecode ? Rlp.Decode<BlockInfo>(rlp.Bytes.AsSpan()) : Rlp.Decode<BlockInfo>(rlp);
 
             Assert.True(decoded.WasProcessed, "0 processed");
-            if (chainWithFinalization)
-                Assert.AreEqual(isFinalized, decoded.IsFinalized, "finalized");
+            Assert.AreEqual(chainWithFinalization && isFinalized, decoded.IsFinalized, "finalized");
             Assert.AreEqual(TestItem.KeccakA, decoded.BlockHash, "block hash");
             Assert.AreEqual(UInt256.One, decoded.TotalDifficulty, "difficulty");
         }
