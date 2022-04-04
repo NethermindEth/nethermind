@@ -411,7 +411,7 @@ namespace Nethermind.Blockchain.Processing
             }
             finally
             {
-                if (invalidBlockHash is not null)
+                if (invalidBlockHash is not null && (options & ProcessingOptions.ReadOnlyChain) == 0)
                 {
                     DeleteInvalidBlocks(invalidBlockHash);
                 }
