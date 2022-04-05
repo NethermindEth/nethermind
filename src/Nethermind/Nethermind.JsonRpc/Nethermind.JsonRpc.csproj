@@ -7,10 +7,9 @@
     <Nullable>annotations</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
-    <PackageReference Include="System.IO.Abstractions" Version="16.0.1" />
-    <PackageReference Include="Jint" Version="2.11.58" />
-
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="System.IO.Abstractions" />
+    <PackageReference Include="Jint" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />

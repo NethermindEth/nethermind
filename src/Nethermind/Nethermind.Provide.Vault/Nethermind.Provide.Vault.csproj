@@ -1,9 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
-      <TargetFramework>net6.0</TargetFramework>
-      <LangVersion>latest</LangVersion>
-      <RootNamespace>Nethermind.Vault</RootNamespace>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Nethermind.Vault</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Cli\Nethermind.Cli.csproj" />
@@ -12,8 +11,7 @@
     <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" Version="3.14.0" />
-    <PackageReference Include="Provide" Version="2.2.0" />
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Provide" />
   </ItemGroup>
-
 </Project>

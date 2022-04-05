@@ -10,8 +10,8 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
-    <PackageReference Include="HexMate" Version="0.0.2" />
+    <PackageReference Include="BenchmarkDotNet" />
+    <PackageReference Include="HexMate" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj" />

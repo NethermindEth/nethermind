@@ -26,11 +26,11 @@
     <ProjectReference Include="..\Nethermind.Synchronization\Nethermind.Synchronization.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Crc32.NET" Version="1.2.0" />
-    <PackageReference Include="DotNetty.Handlers" Version="0.6.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="6.0.0" />
-    <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" />
-    <PackageReference Include="Snappy.Standard" Version="0.2.0" />
+    <PackageReference Include="Crc32.NET" />
+    <PackageReference Include="DotNetty.Handlers" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Include="Portable.BouncyCastle" />
+    <PackageReference Include="Snappy.Standard" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Swarm\**" />

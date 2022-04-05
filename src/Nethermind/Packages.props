@@ -1,0 +1,109 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current"  xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <PackageReference Version="4.9.3" Update="Antlr4.Runtime.Standard" />
+    <PackageReference Version="6.0.4" Update="AspNetCore.HealthChecks.UI" />
+    <PackageReference Version="6.0.4" Update="AspNetCore.HealthChecks.UI.Client" />
+    <PackageReference Version="6.0.4" Update="AspNetCore.HealthChecks.UI.InMemory.Storage" />
+    <PackageReference Version="0.12.1" Update="BenchmarkDotNet" />
+    <PackageReference Version="0.13.1" Update="BenchmarkDotNet.Diagnostics.Windows" />
+    <PackageReference Version="1.2.15" Update="Colorful.Console" />
+    <PackageReference Version="2.8.0" Update="CommandLineParser" />
+    <PackageReference Version="0.2.0" Update="Cortex.SimpleSerialize" />
+    <PackageReference Version="3.1.2" Update="coverlet.collector">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Version="3.1.2" Update="coverlet.msbuild">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Version="1.2.0" Update="Crc32.NET" />
+    <PackageReference Version="1.6.0" Update="DnsClient" />
+    <PackageReference Version="0.7.2" Update="DotNetty.Buffers" />
+    <PackageReference Version="0.7.2" Update="DotNetty.Handlers" />
+    <PackageReference Version="0.7.2" Update="DotNetty.Transport" />
+    <PackageReference Version="1.3.2" Update="Essential.LoggerProvider.Elasticsearch" />
+    <PackageReference Version="0.3.0" Update="Figgle" />
+    <PackageReference Version="6.6.0" Update="FluentAssertions" />
+    <PackageReference Version="6.1.0" Update="FluentAssertions.Json" />
+    <PackageReference Version="3.20.0" Update="Google.Protobuf" />
+    <PackageReference Version="3.20.0" Update="Google.Protobuf.Tools" />
+    <PackageReference Version="2.45.0" Update="Grpc" />
+    <PackageReference Version="2.45.0" Update="Grpc.Tools">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Version="0.0.2" Update="HexMate" />
+    <PackageReference Version="2.11.58" Update="Jint" />
+    <PackageReference Version="5.0.0" Update="MathNet.Numerics.FSharp" />
+    <PackageReference Version="6.0.3" Update="Microsoft.AspNetCore.DataProtection" />
+    <PackageReference Version="6.0.3" Update="Microsoft.AspNetCore.DataProtection.Abstractions" />
+    <PackageReference Version="6.0.3" Update="Microsoft.AspNetCore.DataProtection.Extensions" />
+    <PackageReference Version="2.2.0" Update="Microsoft.AspNetCore.Http.Abstractions" />
+    <PackageReference Version="2.2.0" Update="Microsoft.AspNetCore.Mvc.Formatters.Json" />
+    <PackageReference Version="6.0.0" Update="Microsoft.AspNetCore.Mvc.NewtonsoftJson" />
+    <PackageReference Version="2.2.1" Update="Microsoft.AspNetCore.WebSockets" />
+    <PackageReference Version="2.2.0" Update="Microsoft.AspNetCore.WebUtilities" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Caching.Abstractions" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Caching.Memory" />
+    <PackageReference Version="1.1.1" Update="Microsoft.Extensions.CommandLineUtils" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Configuration" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Configuration.CommandLine" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Configuration.EnvironmentVariables" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Configuration.FileExtensions" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Configuration.Json" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Hosting" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Http" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Http.Polly" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Logging" />
+    <PackageReference Version="6.0.1" Update="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Logging.Console" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Options" />
+    <PackageReference Version="6.0.0" Update="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Version="17.1.0" Update="Microsoft.NET.Test.Sdk" />
+    <PackageReference Version="2.2.12" Update="Mongo2Go" />
+    <PackageReference Version="2.11.5" Update="MongoDB.Driver" />
+    <PackageReference Version="2.1.0" Update="MSTest.TestAdapter" />
+    <PackageReference Version="2.1.0" Update="MSTest.TestFramework" />
+    <PackageReference Version="2.0.0" Update="NetEscapades.Configuration.Yaml" />
+    <PackageReference Version="13.0.1" Update="Newtonsoft.Json" />
+    <PackageReference Version="1.1.1" Update="Nito.Collections.Deque" />
+    <PackageReference Version="4.7.15" Update="NLog" />
+    <PackageReference Version="2.1.0" Update="NLog.Targets.Seq" />
+    <PackageReference Version="4.3.0" Update="NSubstitute" />
+    <PackageReference Version="3.13.3" Update="NUnit" />
+    <PackageReference Version="4.2.1" Update="NUnit3TestAdapter" />
+    <PackageReference Version="7.2.3" Update="Polly" />
+    <PackageReference Version="1.9.0" Update="Portable.BouncyCastle" />
+    <PackageReference Version="6.0.0" Update="prometheus-net" />
+    <PackageReference Version="6.0.0" Update="prometheus-net.AspNetCore" />
+    <PackageReference Version="2.2.0" Update="Provide" />
+    <PackageReference Version="2.0.1" Update="ReadLine" />
+    <PackageReference Version="2.0.0.2" Update="SCrypt" />
+    <PackageReference Version="2022.1.0" Update="Seq.Api" />
+    <PackageReference Version="4.0.2" Update="Seq.Extensions.Logging" />
+    <PackageReference Version="3.0.2" Update="Shouldly" />
+    <PackageReference Version="0.2.0" Update="Snappy.Standard" />
+    <PackageReference Version="4.7.0" Update="System.ComponentModel.Annotations" />
+    <PackageReference Version="6.0.0" Update="System.Configuration.ConfigurationManager" />
+    <PackageReference Version="4.3.0" Update="System.Diagnostics.TextWriterTraceListener" />
+    <PackageReference Version="16.1.25" Update="System.IO.Abstractions" />
+    <PackageReference Version="10.0.1" Update="System.IO.Abstractions.TestingHelpers" />
+    <PackageReference Version="6.0.1" Update="System.Linq.Async" />
+    <PackageReference Version="6.0.0" Update="System.Runtime.Caching" />
+    <PackageReference Version="4.7.1" Update="System.Runtime.CompilerServices.Unsafe" />
+    <PackageReference Version="4.3.1" Update="System.Security.Cryptography.Algorithms" />
+    <PackageReference Version="6.0.0" Update="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Version="4.7.1" Update="System.Text.Json" />
+    <PackageReference Version="0.81.0" Update="Terminal.Gui" />
+    <PackageReference Version="4.4.43" Update="Websocket.Client" />
+    <PackageReference Version="11.2.1" Update="YamlDotNet" />
+  </ItemGroup>
+</Project>

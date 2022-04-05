@@ -13,19 +13,19 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.9.3" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.1-rc2.4" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.1-rc2.4" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.1-rc2.4" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.0" />
-    <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="6.0.0" />
-    <PackageReference Include="NLog.Targets.Seq" Version="2.0.0" />
-    <PackageReference Include="NLog" Version="4.7.12" />
-    <PackageReference Include="Seq.Api" Version="2021.3.1" />
-    <PackageReference Include="System.IO.Abstractions" Version="16.0.1" />
-    <PackageReference Include="YamlDotNet" Version="11.2.1" />
+    <PackageReference Include="Antlr4.Runtime.Standard" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
+    <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="NLog.Targets.Seq" />
+    <PackageReference Include="NLog" />
+    <PackageReference Include="Seq.Api" />
+    <PackageReference Include="System.IO.Abstractions" />
+    <PackageReference Include="YamlDotNet" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
@@ -113,26 +113,22 @@
   <ItemGroup>
     <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
   </ItemGroup>
-
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
     <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" />
   </Target>
-
   <Target Name="StoreGitHashBeforePublish" BeforeTargets="BeforePublish">
     <Message Text="---&gt; Generating Git Hash file Before Publish" Importance="High" />
     <Exec Command="git describe --tags --long --always &gt; git-hash" />
     <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" />
   </Target>
-
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild">
     <Message Text="---&gt; Copying Plugins After Build" Importance="High" />
     <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
   </Target>
-
-    <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish">
+  <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish">
     <Message Text="---&gt; Copying Plugins After Publish" Importance="High" />
-    <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" /> 
+    <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
   </Target>
- </Project>
+</Project>

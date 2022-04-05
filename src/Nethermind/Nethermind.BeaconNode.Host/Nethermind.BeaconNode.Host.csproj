@@ -1,5 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
-
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
     <OutputType>Exe</OutputType>
@@ -12,15 +11,13 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="6.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="6.0.0" />
-    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="2.0.0" />
-    <PackageReference Include="Seq.Extensions.Logging" Version="4.0.2" />
-    <PackageReference Include="Essential.LoggerProvider.Elasticsearch" Version="1.3.2" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="NetEscapades.Configuration.Yaml" />
+    <PackageReference Include="Seq.Extensions.Logging" />
+    <PackageReference Include="Essential.LoggerProvider.Elasticsearch" />
   </ItemGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.BeaconNode.Eth1Bridge\Nethermind.BeaconNode.Eth1Bridge.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.OApi\Nethermind.BeaconNode.OApi.csproj" />
@@ -30,7 +27,6 @@
     <ProjectReference Include="..\Nethermind.Core2.Cryptography\Nethermind.Core2.Cryptography.csproj" />
     <ProjectReference Include="..\Nethermind.HonestValidator\Nethermind.HonestValidator.csproj" />
   </ItemGroup>
-
   <ItemGroup>
     <Content Remove="configuration\**" />
     <Content Remove="release\**" />
@@ -40,10 +36,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-
   <ItemGroup>
     <Folder Include="Certificates" />
     <Folder Include="Production" />
   </ItemGroup>
-  
 </Project>
