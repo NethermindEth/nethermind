@@ -47,7 +47,14 @@ namespace Nethermind.Core
             get => (Metadata & BlockMetadata.Finalized) == BlockMetadata.Finalized;
             set
             {
-                Metadata |= value ? BlockMetadata.Finalized : BlockMetadata.None;
+                if (value)
+                {
+                    Metadata |= BlockMetadata.Finalized;
+                }
+                else
+                {
+                    Metadata &= ~BlockMetadata.Finalized;
+                }
             }
         }
 
