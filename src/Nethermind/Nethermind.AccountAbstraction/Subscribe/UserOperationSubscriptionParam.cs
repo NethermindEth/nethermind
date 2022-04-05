@@ -24,7 +24,7 @@ namespace Nethermind.AccountAbstraction.Subscribe
 {
     public class UserOperationSubscriptionParam : IJsonRpcParam
     {
-        public Address[] EntryPoints { get; set; } = null!;
+        public Address[] EntryPoints { get; set; } = Array.Empty<Address>();
         public bool IncludeUserOperations { get; set; }
     
         public void FromJson(JsonSerializer serializer, string jsonValue)
