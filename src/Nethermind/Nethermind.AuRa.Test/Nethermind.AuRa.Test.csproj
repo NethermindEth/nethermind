@@ -39,11 +39,17 @@
       <EmbeddedResource Include="Transactions\TxCertifierFilterTests.json" />
       <EmbeddedResource Include="Transactions\VerkleTxCertifierFilterTests.json" />
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V2.json" />
+      <EmbeddedResource Include="Transactions\VerkleTxPermissionFilterTest.V2.json" />
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V3.json" />
+      <EmbeddedResource Include="Transactions\VerkleTxPermissionFilterTest.V3.json" />
       <None Remove="Transactions\TxPermissionsFilterTest.V1.json" />
+      <None Remove="Transactions\VerkleTxPermissionsFilterTest.V1.json" />
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V1.json" />
+      <EmbeddedResource Include="Transactions\VerkleTxPermissionFilterTest.V1.json" />
       <None Remove="Transactions\TxPermissionFilterTest.V4.json" />
+      <None Remove="Transactions\VerkleTxPermissionFilterTest.V4.json" />
       <EmbeddedResource Include="Transactions\TxPermissionFilterTest.V4.json" />
+      <EmbeddedResource Include="Transactions\VerkleTxPermissionFilterTest.V4.json" />
     </ItemGroup>
 
 </Project>
