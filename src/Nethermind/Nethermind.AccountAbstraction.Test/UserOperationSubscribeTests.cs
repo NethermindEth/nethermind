@@ -88,7 +88,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _specProvider,
                 jsonSerializer);
             
-            subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
+            subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
                 "newPendingUserOperations",
                 (jsonRpcDuplexClient,entryPoints) => new NewPendingUserOpsSubscription(
                     jsonRpcDuplexClient,
@@ -96,7 +96,7 @@ namespace Nethermind.AccountAbstraction.Test
                     _logManager,
                     entryPoints)
             );
-            subscriptionFactory.RegisterSubscriptionType<EntryPointsParam?>(
+            subscriptionFactory.RegisterSubscriptionType<UserOperationSubscriptionParam?>(
                 "newReceivedUserOperations",
                 (jsonRpcDuplexClient,entryPoints) => new NewReceivedUserOpsSubscription(
                     jsonRpcDuplexClient,

@@ -16,22 +16,24 @@
 // 
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Newtonsoft.Json;
 
-namespace Nethermind.AccountAbstraction.Subscribe;
-
-public class EntryPointsParam : IJsonRpcParam
+namespace Nethermind.AccountAbstraction.Subscribe
 {
-    public Address[] EntryPoints { get; set; } = null!;
-    
-    public void FromJson(JsonSerializer serializer, string jsonValue)
+    public class UserOperationSubscriptionParam : IJsonRpcParam
     {
-        EntryPointsParam ep = serializer.Deserialize<EntryPointsParam>(jsonValue.ToJsonTextReader())
-                              ?? throw new ArgumentException($"Invalid 'entryPoints' filter: {jsonValue}");
-        EntryPoints = ep.EntryPoints;
+        public Address[] EntryPoints { get; set; } = null!;
+        public bool IncludeUserOperations { get; set; }
+    
+        public void FromJson(JsonSerializer serializer, string jsonValue)
+        {
+            UserOperationSubscriptionParam ep = serializer.Deserialize<UserOperationSubscriptionParam>(jsonValue.ToJsonTextReader())
+                                  ?? throw new ArgumentException($"Invalid 'entryPoints' filter: {jsonValue}");
+            EntryPoints = ep.EntryPoints;
+            IncludeUserOperations = ep.IncludeUserOperations;
 
+        }
     }
 }
