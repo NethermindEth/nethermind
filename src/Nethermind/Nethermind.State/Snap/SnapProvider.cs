@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -18,6 +19,7 @@ namespace Nethermind.State.Snap
     public class SnapProvider : ISnapProvider
     {
         private readonly ITrieStore _store;
+        private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
@@ -31,13 +33,15 @@ namespace Nethermind.State.Snap
             ProgressTracker = new(_logManager);
         }
 
-        public SnapProvider(IKeyValueStoreWithBatching keyValueStore, ILogManager logManager)
+        public SnapProvider(IDbProvider dbProvider, ILogManager logManager)
         {
+            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+
             _store = new TrieStore(
-                    keyValueStore,
-                    No.Pruning,
-                    Persist.EveryBlock,
-                    logManager);
+                _dbProvider.StateDb,
+                No.Pruning,
+                Persist.EveryBlock,
+                logManager);
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
@@ -48,16 +52,19 @@ namespace Nethermind.State.Snap
         public bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             StateTree tree = new(_store, _logManager);
-            (Keccak? calculatedRootHash, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage) = SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
+            (bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
+                SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
 
-            bool success = expectedRootHash == calculatedRootHash;
+            bool success = expectedRootHash == tree.RootHash;
 
-            if(success)
+            if (success)
             {
                 foreach (var item in accountsWithStorage)
                 {
                     ProgressTracker.EnqueueAccountStorage(item);
                 }
+
+                ProgressTracker.EnqueueCodeHashes(codeHashes);
 
                 ProgressTracker.NextAccountPath = accounts[accounts.Length - 1].AddressHash;
                 ProgressTracker.MoreAccountsToRight = moreChildrenToRight;
@@ -113,6 +120,17 @@ namespace Nethermind.State.Snap
             }
 
             return success;
+        }
+
+        public void AddCodes(byte[][] codes)
+        {
+            // TODO: check if all codes has been retrieved from the request
+            for (int i = 0; i < codes.Length; i++)
+            {
+                byte[] code = codes[i];
+                Keccak codeHash = Keccak.Compute(code);
+                _dbProvider.CodeDb.Set(codeHash, code);
+            }
         }
     }
 }
