@@ -12,6 +12,7 @@ namespace Nethermind.State.Snap
     public class ProgressTracker
     {
         private const int STORAGE_BATCH_SIZE = 1000;
+        private const int CODES_BATCH_SIZE = 1000;
 
         private AccountRange AccountRangeRequested;
 
@@ -20,6 +21,7 @@ namespace Nethermind.State.Snap
         public Keccak NextAccountPath { get; set; } = Keccak.Zero; //new("0xfe00000000000000000000000000000000000000000000000000000000000000");
         private ConcurrentQueue<StorageRange> NextSlotRange { get; set; } = new();
         private ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; set; } = new();
+        private ConcurrentQueue<Keccak> CodesToRetrieve { get; set; } = new();
 
         public bool MoreAccountsToRight { get; set; } = true;
 
@@ -28,16 +30,16 @@ namespace Nethermind.State.Snap
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public (AccountRange accountRange, StorageRange storageRange) GetNextRequest(long blockNumber, Keccak rootHash)
+        public (AccountRange accountRange, StorageRange storageRange, Keccak[] codeHashes) GetNextRequest(long blockNumber, Keccak rootHash)
         {
             if (NextSlotRange.TryDequeue(out StorageRange storageRange))
             {
                 storageRange.RootHash = rootHash;
                 storageRange.BlockNumber = blockNumber;
 
-                _logger.Info($"SNAP - NextSlotRange:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count}");
+                LogRequest("NextSlotRange");
 
-                return (null, storageRange);
+                return (null, storageRange, null);
             }
             else if (StoragesToRetrieve.Count > 0)
             {
@@ -57,9 +59,23 @@ namespace Nethermind.State.Snap
                     BlockNumber = blockNumber
                 };
 
-                _logger.Info($"SNAP - StoragesToRetrieve:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count}");
+                LogRequest("StoragesToRetrieve");
 
-                return (null, storageRange2);
+                return (null, storageRange2, null);
+            }
+            else if (CodesToRetrieve.Count > 0)
+            {
+                // TODO: optimize this
+                List<Keccak> codesToQuery = new(CODES_BATCH_SIZE);
+
+                for (int i = 0; i < CODES_BATCH_SIZE && CodesToRetrieve.TryDequeue(out Keccak codeHash); i++)
+                {
+                    codesToQuery.Add(codeHash);
+                }
+
+                LogRequest("CodesToRetrieve");
+
+                return (null, null, codesToQuery.ToArray());
             }
             else if (MoreAccountsToRight && AccountRangeRequested is null)
             {
@@ -69,12 +85,25 @@ namespace Nethermind.State.Snap
 
                 AccountRangeRequested = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
 
-                _logger.Info($"SNAP - AccountRangeRequested:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count}");
+                LogRequest("AccountRange");
 
-                return (AccountRangeRequested, null);
+                return (AccountRangeRequested, null, null);
             }
 
-            return (null, null);
+            return (null, null, null);
+        }
+
+        private void LogRequest(string reqType)
+        {
+            _logger.Info($"SNAP - {reqType}:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count} | {CodesToRetrieve.Count}");
+        }
+
+        public void EnqueueCodeHashes(ICollection<Keccak> codeHashes)
+        {
+            foreach (var hash in codeHashes)
+            {
+                CodesToRetrieve.Enqueue(hash);
+            }           
         }
 
         public void EnqueueAccountStorage(PathWithAccount storage)
@@ -89,8 +118,6 @@ namespace Nethermind.State.Snap
 
         public void ReportRequestFinished(AccountRange accountRange)
         {
-            //_logger.Info($"SNAP - {AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count}");
-
             AccountRangeRequested = null;
         }
 

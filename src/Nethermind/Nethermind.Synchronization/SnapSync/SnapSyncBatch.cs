@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
@@ -26,5 +27,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         public StorageRange StorageRangeRequest { get; set; }
         public SlotsAndProofs StorageRangeResponse { get; set; }
+
+        public Keccak[] CodesRequest { get; set; }
+        public byte[][] CodesResponse { get; set; }
     }
 }
