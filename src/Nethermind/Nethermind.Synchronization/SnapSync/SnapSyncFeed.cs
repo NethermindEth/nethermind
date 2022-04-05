@@ -199,7 +199,7 @@ namespace Nethermind.Synchronization.SnapSync
                     _testCodeReqCount++;
                     _testCodeRespSize += batch.CodesResponse.Length;
 
-                    if(_testCodeReqCount % 20 == 0)
+                    if(_testCodeReqCount % 1000 == 0)
                     {
                         _logger.Warn($"SNAP - Storage AVG:{_testStorageRespSize / _testStorageReqCount}, Codes AVG:{_testCodeRespSize / _testCodeReqCount}");
                     }
@@ -226,7 +226,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
 
                 _retriesCount++;
-                if (_retriesCount % 10 == 0)
+                if (_retriesCount % 100 == 0)
                 {
                     _logger.Info($"SNAP - retriesCount:{_retriesCount}");
                 }
