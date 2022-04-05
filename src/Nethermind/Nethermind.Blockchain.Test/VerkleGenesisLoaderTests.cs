@@ -40,19 +40,19 @@ public class VerkleGenesisLoaderTests
     [TestCase]
     public void Can_load_genesis_with_emtpy_accounts_and_storage()
     {
-        AssertBlockHash("0xb471de6da8eeac88addac8d2642efdb01a53df8f1e04d817e1f7c7d203bf0130", "Specs/empty_accounts_and_storages.json");
+        AssertBlockHash("0xdc5be32e8e29c03c581ed52eb28db6936a4ed616da24ddab7c056d7cdb9153a1", "Specs/empty_accounts_and_storages.json");
     }
     
     [Test]
     public void Can_load_genesis_with_emtpy_accounts_and_code()
     {
-        AssertBlockHash("0x185038fbef089065bcd1b44e01e7c761d471b516db0080a3cbe03c57d3dbbf78", "Specs/empty_accounts_and_codes.json");
+        AssertBlockHash("0x911c5bec9533d8ad3a55da54ba62b94e14810ddce8482aabe2ee82c64f46afb6", "Specs/empty_accounts_and_codes.json");
     }
     
     [Test]
     public void Can_load_genesis_with_precompile_that_has_zero_balance()
     {
-        AssertBlockHash("0xd72860934ba158c136275b118207b39bbf811ef852b4ab6250544d7316781aef", "Specs/hive_zero_balance_test.json");
+        AssertBlockHash("0x29bb430a24d6a390fede6d5b92111b118d9d2e054d29cf6fd9ef1a753b9ed122", "Specs/hive_zero_balance_test.json");
     }
 
     private void AssertBlockHash(string expectedHash, string chainspecFilePath)
