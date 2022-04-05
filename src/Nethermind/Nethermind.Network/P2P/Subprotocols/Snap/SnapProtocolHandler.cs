@@ -52,6 +52,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private readonly MessageQueue<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
         private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
+        private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
 
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
@@ -61,6 +62,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         {
             _getAccountRangeRequests = new(Send);
             _getStorageRangeRequests = new(Send);
+            _getByteCodesRequests = new(Send);
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -88,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetAccountRange:
                     GetAccountRangeMessage getAccountRangeMessage = Deserialize<GetAccountRangeMessage>(message.Content);
                     ReportIn(getAccountRangeMessage);
-                    //Handle(getAccountRangeMessage);
+                    Handle(getAccountRangeMessage);
                     break;
                 case SnapMessageCode.AccountRange:
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
@@ -98,7 +100,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetStorageRanges:
                     GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
                     ReportIn(getStorageRangesMessage);
-                    //Handle(msg);
+                    Handle(getStorageRangesMessage);
                     break;
                 case SnapMessageCode.StorageRanges:
                     StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
@@ -108,12 +110,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetByteCodes:
                     GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
                     ReportIn(getByteCodesMessage);
-                    //Handle(msg);
+                    Handle(getByteCodesMessage);
                     break;
                 case SnapMessageCode.ByteCodes:
                     ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
                     ReportIn(byteCodesMessage);
-                    //Handle(msg);
+                    Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
                     GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
@@ -140,7 +142,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getStorageRangeRequests.Handle(msg, size);
         }
 
+        private void Handle(ByteCodesMessage msg, long size)
+        {
+            // TODO: increment metrics
+            _getByteCodesRequests.Handle(msg, size);
+        }
+
         private void Handle(GetAccountRangeMessage msg)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void Handle(GetStorageRangeMessage getStorageRangesMessage)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
             throw new NotImplementedException();
         }
@@ -174,6 +192,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             StorageRangeMessage response = await SendRequest(request, _getStorageRangeRequests, token);
 
             return new SlotsAndProofs() { PathsAndSlots = response.Slots, Proofs = response.Proofs };
+        }
+
+        public async Task<byte[][]> GetByteCodes(Keccak[] codeHashes, CancellationToken token)
+        {
+            var request = new GetByteCodesMessage()
+            {
+                Hashes = codeHashes,
+                Bytes = BYTES_LIMIT
+            };
+
+            ByteCodesMessage response = await SendRequest(request, _getByteCodesRequests, token);
+
+            return response.Codes;
         }
 
         private async Task<Tout> SendRequest<Tin, Tout>(Tin msg, MessageQueue<Tin, Tout> _requestQueue, CancellationToken token)

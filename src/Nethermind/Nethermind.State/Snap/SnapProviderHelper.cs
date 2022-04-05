@@ -20,7 +20,7 @@ namespace Nethermind.State.Snap
         private static int _accCommitInProgress = 0;
         private static int _slotCommitInProgress = 0;
 
-        public static (Keccak? rootHash, bool moreChildrenToRight, IList<PathWithAccount> storageRoots) AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+        public static (bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes) AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
@@ -31,9 +31,10 @@ namespace Nethermind.State.Snap
 
             Keccak lastHash = accounts.Last().AddressHash;
 
-            (Keccak rootHash, Dictionary<Keccak, TrieNode> boundaryDict, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
+            (Keccak _, Dictionary<Keccak, TrieNode> boundaryDict, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
+            IList<Keccak> codeHashes = new List<Keccak>();
 
             try
             {
@@ -42,6 +43,11 @@ namespace Nethermind.State.Snap
                     if (account.Account.HasStorage)
                     {
                         accountsWithStorage.Add(account);
+                    }
+
+                    if(account.Account.HasCode)
+                    {
+                        codeHashes.Add(account.Account.CodeHash);
                     }
 
                     tree.Set(account.AddressHash, account.Account);
@@ -57,7 +63,7 @@ namespace Nethermind.State.Snap
             if (tree.RootHash != expectedRootHash)
             {
                 // TODO: log incorrect range
-                return (Keccak.EmptyTreeHash, true, null);
+                return (true, null, null);
             }
 
             try
@@ -79,7 +85,7 @@ namespace Nethermind.State.Snap
                 throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
             }
 
-            return (tree.RootHash, moreChildrenToRight, accountsWithStorage);
+            return (moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
         public static (Keccak? rootHash, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash = null, byte[][] proofs = null)

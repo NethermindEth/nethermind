@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -12,5 +13,6 @@ namespace Nethermind.Blockchain.Synchronization
     {
         Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token);
         Task<SlotsAndProofs> GetStoragetRange(StorageRange range, CancellationToken token);
+        Task<byte[][]> GetByteCodes(Keccak[] codeHashes, CancellationToken token);
     }
 }
