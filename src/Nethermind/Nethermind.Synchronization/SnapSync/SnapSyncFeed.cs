@@ -65,9 +65,13 @@ namespace Nethermind.Synchronization.SnapSync
 
                 BlockHeader pivotHeader = _pivot.GetPivotHeader();
 
-                (AccountRange accountRange, StorageRange storageRange) = _snapProvider.ProgressTracker.GetNextRequest(pivotHeader.Number, pivotHeader.StateRoot);
+                (AccountRange accountRange, StorageRange storageRange, Keccak[] codeHashes) = _snapProvider.ProgressTracker.GetNextRequest(pivotHeader.Number, pivotHeader.StateRoot);
 
-                if (storageRange != null)
+                if(codeHashes != null)
+                {
+                    request.CodesRequest = codeHashes;
+                }
+                else if (storageRange != null)
                 {
                     request.StorageRangeRequest = storageRange;
 
@@ -177,6 +181,10 @@ namespace Nethermind.Synchronization.SnapSync
 
                 _storageResponsesCount++;
             }
+            else if(batch.CodesResponse is not null)
+            {
+                _snapProvider.AddCodes(batch.CodesResponse);
+            }
             else
             {
                 //if (_logger.IsInfo) _logger.Info("SNAP peer not assigned to handle request");
@@ -186,9 +194,13 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     _snapProvider.ProgressTracker.ReportRequestFinished(batch.AccountRangeRequest);
                 }
-                else if (batch.StorageRangeRequest is not null)
+                else if (batch.StorageRangeRequest != null)
                 {
                     _snapProvider.ProgressTracker.EnqueueAccountStorage(batch.StorageRangeRequest);
+                }
+                else if(batch.CodesRequest != null)
+                {
+                    _snapProvider.ProgressTracker.EnqueueCodeHashes(batch.CodesRequest);
                 }
 
                 _retriesCount++;
