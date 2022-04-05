@@ -19,7 +19,7 @@ public class VerkleStateReader: IStateReader
 
     public VerkleStateReader(IVerkleTrieStore verkleTrieStore, IDb? codeDb, ILogManager? logManager)
     {
-        _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<VerkleStateReader>() ?? throw new ArgumentNullException(nameof(logManager));
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _state = new VerkleStateTree(verkleTrieStore, logManager);
     }

@@ -73,14 +73,14 @@ namespace Nethermind.State
         {
             _tree = new VerkleStateTree(logManager);
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<VerkleStateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         public VerkleStateProvider(IVerkleTrieStore verkleTrieStore, ILogManager? logManager, IKeyValueStore? codeDb)
         {
             _tree = new VerkleStateTree(verkleTrieStore, logManager);
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<VerkleStateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         public void CommitCode()
         {
@@ -298,12 +298,12 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {_currentPosition})");
             if (_changes[_currentPosition] is null)
             {
-                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StateProvider)}");
+                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(VerkleStateProvider)}");
             }
 
             if (_changes[_currentPosition + 1] != null)
             {
-                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StateProvider)}");
+                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(VerkleStateProvider)}");
             }
 
             bool isTracing = stateTracer.IsTracingState;
@@ -444,7 +444,7 @@ namespace Nethermind.State
         {
             if (snapshot > _currentPosition)
             {
-                throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+                throw new InvalidOperationException($"{nameof(VerkleStateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
 
             if (_logger.IsTrace) _logger.Trace($"Restoring state snapshot {snapshot}");
