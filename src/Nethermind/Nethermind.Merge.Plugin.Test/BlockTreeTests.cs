@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -30,7 +31,7 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class BlockTreeTests
 {
-    private (BlockTree notSyncedTree, BlockTree syncedTree) BuildBlockTrees(int notSyncedTreeSize, int syncedTreeSize)
+    private (BlockTree notSyncedTree, BlockTree syncedTree)  BuildBlockTrees(int notSyncedTreeSize, int syncedTreeSize)
     {
         BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize);
         BlockTree notSyncedTree = new(
@@ -144,4 +145,201 @@ public class BlockTreeTests
         
         Assert.AreEqual(13, notSyncedTree.BestSuggestedBody!.Number);
     }
+
+    public static class BlockTreeTestScenario
+        {
+            public class ScenarioBuilder
+            {
+                private BlockTreeBuilder? _syncedTreeBuilder;
+                private BlockTree? _syncedTree;
+                private BlockTreeBuilder? _notSyncedTreeBuilder;
+                private BlockTree? _notSyncedTree;
+
+                public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1)
+                {
+                    _notSyncedTreeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize);
+                    _notSyncedTree = new(
+                        _notSyncedTreeBuilder.BlocksDb,
+                        _notSyncedTreeBuilder.HeadersDb,
+                        _notSyncedTreeBuilder.BlockInfoDb,
+                        _notSyncedTreeBuilder.MetadataDb,
+                        _notSyncedTreeBuilder.ChainLevelInfoRepository,
+                        MainnetSpecProvider.Instance,
+                        NullBloomStorage.Instance,
+                        new SyncConfig(),
+                        LimboLogs.Instance);
+
+                    if (syncedTreeSize > 0)
+                    {
+                        _syncedTreeBuilder = Build.A.BlockTree().OfChainLength(syncedTreeSize);
+                        _syncedTree = new(
+                            _syncedTreeBuilder.BlocksDb,
+                            _syncedTreeBuilder.HeadersDb,
+                            _syncedTreeBuilder.BlockInfoDb,
+                            _syncedTreeBuilder.MetadataDb,
+                            _syncedTreeBuilder.ChainLevelInfoRepository,
+                            MainnetSpecProvider.Instance,
+                            NullBloomStorage.Instance,
+                            new SyncConfig(),
+                            LimboLogs.Instance);
+                    }
+
+                    return this;
+                }
+
+                public ScenarioBuilder InsertBeaconPivot(long num)
+                {
+                    Block? beaconBlock = _syncedTree!.FindBlock(num, BlockTreeLookupOptions.None);
+                    AddBlockResult insertResult = _notSyncedTree!.Insert(beaconBlock!, true,
+                        BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.TotalDifficultyNotNeeded);
+                    Assert.AreEqual(AddBlockResult.Added, insertResult);
+                    return this;
+                }
+
+                public ScenarioBuilder SuggestBlocks(long low, long high)
+                {
+                    for (long i = low; i <= high; i++)
+                    {
+                        Block? beaconBlock = _syncedTree!.FindBlock(i, BlockTreeLookupOptions.None);
+                        AddBlockResult insertResult = _notSyncedTree!.SuggestBlock(beaconBlock!);
+                        Assert.AreEqual(AddBlockResult.Added, insertResult);
+                    }
+                    return this;
+                }
+
+                public ScenarioBuilder InsertHeaders(long low, long high)
+                {
+                    BlockTreeInsertOptions options = BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;;
+                    for (long i = high; i >= low; --i)
+                    {
+                        BlockHeader? beaconHeader = _syncedTree!.FindHeader(i, BlockTreeLookupOptions.None);
+                        AddBlockResult insertResult = _notSyncedTree!.Insert(beaconHeader!, options);
+                        Assert.AreEqual(AddBlockResult.Added, insertResult);
+                    }
+                    return this;
+                }
+
+                public ScenarioBuilder Restart()
+                {
+                    _notSyncedTree = new(
+                        _notSyncedTreeBuilder!.BlocksDb,
+                        _notSyncedTreeBuilder.HeadersDb,
+                        _notSyncedTreeBuilder.BlockInfoDb,
+                        _notSyncedTreeBuilder.MetadataDb,
+                        _notSyncedTreeBuilder.ChainLevelInfoRepository,
+                        MainnetSpecProvider.Instance,
+                        NullBloomStorage.Instance,
+                        new SyncConfig(),
+                        LimboLogs.Instance);
+                    return this;
+                }
+
+                public ScenarioBuilder AssertBestKnownNumber(long expected)
+                {
+                    Assert.AreEqual(expected,_notSyncedTree!.BestKnownNumber);
+                    return this;
+                }
+
+                public ScenarioBuilder AssertBestSuggestedHeader(long expected)
+                {
+                    Assert.AreEqual(expected,_notSyncedTree!.BestSuggestedHeader!.Number);
+                    return this;
+                }
+
+                public ScenarioBuilder AssertBestSuggestedBody(long expected)
+                {
+                    Assert.AreEqual(expected,_notSyncedTree!.BestSuggestedBody!.Number);
+                    return this;
+                }
+
+                public ScenarioBuilder AssertLowestInsertedBeaconHeader(long expected)
+                {
+                    Assert.IsNotNull(_notSyncedTree);
+                    Assert.IsNotNull(_notSyncedTree!.LowestInsertedBeaconHeader);
+                    Assert.AreEqual(expected,_notSyncedTree!.LowestInsertedBeaconHeader!.Number);
+                    Console.WriteLine("LowestInsertedBeaconHeader:"+_notSyncedTree!.LowestInsertedBeaconHeader!.Number);
+                    return this;
+                }
+                
+                public ScenarioBuilder print()
+                {
+                    // Console.WriteLine("LowestInsertedBeaconHeader:"+_notSyncedTree!.LowestInsertedBeaconHeader.Number);
+                    Console.WriteLine("Head:"+_notSyncedTree!.Head!.Number);
+                    Console.WriteLine("BestSuggestedHeader:"+_notSyncedTree!.BestSuggestedHeader.Number);
+                    Console.WriteLine("BestSuggestedBody:"+_notSyncedTree!.BestSuggestedBody.Number);
+                    // Console.WriteLine("LowestInsertedHeader:"+_notSyncedTree!.LowestInsertedHeader.Number);
+                    Console.WriteLine("BestKnownNumber:"+_notSyncedTree!.BestKnownNumber);
+                    Console.WriteLine("BestKnownBeaconNumber:"+_notSyncedTree!.BestKnownBeaconNumber);
+                    return this;
+                }
+                
+            }
+
+            public static ScenarioBuilder GoesLikeThis()
+            {
+                return new();
+            }
+        }
+        
+    [Test]
+    public void Best_pointers_are_set_on_restart_with_gap()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(10, 20)
+            .InsertBeaconPivot(14)
+            .Restart()
+            .AssertBestKnownNumber(9)
+            .AssertBestSuggestedHeader(9)
+            .AssertBestSuggestedBody(9);
+    }
+    
+    [Test]
+    public void pointers_are_set_on_restart_during_header_sync()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(6, 6)
+            .Restart()
+            .AssertLowestInsertedBeaconHeader(6);
+    }
+    
+    [Test]
+    public void pointers_are_set_on_restart_after_header_sync_finished()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .Restart()
+            .AssertLowestInsertedBeaconHeader(1);
+    }
+    
+    [Test]
+    public void pointers_are_set_on_restart_during_filling_block_gap()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .SuggestBlocks(4, 4)
+            .Restart()
+            .AssertBestSuggestedBody(4)
+            .AssertLowestInsertedBeaconHeader(1);
+    }
+    
+    [Test]
+    public void pointers_are_set_on_restart_after_filling_block_gap_finished()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .SuggestBlocks(4, 6)
+            .Restart()
+            .AssertBestSuggestedBody(6)
+            .AssertLowestInsertedBeaconHeader(1);
+    }
+    
 }
+
