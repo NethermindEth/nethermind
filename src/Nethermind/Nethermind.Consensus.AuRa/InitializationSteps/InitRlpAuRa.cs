@@ -28,7 +28,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public override Task Execute(CancellationToken cancellationToken)
         {
-            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder();
             return base.Execute(cancellationToken);
         }
     }
