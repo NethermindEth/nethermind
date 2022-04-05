@@ -11,6 +11,8 @@ namespace Nethermind.State.Snap
 {
     public class ProgressTracker
     {
+        long _testReqCount;
+
         private const int STORAGE_BATCH_SIZE = 2000;
         private const int CODES_BATCH_SIZE = 400;
 
@@ -96,7 +98,12 @@ namespace Nethermind.State.Snap
 
         private void LogRequest(string reqType)
         {
-            _logger.Info($"SNAP - {reqType}:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count} | {CodesToRetrieve.Count}");
+            _testReqCount++;
+
+            if (_testReqCount % 1000 == 0)
+            {
+                _logger.Info($"SNAP - {reqType}:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count} | {CodesToRetrieve.Count}");
+            }
         }
 
         public void EnqueueCodeHashes(ICollection<Keccak> codeHashes)
