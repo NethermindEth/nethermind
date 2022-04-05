@@ -32,6 +32,11 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
+        long _testStorageRespSize;
+        int _testStorageReqCount;
+        long _testCodeRespSize;
+        int _testCodeReqCount;
+
         private const SnapSyncBatch EmptyBatch = null;
         private int _accountResponsesCount;
         private int _storageResponsesCount;
@@ -152,6 +157,12 @@ namespace Nethermind.Synchronization.SnapSync
                     int requestLength = batch.StorageRangeRequest.Accounts.Length;
                     int responseLength = batch.StorageRangeResponse.PathsAndSlots.Length;
 
+                    if(requestLength > 1)
+                    {
+                        _testStorageReqCount++;
+                        _testStorageRespSize += responseLength;
+                    }
+
                     for (int i = 0; i < requestLength; i++)
                     {
                         if (i < responseLength)
@@ -183,7 +194,18 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if(batch.CodesResponse is not null)
             {
-                _snapProvider.AddCodes(batch.CodesResponse);
+                if (batch.CodesRequest.Length > 0)
+                {
+                    _testCodeReqCount++;
+                    _testCodeRespSize += batch.CodesResponse.Length;
+
+                    if(_testCodeReqCount % 20 == 0)
+                    {
+                        _logger.Warn($"SNAP - Storage AVG:{_testStorageRespSize / _testStorageReqCount}, Codes AVG:{_testCodeRespSize / _testCodeReqCount}");
+                    }
+                }
+
+                _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
             }
             else
             {

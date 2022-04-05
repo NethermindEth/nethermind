@@ -11,14 +11,15 @@ namespace Nethermind.State.Snap
 {
     public class ProgressTracker
     {
-        private const int STORAGE_BATCH_SIZE = 1000;
-        private const int CODES_BATCH_SIZE = 100;
+        private const int STORAGE_BATCH_SIZE = 2000;
+        private const int CODES_BATCH_SIZE = 400;
 
         private AccountRange AccountRangeRequested;
 
         private readonly ILogger _logger;
 
-        public Keccak NextAccountPath { get; set; } = Keccak.Zero; //new("0xfe00000000000000000000000000000000000000000000000000000000000000");
+        public Keccak NextAccountPath { get; set; } = Keccak.Zero;
+        //public Keccak NextAccountPath { get; set; } = new("0xfe00000000000000000000000000000000000000000000000000000000000000");
         private ConcurrentQueue<StorageRange> NextSlotRange { get; set; } = new();
         private ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; set; } = new();
         private ConcurrentQueue<Keccak> CodesToRetrieve { get; set; } = new();

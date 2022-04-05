@@ -122,15 +122,22 @@ namespace Nethermind.State.Snap
             return success;
         }
 
-        public void AddCodes(byte[][] codes)
+        public void AddCodes(Keccak[] requestedHashes, byte[][] codes)
         {
-            // TODO: check if all codes has been retrieved from the request
+            HashSet<Keccak> set = requestedHashes.ToHashSet();
+
             for (int i = 0; i < codes.Length; i++)
             {
                 byte[] code = codes[i];
                 Keccak codeHash = Keccak.Compute(code);
-                _dbProvider.CodeDb.Set(codeHash, code);
+
+                if (set.Remove(codeHash))
+                {
+                    _dbProvider.CodeDb.Set(codeHash, code);
+                }
             }
+
+            ProgressTracker.EnqueueCodeHashes(set);
         }
     }
 }
