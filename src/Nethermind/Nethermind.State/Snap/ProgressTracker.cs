@@ -12,7 +12,7 @@ namespace Nethermind.State.Snap
     public class ProgressTracker
     {
         private const int STORAGE_BATCH_SIZE = 1000;
-        private const int CODES_BATCH_SIZE = 1000;
+        private const int CODES_BATCH_SIZE = 100;
 
         private AccountRange AccountRangeRequested;
 
