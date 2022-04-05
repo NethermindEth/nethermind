@@ -32,13 +32,9 @@ namespace Nethermind.Consensus
 
         UInt256? TerminalTotalDifficulty { get; }
         
-        long? TerminalBlockNumber { get; }
-        
-        Keccak? TerminalBlockHash { get; }
-        
         bool TransitionFinished { get; }
         
-        public Keccak? ConfiguredTerminalBlockHash { get; }
+        public Keccak ConfiguredTerminalBlockHash { get; }
         
         public long? ConfiguredTerminalBlockNumber { get; }
 

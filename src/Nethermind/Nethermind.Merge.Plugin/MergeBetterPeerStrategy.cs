@@ -19,6 +19,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 
@@ -29,15 +30,18 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
     private readonly IBetterPeerStrategy _preMergeBetterPeerStrategy;
     private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly ILogger _logger;
 
     public MergeBetterPeerStrategy(
         IBetterPeerStrategy preMergeBetterPeerStrategy,
         ISyncProgressResolver syncProgressResolver,
-        IPoSSwitcher poSSwitcher)
+        IPoSSwitcher poSSwitcher,
+        ILogManager logManager)
     {
         _preMergeBetterPeerStrategy = preMergeBetterPeerStrategy;
         _syncProgressResolver = syncProgressResolver;
         _poSSwitcher = poSSwitcher;
+        _logger = logManager.GetClassLogger();
     }
     
     public int Compare(BlockHeader? header, ISyncPeer? peerInfo)
@@ -70,6 +74,7 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
 
     public bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo)
     {
+        if (_logger.IsTrace) _logger.Trace($"IsBetterThanLocalChain BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {_syncProgressResolver.ChainDifficulty} LocalChainBestFullBlock: {_syncProgressResolver.FindBestFullBlock()} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty}");
         UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
         if (ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, localChainDifficulty))
             return _preMergeBetterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo); 
