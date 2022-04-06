@@ -5,7 +5,7 @@
     <PackageReference Version="6.0.4" Update="AspNetCore.HealthChecks.UI" />
     <PackageReference Version="6.0.4" Update="AspNetCore.HealthChecks.UI.Client" />
     <PackageReference Version="6.0.4" Update="AspNetCore.HealthChecks.UI.InMemory.Storage" />
-    <PackageReference Version="0.12.1" Update="BenchmarkDotNet" />
+    <PackageReference Version="0.13.1" Update="BenchmarkDotNet" />
     <PackageReference Version="0.13.1" Update="BenchmarkDotNet.Diagnostics.Windows" />
     <PackageReference Version="1.2.15" Update="Colorful.Console" />
     <PackageReference Version="2.8.0" Update="CommandLineParser" />
