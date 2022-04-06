@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Processing
             private readonly ILogger _logger;
 
             public BlockProductionTransactionsExecutor(
-                ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+                IReadOnlyTxProcessorSource readOnlyTxProcessingEnv,
                 ISpecProvider specProvider,
                 ILogManager logManager) 
                 : this(
