@@ -73,9 +73,15 @@ namespace Nethermind.State
         {
             _tree = new VerkleStateTree(logManager);
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<VerkleStateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
+        public VerkleStateProvider(IVerkleTrieStore verkleTrieStore, ILogManager? logManager, IKeyValueStore? codeDb)
+        {
+            _tree = new VerkleStateTree(verkleTrieStore, logManager);
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _logger = logManager?.GetClassLogger<VerkleStateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
         public void CommitCode()
         {
         }
@@ -292,12 +298,12 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace($"Committing state changes (at {_currentPosition})");
             if (_changes[_currentPosition] is null)
             {
-                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StateProvider)}");
+                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(VerkleStateProvider)}");
             }
 
             if (_changes[_currentPosition + 1] != null)
             {
-                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StateProvider)}");
+                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(VerkleStateProvider)}");
             }
 
             bool isTracing = stateTracer.IsTracingState;
@@ -438,7 +444,7 @@ namespace Nethermind.State
         {
             if (snapshot > _currentPosition)
             {
-                throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+                throw new InvalidOperationException($"{nameof(VerkleStateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
 
             if (_logger.IsTrace) _logger.Trace($"Restoring state snapshot {snapshot}");
@@ -791,23 +797,8 @@ namespace Nethermind.State
             return GetCode(account.CodeHash);
         }
         
-        public byte[] GetStorageValue(StorageCell storageCell)
-        {
-            byte[] storageKey = _tree.GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
-            byte[]? value = _tree.GetValue(storageKey);
-            if (value is null)
-            {
-                return new byte[32];
-            }
-
-            return value;
-        }
-        
-        public void SetStorageValue(StorageCell storageCell, byte[] value)
-        {
-            byte[] storageKey = _tree.GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
-            _tree.SetValue(storageKey, value);
-        }
+        public byte[] GetStorageValue(StorageCell storageCell) => _tree.GetStorageValue(storageCell);
+        public void SetStorageValue(StorageCell storageCell, byte[] value) => _tree.SetStorageValue(storageCell, value);
         
         int IJournal<int>.TakeSnapshot()
         {
@@ -836,6 +827,11 @@ namespace Nethermind.State
         public Keccak GetStorageRoot(Address address)
         {
             throw new InvalidOperationException("No storage root in verkle trees");
+        }
+        
+        public IKeyValueStore GetCodeDb()
+        {
+            return _codeDb;
         }
         
     }

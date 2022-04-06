@@ -17,23 +17,13 @@
 
 using System;
 using System.Diagnostics;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.Metadata;
 using Nethermind.Core;
-using Nethermind.Core.Resettables;
-using Nethermind.Crypto;
-using Nethermind.Int256;
-using Nethermind.Logging;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
@@ -47,6 +37,17 @@ namespace Nethermind.State
         }
         public VerkleStateTree(ILogManager? logManager)
             : base(EmptyTreeHash, true, logManager)
+        {
+            TrieType = TrieType.State;
+        }
+        
+        public VerkleStateTree(IVerkleTrieStore verkleTrieStore)
+            : base(verkleTrieStore, EmptyTreeHash, true, NullLogManager.Instance)
+        {
+            TrieType = TrieType.State;
+        }
+        public VerkleStateTree(IVerkleTrieStore verkleTrieStore, ILogManager? logManager)
+            : base(verkleTrieStore, EmptyTreeHash, true, logManager)
         {
             TrieType = TrieType.State;
         }
@@ -126,6 +127,24 @@ namespace Nethermind.State
                 }
             }
             
+        }
+        
+        public void SetStorageValue(StorageCell storageCell, byte[] value)
+        {
+            byte[] storageKey = GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
+            SetValue(storageKey, value);
+        }
+
+        public byte[] GetStorageValue(StorageCell storageCell)
+        {
+            byte[] storageKey = GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
+            byte[]? value = GetValue(storageKey);
+            if (value is null)
+            {
+                return new byte[32];
+            }
+
+            return value;
         }
         
     }
