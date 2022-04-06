@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -16,7 +17,9 @@ namespace Nethermind.State.Snap
         private const int STORAGE_BATCH_SIZE = 2000;
         private const int CODES_BATCH_SIZE = 400;
 
-        private AccountRange AccountRangeRequested;
+        private int _activeAccountRequests;
+        private int _activeStorageRequests;
+        private int _activeCodeRequests;
 
         private readonly ILogger _logger;
 
@@ -42,6 +45,8 @@ namespace Nethermind.State.Snap
 
                 LogRequest("NextSlotRange");
 
+                Interlocked.Increment(ref _activeStorageRequests);
+
                 return (null, storageRange, null);
             }
             else if (StoragesToRetrieve.Count > 0)
@@ -64,6 +69,8 @@ namespace Nethermind.State.Snap
 
                 LogRequest("StoragesToRetrieve");
 
+                Interlocked.Increment(ref _activeStorageRequests);
+
                 return (null, storageRange2, null);
             }
             else if (CodesToRetrieve.Count > 0)
@@ -78,19 +85,23 @@ namespace Nethermind.State.Snap
 
                 LogRequest("CodesToRetrieve");
 
+                Interlocked.Increment(ref _activeCodeRequests);
+
                 return (null, null, codesToQuery.ToArray());
             }
-            else if (MoreAccountsToRight && AccountRangeRequested is null)
+            else if (MoreAccountsToRight && _activeAccountRequests == 0)
             {
                 // some contract hardcoded
                 //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
                 // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
 
-                AccountRangeRequested = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
+                AccountRange range = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
 
                 LogRequest("AccountRange");
 
-                return (AccountRangeRequested, null, null);
+                Interlocked.Increment(ref _activeAccountRequests);
+
+                return (range, null, null);
             }
 
             return (null, null, null);
@@ -100,38 +111,78 @@ namespace Nethermind.State.Snap
         {
             _testReqCount++;
 
-            if (_testReqCount % 1000 == 0)
+            if (_testReqCount % 1 == 0)
             {
-                _logger.Info($"SNAP - {reqType}:{AccountRangeRequested is not null} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count} | {CodesToRetrieve.Count}");
+                _logger.Info($"SNAP - ({reqType}) AccountRequests:{_activeAccountRequests} | StorageRequests:{_activeStorageRequests} | CodeRequests:{_activeCodeRequests} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count} | {CodesToRetrieve.Count}");
             }
         }
 
-        public void EnqueueCodeHashes(ICollection<Keccak> codeHashes)
+        internal void EnqueueCodeHashes(ICollection<Keccak> codeHashes)
         {
-            foreach (var hash in codeHashes)
+            if (codeHashes is not null)
             {
-                CodesToRetrieve.Enqueue(hash);
-            }           
+                foreach (var hash in codeHashes)
+                {
+                    CodesToRetrieve.Enqueue(hash);
+                }
+            }
         }
 
-        public void EnqueueAccountStorage(PathWithAccount storage)
+        public void ReportCodeRequestFinished(ICollection<Keccak> codeHashes = null)
         {
-            StoragesToRetrieve.Enqueue(storage);
+            EnqueueCodeHashes(codeHashes);
+
+            Interlocked.Decrement(ref _activeCodeRequests);
         }
 
-        public void EnqueueAccountStorage(StorageRange storageRange)
+        public void EnqueueAccountStorage(PathWithAccount pwa)
         {
-            NextSlotRange.Enqueue(storageRange);
+            StoragesToRetrieve.Enqueue(pwa);
         }
 
-        public void ReportRequestFinished(AccountRange accountRange)
+        public void ReportFullStorageRequestFinished(PathWithAccount[] storages = null)
         {
-            AccountRangeRequested = null;
+            if (storages is not null)
+            {
+                foreach (var s in storages)
+                {
+                    EnqueueAccountStorage(s);
+                    
+                }              
+            }
+
+            Interlocked.Decrement(ref _activeStorageRequests);
+        }
+
+        public void EnqueueStorageRange(StorageRange storageRange)
+        {
+            if (storageRange is not null)
+            {
+                NextSlotRange.Enqueue(storageRange);
+            }
+        }
+
+        public void ReportStorageRangeRequestFinished(StorageRange storageRange = null)
+        {
+            EnqueueStorageRange(storageRange);
+
+            Interlocked.Decrement(ref _activeStorageRequests);
+        }
+
+        public void ReportAccountRequestFinished()
+        {
+            Interlocked.Decrement(ref _activeAccountRequests);
         }
 
         public bool IsSnapGetRangesFinished()
         {
-            return !MoreAccountsToRight && StoragesToRetrieve.Count == 0 && AccountRangeRequested == null && NextSlotRange.Count == 0;
+            return !MoreAccountsToRight 
+                && StoragesToRetrieve.Count == 0 
+                && NextSlotRange.Count == 0 
+                && CodesToRetrieve.Count == 0
+                && _activeAccountRequests == 0
+                && _activeStorageRequests == 0
+                && _activeCodeRequests == 0;
         }
     }
 }
