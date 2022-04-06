@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
                     else
                     {
-                        Logger.Info($"SNAP - {this.GetType().Name}: peer NOT allocated");
+                        Logger.Info($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
                         SyncResponseHandlingResult result = Feed.HandleResponse(request);
                         ReactToHandlingResult(request, result, null);
                     }

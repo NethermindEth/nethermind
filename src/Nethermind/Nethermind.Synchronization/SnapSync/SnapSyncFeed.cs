@@ -138,7 +138,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                 }
 
-                _snapProvider.ProgressTracker.ReportRequestFinished(batch.AccountRangeRequest);
+                _snapProvider.ProgressTracker.ReportAccountRequestFinished();
 
                 _accountResponsesCount++;
             }
@@ -148,7 +148,7 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     _logger.Warn($"GetStorageRange - expired BlockNumber:{batch.StorageRangeRequest.BlockNumber}, RootHash:{batch.StorageRangeRequest.RootHash}, (Accounts:{batch.StorageRangeRequest.Accounts.Count()}), {batch.StorageRangeRequest.StartingHash}");
 
-                    _snapProvider.ProgressTracker.EnqueueAccountStorage(batch.StorageRangeRequest);
+                    _snapProvider.ProgressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
                 }
                 else
                 {
@@ -163,25 +163,27 @@ namespace Nethermind.Synchronization.SnapSync
                         _testStorageRespSize += responseLength;
                     }
 
-                    for (int i = 0; i < requestLength; i++)
+                    for (int i = 0; i < responseLength; i++)
                     {
-                        if (i < responseLength)
+                        // only the last can have proofs
+                        byte[][] proofs = null;
+                        if (i == responseLength - 1)
                         {
-                            // only the last can have proofs
-                            byte[][] proofs = null;
-                            if (i == responseLength - 1)
-                            {
-                                proofs = batch.StorageRangeResponse.Proofs;
-                            }
-
-                            _snapProvider.AddStorageRange(batch.StorageRangeRequest.BlockNumber.Value, batch.StorageRangeRequest.Accounts[i], batch.StorageRangeRequest.Accounts[i].Account.StorageRoot, batch.StorageRangeRequest.StartingHash, batch.StorageRangeResponse.PathsAndSlots[i], proofs);
-
-                            slotCount += batch.StorageRangeResponse.PathsAndSlots[i].Length;
+                            proofs = batch.StorageRangeResponse.Proofs;
                         }
-                        else
-                        {
-                            _snapProvider.ProgressTracker.EnqueueAccountStorage(batch.StorageRangeRequest.Accounts[i]);
-                        }
+
+                        _snapProvider.AddStorageRange(batch.StorageRangeRequest.BlockNumber.Value, batch.StorageRangeRequest.Accounts[i], batch.StorageRangeRequest.Accounts[i].Account.StorageRoot, batch.StorageRangeRequest.StartingHash, batch.StorageRangeResponse.PathsAndSlots[i], proofs);
+
+                        slotCount += batch.StorageRangeResponse.PathsAndSlots[i].Length;
+                    }
+
+                    if (requestLength > responseLength)
+                    {
+                        _snapProvider.ProgressTracker.ReportFullStorageRequestFinished(batch.StorageRangeRequest.Accounts[responseLength..requestLength]);
+                    }
+                    else
+                    {
+                        _snapProvider.ProgressTracker.ReportFullStorageRequestFinished();
                     }
 
                     if (slotCount > 0)
@@ -205,7 +207,9 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                 }
 
-                _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
+                ICollection<Keccak> notDownloaded = _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
+
+                _snapProvider.ProgressTracker.ReportCodeRequestFinished(notDownloaded);
             }
             else
             {
@@ -214,15 +218,15 @@ namespace Nethermind.Synchronization.SnapSync
                 // Retry
                 if (batch.AccountRangeRequest != null)
                 {
-                    _snapProvider.ProgressTracker.ReportRequestFinished(batch.AccountRangeRequest);
+                    _snapProvider.ProgressTracker.ReportAccountRequestFinished();
                 }
                 else if (batch.StorageRangeRequest != null)
                 {
-                    _snapProvider.ProgressTracker.EnqueueAccountStorage(batch.StorageRangeRequest);
+                    _snapProvider.ProgressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
                 }
                 else if(batch.CodesRequest != null)
                 {
-                    _snapProvider.ProgressTracker.EnqueueCodeHashes(batch.CodesRequest);
+                    _snapProvider.ProgressTracker.ReportCodeRequestFinished(batch.CodesRequest);
                 }
 
                 _retriesCount++;
