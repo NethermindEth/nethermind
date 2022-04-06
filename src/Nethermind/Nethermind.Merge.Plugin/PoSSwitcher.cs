@@ -123,7 +123,7 @@ namespace Nethermind.Merge.Plugin
                     parent = _blockTree.FindParentHeader(header!, BlockTreeLookupOptions.None);
                 }
 
-                if (parent != null && (parent.TotalDifficulty < TerminalTotalDifficulty && parent.TotalDifficulty != 0)) // ToDo hack - && parent.TotalDifficulty != 0 need to be fixed
+                if (parent != null && (parent.TotalDifficulty < TerminalTotalDifficulty && parent.TotalDifficulty != 0))
                 {
                     isTerminalBlock = true;
                 }

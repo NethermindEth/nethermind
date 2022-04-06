@@ -48,7 +48,8 @@ public class BeaconPivotTests
     [Test]
     public void Beacon_pivot_defaults_to_sync_config_values_when_there_is_no_pivot()
     {
-        IBeaconPivot pivot = new BeaconPivot(_syncConfig,  new MergeConfig() { Enabled = true }, new MemDb(), Substitute.For<IBlockTree>(), LimboLogs.Instance);
+        IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
+        IBeaconPivot pivot = new BeaconPivot(_syncConfig,  new MergeConfig() { Enabled = true }, new MemDb(), Substitute.For<IBlockTree>(), peerRefresher, LimboLogs.Instance);
         pivot.PivotHash.Should().Be(_syncConfig.PivotHashParsed);
         pivot.PivotNumber.Should().Be(_syncConfig.PivotNumberParsed);
         pivot.PivotDestinationNumber.Should().Be(0);

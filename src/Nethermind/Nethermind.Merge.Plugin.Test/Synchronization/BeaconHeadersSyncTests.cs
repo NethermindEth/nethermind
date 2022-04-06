@@ -98,7 +98,8 @@ public class BeaconHeadersSyncTests
 
     private IBeaconPivot PreparePivot(long blockNumber, ISyncConfig syncConfig, IBlockTree blockTree)
     {
-        IBeaconPivot pivot = new BeaconPivot(syncConfig, new MergeConfig() { Enabled = true }, new MemDb(), blockTree, LimboLogs.Instance);
+        IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
+        IBeaconPivot pivot = new BeaconPivot(syncConfig, new MergeConfig() { Enabled = true }, new MemDb(), blockTree, peerRefresher, LimboLogs.Instance);
         BlockHeader pivotHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
         pivot.EnsurePivot(pivotHeader);
         return pivot;

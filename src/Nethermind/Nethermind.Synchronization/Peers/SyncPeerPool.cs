@@ -143,6 +143,9 @@ namespace Nethermind.Synchronization.Peers
                     TaskCreationOptions.LongRunning,
                     TaskScheduler.Default).Unwrap()
                 .ContinueWith(t =>
+                
+                
+                
                 {
                     if (t.IsFaulted)
                     {
@@ -362,7 +365,7 @@ namespace Nethermind.Synchronization.Peers
             foreach (RefreshTotalDiffTask refreshTask in _peerRefreshQueue.GetConsumingEnumerable(_refreshLoopCancellation.Token))
             {
                 ISyncPeer syncPeer = refreshTask.SyncPeer;
-                if (_logger.IsDebug) _logger.Debug($"Refreshing info for {syncPeer}.");
+                if (_logger.IsInfo) _logger.Info($"Refreshing info for {syncPeer}.");
                 CancellationTokenSource initCancelSource = _refreshCancelTokens[syncPeer.Node.Id] = new CancellationTokenSource();
                 CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
 

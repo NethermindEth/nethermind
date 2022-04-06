@@ -36,6 +36,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IMergeConfig _mergeConfig;
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
+        private readonly IPeerRefresher _peerRefresher;
         private readonly ILogger _logger;
         private BlockHeader? _currentBeaconPivot;
         private BlockHeader? _pivotParent;
@@ -46,12 +47,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IMergeConfig mergeConfig,
             IDb metadataDb,
             IBlockTree blockTree,
+            IPeerRefresher peerRefresher,
             ILogManager logManager)
         {
             _syncConfig = syncConfig;
             _mergeConfig = mergeConfig;
             _metadataDb = metadataDb;
             _blockTree = blockTree;
+            _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
             PivotDestinationNumber = 0;
         }
@@ -76,6 +79,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             
             if (!beaconPivotExists && blockHeader != null)
             {
+                _peerRefresher.RefreshPeers(blockHeader.Hash!);
                 _currentBeaconPivot = blockHeader;
                 if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
                 PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? 0 : _syncConfig.PivotNumberParsed + 1;
