@@ -96,7 +96,7 @@ namespace Nethermind.State.Snap
                         StartingHash = slots.Last().Path
                     };
 
-                    ProgressTracker.EnqueueAccountStorage(range);
+                    ProgressTracker.EnqueueStorageRange(range);
                 }
             }
             else
@@ -111,7 +111,7 @@ namespace Nethermind.State.Snap
                         StartingHash = startingHash
                     };
 
-                    ProgressTracker.EnqueueAccountStorage(range);
+                    ProgressTracker.EnqueueStorageRange(range);
                 }
                 else
                 {
@@ -122,7 +122,7 @@ namespace Nethermind.State.Snap
             return success;
         }
 
-        public void AddCodes(Keccak[] requestedHashes, byte[][] codes)
+        public ICollection<Keccak> AddCodes(Keccak[] requestedHashes, byte[][] codes)
         {
             HashSet<Keccak> set = requestedHashes.ToHashSet();
 
@@ -137,7 +137,7 @@ namespace Nethermind.State.Snap
                 }
             }
 
-            ProgressTracker.EnqueueCodeHashes(set);
+            return set;
         }
     }
 }
