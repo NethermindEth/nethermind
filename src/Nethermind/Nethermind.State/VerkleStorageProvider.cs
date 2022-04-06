@@ -57,7 +57,7 @@ public class VerkleStorageProvider: IStorageProvider
     public VerkleStorageProvider(VerkleStateProvider? stateProvider, ILogManager? logManager)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = logManager.GetClassLogger<StorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager.GetClassLogger<VerkleStorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
     }
 
@@ -109,7 +109,7 @@ public class VerkleStorageProvider: IStorageProvider
 
         if (snapshot > _currentPosition)
         {
-            throw new InvalidOperationException($"{nameof(StorageProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+            throw new InvalidOperationException($"{nameof(VerkleStorageProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
         }
         
         if (snapshot == _currentPosition)
@@ -204,12 +204,12 @@ public class VerkleStorageProvider: IStorageProvider
 
         if (_changes[_currentPosition] is null)
         {
-            throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StorageProvider)}");
+            throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(VerkleStorageProvider)}");
         }
 
         if (_changes[_currentPosition + 1] != null)
         {
-            throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StorageProvider)}");
+            throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(VerkleStorageProvider)}");
         }
 
         HashSet<Address> toUpdateRoots = new();
