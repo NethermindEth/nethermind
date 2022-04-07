@@ -60,14 +60,13 @@ namespace Nethermind.Merge.Plugin.Test
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
         {
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            IBeaconPivot beaconPivot = new BeaconPivot(new SyncConfig(),  chain.MergeConfig, new MemDb(), chain.BlockTree, chain.LogManager);
+            chain.BeaconPivot = new BeaconPivot(new SyncConfig(), chain.MergeConfig, new MemDb(), chain.BlockTree, chain.LogManager);
             BlockCacheService blockCacheService = new();
-            BeaconSync beaconSync = new(beaconPivot, chain.BlockTree, new SyncConfig(), chain.DbProvider.MetadataDb, chain.LogManager);
-            
+            chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, new SyncConfig(), chain.DbProvider.MetadataDb, chain.LogManager);
             return new EngineRpcModule(
                 new GetPayloadV1Handler(chain.PayloadPreparationService!, chain.LogManager),
-                new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.PoSSwitcher, beaconSync, beaconPivot, blockCacheService, syncProgressResolver, chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, chain.PayloadPreparationService!, blockCacheService, beaconSync, beaconSync, beaconPivot, chain.LogManager),
+                new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.PoSSwitcher, chain.BeaconSync, chain.BeaconPivot, blockCacheService, syncProgressResolver, chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.EthSyncingInfo, chain.BlockConfirmationManager, chain.PayloadPreparationService!, blockCacheService, chain.BeaconSync, chain.BeaconSync, chain.BeaconPivot, chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
@@ -85,6 +84,10 @@ namespace Nethermind.Merge.Plugin.Test
             public ISealValidator SealValidator { get; set; }
 
             public IManualBlockProductionTrigger BlockProductionTrigger { get; set; } = new BuildBlocksWhenRequested();
+            
+            public IBeaconPivot BeaconPivot { get; set; }
+            
+            public BeaconSync BeaconSync { get; set; }
 
             public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             {

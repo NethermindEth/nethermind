@@ -37,6 +37,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Trie;
 using Newtonsoft.Json;
@@ -545,7 +546,59 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task forkChoiceUpdatedV1_no_common_branch_fails()
+        public async Task forkChoiceUpdatedV1_no_common_branch_initiates_syncing()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak? startingHead = chain.BlockTree.HeadHash;
+            BlockHeader parent = Build.A.BlockHeader
+                .WithNumber(1)
+                .WithHash(TestItem.KeccakA)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .TestObject;
+            Block block = Build.A.Block
+                .WithNumber(2)
+                .WithParent(parent)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .WithAuthor(Address.Zero)
+                .WithPostMergeFlag(true)
+                .TestObject;
+            await rpc.engine_newPayloadV1(new BlockRequestResult(block));
+
+            chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
+            chain.BeaconSync.IsBeaconSyncFinished(block.Header).Should().BeTrue();
+            chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+            chain.BeaconPivot.BeaconPivotExists().Should().BeFalse();
+            BlockTreePointers pointers = new BlockTreePointers
+            {
+                BestKnownNumber = 0,
+                BestSuggestedHeader = chain.BlockTree.Genesis!,
+                BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
+                BestKnownBeaconBlock = 0,
+                LowestInsertedHeader = null,
+                LowestInsertedBeaconHeader = null
+            };
+            AssertBlockTreePointers(chain.BlockTree, pointers);
+
+            ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
+                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+            forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
+                .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+
+            chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
+            chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
+            chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash)?.Header).Should().BeFalse();
+            AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
+            pointers.LowestInsertedBeaconHeader = block.Header;
+            AssertBlockTreePointers(chain.BlockTree, pointers);
+            AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
+        }
+
+        [Test]
+        public async Task forkChoiceUpdatedV1_initiate_syncing_if_unknown_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -570,6 +623,7 @@ namespace Nethermind.Merge.Plugin.Test
                 .Be("SYNCING");
             
             AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
+
         }
 
         [Test]
@@ -1151,6 +1205,37 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.AreNotEqual(headBlockHash, result.HeadBlockHash);
             Assert.AreNotEqual(finalizedBlockHash, result.FinalizedBlockHash);
             Assert.AreNotEqual(confirmedBlockHash, result.SafeBlockHash);
+        }
+
+        private void AssertBlockTreePointers(
+            IBlockTree blockTree,
+            BlockTreePointers pointers)
+        {
+            blockTree.BestKnownNumber.Should().Be(pointers.BestKnownNumber);
+            blockTree.BestSuggestedHeader.Should().Be(pointers.BestSuggestedHeader);
+            blockTree.BestSuggestedBody.Should().Be(pointers.BestSuggestedBody);
+            // TODO: post merge sync change to best beacon block
+            (blockTree.BestSuggestedBeaconHeader?.Number ?? 0).Should().Be(pointers.BestKnownBeaconBlock);
+            blockTree.LowestInsertedHeader.Should().BeEquivalentTo(pointers.LowestInsertedHeader);
+            blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(pointers.LowestInsertedBeaconHeader);
+        }
+
+        private void AssertBeaconPivotValues(IBeaconPivot beaconPivot, BlockHeader blockHeader)
+        { 
+            beaconPivot.BeaconPivotExists().Should().BeTrue();
+            beaconPivot.PivotNumber.Should().Be(blockHeader.Number);
+            beaconPivot.PivotHash.Should().Be(blockHeader.Hash ?? blockHeader.CalculateHash());
+            beaconPivot.PivotTotalDifficulty.Should().Be(null);
+        }
+        
+        private class BlockTreePointers
+        {
+            public long BestKnownNumber;
+            public BlockHeader BestSuggestedHeader;
+            public Block BestSuggestedBody;
+            public long BestKnownBeaconBlock;
+            public BlockHeader? LowestInsertedHeader;
+            public BlockHeader? LowestInsertedBeaconHeader;
         }
     }
 }
