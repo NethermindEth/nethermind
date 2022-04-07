@@ -102,6 +102,11 @@ namespace Nethermind.Synchronization.SnapSync
                         _logger.Info($"SNAP - emptyRequestCount:{_emptyRequestCount}");
                     }
 
+                    if(_snapProvider.ProgressTracker.IsSnapGetRangesFinished())
+                    {
+                        Finish();
+                    }
+
                     return Task.FromResult(EmptyBatch);
                 }
 
