@@ -104,6 +104,8 @@ namespace Nethermind.State.Snap
                 return (range, null, null);
             }
 
+            _logger.Warn($"SNAP - IsSnapGetRangesFinished:{IsSnapGetRangesFinished()}");
+
             return (null, null, null);
         }
 
