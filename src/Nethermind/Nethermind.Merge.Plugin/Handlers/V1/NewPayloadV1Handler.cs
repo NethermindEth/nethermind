@@ -154,21 +154,16 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                         if (current == null)
                         {
+                            // block not part of beacon pivot chain, save in cache
+                            _logger.Info($"Inserted {block} into cache as ${_beaconPivot.PivotHash} could not be found in cache");
                             _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
                             return NewPayloadV1Result.Accepted;
                         }
 
                         while (stack.TryPop(out Block? child))
                         {
-                            if (child.Hash == _beaconPivot.PivotHash)
-                            {
-                                // header will be inserted with beacon headers sync
-                                _blockTree.Insert(child);
-                            }
-                            else
-                            {
-                                _blockTree.Insert(child, true, insertOptions);
-                            }
+                            _logger.Info($"Inserted dangling {child} into block tree");
+                            _blockTree.Insert(child, true, insertOptions);
                         }
                     }
 
