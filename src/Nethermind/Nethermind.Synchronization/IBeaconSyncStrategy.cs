@@ -16,6 +16,8 @@
 // 
 
 using System.Configuration;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization
 {
@@ -33,7 +35,7 @@ namespace Nethermind.Synchronization
 
         public bool IsBeaconSyncHeadersFinished() => true;
 
-        public bool IsBeaconSyncFinished() => true;
+        public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => true;
         
         public bool FastSyncEnabled => false;
     }
@@ -44,7 +46,7 @@ namespace Nethermind.Synchronization
         bool ShouldBeInBeaconHeaders();
         bool ShouldBeInBeaconModeControl();
         bool IsBeaconSyncHeadersFinished();
-        bool IsBeaconSyncFinished();
+        bool IsBeaconSyncFinished(BlockHeader? blockHeader);
         bool FastSyncEnabled { get; }
     }
 }

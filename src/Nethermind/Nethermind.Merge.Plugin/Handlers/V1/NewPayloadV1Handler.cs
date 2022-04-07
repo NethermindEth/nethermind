@@ -121,7 +121,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (parentHeader == null)
             {
                 // possible that headers sync finished before this was called, so blocks in cache weren't inserted
-                if (!_beaconSyncStrategy.IsBeaconSyncFinished())
+                if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
                 {
                     bool inserted = TryInsertDanglingBlock(block);
                     return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
@@ -132,7 +132,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Accepted;
             }
 
-            if (!_beaconSyncStrategy.IsBeaconSyncFinished())
+            if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
             {
                 if (parentHeader.TotalDifficulty == 0)
                 {
@@ -401,7 +401,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private void TryProcessChainFromStateSyncBlock(BlockHeader parentHeader, Block block)
         {
-            long state = _state == 0 ? _syncProgressResolver.FindBestFullState() : _state; // ToDo Sarah: I think we need to findBestFullState only one time because isFastSyncTransition condition
+            long state = _state == 0 ? _syncProgressResolver.FindBestFullState() : _state;
             if (state > 0)
             {
                 bool shouldProcess = block.Number > state;
