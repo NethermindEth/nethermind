@@ -170,10 +170,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (_logger.IsWarn)
                     _logger.Warn(
-                        $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, parent block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}");
+                        $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}");
 
                 return ForkchoiceUpdatedV1Result.Error(
-                    $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, parent block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}",
+                    $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}",
                     ErrorCodes.InvalidParams);
             }
 
