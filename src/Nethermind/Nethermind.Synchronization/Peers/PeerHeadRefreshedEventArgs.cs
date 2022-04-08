@@ -15,24 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Data;
+using System;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.Synchronization.Peers;
+
+public class PeerHeadRefreshedEventArgs : EventArgs
 {
-    public class CompareUserOperationsByHash : IComparer<UserOperation>
+    public ISyncPeer SyncPeer { get; }
+    public BlockHeader Header { get; }
+
+    public PeerHeadRefreshedEventArgs(ISyncPeer syncPeer, BlockHeader blockHeader)
     {
-        public static readonly CompareUserOperationsByHash Instance = new();
-        
-        private CompareUserOperationsByHash() { }
-
-        public int Compare(UserOperation? x, UserOperation? y)
-        {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-
-            return x.RequestId!.CompareTo(y.RequestId!);
-        }
+        SyncPeer = syncPeer;
+        Header = blockHeader;
     }
 }

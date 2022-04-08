@@ -129,6 +129,9 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) =>
             _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
 
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) =>
+            _currentTxTracer.LoadOperationStorage(address, storageIndex, value);
+
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
             _currentTxTracer.ReportSelfDestruct(address, balance, refundAddress);
         

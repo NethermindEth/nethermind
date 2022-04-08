@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Processing
     {
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
+        protected readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IWitnessCollector _witnessCollector;
         private readonly IBlockValidator _blockValidator;
@@ -192,7 +192,7 @@ namespace Nethermind.Blockchain.Processing
         // TODO: move to block processing pipeline
         private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
         {
-            if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
+            if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
             _storageProvider.CommitTrees(blockNumber);
             _stateProvider.CommitTree(blockNumber);
         }

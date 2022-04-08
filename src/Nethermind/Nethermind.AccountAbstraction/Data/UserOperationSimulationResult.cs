@@ -16,23 +16,28 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Data;
+using System.Collections.Immutable;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.AccountAbstraction.Source
+namespace Nethermind.AccountAbstraction.Data
 {
-    public class CompareUserOperationsByHash : IComparer<UserOperation>
+    public struct UserOperationSimulationResult
     {
-        public static readonly CompareUserOperationsByHash Instance = new();
-        
-        private CompareUserOperationsByHash() { }
+        public bool Success { get; set; }
+        public UserOperationAccessList AccessList { get; set; }
+        public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
+        public string? Error { get; set; }
 
-        public int Compare(UserOperation? x, UserOperation? y)
+        public static UserOperationSimulationResult Failed(string? error)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
-
-            return x.RequestId!.CompareTo(y.RequestId!);
-        }
+            return new()
+            {
+                Success = false,
+                AccessList = UserOperationAccessList.Empty,
+                AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty,
+                Error = error
+            };
+        } 
     }
 }

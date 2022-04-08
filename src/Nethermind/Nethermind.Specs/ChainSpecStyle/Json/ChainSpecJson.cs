@@ -99,6 +99,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public IDictionary<long, Address> BlockGasLimitContractTransitions { get; set; } = new Dictionary<long, Address>();
             public long? TwoThirdsMajorityTransition { get; set; }
             public long? PosdaoTransition { get; set; }
+            public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode { get; set; } = new Dictionary<long, IDictionary<Address, byte[]>>();
 
             public class StepDurationJson : SortedDictionary<long, long> { }
         }
@@ -166,6 +167,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public IDictionary<long, Address> RandomnessContractAddress => Params.RandomnessContractAddress;
 
             public IDictionary<long, Address> BlockGasLimitContractTransitions => Params.BlockGasLimitContractTransitions;
+            
+            public IDictionary<long, IDictionary<Address, byte[]>> RewriteBytecode => Params.RewriteBytecode;
             
             public AuraEngineParamsJson Params { get; set; }
         }

@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <summary>
         /// Number of blocks before the best peer's head when we switch from fast sync to full sync
         /// </summary>
-        public const int FastSyncLag = 2;
+        public const int FastSyncLag = 32;
 
         /// <summary>
         /// How many blocks can fast sync stay behind while state nodes is still syncing
@@ -132,11 +132,17 @@ namespace Nethermind.Synchronization.ParallelSync
                     Snapshot best = TakeSnapshot(peerDifficulty.Value, peerBlock.Value);
                     if (!FastSyncEnabled)
                     {
-
                         bool anyPeers = peerBlock.Value > 0 &&
                                         peerDifficulty.Value >= _syncProgressResolver.ChainDifficulty;
-                        newModes = anyPeers ? SyncMode.Full : SyncMode.Disconnected;
-                        reason = "No Useful Peers";
+                        if (anyPeers)
+                        {
+                            newModes = SyncMode.Full;
+                        }
+                        else
+                        {                        
+                            newModes = SyncMode.Disconnected;
+                            reason = "No Useful Peers";
+                        }
                     }
                     else
                     {
@@ -182,7 +188,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
                 }
             }
-
 
             UpdateSyncModes(newModes, reason);
         }

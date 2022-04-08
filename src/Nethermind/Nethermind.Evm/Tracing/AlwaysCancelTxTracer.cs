@@ -76,7 +76,9 @@ namespace Nethermind.Evm.Tracing
         public void SetOperationMemory(List<string> memoryTrace) => throw new OperationCanceledException(ErrorMessage);
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new OperationCanceledException(ErrorMessage);
-        
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) => throw new OperationCanceledException(ErrorMessage);
+
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => throw new OperationCanceledException(ErrorMessage);
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new OperationCanceledException(ErrorMessage);

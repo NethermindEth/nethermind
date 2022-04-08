@@ -121,15 +121,8 @@ namespace Nethermind.AccountAbstraction.Test
             chainId ??= 1;
             
             //Build the hash before attempting to construct the RequestID and signing it.
-            TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
             AccountAbstractionRpcModuleTests.SignUserOperation(TestObjectInternal, privateKey, entryPointAddress, chainId.Value);
             return this;
-        }
-
-        protected override void BeforeReturn()
-        {
-            base.BeforeReturn();
-            TestObjectInternal.Hash = TestObjectInternal.CalculateHash();
         }
     }
 }

@@ -32,8 +32,8 @@ namespace Nethermind.AccountAbstraction.Source
 {
     public class PaymasterThrottler : IPaymasterThrottler
     {
-        //Timer parameters corresponding to a 24-hour timespan, for updating the throttler's data.
-        public const int TimerHoursSpan = 24;
+        //Timer parameters corresponding to a once an hour hour timespan, for updating the throttler's data.
+        public const int TimerHoursSpan = 1;
         public const int TimerMinutesSpan = 0;
         public const int TimerSecondsSpan = 0;
         
@@ -146,7 +146,7 @@ namespace Nethermind.AccountAbstraction.Source
             foreach (Address paymaster in _opsSeen.Keys)
             {
                 //Correction to be applied hourly for the EMA.
-                uint correction = FloorDivision(_opsSeen[paymaster], TimerHoursSpan);
+                uint correction = FloorDivision(_opsSeen[paymaster], 24);
                 
                 //If the updated value would fall below zero, set it to zero instead.
                 _opsSeen[paymaster] = _opsSeen[paymaster] >= correction
@@ -157,7 +157,7 @@ namespace Nethermind.AccountAbstraction.Source
             // Repeat for the other dictionary.
             foreach (Address paymaster in _opsIncluded.Keys)
             {
-                uint correction = FloorDivision(_opsIncluded[paymaster], TimerHoursSpan);
+                uint correction = FloorDivision(_opsIncluded[paymaster], 24);
 
                 _opsIncluded[paymaster] = _opsIncluded[paymaster] >= correction
                     ? _opsIncluded[paymaster] - correction

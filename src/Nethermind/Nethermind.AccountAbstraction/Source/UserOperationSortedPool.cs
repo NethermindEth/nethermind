@@ -46,7 +46,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         protected override Address MapToGroup(UserOperation value) => value.Sender;
         
-        protected override Keccak GetKey(UserOperation value) => value.Hash!;
+        protected override Keccak GetKey(UserOperation value) => value.RequestId!;
 
         protected override bool AllowSameKeyReplacement => true;
 
@@ -59,12 +59,12 @@ namespace Nethermind.AccountAbstraction.Source
                 return false;
             }
 
-            return !CanInsert(op.Hash, op);
+            return !CanInsert(op.RequestId!, op);
         }
 
         public bool CanInsert(UserOperation userOperation)
         {
-            return CanInsert(userOperation.Hash, userOperation);
+            return CanInsert(userOperation.RequestId!, userOperation);
         }
     }
 }

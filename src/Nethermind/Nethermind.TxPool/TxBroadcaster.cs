@@ -130,28 +130,58 @@ namespace Nethermind.TxPool
         
         public void BroadcastPersistentTxs()
         {
-            if (_logger.IsDebug) _logger.Debug($"Broadcasting persistent transactions to all peers");
-
-            foreach ((_, ITxPoolPeer peer) in _peers)
+            if (_txPoolConfig.PeerNotificationThreshold > 0)
             {
-                Notify(peer, GetPersistentTxsToSend(), true);
+                IList<Transaction> persistentTxsToSend = GetPersistentTxsToSend();
+
+                if (persistentTxsToSend.Count > 0)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Broadcasting {persistentTxsToSend.Count} persistent transactions to all peers.");
+
+                    foreach ((_, ITxPoolPeer peer) in _peers)
+                    {
+                        Notify(peer, persistentTxsToSend, true);
+                    }
+                }
+                else
+                {
+                    if (_logger.IsDebug) _logger.Debug($"There are currently no transactions able to broadcast.");
+                }
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"PeerNotificationThreshold is not a positive value: {_txPoolConfig.PeerNotificationThreshold}. Skipping broadcasting persistent transactions.");
             }
         }
         
-        internal IEnumerable<Transaction> GetPersistentTxsToSend()
+        internal IList<Transaction> GetPersistentTxsToSend()
         {
-            if (_txPoolConfig.PeerNotificationThreshold <= 0)
+            // PeerNotificationThreshold is a declared in config max percent of transactions in persistent broadcast,
+            // which will be sent after processing of every block. numberOfPersistentTxsToBroadcast is equal to
+            // PeerNotificationThreshold multiplication by number of transactions in persistent broadcast, rounded up.
+            int numberOfPersistentTxsToBroadcast =
+                Math.Min(_txPoolConfig.PeerNotificationThreshold * _persistentTxs.Count / 100 + 1,
+                    _persistentTxs.Count);
+
+            List<Transaction> persistentTxsToSend = new(numberOfPersistentTxsToBroadcast);
+
+            foreach (Transaction tx in _persistentTxs.GetFirsts())
             {
-                yield break;
-            }
-            
-            foreach (Transaction tx in _persistentTxs.GetSnapshot())
-            {
-                if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
+                if (numberOfPersistentTxsToBroadcast > 0)
                 {
-                    yield return tx;
+                    if (tx.MaxFeePerGas >= _headInfo.CurrentBaseFee)
+                    {
+                        numberOfPersistentTxsToBroadcast--;
+                        persistentTxsToSend.Add(tx);
+                    }
+                }
+                else
+                {
+                    break;
                 }
             }
+
+            return persistentTxsToSend;
         }
         
         public void StopBroadcast(Keccak txHash)

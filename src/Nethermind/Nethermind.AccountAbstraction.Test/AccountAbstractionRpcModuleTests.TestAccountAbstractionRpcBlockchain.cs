@@ -81,6 +81,7 @@ namespace Nethermind.AccountAbstraction.Test
             public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = new Dictionary<Address, UserOperationTxBuilder>();
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
             public Address[] EntryPointAddresses { get; private set; } = null!;
+            public Address[] WhitelistedPayamsters { get; private set; } = null!;
             
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
@@ -99,7 +100,8 @@ namespace Nethermind.AccountAbstraction.Test
                     Enabled = true, 
                     EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
                     Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
-                    UserOperationPoolSize = 200
+                    UserOperationPoolSize = 200,
+                    WhitelistedPaymasters = ""
                 };
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private IBlockValidator BlockValidator { get; set; } = null!;
@@ -153,15 +155,29 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 // Address.TryParse(_accountAbstractionConfig.EntryPointContractAddress, out Address? entryPointContractAddress);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in _entryPointContractAddressesString){
+                IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string addressString in entryPointContractAddressesString)
+                {
                     bool parsed = Address.TryParse(
-                        _addressString,
+                        addressString,
                         out Address? entryPointContractAddress);
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
 
                 EntryPointAddresses = entryPointContractAddresses.ToArray();
+                
+                IList<Address> whitelistedPaymasters = new List<Address>();
+                IList<string> whitelistedPaymastersString = _accountAbstractionConfig.GetWhitelistedPaymasters().ToList();
+                foreach (string addressString in whitelistedPaymastersString){
+                    bool parsed = Address.TryParse(
+                        addressString,
+                        out Address? whitelistedPaymaster);
+                    whitelistedPaymasters.Add(whitelistedPaymaster!);
+                }
+
+                WhitelistedPayamsters = whitelistedPaymasters.ToArray();
+                
+                
                 Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
@@ -197,6 +213,7 @@ namespace Nethermind.AccountAbstraction.Test
                         EntryPointContractAbi,
                         create2FactoryAddress!,
                         entryPoint!,
+                        WhitelistedPayamsters,
                         SpecProvider, 
                         BlockTree, 
                         DbProvider, 
@@ -265,7 +282,7 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
                 resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(userOperation.CalculateRequestId(entryPoint, SpecProvider.ChainId));
+                resultOfUserOperation.GetData().Should().Be(userOperation.RequestId!);
             }
 
             public void SupportedEntryPoints()
