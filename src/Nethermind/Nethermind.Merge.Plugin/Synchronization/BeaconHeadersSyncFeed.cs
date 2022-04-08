@@ -35,9 +35,13 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
-    
+
+    private bool _mergedChain;
+
+    protected override long HeadersDestinationNumber => _syncConfig.PivotNumberParsed + 1;
+    protected override bool AllHeadersDownloaded => _mergedChain 
+        || (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed + 1;
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
-    protected override long HeadersDestinationBlockNumber => _pivot.PivotDestinationNumber;
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
     public BeaconHeadersSyncFeed(
         ISyncModeSelector syncModeSelector,
@@ -63,12 +67,12 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     public override AllocationContexts Contexts => AllocationContexts.Headers;
     public override void InitializeFeed()
     {
-        _blockTree.LoadLowestInsertedBeaconHeader();
         _pivotNumber = _pivot.PivotNumber;
         
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
         Keccak? startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash;
+        // TODO: beaconsync TD should not be final total difficulty if pivot destination < TDD block
         UInt256? startTotalDifficulty = lowestInserted?.TotalDifficulty ?? _pivot.PivotTotalDifficulty 
             ?? _mergeConfig.FinalTotalDifficultyParsed;
         
@@ -78,37 +82,45 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         _lowestRequestedHeaderNumber = startNumber + 1;   
     }
 
-    protected override void PostFinishCleanUp()
+    protected override void FinishAndCleanUp()
     {
-        base.PostFinishCleanUp();
-        // TODO: beaconsync additional checks on total difficulty
+        // TODO: beaconsync backfill of TD should be moved to forward beacon sync
         if (_mergeConfig.FinalTotalDifficultyParsed == null)
         {
             // set total difficulty as beacon pivot does not provide total difficulty
-            _blockTree.BackFillTotalDifficulty(HeadersDestinationBlockNumber, _pivotNumber);   
+            _blockTree.BackFillTotalDifficulty(LowestInsertedBlockHeader?.Number ?? 0, _pivotNumber);   
         }
+        // make feed dormant as there may be more header syncs when there is a new beacon pivot
+        FallAsleep();
+        PostFinishCleanUp();
     }
-    
+
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
-        _logger.Info($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}"); 
-        BlockTreeInsertOptions options = _nextHeaderDiff is null
-            ? BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers
-            : BlockTreeInsertOptions.None;
+        _logger.Info($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.UpdateBeaconPointers;
+        if (_nextHeaderDiff is null)
+        {
+            options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
+        }
 
         AddBlockResult insertOutcome = _blockTree.IsKnownBlock(header.Number, header.Hash)
             ? AddBlockResult.AlreadyKnown
             : _blockTree.Insert(header, options);
-
+        // Found existing block in the block tree
         if (insertOutcome == AddBlockResult.AlreadyKnown)
         {
-            if (header.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+            if (_blockTree.LowestInsertedHeader != null
+                && _blockTree.LowestInsertedHeader.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
             {
                 if (_logger.IsInfo)
                     _logger.Info(
-                        $" BeaconHeader LowestInsertedBeaconHeader changed, old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
-                _blockTree.LowestInsertedBeaconHeader = header;
+                        " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
+                        $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
+                // beacon header set to (global) lowest inserted header
+                _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
             }
+            _mergedChain = true;
         }
 
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)

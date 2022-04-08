@@ -81,7 +81,6 @@ public class MergeSynchronizer : Synchronizer
         
         base.Start();
         StartBeaconHeadersComponents();
-        StartBeaconFullSyncComponents();
     }
 
     private void StartBeaconHeadersComponents()
@@ -100,25 +99,6 @@ public class MergeSynchronizer : Synchronizer
             else
             {
                 if (_logger.IsInfo) _logger.Info("Beacon headers task completed.");
-            }
-        });
-    }
-
-    private void StartBeaconFullSyncComponents()
-    {
-        BeaconFullSyncFeed beaconFullSyncFeed = new(_syncMode, _blockCacheService, _blockTree, _syncProgressResolver,
-            _blockValidator, _blockProcessingQueue, _logManager);
-        BeaconFullSyncDispatcher beaconFullSyncDispatcher =
-            new(beaconFullSyncFeed!, _logManager);
-        beaconFullSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
-        {
-            if (t.IsFaulted)
-            {
-                if (_logger.IsError) _logger.Error("Beacon full sync failed", t.Exception);
-            }
-            else
-            {
-                if (_logger.IsInfo) _logger.Info("Beacon full sync task completed.");
             }
         });
     }

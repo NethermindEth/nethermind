@@ -23,15 +23,23 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
-using Nethermind.State.Repositories;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public class BlockTreeTests
 {
-    private (BlockTree notSyncedTree, BlockTree syncedTree)  BuildBlockTrees(int notSyncedTreeSize, int syncedTreeSize)
+    private BlockTreeInsertOptions GetBlockTreeInsertOptions()
+    {
+        return BlockTreeInsertOptions.TotalDifficultyNotNeeded
+               | BlockTreeInsertOptions.SkipUpdateBestPointers 
+               | BlockTreeInsertOptions.UpdateBeaconPointers;
+    }
+    
+    private (BlockTree notSyncedTree, BlockTree syncedTree) BuildBlockTrees(
+        int notSyncedTreeSize, int syncedTreeSize)
     {
         BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize);
         BlockTree notSyncedTree = new(
@@ -88,29 +96,33 @@ public class BlockTreeTests
         Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
         Assert.AreEqual(9, tree.Head!.Number);
     }
-    
+
     [Test]
-    public void Can_start_insert_pivot_block()
+    public void Can_start_insert_pivot_block_with_correct_pointers()
     {
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true,
-            BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.TotalDifficultyNotNeeded);
+        BlockTreeInsertOptions insertOption = GetBlockTreeInsertOptions();
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, insertOption);
         
         Assert.AreEqual(AddBlockResult.Added, insertResult);
         Assert.AreEqual(9, notSyncedTree.BestKnownNumber);
+        Assert.AreEqual(9, notSyncedTree.BestSuggestedHeader!.Number);
+        Assert.AreEqual(9, notSyncedTree.Head!.Number);
+        Assert.AreEqual(9, notSyncedTree.BestSuggestedBody!.Number);
+        Assert.AreEqual(14, notSyncedTree.BestKnownBeaconNumber);
+        Assert.AreEqual(14, notSyncedTree.BestSuggestedBeaconHeader!.Number);
     }
     
+        
     [Test]
     public void Can_insert_beacon_headers()
     {
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
         
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true,
-            BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.TotalDifficultyNotNeeded);
-
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;
+        BlockTreeInsertOptions options = GetBlockTreeInsertOptions();
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, options);
         for (int i = 13; i > 9; --i)
         {
             BlockHeader? beaconHeader = syncedTree.FindHeader(i, BlockTreeLookupOptions.None);
@@ -125,10 +137,9 @@ public class BlockTreeTests
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
         
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true,
-            BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.TotalDifficultyNotNeeded);
-
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;
+        BlockTreeInsertOptions options = GetBlockTreeInsertOptions();
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, options);
+        
         for (int i = 13; i > 9; --i)
         {
             BlockHeader? beaconHeader = syncedTree.FindHeader(i, BlockTreeLookupOptions.None);

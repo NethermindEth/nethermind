@@ -38,6 +38,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Trie;
 using Newtonsoft.Json;
@@ -546,21 +547,32 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task forkChoiceUpdatedV1_no_common_branch_fails()
+        public async Task forkChoiceUpdatedV1_no_common_branch_failsk()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak? startingHead = chain.BlockTree.HeadHash;
-            BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
-            Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
-            await rpc.engine_newPayloadV1(new BlockRequestResult(block));
-
-            ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+            Block parent = Build.A.Block.WithNumber(2).WithParentHash(TestItem.KeccakA).WithNonce(0).WithDifficulty(0).TestObject;
+            Block block = Build.A.Block.WithNumber(3).WithParent(parent).WithNonce(0).WithDifficulty(0).TestObject;
+            
+            await rpc.engine_newPayloadV1(new BlockRequestResult(parent));
+            
+            ForkchoiceStateV1 forkchoiceStateV1 = new(parent.Hash!, startingHead, startingHead);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-                .Be("SYNCING"); // ToDo wait for final PostMerge sync
+                .Be("SYNCING");
+            
+            await rpc.engine_newPayloadV1(new BlockRequestResult(block));
+            
+            ForkchoiceStateV1 forkchoiceStateV1_1 = new(parent.Hash!, startingHead, startingHead);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult_1 =
+                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1_1, null);
+            forkchoiceUpdatedResult_1.Data.PayloadStatus.Status.Should()
+                .Be("SYNCING");
+            
             AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
+
         }
 
         [Test]

@@ -62,25 +62,24 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Requests awaiting to be sent - these are results of partial or invalid responses being queued again 
         /// </summary>
-        private readonly ConcurrentQueue<HeadersSyncBatch> _pending = new();
+        protected readonly ConcurrentQueue<HeadersSyncBatch> _pending = new();
 
         /// <summary>
         /// Requests sent to peers for which responses have not been received yet  
         /// </summary>
-        private readonly ConcurrentDictionary<HeadersSyncBatch, object> _sent = new();
+        protected readonly ConcurrentDictionary<HeadersSyncBatch, object> _sent = new();
 
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
         /// </summary>
-        private readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
+        protected readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
         
         protected virtual BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedHeader;
-        protected virtual long HeadersDestinationBlockNumber => 0;
 
         protected virtual MeasuredProgress HeadersSyncProgressReport => _syncReport.FastBlocksHeaders;
-        
-        private bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 
-                                             (HeadersDestinationBlockNumber == 0 ? 1 : HeadersDestinationBlockNumber);
+
+        protected virtual long HeadersDestinationNumber => 0;
+        protected virtual bool AllHeadersDownloaded => (LowestInsertedBlockHeader?.Number ?? long.MaxValue) == 1;
         private bool AnyHeaderDownloaded => LowestInsertedBlockHeader != null;
 
         private long HeadersInQueue => _dependencies.Sum(hd => hd.Value.Response?.Length ?? 0);
@@ -118,10 +117,11 @@ namespace Nethermind.Synchronization.FastBlocks
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
 
-            BlockHeader lowestInserted = LowestInsertedBlockHeader;
-            long startNumber = lowestInserted?.Number ?? _pivotNumber;
-            Keccak startHeaderHash = lowestInserted?.Hash ?? _syncConfig.PivotHashParsed;
-            UInt256 startTotalDifficulty = lowestInserted?.TotalDifficulty ?? _syncConfig.PivotTotalDifficultyParsed;
+            bool useSyncPivot = _blockTree.LowestInsertedHeader == null || _blockTree.LowestInsertedHeader.Number > _pivotNumber;
+            BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
+            long startNumber = useSyncPivot ? _pivotNumber : lowestInserted.Number;
+            Keccak startHeaderHash = useSyncPivot ? _syncConfig.PivotHashParsed : lowestInserted.Hash;
+            UInt256? startTotalDifficulty = useSyncPivot ? syncConfig.PivotTotalDifficultyParsed : lowestInserted?.TotalDifficulty;
 
             _nextHeaderHash = startHeaderHash;
             _nextHeaderDiff = startTotalDifficulty;
@@ -138,18 +138,15 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Headers;
-
+        
         private bool ShouldBuildANewBatch()
         {
-            bool genesisHeaderRequested = _lowestRequestedHeaderNumber == 0;
+            bool destinationHeaderRequested = _lowestRequestedHeaderNumber == HeadersDestinationNumber;
 
-            bool destinationHeaderRequested = _lowestRequestedHeaderNumber == HeadersDestinationBlockNumber;
-            
             bool isImmediateSync = !_syncConfig.DownloadHeadersInFastSync;
 
             bool noBatchesLeft = AllHeadersDownloaded
                                  || destinationHeaderRequested
-                                 || genesisHeaderRequested
                                  || MemoryInQueue >= MemoryAllowance.FastBlocksMemory
                                  || isImmediateSync && AnyHeaderDownloaded;
 
@@ -157,8 +154,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (AllHeadersDownloaded || isImmediateSync && AnyHeaderDownloaded)
                 {
-                    Finish();
-                    PostFinishCleanUp();
+                    FinishAndCleanUp();
                 }
 
                 return false;
@@ -167,11 +163,15 @@ namespace Nethermind.Synchronization.FastBlocks
             return true;
         }
 
-        protected virtual void PostFinishCleanUp()
+        protected virtual void FinishAndCleanUp()
         {
-            // if block 0 is requested, it not included in the sync report
-            long lowestHeaderNumberInclusive = _lowestRequestedHeaderNumber == 0 ? 0 : 1;
-            HeadersSyncProgressReport.Update(_pivotNumber - _lowestRequestedHeaderNumber + lowestHeaderNumberInclusive);
+            Finish();
+            PostFinishCleanUp();
+        }
+        
+        protected void PostFinishCleanUp()
+        {
+            HeadersSyncProgressReport.Update(_pivotNumber);
             HeadersSyncProgressReport.MarkEnd();
             _dependencies.Clear(); // there may be some dependencies from wrong branches
             _pending.Clear(); // there may be pending wrong branches
@@ -221,8 +221,8 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             HeadersSyncBatch batch = new();
             batch.MinNumber = _lowestRequestedHeaderNumber - 1;
-            batch.StartNumber = Math.Max(HeadersDestinationBlockNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
-            batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationBlockNumber, _headersRequestSize);
+            batch.StartNumber = Math.Max(HeadersDestinationNumber, _lowestRequestedHeaderNumber - _headersRequestSize);
+            batch.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber - HeadersDestinationNumber, _headersRequestSize);
             _lowestRequestedHeaderNumber = batch.StartNumber;
             return batch;
         }
