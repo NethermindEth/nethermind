@@ -16,8 +16,11 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -28,6 +31,8 @@ using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -109,6 +114,54 @@ namespace Nethermind.Merge.Plugin.Test
             TryCalculateHash(blockRequest, out Keccak? hash);
             blockRequest.BlockHash = hash;
             return blockRequest;
+        }
+
+        private static BlockRequestResult[] CreateBlockRequestBranch(BlockRequestResult parent, Address miner, int count)
+        {
+            BlockRequestResult currentBlock = parent;
+            BlockRequestResult[] blockRequests = new BlockRequestResult[count];
+            for (int i = 0; i < count; i++)
+            {
+                currentBlock = CreateBlockRequest(currentBlock, miner);
+                blockRequests[i] = currentBlock;
+            }
+
+            return blockRequests;
+        }
+        
+        private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranchV1(IEngineRpcModule rpc,
+            MergeTestBlockchain chain,
+            int count, BlockRequestResult startingParentBlock, bool setHead, Keccak? random = null)
+        {
+            List<BlockRequestResult> blocks = new();
+            BlockRequestResult parentBlock = startingParentBlock;
+            parentBlock.TryGetBlock(out Block? block);
+            BlockHeader parentHeader = block!.Header;
+            for (int i = 0; i < count; i++)
+            {
+                BlockRequestResult? getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader,
+                    parentBlock.Timestamp + 12,
+                    random ?? TestItem.KeccakA, Address.Zero);
+                PayloadStatusV1 payloadStatusResponse =
+                    (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
+                payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
+                if (setHead)
+                {
+                    Keccak newHead = getPayloadResult!.BlockHash;
+                    ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
+                    ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse =
+                        await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+                    setHeadResponse.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+                    setHeadResponse.Data.PayloadId.Should().Be(null);
+                }
+
+                blocks.Add((getPayloadResult));
+                parentBlock = getPayloadResult;
+                parentBlock.TryGetBlock(out block!);
+                parentHeader = block!.Header;
+            }
+
+            return blocks;
         }
         
         private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop,

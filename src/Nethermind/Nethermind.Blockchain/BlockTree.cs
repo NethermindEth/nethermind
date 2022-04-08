@@ -521,8 +521,8 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            bool updateBeaconPointers = (options & BlockTreeInsertOptions.SkipUpdateBeaconPointers) == 0;
-            if (updateBeaconPointers)
+            bool skipBeaconPointers = (options & BlockTreeInsertOptions.UpdateBeaconPointers) == 0;
+            if (!skipBeaconPointers)
             {
                 if (header.Number > BestKnownBeaconNumber)
                 {
@@ -1472,6 +1472,22 @@ namespace Nethermind.Blockchain
             if (blockHash == Head?.Hash)
             {
                 return true;
+            }
+
+            if (_headerCache.Get(blockHash) is not null)
+            {
+                return true;
+            }
+
+            ChainLevelInfo level = LoadLevel(number);
+            return level is not null && FindIndex(blockHash, level).HasValue;
+        }
+
+        public bool IsKnownBeaconBlock(long number, Keccak blockHash)
+        {
+            if (number > BestKnownBeaconNumber)
+            {
+                return false;
             }
 
             if (_headerCache.Get(blockHash) is not null)

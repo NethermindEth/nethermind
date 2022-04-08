@@ -353,11 +353,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private bool TryInsertDanglingBlock(Block block)
         {
-            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.SkipUpdateBestPointers |
-                                                   BlockTreeInsertOptions.TotalDifficultyNotNeeded |
-                                                   BlockTreeInsertOptions.NotOnMainChain;
+            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.All;
 
-            if (!_blockTree.IsKnownBlock(block.Number, block.Hash ?? block.CalculateHash()))
+            if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
             {
                 // last block inserted is parent of current block, part of the same chain
                 if (block.ParentHash == _blockCacheService.ProcessDestination)
@@ -372,7 +370,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     {
                         stack.Push(current);
                         if (current.Hash == _beaconPivot.PivotHash ||
-                            _blockTree.IsKnownBlock(current.Number, current.Hash))
+                            _blockTree.IsKnownBeaconBlock(current.Number, current.Hash))
                         {
                             break;
                         }

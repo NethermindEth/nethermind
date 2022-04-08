@@ -97,7 +97,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
         _logger.Info($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers;
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.UpdateBeaconPointers;
         if (_nextHeaderDiff is null)
         {
             options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
@@ -109,28 +109,16 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         // Found existing block in the block tree
         if (insertOutcome == AddBlockResult.AlreadyKnown)
         {
-            if (_syncConfig.FastSync)
+            if (_blockTree.LowestInsertedHeader != null
+                && _blockTree.LowestInsertedHeader.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
             {
-                if (_blockTree.LowestInsertedHeader != null
-                    && _blockTree.LowestInsertedHeader.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
-                {
-                    if (_logger.IsInfo)
-                        _logger.Info(
-                            " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
-                            $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
-                    _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
-                }
-            }
-            else
-            {
-                // lowest block header in chain in archive sync
                 if (_logger.IsInfo)
                     _logger.Info(
-                        " BeaconHeader LowestInsertedBeaconHeader found existing chain in archive sync," +
-                        $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.Genesis ?.Number}");
-                _blockTree.LowestInsertedBeaconHeader = _blockTree.Genesis;
+                        " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
+                        $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
+                // beacon header set to (global) lowest inserted header
+                _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
             }
-            
             _mergedChain = true;
         }
 

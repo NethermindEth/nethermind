@@ -57,12 +57,12 @@ namespace Nethermind.Merge.Plugin.Test
                 .Build(
                     new SingleReleaseSpecProvider(London.Instance, 1));
 
-        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain)
+        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
         {
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            chain.BeaconPivot = new BeaconPivot(new SyncConfig(), chain.MergeConfig, new MemDb(), chain.BlockTree, chain.LogManager);
+            chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), chain.MergeConfig, new MemDb(), chain.BlockTree, chain.LogManager);
             BlockCacheService blockCacheService = new();
-            chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, new SyncConfig(), chain.DbProvider.MetadataDb, chain.LogManager);
+            chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), chain.DbProvider.MetadataDb, chain.LogManager);
             return new EngineRpcModule(
                 new GetPayloadV1Handler(chain.PayloadPreparationService!, chain.LogManager),
                 new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, chain.EthSyncingInfo, new InitConfig(), chain.PoSSwitcher, chain.BeaconSync, chain.BeaconPivot, blockCacheService, syncProgressResolver, chain.LogManager),

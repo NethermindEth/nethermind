@@ -32,7 +32,9 @@ public class BlockTreeTests
 {
     private BlockTreeInsertOptions GetBlockTreeInsertOptions()
     {
-        return BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;
+        return BlockTreeInsertOptions.TotalDifficultyNotNeeded
+               | BlockTreeInsertOptions.SkipUpdateBestPointers 
+               | BlockTreeInsertOptions.UpdateBeaconPointers;
     }
     
     private (BlockTree notSyncedTree, BlockTree syncedTree) BuildBlockTrees(
