@@ -64,9 +64,9 @@ namespace Nethermind.Mev.Test
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
             consensusPlugin.InitBlockProducer().Returns(Substitute.For<IBlockProducer>());
             plugin.WrapPlugin(consensusPlugin);
-            Task<IBlockProducer> blockProducer = plugin.InitBlockProducer();
+            IBlockProducer blockProducer = await plugin.InitBlockProducer();
 
-            blockProducer.Result.Should().BeOfType(typeof(MevBlockProducer));
+            blockProducer.Should().BeOfType(typeof(MevBlockProducer));
         }
     }
 }
