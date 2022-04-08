@@ -182,13 +182,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidTerminalBlock;
             }
 
-            if (!parentProcessed)
-            {
-                _logger.Info($"Inserted, parent block was not processed {block}");
-                _blockTree.Insert(block, true);
-                return NewPayloadV1Result.Syncing;
-            }
-
             (ValidationResult ValidationResult, string? Message) result =
                 ValidateBlockAndProcess(block, out Block? processedBlock, parentHeader);
             if ((result.ValidationResult & ValidationResult.AlreadyKnown) != 0 ||
