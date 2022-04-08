@@ -128,42 +128,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             return blockRequests;
         }
-        
-        private async Task<IReadOnlyList<BlockRequestResult>> ProduceBranchV1(IEngineRpcModule rpc,
-            MergeTestBlockchain chain,
-            int count, BlockRequestResult startingParentBlock, bool setHead, Keccak? random = null)
-        {
-            List<BlockRequestResult> blocks = new();
-            BlockRequestResult parentBlock = startingParentBlock;
-            parentBlock.TryGetBlock(out Block? block);
-            BlockHeader parentHeader = block!.Header;
-            for (int i = 0; i < count; i++)
-            {
-                BlockRequestResult? getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader,
-                    parentBlock.Timestamp + 12,
-                    random ?? TestItem.KeccakA, Address.Zero);
-                PayloadStatusV1 payloadStatusResponse =
-                    (await rpc.engine_newPayloadV1(getPayloadResult)).Data;
-                payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
-                if (setHead)
-                {
-                    Keccak newHead = getPayloadResult!.BlockHash;
-                    ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
-                    ResultWrapper<ForkchoiceUpdatedV1Result> setHeadResponse =
-                        await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-                    setHeadResponse.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-                    setHeadResponse.Data.PayloadId.Should().Be(null);
-                }
 
-                blocks.Add((getPayloadResult));
-                parentBlock = getPayloadResult;
-                parentBlock.TryGetBlock(out block!);
-                parentHeader = block!.Header;
-            }
-
-            return blocks;
-        }
-        
         private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop,
             bool requireCanonical)
         {
