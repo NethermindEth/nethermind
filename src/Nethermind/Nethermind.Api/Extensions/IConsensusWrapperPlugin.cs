@@ -20,9 +20,10 @@ using Nethermind.Consensus;
 
 namespace Nethermind.Api.Extensions
 {
-    public interface IConsensusWrapperPlugin : INethermindPlugin
+    public interface IConsensusWrapperPlugin : IConsensusPlugin
     {
-        Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin);
+        void WrapPlugin(IConsensusPlugin consensusPlugin);
+        
         bool Enabled { get; }
     }
 }

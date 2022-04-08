@@ -26,6 +26,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Mev;
 using Nethermind.AccountAbstraction.Bundler;
 using Nethermind.AccountAbstraction.Subscribe;
+using Nethermind.Consensus.Transactions;
 using Nethermind.JsonRpc.Modules.Subscribe;
 
 
@@ -48,6 +49,8 @@ namespace Nethermind.AccountAbstraction
         private IUserOperationBroadcaster? _userOperationBroadcaster;
 
         private IBundler? _bundler;
+
+        private IConsensusPlugin? _childConsensulPlugin = null;
 
         private MevPlugin MevPlugin => _nethermindApi
             .GetConsensusWrapperPlugins()
@@ -354,7 +357,19 @@ namespace Nethermind.AccountAbstraction
             return ValueTask.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        {
+            if (_childConsensulPlugin == null)
+            {
+                throw new Exception("No child ConsensusPlugin");
+            }
+            return _childConsensulPlugin.InitBlockProducer(blockProductionTrigger, UserOperationTxSource);
+        }
+
+        public string SealEngineType { get; } = "AccountAbstraction";
+        public IBlockProductionTrigger DefaultBlockProductionTrigger { get; } = new BuildBlocksWhenRequested();
+
+        public void WrapPlugin(IConsensusPlugin consensusPlugin)
         {
             if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
 
@@ -384,9 +399,7 @@ namespace Nethermind.AccountAbstraction
                         $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance / 1.Ether()} Ether");
             }
 
-            IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
-
-            return consensusPlugin.InitBlockProducer(trigger, UserOperationTxSource);
+            _childConsensulPlugin = consensusPlugin;
         }
 
         public bool MevPluginEnabled => _nethermindApi.Config<IMevConfig>().Enabled;

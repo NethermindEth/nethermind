@@ -45,7 +45,10 @@ namespace Nethermind.Mev
         private INethermindApi _nethermindApi = null!;
         private BundlePool? _bundlePool;
         private ITracerFactory? _tracerFactory;
-        
+
+        private IConsensusPlugin? _childConsensusPlugin = null;
+        private List<MevBlockProducer.MevBlockProducerInfo>? _blockProducers = null;
+
         public string Name => "MEV";
 
         public string Description => "Flashbots MEV spec implementation";
@@ -149,7 +152,18 @@ namespace Nethermind.Mev
             return Task.CompletedTask;
         }
 
-        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null,
+            ITxSource? additionalTxSource = null)
+        {
+            return new Task<IBlockProducer>(() =>
+                new MevBlockProducer(_childConsensusPlugin!.DefaultBlockProductionTrigger, _nethermindApi.LogManager,
+                    _blockProducers!.ToArray()));
+        }
+
+        public string SealEngineType { get; } = "MEV";
+        public IBlockProductionTrigger DefaultBlockProductionTrigger { get; } = new BuildBlocksWhenRequested();
+
+        public async void WrapPlugin(IConsensusPlugin consensusPlugin)
         {
             if (!Enabled)
             {
@@ -181,7 +195,8 @@ namespace Nethermind.Mev
                 blockProducers.Add(bundleProducer);
             }
 
-            return new MevBlockProducer(consensusPlugin.DefaultBlockProductionTrigger, _nethermindApi.LogManager, blockProducers.ToArray());
+            _childConsensusPlugin = consensusPlugin;
+            _blockProducers = blockProducers;
         }
 
         private async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
