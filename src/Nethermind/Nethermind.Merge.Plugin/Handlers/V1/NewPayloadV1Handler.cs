@@ -396,7 +396,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             return true;
         }
-
+        
+        // TODO: beaconsync this should be moved to be part of the forward beacon sync
         private void TryProcessChainFromStateSyncBlock(BlockHeader parentHeader, Block block)
         {
             long state = _state == 0 ? _syncProgressResolver.FindBestFullState() : _state;

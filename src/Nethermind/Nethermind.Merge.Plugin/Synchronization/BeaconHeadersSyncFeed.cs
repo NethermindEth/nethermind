@@ -84,6 +84,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override void FinishAndCleanUp()
     {
+        // TODO: beaconsync backfill of TD should be moved to forward beacon sync
         if (_mergeConfig.FinalTotalDifficultyParsed == null)
         {
             // set total difficulty as beacon pivot does not provide total difficulty

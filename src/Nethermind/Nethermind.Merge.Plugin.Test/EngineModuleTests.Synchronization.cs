@@ -326,10 +326,11 @@ public partial class EngineModuleTests
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
-        // TODO: post merge sync simulate forward beacon sync in fast sync
+        // TODO: post merge sync checking pointers after state sync
     }
 
     [Test]
+    [Ignore("TODO: post merge sync able to handle multiple pivots")]
     public async Task Maintain_correct_pointers_for_multiple_pivots() { }
 
     private void AssertBlockTreePointers(
