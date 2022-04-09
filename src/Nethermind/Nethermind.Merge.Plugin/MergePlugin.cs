@@ -79,8 +79,10 @@ namespace Nethermind.Merge.Plugin
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _blockCacheService = new BlockCacheService();
 
-                _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
-                   _api.RewardCalculatorSource ?? NoBlockRewards.Instance,  _poSSwitcher);
+                // keep reward calculation post merge for AuRa
+                if (_api.ChainSpec.SealEngineType != Core.SealEngineType.AuRa)
+                    _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
+                       _api.RewardCalculatorSource ?? NoBlockRewards.Instance, _poSSwitcher);
                 _api.SealValidator = new MergeSealValidator(_poSSwitcher, _api.SealValidator);
 
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockFinalizationManager);
