@@ -16,27 +16,19 @@
 // 
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Logging;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.Synchronization.Peers;
+
+public class PeerHeadRefreshedEventArgs : EventArgs
 {
-    /// <summary>
-    /// This class is introduced for easier testing of the plugins under construction - it allows to load a plugin
-    /// directly from the current solution
-    /// </summary>
-    /// <typeparam name="T">Type of the plugin to load</typeparam>
-    public class SinglePluginLoader<T> : IPluginLoader where T : INethermindPlugin
-    {
-        private SinglePluginLoader() { }
+    public ISyncPeer SyncPeer { get; }
+    public BlockHeader Header { get; }
 
-        public static IPluginLoader Instance { get; } = new SinglePluginLoader<T>();
-        
-        public IEnumerable<Type> PluginTypes => Enumerable.Repeat(typeof(T), 1);
-        
-        public void Load(ILogManager logManager) { }
-        
-        public void OrderPlugins(IPluginConfig pluginConfig) { }
+    public PeerHeadRefreshedEventArgs(ISyncPeer syncPeer, BlockHeader blockHeader)
+    {
+        SyncPeer = syncPeer;
+        Header = blockHeader;
     }
 }

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -42,19 +44,19 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = userOperationRpc.Signature;
 
             AccessList = UserOperationAccessList.Empty;
-            Hash = CalculateHash();
+            AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty;
         }
 
-        public Keccak CalculateHash()
+        private Keccak CalculateHash()
         {
             return Keccak.Compute(_packer.Pack(this));
         }
 
         private readonly AbiSignature _idSignature = new AbiSignature("RequestId", AbiType.Bytes32, AbiAddress.Instance, AbiType.UInt256);
         
-        public Keccak CalculateRequestId(Address entryPointAddress, ulong chainId)
+        public void CalculateRequestId(Address entryPointAddress, ulong chainId)
         {
-            return Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, Hash, entryPointAddress, chainId));
+            RequestId = Keccak.Compute(_abiEncoder.Encode(AbiEncodingStyle.None, _idSignature, CalculateHash(), entryPointAddress, chainId));
         }
 
         public UserOperationAbi Abi => new()
@@ -73,7 +75,7 @@ namespace Nethermind.AccountAbstraction.Data
             Signature = Signature!
         };
         
-        public Keccak Hash { get; set; }
+        public Keccak? RequestId { get; set; }
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] InitCode { get; set; }
@@ -87,6 +89,7 @@ namespace Nethermind.AccountAbstraction.Data
         public byte[] Signature { get; set; }
         public byte[] PaymasterData { get; set; }
         public UserOperationAccessList AccessList { get; set; }
+        public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
         public bool AlreadySimulated { get; set; }
     }
 }
