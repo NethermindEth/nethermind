@@ -25,12 +25,13 @@ namespace Nethermind.State.Snap
 
         public ProgressTracker ProgressTracker { get; set; }
 
+        //TODO: remove this constructor (only for tests)
         public SnapProvider(ITrieStore store, ILogManager logManager)
         {
             _store = store;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
-            ProgressTracker = new(_logManager);
+            ProgressTracker = new(null, _logManager);
         }
 
         public SnapProvider(IDbProvider dbProvider, ILogManager logManager)
@@ -45,7 +46,7 @@ namespace Nethermind.State.Snap
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
-            ProgressTracker = new(_logManager);
+            ProgressTracker = new(dbProvider.StateDb, _logManager);
         }
 
 

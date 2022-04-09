@@ -252,7 +252,14 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }
-        
+
+        protected override void Finish()
+        {
+            base.Finish();
+
+            _logger.Info($"SNAP - State Ranges (Phase 1) finished. Healing (Phase 2) starting...");
+            _snapProvider.ProgressTracker.FinishRangePhase();
+        }
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if (CurrentState == SyncFeedState.Dormant)

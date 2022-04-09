@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Snap
@@ -16,12 +17,14 @@ namespace Nethermind.State.Snap
 
         private const int STORAGE_BATCH_SIZE = 2000;
         private const int CODES_BATCH_SIZE = 400;
+        private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         private int _activeAccountRequests;
         private int _activeStorageRequests;
         private int _activeCodeRequests;
 
         private readonly ILogger _logger;
+        private readonly IDb _db;
 
         public Keccak NextAccountPath { get; set; } = Keccak.Zero;
         //public Keccak NextAccountPath { get; set; } = new("0xffe0000000000000000000000000000000000000000000000000000000000000");
@@ -31,9 +34,23 @@ namespace Nethermind.State.Snap
 
         public bool MoreAccountsToRight { get; set; } = true;
 
-        public ProgressTracker(ILogManager logManager)
+        public ProgressTracker(IDb db, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _db = db ?? throw new ArgumentNullException(nameof(db));
+
+            byte[] progress = _db.Get(ACC_PROGRESS_KEY);
+            if(progress != null)
+            {
+                NextAccountPath = new Keccak(progress);
+                _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
+
+                if (NextAccountPath == Keccak.MaxValue)
+                {
+                    _logger.Info($"SNAP - State Ranges (Phase 1) is finished. Healing (Phase 2) starting...");
+                    MoreAccountsToRight = false;
+                }
+            }
         }
 
         public (AccountRange accountRange, StorageRange storageRange, Keccak[] codeHashes) GetNextRequest(long blockNumber, Keccak rootHash)
@@ -103,10 +120,6 @@ namespace Nethermind.State.Snap
 
                 return (range, null, null);
             }
-
-            bool fisnished = IsSnapGetRangesFinished();
-            //if(fisnished) 
-            //    _logger.Warn($"SNAP - IsSnapGetRangesFinished:{fisnished}");
 
             return (null, null, null);
         }
@@ -187,6 +200,13 @@ namespace Nethermind.State.Snap
                 && _activeAccountRequests == 0
                 && _activeStorageRequests == 0
                 && _activeCodeRequests == 0;
+        }
+
+        public void FinishRangePhase()
+        {
+            MoreAccountsToRight = false;
+            NextAccountPath = Keccak.MaxValue;
+            _db.Set(ACC_PROGRESS_KEY, NextAccountPath.Bytes);
         }
     }
 }
