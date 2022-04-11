@@ -35,7 +35,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test
+namespace Nethermind.Synchronization.Test.SnapSync
 {
     [TestFixture]
     public class RecreateStateFromAccountRangesTests
