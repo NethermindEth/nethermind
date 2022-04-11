@@ -57,6 +57,12 @@ namespace Nethermind.Merge.Plugin
         public string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
 
+        protected virtual void InitRewardCalculatorSource()
+        {
+            _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
+                _api.RewardCalculatorSource ?? NoBlockRewards.Instance, _poSSwitcher);
+        }
+
         public Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
@@ -79,10 +85,7 @@ namespace Nethermind.Merge.Plugin
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _blockCacheService = new BlockCacheService();
 
-                // keep reward calculation post merge for AuRa
-                if (_api.ChainSpec.SealEngineType != Core.SealEngineType.AuRa)
-                    _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
-                       _api.RewardCalculatorSource ?? NoBlockRewards.Instance, _poSSwitcher);
+                InitRewardCalculatorSource();
                 _api.SealValidator = new MergeSealValidator(_poSSwitcher, _api.SealValidator);
 
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockFinalizationManager);
