@@ -106,6 +106,10 @@ namespace Nethermind.Evm.Test
         {
         }
 
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+        }
+
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
         }

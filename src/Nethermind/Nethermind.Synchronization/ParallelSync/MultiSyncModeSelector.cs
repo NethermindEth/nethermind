@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <summary>
         /// Number of blocks before the best peer's head when we switch from fast sync to full sync
         /// </summary>
-        public const int FastSyncLag = 2;
+        public const int FastSyncLag = 32;
 
         /// <summary>
         /// How many blocks can fast sync stay behind while state nodes is still syncing
@@ -186,6 +186,12 @@ namespace Nethermind.Synchronization.ParallelSync
                                 CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                                 CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
                                 CheckAddFlag(best.IsInBeaconFullSync, SyncMode.BeaconFullSync, ref newModes);
+                                if (IsTheModeSwitchWorthMentioning(newModes))
+                                {
+                                    string stateString = BuildStateString(best);
+                                    if (_logger.IsInfo)
+                                        _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
+                                }
                             }
                             catch (InvalidAsynchronousStateException)
                             {
@@ -194,12 +200,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             }
                         }
                         
-                        if (IsTheModeSwitchWorthMentioning(newModes))
-                        {
-                            string stateString = BuildStateString(best);
-                            if (_logger.IsInfo)
-                                _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
-                        }
+
 
                         if ((newModes & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None
                             && (Current & (SyncMode.Full | SyncMode.WaitingForBlock)) == SyncMode.None)
@@ -210,7 +211,6 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
                 }
             }
-
 
             UpdateSyncModes(newModes, reason);
         }

@@ -168,9 +168,26 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 _api.DisposeStack.Push(disposableValidator);
             }
+            
+            IDictionary<long,IDictionary<Address,byte[]>> rewriteBytecode = chainSpecAuRa.RewriteBytecode;
+            ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
 
-            processor.AuRaValidator = _validator;
-            return processor;
+            return new AuRaBlockProcessor(
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
+                _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
+                changeableTxProcessingEnv.StateProvider,
+                changeableTxProcessingEnv.StorageProvider, 
+                _api.ReceiptStorage,
+                _api.LogManager,
+                changeableTxProcessingEnv.BlockTree,
+                auRaTxFilter,
+                CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride,
+                contractRewriter)
+            {
+                AuRaValidator = _validator
+            };
         }
 
         private TxPoolTxSource CreateTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)

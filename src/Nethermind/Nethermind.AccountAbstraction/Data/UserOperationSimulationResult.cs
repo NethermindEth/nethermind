@@ -15,28 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Logging;
+using System.Collections.Immutable;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.AccountAbstraction.Data
 {
-    /// <summary>
-    /// This class is introduced for easier testing of the plugins under construction - it allows to load a plugin
-    /// directly from the current solution
-    /// </summary>
-    /// <typeparam name="T">Type of the plugin to load</typeparam>
-    public class SinglePluginLoader<T> : IPluginLoader where T : INethermindPlugin
+    public struct UserOperationSimulationResult
     {
-        private SinglePluginLoader() { }
+        public bool Success { get; set; }
+        public UserOperationAccessList AccessList { get; set; }
+        public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
+        public string? Error { get; set; }
 
-        public static IPluginLoader Instance { get; } = new SinglePluginLoader<T>();
-        
-        public IEnumerable<Type> PluginTypes => Enumerable.Repeat(typeof(T), 1);
-        
-        public void Load(ILogManager logManager) { }
-        
-        public void OrderPlugins(IPluginConfig pluginConfig) { }
+        public static UserOperationSimulationResult Failed(string? error)
+        {
+            return new()
+            {
+                Success = false,
+                AccessList = UserOperationAccessList.Empty,
+                AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty,
+                Error = error
+            };
+        } 
     }
 }

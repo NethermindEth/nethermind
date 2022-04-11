@@ -70,6 +70,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.GasPriceOracle == null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
        
             var processingReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
             var txPermissionFilterOnlyTxProcessorSource = CreateReadOnlyTransactionProcessorSource();
@@ -78,6 +79,9 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 txPermissionFilterOnlyTxProcessorSource,
                 _api.SpecProvider, 
                 new ServiceTxFilter(_api.SpecProvider));
+
+            IDictionary<long,IDictionary<Address,byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
+            ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
             
             var processor = new AuRaBlockProcessor(
                 _api.SpecProvider,
@@ -90,7 +94,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.LogManager,
                 _api.BlockTree,
                 auRaTxFilter,
-                GetGasLimitCalculator());
+                GetGasLimitCalculator(),
+                contractRewriter);
             
             var auRaValidator = CreateAuRaValidator(processor, processingReadOnlyTransactionProcessorSource);
             processor.AuRaValidator = auRaValidator;
