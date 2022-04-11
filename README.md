@@ -117,6 +117,11 @@ sudo ln -s `find /usr/lib64/ -type f -name "libdl.so.2*"` /usr/lib64/libdl.so
 brew install rocksdb gmp snappy lz4 zstd
 ```
 
+* Apple Silicon (M1) users only: create symlink for homebrew dependencies
+```
+sudo ln -s `find /opt/homebrew/Cellar/snappy -name "libsnappy.dylib"` /usr/local/lib/libsnappy.dylib
+```
+
 ## Build and Run
 
 ```sh

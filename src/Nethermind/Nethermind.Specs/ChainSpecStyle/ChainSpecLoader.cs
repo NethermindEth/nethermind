@@ -267,6 +267,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     BlockGasLimitContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockGasLimitContractTransitions,
                     TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? AuRaParameters.TransitionDisabled,
                     PosdaoTransition = chainSpecJson.Engine.AuthorityRound.PosdaoTransition ?? AuRaParameters.TransitionDisabled,
+                    RewriteBytecode = chainSpecJson.Engine.AuthorityRound.RewriteBytecode,
                 };
             }
             else if (chainSpecJson.Engine?.Clique != null)

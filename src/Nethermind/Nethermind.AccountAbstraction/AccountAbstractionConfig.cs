@@ -24,10 +24,11 @@ namespace Nethermind.AccountAbstraction
         public bool Enabled { get; set; }
         public int AaPriorityPeersMaxCount { get; set; } = 20;
         public int UserOperationPoolSize { get; set; } = 200;
-        public int MaximumUserOperationPerSender { get; set; } = 10;
+        public int MaximumUserOperationPerSender { get; set; } = 1;
         public string EntryPointContractAddresses {get; set;} = "";
         public string Create2FactoryAddress { get; set; } = "";
         public UInt256 MinimumGasPrice { get; set; } = 1;
+        public string WhitelistedPaymasters { get; set; } = "";
         public string FlashbotsEndpoint { get; set; } = "https://relay.flashbots.net/";
     }
 }

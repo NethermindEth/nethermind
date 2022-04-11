@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization.Peers
 
         public PeerInfo? GetPeer(Node node) => _peers.TryGetValue(node.Id, out PeerInfo? peerInfo) ? peerInfo : null;
         public event EventHandler<PeerBlockNotificationEventArgs>? NotifyPeerBlock;
-            
+        public event EventHandler<PeerHeadRefreshedEventArgs>? PeerRefreshed;
 
         public void WakeUpAll()
         {
@@ -267,12 +267,21 @@ namespace Nethermind.Synchronization.Peers
             PeerInfo peerInfo = new(syncPeer);
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
-            if (syncPeer.IsPriority) Metrics.PriorityPeers = PriorityPeerCount;
-            if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
             
-            if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
-            _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer));
+            BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is not null)
+            {
+                syncPeer.HeadNumber = header.Number;
+            }
+            else
+            {
+                if (syncPeer.IsPriority) Metrics.PriorityPeers = PriorityPeerCount;
+                if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
+                
+                if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
+                if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
+                _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer));
+            }
         }
 
         public void RemovePeer(ISyncPeer syncPeer)
@@ -610,13 +619,15 @@ namespace Nethermind.Synchronization.Peers
                                 {
                                     syncPeer.TotalDifficulty = newTotalDifficulty;
                                     syncPeer.HeadNumber = header.Number;
-                                    syncPeer.HeadHash = header.Hash;
+                                    syncPeer.HeadHash = header.Hash!;
+                                    
+                                    PeerRefreshed?.Invoke(this, new PeerHeadRefreshedEventArgs(syncPeer, header));
                                 }
                             }
                             else if (header.Number > syncPeer.HeadNumber)
                             {
                                 syncPeer.HeadNumber = header.Number;
-                                syncPeer.HeadHash = header.Hash;
+                                syncPeer.HeadHash = header.Hash!;
                             }
 
                             syncPeer.IsInitialized = true;

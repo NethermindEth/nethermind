@@ -76,7 +76,10 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
             => throw new InvalidOperationException(ErrorMessage);
-        
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) 
+            => throw new InvalidOperationException(ErrorMessage);
+
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
             => throw new InvalidOperationException(ErrorMessage);
 

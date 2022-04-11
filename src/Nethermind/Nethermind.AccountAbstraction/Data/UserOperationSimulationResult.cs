@@ -15,23 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using Nethermind.Core;
-using Nethermind.JsonRpc;
-using Newtonsoft.Json;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.AccountAbstraction.Subscribe;
-
-public class EntryPointsParam : IJsonRpcParam
+namespace Nethermind.AccountAbstraction.Data
 {
-    public Address[] EntryPoints { get; set; } = null!;
-    
-    public void FromJson(JsonSerializer serializer, string jsonValue)
+    public struct UserOperationSimulationResult
     {
-        EntryPointsParam ep = serializer.Deserialize<EntryPointsParam>(jsonValue.ToJsonTextReader())
-                              ?? throw new ArgumentException($"Invalid 'entryPoints' filter: {jsonValue}");
-        EntryPoints = ep.EntryPoints;
+        public bool Success { get; set; }
+        public UserOperationAccessList AccessList { get; set; }
+        public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
+        public string? Error { get; set; }
 
+        public static UserOperationSimulationResult Failed(string? error)
+        {
+            return new()
+            {
+                Success = false,
+                AccessList = UserOperationAccessList.Empty,
+                AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty,
+                Error = error
+            };
+        } 
     }
 }

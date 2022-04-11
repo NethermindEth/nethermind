@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
-        public override string ToString() => $"[Peer|{Name}|{HeadNumber}|{ClientId}|{Node:s}]";
+        public override string ToString() => $"[Peer|{Name}|{HeadNumber,8}|{Node:s}]";
 
         protected Keccak _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;

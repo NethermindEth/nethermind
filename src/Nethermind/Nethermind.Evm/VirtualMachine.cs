@@ -592,6 +592,7 @@ namespace Nethermind.Evm
             }
         }
 
+        [SkipLocalsInit]
         private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
@@ -1816,6 +1817,12 @@ namespace Nethermind.Evm
                         
                         byte[] value = _storage.Get(storageCell);
                         stack.PushBytes(value);
+                        
+                        if (_txTracer.IsTracingOpLevelStorage)
+                        {
+                            _txTracer.LoadOperationStorage(storageCell.Address, storageIndex, value);
+                        }
+                        
                         break;
                     }
                     case Instruction.SSTORE:

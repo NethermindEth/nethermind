@@ -127,11 +127,11 @@ namespace Nethermind.AccountAbstraction.Network
                 if (_userOperationPools.TryGetValue(uop.EntryPoint, out IUserOperationPool? pool))
                 {
                     ResultWrapper<Keccak> result = pool.AddUserOperation(uop.UserOperation);
-                    if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} sent {uop.UserOperation.Hash} uop to pool for entryPoint {uop.EntryPoint} and it was {result}");
+                    if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} sent {uop.UserOperation.RequestId!} uop to pool for entryPoint {uop.EntryPoint} and it was {result}");
                 }
                 else
                 {
-                    if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} could not sent {uop.UserOperation.Hash} uop to pool for entryPoint {uop.EntryPoint}, pool does not support the entryPoint");
+                    if (Logger.IsTrace) Logger.Trace($"{_session.Node:c} could not sent {uop.UserOperation.RequestId!} uop to pool for entryPoint {uop.EntryPoint}, pool does not support the entryPoint");
                 }
             }
         }
@@ -155,7 +155,7 @@ namespace Nethermind.AccountAbstraction.Network
                 }
 
                 // TODO: Why this check
-                if (uop.UserOperation.Hash is not null)
+                if (uop.UserOperation.RequestId is not null)
                 {
                     uopsToSend.Add(uop);
                     TxPool.Metrics.PendingTransactionsSent++;

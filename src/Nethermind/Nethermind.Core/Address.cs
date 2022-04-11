@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -22,6 +24,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
+    [TypeConverter(typeof(AddressTypeConverter))]
     public class Address : IEquatable<Address>, IComparable<Address>
     {
         public const int ByteLength = 20;
@@ -175,6 +178,23 @@ namespace Nethermind.Core
         public AddressStructRef ToStructRef() => new(Bytes);
         
         public int CompareTo(Address? other) => Bytes.AsSpan().SequenceCompareTo(other?.Bytes);
+        
+        private class AddressTypeConverter : TypeConverter
+        {
+            public override object? ConvertFrom(ITypeDescriptorContext? context, CultureInfo? culture, object value) => 
+                value is string stringValue ? new Address(stringValue) : base.ConvertFrom(context, culture, value);
+
+            public override object? ConvertTo(ITypeDescriptorContext? context, CultureInfo? culture, object? value, Type destinationType) => 
+                destinationType == typeof(string) && value != null 
+                    ? ((Address)value).ToString() 
+                    : base.ConvertTo(context, culture, value, destinationType);
+
+            public override bool CanConvertFrom(ITypeDescriptorContext? context, Type sourceType) => 
+                sourceType == typeof(string) || base.CanConvertFrom(context, sourceType);
+
+            public override bool CanConvertTo(ITypeDescriptorContext? context, Type? destinationType) => 
+                destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
+        }
     }
     
     public ref struct AddressStructRef
