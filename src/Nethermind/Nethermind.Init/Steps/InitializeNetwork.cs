@@ -49,6 +49,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Init.Steps
 {
@@ -116,7 +117,7 @@ namespace Nethermind.Init.Steps
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
-            _api.SnapProvider = new SnapProvider(_api.DbProvider, _api.LogManager);
+            _api.SnapProvider = new SnapProvider(_api.BlockTree, _api.DbProvider, _api.LogManager);
 
             SyncProgressResolver syncProgressResolver = new(
                 _api.BlockTree!,

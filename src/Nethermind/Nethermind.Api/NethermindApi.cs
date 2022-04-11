@@ -67,6 +67,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Api
 {
