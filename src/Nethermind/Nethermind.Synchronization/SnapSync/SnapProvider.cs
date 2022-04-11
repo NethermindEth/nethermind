@@ -63,6 +63,8 @@ namespace Nethermind.Synchronization.SnapSync
                     Interlocked.Add(ref Metrics.SyncedAccounts, response.PathAndAccounts.Length);
                 }
             }
+
+            _progressTracker.ReportAccountRequestFinished();
         }
 
         public bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
