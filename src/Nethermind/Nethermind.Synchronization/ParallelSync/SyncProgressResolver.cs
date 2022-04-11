@@ -24,6 +24,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -53,7 +54,7 @@ namespace Nethermind.Synchronization.ParallelSync
             IReceiptStorage receiptStorage,
             IDb stateDb,
             ITrieNodeResolver trieNodeResolver,
-            State.Snap.ISnapProvider snapProvider,
+            ISnapProvider snapProvider,
             ISyncConfig syncConfig,
             ILogManager logManager)
         {
@@ -190,7 +191,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                                                                .LowestInsertedReceiptBlockNumber ??
                                                                            long.MaxValue) <= _receiptsBarrier);
 
-        public bool IsSnapGetRangesFinished() => _snapProvider.ProgressTracker.IsSnapGetRangesFinished();
+        public bool IsSnapGetRangesFinished() => _snapProvider.IsSnapGetRangesFinished();
 
         private bool IsFastBlocks()
         {

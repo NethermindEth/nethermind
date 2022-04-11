@@ -18,19 +18,17 @@
 using System.Collections.Generic;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Monitoring;
 using Nethermind.Network;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
-using Nethermind.State.Snap;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Api
 {

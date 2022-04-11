@@ -21,29 +21,20 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
-        long _testStorageRespSize;
-        int _testStorageReqCount;
-        long _testCodeRespSize;
-        int _testCodeReqCount;
-
         private const SnapSyncBatch EmptyBatch = null;
-        private int _accountResponsesCount;
-        private int _storageResponsesCount;
         private int _emptyRequestCount;
         private int _retriesCount;
 
-        private readonly Pivot _pivot;
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISnapProvider _snapProvider;
 
@@ -57,8 +48,6 @@ namespace Nethermind.Synchronization.SnapSync
             _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider)); ;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-            _pivot = new(blockTree, logManager);
-
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
         
@@ -66,45 +55,19 @@ namespace Nethermind.Synchronization.SnapSync
         {
             try
             {
-                SnapSyncBatch request = new SnapSyncBatch();
+                (SnapSyncBatch request, bool finished) = _snapProvider.GetNextRequest();
 
-                BlockHeader pivotHeader = _pivot.GetPivotHeader();
-
-                (AccountRange accountRange, StorageRange storageRange, Keccak[] codeHashes) = _snapProvider.ProgressTracker.GetNextRequest(pivotHeader.Number, pivotHeader.StateRoot);
-
-                if(codeHashes != null)
+                if (request == null)
                 {
-                    request.CodesRequest = codeHashes;
-                }
-                else if (storageRange != null)
-                {
-                    request.StorageRangeRequest = storageRange;
-
-                    if (_storageResponsesCount == 1 || _storageResponsesCount > 0 && _storageResponsesCount % 100 == 0)
-                    {
-                        _logger.Info($"SNAP - ({_pivot.GetPivotHeader().StateRoot}) Responses:{_storageResponsesCount}, Slots:{Metrics.SyncedStorageSlots}");
-                    }
-                }
-                else if (accountRange != null)
-                {
-                    request.AccountRangeRequest = accountRange;
-
-                    if (_accountResponsesCount == 1 || _accountResponsesCount > 0 && _accountResponsesCount % 10 == 0)
-                    {
-                        _logger.Info($"SNAP - ({_pivot.GetPivotHeader().StateRoot}) Responses:{_accountResponsesCount}, Accounts:{Metrics.SyncedAccounts}, next request:{request.AccountRangeRequest.RootHash}:{request.AccountRangeRequest.StartingHash}:{request.AccountRangeRequest.LimitHash}");
-                    }
-                }
-                else
-                {
-                    _emptyRequestCount++;
-                    if(_emptyRequestCount % 100 == 0)
-                    {
-                        _logger.Info($"SNAP - emptyRequestCount:{_emptyRequestCount}");
-                    }
-
-                    if(_snapProvider.ProgressTracker.IsSnapGetRangesFinished())
+                    if (finished)
                     {
                         Finish();
+                    }
+
+                    _emptyRequestCount++;
+                    if (_emptyRequestCount % 100 == 0)
+                    {
+                        _logger.Info($"SNAP - emptyRequestCount:{_emptyRequestCount}");
                     }
 
                     return Task.FromResult(EmptyBatch);
@@ -129,110 +92,19 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (batch.AccountRangeResponse is not null)
             {
-                if (batch.AccountRangeResponse.PathAndAccounts.Length == 0 && batch.AccountRangeResponse.Proofs.Length == 0)
-                {
-                    _logger.Warn($"GetAccountRange: Requested expired RootHash:{batch.AccountRangeRequest.RootHash}");
-                }
-                else
-                {
-                    _snapProvider.AddAccountRange(batch.AccountRangeRequest.BlockNumber.Value, batch.AccountRangeRequest.RootHash, batch.AccountRangeRequest.StartingHash, batch.AccountRangeResponse.PathAndAccounts, batch.AccountRangeResponse.Proofs);
-
-                    if (batch.AccountRangeResponse.PathAndAccounts.Length > 0)
-                    {
-                        Interlocked.Add(ref Metrics.SyncedAccounts, batch.AccountRangeResponse.PathAndAccounts.Length);
-                    }
-                }
-
-                _snapProvider.ProgressTracker.ReportAccountRequestFinished();
-
-                _accountResponsesCount++;
+                _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
             }
             else if(batch.StorageRangeResponse is not null)
             {
-                if (batch.StorageRangeResponse.PathsAndSlots.Length == 0 && batch.StorageRangeResponse.Proofs.Length == 0)
-                {
-                    _logger.Warn($"GetStorageRange - expired BlockNumber:{batch.StorageRangeRequest.BlockNumber}, RootHash:{batch.StorageRangeRequest.RootHash}, (Accounts:{batch.StorageRangeRequest.Accounts.Count()}), {batch.StorageRangeRequest.StartingHash}");
-
-                    _snapProvider.ProgressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
-                }
-                else
-                {
-                    int slotCount = 0;
-
-                    int requestLength = batch.StorageRangeRequest.Accounts.Length;
-                    int responseLength = batch.StorageRangeResponse.PathsAndSlots.Length;
-
-                    if(requestLength > 1)
-                    {
-                        _testStorageReqCount++;
-                        _testStorageRespSize += responseLength;
-                    }
-
-                    for (int i = 0; i < responseLength; i++)
-                    {
-                        // only the last can have proofs
-                        byte[][] proofs = null;
-                        if (i == responseLength - 1)
-                        {
-                            proofs = batch.StorageRangeResponse.Proofs;
-                        }
-
-                        _snapProvider.AddStorageRange(batch.StorageRangeRequest.BlockNumber.Value, batch.StorageRangeRequest.Accounts[i], batch.StorageRangeRequest.Accounts[i].Account.StorageRoot, batch.StorageRangeRequest.StartingHash, batch.StorageRangeResponse.PathsAndSlots[i], proofs);
-
-                        slotCount += batch.StorageRangeResponse.PathsAndSlots[i].Length;
-                    }
-
-                    if (requestLength > responseLength)
-                    {
-                        _snapProvider.ProgressTracker.ReportFullStorageRequestFinished(batch.StorageRangeRequest.Accounts[responseLength..requestLength]);
-                    }
-                    else
-                    {
-                        _snapProvider.ProgressTracker.ReportFullStorageRequestFinished();
-                    }
-
-                    if (slotCount > 0)
-                    {
-                        Interlocked.Add(ref Metrics.SyncedStorageSlots, slotCount);
-                    }
-                }
-
-                _storageResponsesCount++;
+                _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
             }
             else if(batch.CodesResponse is not null)
             {
-                if (batch.CodesRequest.Length > 0)
-                {
-                    _testCodeReqCount++;
-                    _testCodeRespSize += batch.CodesResponse.Length;
-
-                    if(_testCodeReqCount % 1000 == 0)
-                    {
-                        _logger.Warn($"SNAP - Storage AVG:{_testStorageRespSize / _testStorageReqCount}, Codes AVG:{_testCodeRespSize / _testCodeReqCount}");
-                    }
-                }
-
-                ICollection<Keccak> notDownloaded = _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
-
-                _snapProvider.ProgressTracker.ReportCodeRequestFinished(notDownloaded);
+                 _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
             }
             else
             {
-                //if (_logger.IsInfo) _logger.Info("SNAP peer not assigned to handle request");
-
-                // Retry
-                if (batch.AccountRangeRequest != null)
-                {
-                    _snapProvider.ProgressTracker.ReportAccountRequestFinished();
-                }
-                else if (batch.StorageRangeRequest != null)
-                {
-                    _snapProvider.ProgressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
-                }
-                else if(batch.CodesRequest != null)
-                {
-                    _snapProvider.ProgressTracker.ReportCodeRequestFinished(batch.CodesRequest);
-                }
+                _snapProvider.RetryRequest(batch);
 
                 _retriesCount++;
                 if (_retriesCount % 100 == 0)
@@ -253,29 +125,16 @@ namespace Nethermind.Synchronization.SnapSync
             _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
         }
 
-        protected override void Finish()
-        {
-            base.Finish();
-
-            _logger.Info($"SNAP - State Ranges (Phase 1) finished. Healing (Phase 2) starting...");
-            _snapProvider.ProgressTracker.FinishRangePhase();
-        }
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
             if (CurrentState == SyncFeedState.Dormant)
             {
                 if ((e.Current & SyncMode.SnapSync) == SyncMode.SnapSync)
                 {
-                    if (_pivot.GetPivotHeader() == null || _pivot.GetPivotHeader().Number == 0)
+                    if (_snapProvider.CanSync())
                     {
-                        if (_logger.IsInfo) _logger.Info($"No Best Suggested Header available. Snap Sync not started.");
-
-                        return;
+                        Activate();
                     }
-
-                    if (_logger.IsInfo) _logger.Info($"Starting the SNAP data sync from the {_pivot.GetPivotHeader().ToString(BlockHeader.Format.Short)} {_pivot.GetPivotHeader().StateRoot} root");
-
-                    Activate();
                 }
             }
         }
