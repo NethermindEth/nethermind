@@ -67,7 +67,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public long PivotDestinationNumber => _currentBeaconPivot is null
             ? 0
-            : Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ??  0);
+            : Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ??  0) + 1;
 
         public void EnsurePivot(BlockHeader? blockHeader)
         {
