@@ -50,7 +50,7 @@ namespace Nethermind.AccountAbstraction
 
         private IBundler? _bundler;
 
-        private IConsensusPlugin? _childConsensulPlugin = null;
+        private IBlockProductionPlugin? _childPlugin = null;
 
         private MevPlugin MevPlugin => _nethermindApi
             .GetConsensusWrapperPlugins()
@@ -359,17 +359,16 @@ namespace Nethermind.AccountAbstraction
 
         public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
-            if (_childConsensulPlugin == null)
+            if (_childPlugin == null)
             {
                 throw new Exception("No child ConsensusPlugin");
             }
-            return _childConsensulPlugin.InitBlockProducer(blockProductionTrigger, UserOperationTxSource);
+            return _childPlugin.InitBlockProducer(blockProductionTrigger, UserOperationTxSource);
         }
 
-        public string SealEngineType { get; } = "AccountAbstraction";
         public IBlockProductionTrigger DefaultBlockProductionTrigger { get; } = new BuildBlocksWhenRequested();
 
-        public void WrapPlugin(IConsensusPlugin consensusPlugin)
+        public void WrapBlockProductionPlugin(IBlockProductionPlugin blockProductionPlugin)
         {
             if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
 
@@ -383,9 +382,9 @@ namespace Nethermind.AccountAbstraction
             
             _nethermindApi.BlockProducerEnvFactory.TransactionsExecutorFactory =
                 new AABlockProducerTransactionsExecutorFactory(
-                    _nethermindApi.SpecProvider!, 
+                    _nethermindApi.SpecProvider!,
                     _nethermindApi.LogManager!,
-                    _nethermindApi.EngineSigner!, 
+                    _nethermindApi.EngineSigner!,
                     _entryPointContractAddresses.ToArray());
 
             UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
@@ -399,7 +398,7 @@ namespace Nethermind.AccountAbstraction
                         $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance / 1.Ether()} Ether");
             }
 
-            _childConsensulPlugin = consensusPlugin;
+            _childPlugin = blockProductionPlugin;
         }
 
         public bool MevPluginEnabled => _nethermindApi.Config<IMevConfig>().Enabled;

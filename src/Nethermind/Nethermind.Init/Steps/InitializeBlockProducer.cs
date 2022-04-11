@@ -60,18 +60,18 @@ namespace Nethermind.Init.Steps
                 _api.Config<IMiningConfig>(),
                 _api.LogManager);
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
+            IBlockProductionPlugin? blockProductionPlugin = _api.GetConsensusPlugin();
 
-            if (consensusPlugin is not null)
+            if (blockProductionPlugin is not null)
             {
 
                 foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins())
                 {
-                    wrapperPlugin.WrapPlugin(consensusPlugin);
-                    consensusPlugin = wrapperPlugin;
+                    wrapperPlugin.WrapBlockProductionPlugin(blockProductionPlugin);
+                    blockProductionPlugin = wrapperPlugin;
                 }
 
-                return await consensusPlugin.InitBlockProducer();
+                return await blockProductionPlugin.InitBlockProducer();
             }
             else
             {
