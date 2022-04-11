@@ -53,8 +53,6 @@ namespace Nethermind.AuRa.Test
             _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
 
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns(new Address[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC});
-            
-            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
         }
 
         [Test]

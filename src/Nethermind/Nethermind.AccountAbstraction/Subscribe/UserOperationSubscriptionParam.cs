@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,23 +13,27 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading;
-using System.Threading.Tasks;
+using System;
 using Nethermind.Core;
-using Nethermind.Init.Steps;
-using Nethermind.Serialization.Rlp;
+using Nethermind.JsonRpc;
+using Newtonsoft.Json;
 
-namespace Nethermind.Consensus.AuRa.InitializationSteps
+namespace Nethermind.AccountAbstraction.Subscribe
 {
-    public class InitRlpAuRa : InitRlp
+    public class UserOperationSubscriptionParam : IJsonRpcParam
     {
-        public InitRlpAuRa(AuRaNethermindApi context) : base(context) { }
-
-        public override Task Execute(CancellationToken cancellationToken)
+        public Address[] EntryPoints { get; set; } = Array.Empty<Address>();
+        public bool IncludeUserOperations { get; set; }
+    
+        public void FromJson(JsonSerializer serializer, string jsonValue)
         {
-            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
-            return base.Execute(cancellationToken);
+            UserOperationSubscriptionParam ep = serializer.Deserialize<UserOperationSubscriptionParam>(jsonValue.ToJsonTextReader())
+                                  ?? throw new ArgumentException($"Invalid 'entryPoints' filter: {jsonValue}");
+            EntryPoints = ep.EntryPoints;
+            IncludeUserOperations = ep.IncludeUserOperations;
+
         }
     }
 }

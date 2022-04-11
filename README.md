@@ -129,7 +129,7 @@ git clone https://github.com/NethermindEth/nethermind --recursive
 cd nethermind/src/Nethermind
 dotnet build Nethermind.sln -c Release
 cd Nethermind.Runner
-dotnet run -c Release --no-build -- --config mainnet_pruned
+dotnet run -c Release --no-build --config mainnet
 ```
 
 ## Docker Image
