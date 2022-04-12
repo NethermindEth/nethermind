@@ -43,6 +43,8 @@ namespace Nethermind.Trie
             }
             catch (TrieException)
             {
+                trieVisitContext.MissingMsg = $"MISSING NODE:{Keccak}";
+
                 visitor.VisitMissingNode(Keccak, trieVisitContext);
                 return;
             }
@@ -180,6 +182,7 @@ namespace Nethermind.Trie
                             }
                             else
                             {
+                                trieVisitContext.MissingMsg = $"MISSING STORAGE ROOT NODE:{account.StorageRoot}";
                                 visitor.VisitMissingNode(account.StorageRoot, trieVisitContext);
                             }
 
