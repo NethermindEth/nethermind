@@ -33,7 +33,6 @@ namespace Nethermind.Blockchain.Find
         private static int ParallelExecutions = 0;
         private static int ParallelLock = 0;
         
-        private readonly IReceiptFinder _receiptFinder;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBloomStorage _bloomStorage;
         private readonly IReceiptsRecovery _receiptsRecovery;
@@ -51,7 +50,6 @@ namespace Nethermind.Blockchain.Find
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _receiptFinder = receiptStorage;
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -205,7 +203,7 @@ namespace Nethermind.Blockchain.Find
         {
             if (blockHash != null)
             {
-                return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator)
+                return _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out var iterator)
                     ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, cancellationToken)
                     : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, cancellationToken);
             }
@@ -273,15 +271,15 @@ namespace Nethermind.Blockchain.Find
         {
             TxReceipt[] GetReceipts(Keccak hash, long number)
             {
-                var canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
+                var canUseHash = _receiptStorage.CanGetReceiptsByHash(number);
                 if (canUseHash)
                 {
-                    return _receiptFinder.Get(hash);
+                    return _receiptStorage.Get(hash);
                 }
                 else
                 {
                     var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                    return block == null ? null : _receiptFinder.Get(block);
+                    return block == null ? null : _receiptStorage.Get(block);
                 }
             }
 
