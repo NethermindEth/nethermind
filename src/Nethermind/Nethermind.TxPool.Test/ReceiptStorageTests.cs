@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+#nullable enable
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -23,6 +25,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
@@ -35,6 +38,7 @@ namespace Nethermind.TxPool.Test
         private ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private IReceiptStorage _persistentStorage;
+        private IReceiptFinder _receiptFinder;
         private IReceiptStorage _inMemoryStorage;
         
         public ReceiptStorageTests(bool useEip2718)
@@ -49,6 +53,7 @@ namespace Nethermind.TxPool.Test
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
             ReceiptsRecovery receiptsRecovery = new(_ethereumEcdsa, _specProvider);
             _persistentStorage = new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, receiptsRecovery);
+            _receiptFinder = new FullInfoReceiptFinder(_persistentStorage, receiptsRecovery, Substitute.For<IBlockFinder>());
             _inMemoryStorage = new InMemoryReceiptStorage();
         }
 
@@ -70,11 +75,11 @@ namespace Nethermind.TxPool.Test
 
         [Test]
         public void should_add_and_fetch_receipt_from_in_memory_storage()
-            => TestAddAndGetReceipt(_inMemoryStorage, false);
+            => TestAddAndGetReceipt(_inMemoryStorage);
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
-            => TestAddAndGetReceipt(_persistentStorage, true);
+            => TestAddAndGetReceipt(_persistentStorage, _receiptFinder);
         
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
@@ -94,7 +99,7 @@ namespace Nethermind.TxPool.Test
             storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? (long?)0 : null);
         }
         
-        private void TestAddAndGetReceipt(IReceiptStorage storage, bool recoverSender)
+        private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder? receiptFinder = null)
         {
             var transaction = GetSignedTransaction();
             transaction.SenderAddress = null;
@@ -103,14 +108,20 @@ namespace Nethermind.TxPool.Test
             storage.Insert(block, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
-            var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
+
+            TxReceipt fetchedReceipt;
+            if (receiptFinder is not null)
+            {
+                fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
+                receipt.Sender.Should().BeEquivalentTo(TestItem.AddressA);
+            }
+            else
+            {
+                fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
+            }
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
-            if (recoverSender)
-            {
-                receipt.Sender.Should().BeEquivalentTo(TestItem.AddressA);
-            }
         }
 
         private void TestAddAndGetReceiptEip658(IReceiptStorage storage)
