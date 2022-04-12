@@ -52,7 +52,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IMergeSyncController _mergeSyncController;
         private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
-        private bool synced = false;
         private readonly IPeerRefresher _peerRefresher;
 
         public ForkchoiceUpdatedV1Handler(
@@ -89,6 +88,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             PayloadAttributes? payloadAttributes)
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
+            if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+            {
+                _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+            
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {

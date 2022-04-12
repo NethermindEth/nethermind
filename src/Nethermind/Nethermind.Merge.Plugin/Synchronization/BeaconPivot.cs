@@ -67,7 +67,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public long PivotDestinationNumber => _currentBeaconPivot is null
             ? 0
-            : Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ??  0) + 1;
+            : Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ?? 0) + 1;
 
         public void EnsurePivot(BlockHeader? blockHeader)
         {
@@ -105,9 +105,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_pivotParentProcessed || _currentBeaconPivot == null)
                 return;
 
-            if (_pivotParent == null)
-                _pivotParent = _blockTree.FindParentHeader(_currentBeaconPivot!,
-                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            _pivotParent ??= _blockTree.FindParentHeader(_currentBeaconPivot!,
+                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
             if (_pivotParent != null)
                 _pivotParentProcessed = _blockTree.WasProcessed(_pivotParent.Number,
