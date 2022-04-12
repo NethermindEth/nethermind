@@ -53,6 +53,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
         private bool synced = false;
+        private readonly IPeerRefresher _peerRefresher;
 
         public ForkchoiceUpdatedV1Handler(
             IBlockTree blockTree,
@@ -65,6 +66,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBeaconSyncStrategy beaconSyncStrategy,
             IMergeSyncController mergeSyncController,
             IBeaconPivot beaconPivot,
+            IPeerRefresher peerRefresher,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -79,6 +81,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _beaconSyncStrategy = beaconSyncStrategy;
             _mergeSyncController = mergeSyncController;
             _beaconPivot = beaconPivot;
+            _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
         }
 
@@ -104,8 +107,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (!_beaconSyncStrategy.IsBeaconSyncFinished(newHeadBlock.Header))
             {
+                _peerRefresher.RefreshPeers(newHeadBlock.Hash!);
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
-                if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
+                if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}"); }
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 

@@ -97,7 +97,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
-        _logger.Info($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+        if (_logger.IsInfo) _logger.Info($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.UpdateBeaconPointers;
         if (_nextHeaderDiff is null)
         {
@@ -122,6 +122,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             }
             _mergedChain = true;
         }
+        
 
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
         {

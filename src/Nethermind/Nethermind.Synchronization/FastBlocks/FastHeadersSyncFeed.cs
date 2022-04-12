@@ -192,15 +192,18 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<HeadersSyncBatch?> PrepareRequest()
         {
+            if (_logger.IsInfo) _logger.Info($"Start preparing request {LowestInsertedBlockHeader?.Number}");
             HandleDependentBatches();
 
             if (_pending.TryDequeue(out HeadersSyncBatch? batch))
             {
+                if (_logger.IsInfo) _logger.Info($"Dequeue batch {batch}");
                 batch!.MarkRetry();
             }
             else if (ShouldBuildANewBatch())
             {
                 batch = BuildNewBatch();
+                if (_logger.IsInfo) _logger.Info($"New batch {batch}");
             }
 
             if (batch is not null)
@@ -217,7 +220,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return Task.FromResult(batch);
         }
 
-        private HeadersSyncBatch BuildNewBatch()
+        protected virtual HeadersSyncBatch BuildNewBatch()
         {
             HeadersSyncBatch batch = new();
             batch.MinNumber = _lowestRequestedHeaderNumber - 1;
