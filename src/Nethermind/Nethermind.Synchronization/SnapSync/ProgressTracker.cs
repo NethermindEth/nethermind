@@ -72,7 +72,23 @@ namespace Nethermind.Synchronization.SnapSync
 
             SnapSyncBatch request = new();
 
-            if (NextSlotRange.TryDequeue(out StorageRange slotRange))
+            if (MoreAccountsToRight && _activeAccountRequests == 0)
+            {
+                // some contract hardcoded
+                //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
+                // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
+
+                AccountRange range = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
+
+                LogRequest("AccountRange");
+
+                Interlocked.Increment(ref _activeAccountRequests);
+
+                request.AccountRangeRequest = range;
+
+                return (request, false);
+            }
+            else if (NextSlotRange.TryDequeue(out StorageRange slotRange))
             {
                 slotRange.RootHash = rootHash;
                 slotRange.BlockNumber = blockNumber;
@@ -126,22 +142,6 @@ namespace Nethermind.Synchronization.SnapSync
                 Interlocked.Increment(ref _activeCodeRequests);
 
                 request.CodesRequest = codesToQuery.ToArray();
-
-                return (request, false);
-            }
-            else if (MoreAccountsToRight && _activeAccountRequests == 0)
-            {
-                // some contract hardcoded
-                //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
-                // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
-
-                AccountRange range = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
-
-                LogRequest("AccountRange");
-
-                Interlocked.Increment(ref _activeAccountRequests);
-
-                request.AccountRangeRequest = range;
 
                 return (request, false);
             }
@@ -253,7 +253,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (_testReqCount % 1 == 0)
             {
-                _logger.Info($"SNAP - ({reqType}) AccountRequests:{_activeAccountRequests} | StorageRequests:{_activeStorageRequests} | CodeRequests:{_activeCodeRequests} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count} | {CodesToRetrieve.Count}");
+                _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff}) AccountRequests:{_activeAccountRequests} | StorageRequests:{_activeStorageRequests} | CodeRequests:{_activeCodeRequests} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count} | {CodesToRetrieve.Count}");
             }
         }
     }
