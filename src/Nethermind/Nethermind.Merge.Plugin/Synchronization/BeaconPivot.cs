@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
@@ -63,8 +64,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public UInt256? PivotTotalDifficulty => _currentBeaconPivot is null ?
             _syncConfig.PivotTotalDifficultyParsed : _currentBeaconPivot.TotalDifficulty;
-        
-        public long PivotDestinationNumber { get; private set; }
+
+        public long PivotDestinationNumber => _currentBeaconPivot is null
+            ? 0
+            : Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ??  0) + 1;
 
         public void EnsurePivot(BlockHeader? blockHeader)
         {
@@ -87,7 +90,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             if (_logger.IsInfo) _logger.Info($"Reset beacon pivot, previous pivot: {_currentBeaconPivot}");
             _currentBeaconPivot = null;
-            PivotDestinationNumber = 0;
         }
 
         public bool BeaconPivotExists() => _currentBeaconPivot != null;

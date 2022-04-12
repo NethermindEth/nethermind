@@ -38,7 +38,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     private bool _mergedChain;
 
-    protected override long HeadersDestinationNumber => _syncConfig.PivotNumberParsed + 1;
+    protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
     protected override bool AllHeadersDownloaded => _mergedChain 
         || (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed + 1;
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
@@ -79,7 +79,10 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         _nextHeaderHash = startHeaderHash;
         _nextHeaderDiff = startTotalDifficulty;
         
-        _lowestRequestedHeaderNumber = startNumber + 1;   
+        _lowestRequestedHeaderNumber = startNumber + 1;
+
+        _logger.Info($"Initialized beacon headers sync. lowestRequestedHeaderNumber: ${_lowestRequestedHeaderNumber}," +
+                     $"lowestInsertedBlockHeader: ${LowestInsertedBlockHeader}, pivotNumber: {_pivotNumber}, pivotDestination: {_pivot.PivotDestinationNumber}");
     }
 
     protected override void FinishAndCleanUp()
