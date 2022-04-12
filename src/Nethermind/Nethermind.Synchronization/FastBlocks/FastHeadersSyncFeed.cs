@@ -192,7 +192,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public override Task<HeadersSyncBatch?> PrepareRequest()
         {
-            if (_logger.IsInfo) _logger.Info($"Start preparing request {LowestInsertedBlockHeader?.Number}");
             HandleDependentBatches();
 
             if (_pending.TryDequeue(out HeadersSyncBatch? batch))

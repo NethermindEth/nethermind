@@ -427,7 +427,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         {
                             break;
                         }
-                                
+                        
+                        if (_logger.IsInfo) _logger.Info($"TryProcessChainFromStateSyncBlock - Adding block to stack {block}");
                         stack.Push(current);
                         current = _blockTree.FindBlock(parent.Hash,
                             BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -437,6 +438,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                     while (stack.TryPop(out Block child))
                     {
+                        // ToDo Sarah block validaor?
+                        if (_logger.IsInfo) _logger.Info($"TryProcessChainFromStateSyncBlock - Add block to processing queue {block} from stack");
                         _blockTree.SuggestBlock(child);
                     }
                 }
