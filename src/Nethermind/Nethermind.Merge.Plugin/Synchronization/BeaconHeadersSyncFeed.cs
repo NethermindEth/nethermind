@@ -122,7 +122,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
                         $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
                 // beacon header set to (global) lowest inserted header
                 _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
-           // }
+          //  }
             _mergedChain = true;
         }
         

@@ -67,8 +67,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public long PivotDestinationNumber => _currentBeaconPivot is null
             ? 0
-            : Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ?? 0) + 1;
-
+            // :  Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ?? 0) + 1; // ToDo Sarah the current code is not ready to go to BestSuggestedHeader. I see that beacon finished is trying to reach _syncConfig and we're stuck beacause of that
+            : _syncConfig.PivotNumberParsed + 1;
         public void EnsurePivot(BlockHeader? blockHeader)
         {
             bool beaconPivotExists = BeaconPivotExists();
