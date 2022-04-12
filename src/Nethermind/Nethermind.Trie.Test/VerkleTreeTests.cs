@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,63 +35,14 @@ namespace Nethermind.Trie.Test;
 [TestFixture]
 public class VerkleTreeTests
 {
-    private readonly Account _account0 = Build.An.Account.WithBalance(0).TestObject;
-    private readonly Account _account1 = Build.An.Account.WithBalance(1).TestObject;
-    private readonly Account _account2 = Build.An.Account.WithBalance(2).TestObject;
-    private readonly Account _account3 = Build.An.Account.WithBalance(3).TestObject;
-    private readonly byte[] treeKeyVersion =
-    {
-        159, 32, 251, 236, 2, 212, 183, 194, 211, 232, 86, 202, 162, 198, 50, 253, 100, 34, 30, 42, 41, 93, 153, 117, 
-        118, 105, 233, 98, 86, 55, 133, 0
-    };
+    private readonly Account account = Build.An.Account.WithBalance(2).TestObject;
 
-    private readonly byte[] treeKeyBalance =
-    {
-        159, 32, 251, 236, 2, 212, 183, 194, 211, 232, 86, 202, 162, 198, 50, 253, 100, 34, 30, 42, 41, 93, 153, 117, 
-        118, 105, 233, 98, 86, 55, 133, 1
-    };
-        
-    private readonly byte[] treeKeyNonce =
-    {
-        159, 32, 251, 236, 2, 212, 183, 194, 211, 232, 86, 202, 162, 198, 50, 253, 100, 34, 30, 42, 41, 93, 153, 117, 
-        118, 105, 233, 98, 86, 55, 133, 2
-    };
-        
-    private readonly byte[] treeKeyCodeKeccak =
-    {
-        159, 32, 251, 236, 2, 212, 183, 194, 211, 232, 86, 202, 162, 198, 50, 253, 100, 34, 30, 42, 41, 93, 153, 117, 
-        118, 105, 233, 98, 86, 55, 133, 3
-    };
-
-    private readonly byte[] treeKeyCodeSize =
-    {
-        159, 32, 251, 236, 2, 212, 183, 194, 211, 232, 86, 202, 162, 198, 50, 253, 100, 34, 30, 42, 41, 93, 153, 117, 
-        118, 105, 233, 98, 86, 55, 133, 4
-    };
-    
     [SetUp]
     public void Setup()
     {
         Trie.Metrics.TreeNodeHashCalculations = 0;
         Trie.Metrics.TreeNodeRlpDecodings = 0;
         Trie.Metrics.TreeNodeRlpEncodings = 0;
-    }
-
-    [Test]
-    public void Get_Account_Keys()
-    {
-        VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
-        keyPrefix[31] = AccountTreeIndexes.Version;
-        Assert.AreEqual(keyPrefix, treeKeyVersion);
-        keyPrefix[31] = AccountTreeIndexes.Balance;
-        Assert.AreEqual(keyPrefix, treeKeyBalance);
-        keyPrefix[31] = AccountTreeIndexes.Nonce;
-        Assert.AreEqual(keyPrefix, treeKeyNonce);
-        keyPrefix[31] = AccountTreeIndexes.CodeHash;
-        Assert.AreEqual(keyPrefix, treeKeyCodeKeccak);
-        keyPrefix[31] = AccountTreeIndexes.CodeSize;
-        Assert.AreEqual(keyPrefix, treeKeyCodeSize);
     }
     
     [Test]
@@ -183,11 +135,11 @@ public class VerkleTreeTests
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
         byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
-        byte[] version = _account2.Version.ToBigEndian();
-        byte[] balance = _account2.Balance.ToBigEndian();
-        byte[] nonce = _account2.Nonce.ToBigEndian();
-        byte[] codeHash = _account2.CodeHash.Bytes;
-        byte[] codeSize = _account2.CodeSize.ToBigEndian();
+        byte[] version = account.Version.ToBigEndian();
+        byte[] balance = account.Balance.ToBigEndian();
+        byte[] nonce = account.Nonce.ToBigEndian();
+        byte[] codeHash = account.CodeHash.Bytes;
+        byte[] codeSize = account.CodeSize.ToBigEndian();
         
         tree.SetValue(keyPrefix,AccountTreeIndexes.Version, version);
         tree.SetValue(keyPrefix,AccountTreeIndexes.Balance, balance);

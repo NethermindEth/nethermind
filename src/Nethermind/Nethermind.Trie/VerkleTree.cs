@@ -184,7 +184,9 @@ public class VerkleTree
         cursor = cursor.Slice(20);
         // copy the tree index to the remaining 32 bytes
         treeIndex.ToBigEndian(cursor);
-        return Keccak.Compute(keyPrefix).Bytes;
+        byte[] prefix = RustVerkleLib.CalculatePedersenHash(keyPrefix);
+        prefix[31] = 0;
+        return prefix;
     }
     
     public byte[] GetTreeKeyPrefixAccount(Address address) => GetTreeKeyPrefix(address, 0);
