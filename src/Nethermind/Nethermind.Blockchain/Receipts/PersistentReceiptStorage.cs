@@ -207,7 +207,9 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
-        public void Insert(Block block, params TxReceipt[] txReceipts)
+        public void Insert(Block block, params TxReceipt[] txReceipts) => Insert(block, false, txReceipts);
+
+        public void Insert(Block block, bool wasRecovered = false, params TxReceipt[] txReceipts)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             int txReceiptsLength = txReceipts.Length;
@@ -219,8 +221,8 @@ namespace Nethermind.Blockchain.Receipts
                     $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
             }
 
-            bool wasRecovered = _receiptsRecovery.TryRecover(block, txReceipts, false);
-            
+            _receiptsRecovery.TryRecover(block, txReceipts, false);
+
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;

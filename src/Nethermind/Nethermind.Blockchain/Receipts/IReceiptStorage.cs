@@ -21,6 +21,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public interface IReceiptStorage : IReceiptFinder
     {
+        void Insert(Block block, bool wasRecovered, params TxReceipt[] txReceipts) => Insert(block, txReceipts);
         void Insert(Block block, params TxReceipt[] txReceipts);
         long? LowestInsertedReceiptBlockNumber { get; set; }
         long MigratedBlockNumber { get; set; }
