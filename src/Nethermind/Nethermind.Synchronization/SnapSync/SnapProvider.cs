@@ -17,6 +17,11 @@ namespace Nethermind.Synchronization.SnapSync
     public class SnapProvider : ISnapProvider
     {
         // TODO: to be removed, only for dev
+        int _testStorePartResponsesCount;
+        int _testStoreFullResponsesCount;
+        int _testCodePartResponsesCount;
+        int _testCodeFullResponsesCount;
+
         long _testStorageRespSize;
         int _testStorageReqCount;
         long _testCodeRespSize;
@@ -110,6 +115,15 @@ namespace Nethermind.Synchronization.SnapSync
                 int requestLength = request.Accounts.Length;
                 int responseLength = response.PathsAndSlots.Length;
 
+                if(requestLength == responseLength)
+                {
+                    _testStoreFullResponsesCount++;
+                }
+                else
+                {
+                    _testStorePartResponsesCount++;
+                }
+
                 if (requestLength > 1)
                 {
                     _testStorageReqCount++;
@@ -193,14 +207,23 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void AddCodes(Keccak[] requestedHashes, byte[][] codes)
         {
-            if (requestedHashes.Length > 0)
+            if (requestedHashes.Length == codes.Length)
+            {
+                _testCodeFullResponsesCount++;
+            }
+            else
+            {
+                _testCodePartResponsesCount++;
+            }
+
+            if (requestedHashes.Length > 1)
             {
                 _testCodeReqCount++;
                 _testCodeRespSize += codes.Length;
 
-                if (_testCodeReqCount % 1000 == 0)
+                if (_testCodeReqCount % 10 == 0)
                 {
-                    _logger.Warn($"SNAP - Storage AVG:{_testStorageRespSize / _testStorageReqCount}, Codes AVG:{_testCodeRespSize / _testCodeReqCount}");
+                    _logger.Warn($"SNAP - Storage AVG:{_testStorageRespSize / _testStorageReqCount}, Full:{_testStoreFullResponsesCount}, Part:{_testStorePartResponsesCount}, Codes AVG:{_testCodeRespSize / _testCodeReqCount}, Full:{_testCodeFullResponsesCount}, Part:{_testCodePartResponsesCount}");
                 }
             }
 

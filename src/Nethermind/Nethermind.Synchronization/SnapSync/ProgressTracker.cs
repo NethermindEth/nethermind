@@ -18,8 +18,8 @@ namespace Nethermind.Synchronization.SnapSync
     {
         long _testReqCount;
 
-        private const int STORAGE_BATCH_SIZE = 2000;
-        private const int CODES_BATCH_SIZE = 400;
+        private const int STORAGE_BATCH_SIZE = 1_200;
+        private const int CODES_BATCH_SIZE = 1_000;
         private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         private int _activeAccountRequests;
@@ -77,7 +77,7 @@ namespace Nethermind.Synchronization.SnapSync
                 slotRange.RootHash = rootHash;
                 slotRange.BlockNumber = blockNumber;
 
-                LogRequest("NextSlotRange");
+                LogRequest($"NextSlotRange:{slotRange.Accounts.Length}");
 
                 Interlocked.Increment(ref _activeStorageRequests);
 
@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.SnapSync
                     BlockNumber = blockNumber
                 };
 
-                LogRequest("StoragesToRetrieve");
+                LogRequest($"StoragesToRetrieve:{storagesToQuery.Count}");
 
                 Interlocked.Increment(ref _activeStorageRequests);
 
@@ -121,7 +121,7 @@ namespace Nethermind.Synchronization.SnapSync
                     codesToQuery.Add(codeHash);
                 }
 
-                LogRequest("CodesToRetrieve");
+                LogRequest($"CodesToRetrieve:{codesToQuery.Count}");
 
                 Interlocked.Increment(ref _activeCodeRequests);
 
