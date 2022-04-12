@@ -110,7 +110,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return NewPayloadV1Result.InvalidBlockHash;
             }
-
+            
             if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
             {
                 bool inserted = TryInsertDanglingBlock(block);
@@ -124,6 +124,16 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
                 {
                     bool inserted = TryInsertDanglingBlock(block);
+                    if (_logger.IsInfo)
+                    {
+                        if (inserted)
+                            _logger.Info(
+                            $"BeaconSync not finished - block {block} inserted");
+                        else
+                            _logger.Info(
+                                $"BeaconSync not finished - block {block} accepted");
+                    }
+
                     return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
                 }
 
