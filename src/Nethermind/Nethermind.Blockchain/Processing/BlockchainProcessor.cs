@@ -56,6 +56,7 @@ namespace Nethermind.Blockchain.Processing
 
         private int _currentRecoveryQueueSize;
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
+        private Stopwatch _stopwatch = new();
 
         /// <summary>
         /// 
@@ -221,7 +222,6 @@ namespace Nethermind.Blockchain.Processing
 
         private void RunProcessingLoop()
         {
-            _stats.Start();
             if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
             FireProcessingQueueEmpty();
@@ -236,6 +236,7 @@ namespace Nethermind.Blockchain.Processing
                 Block block = blockRef.Block;
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
+                _stats.Start();
 
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
                 if (processedBlock == null)
@@ -291,9 +292,8 @@ namespace Nethermind.Blockchain.Processing
             ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            _stopwatch.Restart();
             Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
-            stopwatch.Stop();
             if (processedBlocks == null)
             {
                 return null;
@@ -302,7 +302,7 @@ namespace Nethermind.Blockchain.Processing
             if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
             {
                 _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
-                Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
+                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
 
             Block? lastProcessed = null;
