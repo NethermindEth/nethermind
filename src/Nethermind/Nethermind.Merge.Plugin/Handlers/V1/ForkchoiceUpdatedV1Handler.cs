@@ -101,7 +101,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
                 
-                if (_logger.IsWarn) { _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}"); }
+                if (_logger.IsWarn) { _logger.Warn($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}"); }
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
             
