@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -34,6 +35,8 @@ namespace Nethermind.Merge.Plugin
         private PostMergeBlockProducer _postMergeBlockProducer = null!;
         private IManualBlockProductionTrigger? _blockProductionTrigger = null;
         private ManualTimestamper? _manualTimestamper;
+
+        protected virtual ITxSource? CreateTxSource(IStateProvider stateProvider) => null;
 
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
@@ -54,7 +57,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.HeaderValidator == null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
                 if (_mergeBlockProductionPolicy == null) throw new ArgumentNullException(nameof(_mergeBlockProductionPolicy));
                 if (_api.SealValidator == null) throw new ArgumentNullException(nameof(_api.SealValidator));
-                
+
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
@@ -75,12 +78,16 @@ namespace Nethermind.Merge.Plugin
                     feeRecipient = new Address(_mergeConfig.FeeRecipient);
                     if (_logger.IsInfo) _logger.Info($"FeeRecipient: {feeRecipient}");
                 }
-                
+
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, feeRecipient, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
                 PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
-                _postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, _blockProductionTrigger);
-                
+                _postMergeBlockProducer = blockProducerFactory.Create(
+                    blockProducerEnv,
+                    _blockProductionTrigger,
+                    CreateTxSource(blockProducerEnv.ReadOnlyStateProvider)
+                );
+
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
             }
 

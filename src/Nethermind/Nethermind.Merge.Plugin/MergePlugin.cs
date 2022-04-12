@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin
 {
     public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlugin
     {
-        private INethermindApi _api = null!;
+        protected INethermindApi _api = null!;
         private ILogger _logger = null!;
         private IMergeConfig _mergeConfig = null!;
         private ISyncConfig _syncConfig = null!;
