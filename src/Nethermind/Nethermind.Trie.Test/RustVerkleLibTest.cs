@@ -21,6 +21,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using NUnit.Framework;
 using System.IO;
+using System.Linq;
 using Org.BouncyCastle.Crypto.Engines;
 
 namespace Nethermind.Trie.Test
@@ -95,6 +96,37 @@ namespace Nethermind.Trie.Test
         private readonly byte[] ValueStart2 =  {
             0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
         };
+
+
+        private readonly byte[] pedersenValue1 =
+            StringToByteArray(
+                "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        private readonly byte[] pedersenValue2 =
+            StringToByteArray(
+                "00020300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        private readonly byte[] pedersenValue3 =
+            StringToByteArray(
+                "0071562b71999873db5b286df957af199ec946170000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
+        
+        private readonly byte[] pedersenHash1 =
+            StringToByteArray(
+                "695921dca3b16c5cc850e94cdd63f573c467669e89cec88935d03474d6bdf9d4");
+        private readonly byte[] pedersenHash2 =
+            StringToByteArray(
+                "5010fabfb319bf84136db68445972cdd5476ff2fbf3e5133330b3946b84b4e6a");
+        private readonly byte[] pedersenHash3 =
+            StringToByteArray(
+                "6fc5ac021ff2468685885ad7fdb31a0c58d1ee93254a58c9e9e0809187c53e71");
+                
+        
+        
+        
+        public static byte[] StringToByteArray(string hex) {
+            return Enumerable.Range(0, hex.Length)
+                .Where(x => x % 2 == 0)
+                .Select(x => Convert.ToByte(hex.Substring(x, 2), 16))
+                .ToArray();
+        }
 
         [TearDown]
         public void CleanTestData()
@@ -386,6 +418,14 @@ namespace Nethermind.Trie.Test
             byte[] stateRoot3 = RustVerkleLib.VerkleTrieGetStateRoot(roTrie);
             RustVerkleLib.VerkleTrieGet(roTrie, treeKeyVersion).Should().BeEquivalentTo(value0);
             stateRoot3.Should().BeEquivalentTo(stateRoot1);
+        }
+        
+        [Test]
+        public void TestPedersenHash()
+        {
+            RustVerkleLib.CalculatePedersenHash(pedersenValue1).Should().BeEquivalentTo(pedersenHash1);
+            RustVerkleLib.CalculatePedersenHash(pedersenValue2).Should().BeEquivalentTo(pedersenHash2);
+            RustVerkleLib.CalculatePedersenHash(pedersenValue3).Should().BeEquivalentTo(pedersenHash3);
         }
         
     }
