@@ -43,7 +43,6 @@ namespace Nethermind.Blockchain.Find
         private readonly ILogger _logger;
         
         public LogFinder(IBlockFinder? blockFinder,
-            IReceiptFinder? receiptFinder,
             IReceiptStorage? receiptStorage,
             IBloomStorage? bloomStorage,
             ILogManager? logManager,
@@ -51,8 +50,8 @@ namespace Nethermind.Blockchain.Find
             int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));;
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptStorage;
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));

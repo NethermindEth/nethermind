@@ -88,7 +88,6 @@ namespace Nethermind.Init.Steps
             
             LogFinder logFinder = new(
                 blockTree,
-                receiptFinder,
                 receiptStorage,
                 bloomStorage,
                 _get.LogManager,
