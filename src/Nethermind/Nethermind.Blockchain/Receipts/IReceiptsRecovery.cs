@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public interface IReceiptsRecovery
     {
-        bool TryRecover(Block block, TxReceipt[] receipts);
-        bool NeedRecover(TxReceipt[] receipts);
+        bool TryRecover(Block block, TxReceipt[] receipts, bool force = true);
+        bool NeedRecover(TxReceipt[] receipts, bool force = true);
     }
 }

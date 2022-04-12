@@ -219,14 +219,15 @@ namespace Nethermind.Blockchain.Receipts
                     $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
             }
 
-            _receiptsRecovery.TryRecover(block, txReceipts);
+            bool wasRecovered = _receiptsRecovery.TryRecover(block, txReceipts, false);
             
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
             _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
 
-            if (txReceiptsLength > 0 && !txReceipts[0].Removed)
+            bool wasRemoved = txReceiptsLength > 0 && txReceipts[0].Removed;
+            if (!wasRemoved)
             {
                 for (int i = 0; i < txReceiptsLength; i++)
                 {
@@ -241,7 +242,11 @@ namespace Nethermind.Blockchain.Receipts
             }
             
             _receiptsCache.Set(block.Hash, txReceipts);
-            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
+
+            if (!wasRecovered || wasRemoved)
+            {
+                ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
+            }
         }
 
         public long? LowestInsertedReceiptBlockNumber

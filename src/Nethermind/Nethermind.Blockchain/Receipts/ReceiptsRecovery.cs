@@ -33,12 +33,12 @@ namespace Nethermind.Blockchain.Receipts
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
         
-        public bool TryRecover(Block block, TxReceipt[] receipts)
+        public bool TryRecover(Block block, TxReceipt[] receipts, bool force = true)
         {
             var canRecover = block.Transactions.Length == receipts?.Length;
             if (canRecover)
             {
-                var needRecover = NeedRecover(receipts);
+                var needRecover = NeedRecover(receipts, force);
                 if (needRecover)
                 {
                     var releaseSpec = _specProvider.GetSpec(block.Number);
@@ -49,31 +49,31 @@ namespace Nethermind.Blockchain.Receipts
                         if (receipts.Length > receiptIndex)
                         {
                             TxReceipt receipt = receipts[receiptIndex];
-                            RecoverReceiptData(releaseSpec, receipt, block, transaction, receiptIndex, gasUsedBefore);
+                            RecoverReceiptData(releaseSpec, receipt, block, transaction, receiptIndex, gasUsedBefore, force);
                             gasUsedBefore = receipt.GasUsedTotal;
                         }
                     }
+                    
+                    return true;
                 }
-
-                return true;
             }
 
             return false;
         }
         
-        public bool NeedRecover(TxReceipt[] receipts) => receipts?.Length > 0 && (receipts[0].BlockHash == null || receipts[0].Sender == null);
+        public bool NeedRecover(TxReceipt[] receipts, bool force = true) => receipts?.Length > 0 && (receipts[0].BlockHash == null || (force && receipts[0].Sender == null));
 
-        private void RecoverReceiptData(IReleaseSpec releaseSpec, TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore)
+        private void RecoverReceiptData(IReleaseSpec releaseSpec, TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore, bool force)
         {
             receipt.BlockHash = block.Hash;
             receipt.BlockNumber = block.Number;
             receipt.TxHash = transaction.Hash;
             receipt.Index = transactionIndex;
-            receipt.Sender = transaction.SenderAddress ?? _ecdsa.RecoverAddress(transaction, !releaseSpec.ValidateChainId);
+            receipt.Sender = transaction.SenderAddress ?? (force ? _ecdsa.RecoverAddress(transaction, !releaseSpec.ValidateChainId) : null);
             receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
             
             // how would it be in CREATE2?
-            receipt.ContractAddress = transaction.IsContractCreation ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null; 
+            receipt.ContractAddress = transaction.IsContractCreation && transaction.SenderAddress is not null ? ContractAddress.From(receipt.Sender, transaction.Nonce) : null; 
             receipt.GasUsed = receipt.GasUsedTotal - gasUsedBefore;
             if (receipt.StatusCode != StatusCode.Success)
             {
