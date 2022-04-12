@@ -25,8 +25,10 @@ namespace Nethermind.Blockchain.Processing
     {
         private readonly ILogger _logger;
         private readonly Stopwatch _processingStopwatch = new();
+        private readonly Stopwatch _runStopwatch = new();
         private long _lastBlockNumber;
-        private long _lastElapsedTicks;
+        private long _lastElapsedProcessingTicks;
+        private long _lastElapsedRunningTicks;
         private decimal _lastTotalMGas;
         private long _lastTotalTx;
         private long _lastStateDbReads;
@@ -59,6 +61,8 @@ namespace Nethermind.Blockchain.Processing
                 return;
             }
             
+            _processingStopwatch.Stop();
+            
             if (_lastBlockNumber == 0)
             {
                 _lastBlockNumber = block.Number;
@@ -71,10 +75,13 @@ namespace Nethermind.Blockchain.Processing
             Metrics.ProcessingQueueSize = blockQueueSize;
 
             long currentTicks = _processingStopwatch.ElapsedTicks;
-            decimal totalMicroseconds = _processingStopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-            decimal chunkMicroseconds = (_processingStopwatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
+            decimal totalMicroseconds = currentTicks * (1_000_000m / Stopwatch.Frequency);
+            decimal chunkMicroseconds = (currentTicks - _lastElapsedProcessingTicks) * (1_000_000m / Stopwatch.Frequency);
+            
+            long runningTicks = _runStopwatch.ElapsedTicks;
+            decimal runMicroseconds = (runningTicks - _lastElapsedRunningTicks) * (1_000_000m / Stopwatch.Frequency);
 
-            if (chunkMicroseconds > 1 * 1000 * 1000)
+            if (runMicroseconds > 1 * 1000 * 1000)
             {
                 long currentGen0 = GC.CollectionCount(0);
                 long currentGen1 = GC.CollectionCount(1);
@@ -100,12 +107,13 @@ namespace Nethermind.Blockchain.Processing
                 decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000m * 1000m;
                 decimal bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1000m * 1000m;
 
-                if (_logger.IsInfo) _logger.Info($"Processed  {block.Number,9} |  {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, mgasps {mgasPerSecond,7:F2} total {totalMgasPerSecond,7:F2}, tps {txps,7:F2} total {totalTxPerSecond,7:F2}, bps {bps,7:F2} total {totalBlocksPerSecond,7:F2}, recv queue {recoveryQueueSize}, proc queue {blockQueueSize}");
+                if (_logger.IsInfo) _logger.Info($"Processed  {block.Number,9} |  {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms of {(runMicroseconds == 0 ? -1 : runMicroseconds / 1000),7:N0}ms, mgasps {mgasPerSecond,7:F2} total {totalMgasPerSecond,7:F2}, tps {txps,7:F2} total {totalTxPerSecond,7:F2}, bps {bps,7:F2} total {totalBlocksPerSecond,7:F2}, recv queue {recoveryQueueSize}, proc queue {blockQueueSize}");
                 if (_logger.IsDebug) _logger.Trace($"Gen0 {currentGen0 - _lastGen0,6}, Gen1 {currentGen1 - _lastGen1,6}, Gen2 {currentGen2 - _lastGen2,6}, maxmem {_maxMemory / 1000000,5}, mem {currentMemory / 1000000,5}, reads {currentStateDbReads - _lastStateDbReads,9}, writes {currentStateDbWrites - _lastStateDbWrites,9}, rlp {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions {evmExceptions - _lastEvmExceptions}, selfdstrcs {currentSelfDestructs - _lastSelfDestructs}");
 
                 _lastBlockNumber = Metrics.Blocks;
                 _lastTotalMGas = Metrics.Mgas;
-                _lastElapsedTicks = currentTicks;
+                _lastElapsedProcessingTicks = currentTicks;
+                _lastElapsedRunningTicks = runningTicks;
                 _lastTotalTx = Metrics.Transactions;
                 _lastGen0 = currentGen0;
                 _lastGen1 = currentGen1;
@@ -121,6 +129,7 @@ namespace Nethermind.Blockchain.Processing
         public void Start()
         {
             _processingStopwatch.Start();
+            _runStopwatch.Start();
         }
     }
 }
