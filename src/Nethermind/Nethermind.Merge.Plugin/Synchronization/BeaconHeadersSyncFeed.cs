@@ -113,16 +113,16 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         // Found existing block in the block tree
         if (insertOutcome == AddBlockResult.AlreadyKnown)
         {
-            if (_blockTree.LowestInsertedHeader != null
-                && _blockTree.LowestInsertedHeader.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
-            {
+            // if (_blockTree.LowestInsertedHeader != null
+            //     && _blockTree.LowestInsertedHeader.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+            // {
                 if (_logger.IsInfo)
                     _logger.Info(
                         " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
                         $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
                 // beacon header set to (global) lowest inserted header
                 _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
-            }
+           // }
             _mergedChain = true;
         }
         
