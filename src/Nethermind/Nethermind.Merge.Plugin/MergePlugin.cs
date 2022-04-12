@@ -49,6 +49,7 @@ namespace Nethermind.Merge.Plugin
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService;
+        private IPeerRefresher _peerRefresher;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
         private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -134,6 +135,7 @@ namespace Nethermind.Merge.Plugin
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
                 if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
+                if (_peerRefresher is null) throw new ArgumentNullException(nameof(_peerRefresher));
                 
 
                 if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
@@ -166,6 +168,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconSync,
                         _beaconSync,
                         _beaconPivot,
+                        _peerRefresher,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
@@ -198,6 +201,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
 
                 // ToDo strange place for validators initialization
+                _peerRefresher = new PeerRefresher(_api.SyncPeerPool);
                 _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, new PeerRefresher(_api.SyncPeerPool), _api.LogManager);
                 _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
