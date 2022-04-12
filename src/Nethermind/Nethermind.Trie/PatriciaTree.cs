@@ -1017,6 +1017,8 @@ namespace Nethermind.Trie
                 }
                 catch (TrieException)
                 {
+                    trieVisitContext.MissingMsg = $"MISSING ROOT NODE:{RootHash}";
+
                     visitor.VisitMissingNode(rootHash, trieVisitContext);
                     return;
                 }
