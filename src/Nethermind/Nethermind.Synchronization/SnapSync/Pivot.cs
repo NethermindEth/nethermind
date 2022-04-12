@@ -16,6 +16,14 @@ namespace Nethermind.Synchronization.SnapSync
         private BlockHeader _bestHeader;
         private readonly ILogger _logger;
 
+        public long Diff
+        {
+            get
+            {
+                return _blockTree.BestSuggestedHeader?.Number ?? 0 - _bestHeader.Number;
+            }
+        }
+
         public Pivot(IBlockTree blockTree, ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -24,11 +32,17 @@ namespace Nethermind.Synchronization.SnapSync
 
         public BlockHeader GetPivotHeader()
         {
-            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 20) 
+            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 20)
             {
                 _logger.Warn($"SNAP - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
 
                 _bestHeader = _blockTree.BestSuggestedHeader;
+            }
+
+            var currentHeader = _blockTree.FindHeader(_bestHeader.Number);
+            if(currentHeader.StateRoot != _bestHeader.StateRoot)
+            {
+                _logger.Warn($"SNAP - Pivot:{_bestHeader.StateRoot}, Current:{currentHeader.StateRoot}");
             }
 
             return _bestHeader;
