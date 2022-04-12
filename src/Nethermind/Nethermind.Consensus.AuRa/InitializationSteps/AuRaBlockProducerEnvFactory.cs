@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -19,6 +20,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
+using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 
@@ -28,17 +30,13 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
     {
         private readonly AuRaNethermindApi _api;
         private IAuraConfig _auraConfig;
+        private IAuRaValidator _validator;
+        private TxPriorityContract? _txPriorityContract;
+        private TxPriorityContract.LocalDataSource? _localDataSource;
         private DictionaryContractDataStore<TxPriorityContract.Destination>? _minGasPricesContractDataStore;
 
-        private IAuRaValidator _validator;
-
-        public AuRaBlockProducerEnvFactory(AuRaNethermindApi api, IAuraConfig auraConfig)
-        {
-            _api = api ?? throw new ArgumentNullException(nameof(api));
-            _auraConfig = auraConfig ?? throw new ArgumentNullException(nameof(auraConfig));
-        }
-
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
+
 
         public virtual BlockProducerEnv Create(ITxSource? additionalTxSource = null)
         {
@@ -47,10 +45,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             ReadOnlyTxProcessingEnv txProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, readOnlyBlockTree);
             ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(dbProvider, readOnlyBlockTree);
+            BlockProcessor blockProcessor = CreateBlockProcessor(txProcessingEnv, constantContractsProcessingEnv);
 
-            IGasLimitCalculator gasLimitCalculator = CreateGasLimitCalculator(constantContractsProcessingEnv);
-
-            BlockProcessor blockProcessor = CreateBlockProcessor(txProcessingEnv, constantContractsProcessingEnv, gasLimitCalculator as AuRaContractGasLimitOverride);
             IBlockchainProcessor blockchainProcessor =
                 new BlockchainProcessor(
                     readOnlyBlockTree,
@@ -65,18 +61,17 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
             var txSource = CreateTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv, additionalTxSource);
 
-            return new AuRaBlockProducerEnv()
+            return new BlockProducerEnv()
             {
                 BlockTree = readOnlyBlockTree,
                 ChainProcessor = chainProcessor,
                 ReadOnlyStateProvider = txProcessingEnv.StateProvider,
                 TxSource = txSource,
-                ReadOnlyTxProcessingEnv = constantContractsProcessingEnv,
-                GasLimitCalculator = gasLimitCalculator,
+                ReadOnlyTxProcessingEnv = constantContractsProcessingEnv
             };
         }
 
-        private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changeableTxProcessingEnv, ReadOnlyTxProcessingEnv constantContractTxProcessingEnv, AuRaContractGasLimitOverride? gasLimitOverride)
+        private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changeableTxProcessingEnv, ReadOnlyTxProcessingEnv constantContractTxProcessingEnv)
         {
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.ValidatorStore == null) throw new StepDependencyException(nameof(_api.ValidatorStore));
@@ -105,7 +100,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _api.LogManager,
                 changeableTxProcessingEnv.BlockTree,
                 auRaTxFilter,
-                gasLimitOverride);
+                CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride);
 
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
                     changeableTxProcessingEnv.StateProvider,
@@ -134,6 +129,33 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return processor;
         }
 
+        private IGasLimitCalculator CreateGasLimitCalculator(IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        {
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
+
+            IGasLimitCalculator gasLimitCalculator =
+                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _api.Config<IMiningConfig>());
+            if (blockGasLimitContractTransitions?.Any() == true)
+            {
+                AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(
+                        blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
+                                new BlockGasLimitContract(
+                                    _api.AbiEncoder,
+                                    blockGasLimitContractTransition.Value,
+                                    blockGasLimitContractTransition.Key,
+                                    readOnlyTxProcessorSource))
+                            .ToArray<IBlockGasLimitContract>(),
+                        _api.GasLimitCalculatorCache,
+                        _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
+                        gasLimitCalculator,
+                        _api.LogManager);
+
+                gasLimitCalculator = auRaContractGasLimitOverride;
+            }
+
+            return gasLimitCalculator;
+        }
 
         protected ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(ReadOnlyDbProvider dbProvider, ReadOnlyBlockTree blockTree)
         {
@@ -228,7 +250,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
                 new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
-            (TxPriorityContract _txPriorityContract,TxPriorityContract.LocalDataSource _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
+            (_txPriorityContract, _localDataSource) = TxAuRaFilterBuilders.CreateTxPrioritySources(_auraConfig, _api, readOnlyTxProcessorSourceForTxPriority);
 
             if (_txPriorityContract != null || _localDataSource != null)
             {
@@ -282,7 +304,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         private TxPoolTxSource CreateStandardTxPoolTxSource(ReadOnlyTxProcessingEnv processingEnv, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
-            ITxFilter txSourceFilter = CreateAuraTxFilterForProducer(readOnlyTxProcessorSource, _api.SpecProvider);
+            ITxFilter txSourceFilter = CreateAuraTxFilterForProducer(readOnlyTxProcessorSource,_api.SpecProvider);
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
                 .WithCustomTxFilter(txSourceFilter)
                 .WithBaseFeeFilter(_api.SpecProvider)
@@ -298,38 +320,5 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 _minGasPricesContractDataStore,
                 specProvider);
 
-        private IGasLimitCalculator CreateGasLimitCalculator(IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        {
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-            var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;
-
-            IGasLimitCalculator gasLimitCalculator =
-                new TargetAdjustedGasLimitCalculator(_api.SpecProvider, _api.Config<IMiningConfig>());
-            if (blockGasLimitContractTransitions?.Any() == true)
-            {
-                AuRaContractGasLimitOverride auRaContractGasLimitOverride = new(
-                        blockGasLimitContractTransitions.Select(blockGasLimitContractTransition =>
-                                new BlockGasLimitContract(
-                                    _api.AbiEncoder,
-                                    blockGasLimitContractTransition.Value,
-                                    blockGasLimitContractTransition.Key,
-                                    readOnlyTxProcessorSource))
-                            .ToArray<IBlockGasLimitContract>(),
-                        _api.GasLimitCalculatorCache,
-                        _auraConfig?.Minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract == true,
-                        gasLimitCalculator,
-                        _api.LogManager);
-
-                gasLimitCalculator = auRaContractGasLimitOverride;
-            }
-
-            return gasLimitCalculator;
-        }
-
-    }
-
-    public class AuRaBlockProducerEnv : BlockProducerEnv
-    {
-        public IGasLimitCalculator GasLimitCalculator { get; set; }
     }
 }
