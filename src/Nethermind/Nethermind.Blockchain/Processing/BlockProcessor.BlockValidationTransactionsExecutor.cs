@@ -34,36 +34,29 @@ namespace Nethermind.Blockchain.Processing
     {
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor;
-            private readonly IStateProvider _stateProvider;
+            private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
+            private readonly ITransactionProcessorAdapter _executeAdapter;
+            private readonly ITransactionProcessorAdapter _buildUpAdapter;
+            private readonly ChangeableTransactionProcessorAdapter _changeableTransactionProcessorAdapter;
 
             public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
             {
+                _changeableTransactionProcessorAdapter = new ChangeableTransactionProcessorAdapter(transactionProcessor);
+                _executeAdapter = _changeableTransactionProcessorAdapter.CurrentAdapter;
+                _buildUpAdapter = new BuildUpTransactionProcessorAdapter(transactionProcessor);
+                _blockTransactionsExecutor = new BlockTransactionsExecutor(_changeableTransactionProcessorAdapter, stateProvider);
             }
 
-            public BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IStateProvider stateProvider)
-            {
-                _transactionProcessor = transactionProcessor;
-                _stateProvider = stateProvider;
-            }
-
-            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed; 
-        
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
-                for (int i = 0; i < block.Transactions.Length; i++)
-                {
-                    Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
-                }
-                return receiptsTracer.TxReceipts.ToArray();
+                _changeableTransactionProcessorAdapter.CurrentAdapter = spec.IsEip658Enabled ? _buildUpAdapter : _executeAdapter;
+                return _blockTransactionsExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, spec);
             }
-        
-            private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+
+            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
             {
-                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                add { _blockTransactionsExecutor.TransactionProcessed += value!; }
+                remove { _blockTransactionsExecutor.TransactionProcessed -= value!; }
             }
         }
     }

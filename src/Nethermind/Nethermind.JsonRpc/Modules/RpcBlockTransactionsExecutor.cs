@@ -21,7 +21,7 @@ using Nethermind.State;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public class RpcBlockTransactionsExecutor : BlockProcessor.BlockValidationTransactionsExecutor
+    public class RpcBlockTransactionsExecutor : BlockProcessor.BlockTransactionsExecutor
     {
         public RpcBlockTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider) 
             : base(new TraceTransactionProcessorAdapter(transactionProcessor), stateProvider)
