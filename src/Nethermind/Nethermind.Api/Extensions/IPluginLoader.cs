@@ -24,7 +24,9 @@ namespace Nethermind.Api.Extensions
     public interface IPluginLoader
     {
         IEnumerable<Type> PluginTypes { get; }
-        
+
         void Load(ILogManager logManager);
+
+        public void OrderPlugins(IPluginConfig pluginConfig);
     }
 }

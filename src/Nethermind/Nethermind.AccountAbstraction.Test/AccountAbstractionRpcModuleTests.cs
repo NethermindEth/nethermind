@@ -208,8 +208,8 @@ namespace Nethermind.AccountAbstraction.Test
             ulong chainId = 5;
             Keccak idFromTransaction =
                 new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
-            Keccak idFromUserOperation = createOp.CalculateRequestId(entryPointId, chainId);
-            Assert.AreEqual(idFromTransaction, idFromUserOperation,
+            createOp.CalculateRequestId(entryPointId, chainId);
+            Assert.AreEqual(idFromTransaction, createOp.RequestId!,
                 "Request IDs do not match.");
             
             Assert.AreEqual(
@@ -219,8 +219,9 @@ namespace Nethermind.AccountAbstraction.Test
             );
         }
         
-        [Test]
-        public async Task Should_execute_well_formed_op_successfully() {
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        public async Task Should_execute_well_formed_op_successfully_if_codehash_not_changed(bool changeCodeHash, bool success) {
             var chain = await CreateChain();
             (Address[] entryPointAddress, Address?[] walletAddress, Address?[] counterAddress) = await _contracts.Deploy(chain, _contracts.TestCounterAbi.Bytecode!);
             
@@ -233,25 +234,28 @@ namespace Nethermind.AccountAbstraction.Test
                 .SignedAndResolved(TestItem.PrivateKeyA, entryPointAddress[0], chain.SpecProvider.ChainId)
                 .TestObject;
 
-            /*
-            Transaction fundTransaction = Core.Test.Builders.Build.A.Transaction
-                .WithTo(walletAddress[0]!)
-                .WithGasLimit(1_000_000)
-                .WithGasPrice(2)
-                .WithValue(1.Ether())
-                .WithNonce((UInt256)(0))
-                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-            await chain.AddBlock(true, fundTransaction);
-            */
-
             UInt256 countBefore = _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!);
             countBefore.Should().Be(0);
 
             chain.SendUserOperation(entryPointAddress[0], op);
+            if (changeCodeHash)
+            {
+                Keccak codeHash = chain.State.UpdateCode(Bytes.Concat(chain.State.GetCode(walletAddress[0]!), 0x00));
+                chain.State.UpdateCodeHash(walletAddress[0]!, codeHash, chain.SpecProvider.GenesisSpec);
+                chain.State.Commit(chain.SpecProvider.GenesisSpec);
+                chain.State.RecalculateStateRoot();
+            }
             await chain.AddBlock(true);
 
             UInt256 countAfter = _contracts.GetCount(chain, counterAddress[0]!, walletAddress[0]!);
-            countAfter.Should().Be(1);
+            if (success)
+            {
+                countAfter.Should().Be(1);
+            }
+            else
+            {
+                countAfter.Should().Be(0);
+            }
 
         }
 
@@ -513,14 +517,14 @@ namespace Nethermind.AccountAbstraction.Test
 
         public static void SignUserOperation(UserOperation op, PrivateKey privateKey, Address entryPointAddress, ulong chainId)
         {
-            Keccak requestId = op.CalculateRequestId(entryPointAddress, chainId);
+            op.CalculateRequestId(entryPointAddress, chainId);
             
             Signer signer = new(chainId, privateKey, NullLogManager.Instance);
             Keccak hashedRequestId = Keccak.Compute(
                 Bytes.Concat(
                     Encoding.UTF8.GetBytes("\x19"),
-                    Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + requestId.Bytes.Length),
-                    requestId.Bytes)
+                    Encoding.UTF8.GetBytes("Ethereum Signed Message:\n" + op.RequestId!.Bytes.Length),
+                    op.RequestId!.Bytes)
             );
             Signature signature = signer.Sign(hashedRequestId);
 

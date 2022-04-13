@@ -49,6 +49,7 @@ namespace Nethermind.Merge.Plugin
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService;
+        private IPeerRefresher _peerRefresher;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
         private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -77,9 +78,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
-
-
-                _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
+                
                 _poSSwitcher = new PoSSwitcher(_mergeConfig,
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
@@ -141,12 +140,12 @@ namespace Nethermind.Merge.Plugin
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
                 if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
+                if (_peerRefresher is null) throw new ArgumentNullException(nameof(_peerRefresher));
                 
 
                 if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
                 if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
                 
-                ISyncConfig? syncConfig = _api.Config<ISyncConfig>();
                 PayloadPreparationService payloadPreparationService = new (_postMergeBlockProducer, _blockProductionTrigger, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
@@ -162,7 +161,6 @@ namespace Nethermind.Merge.Plugin
                         _beaconPivot,
                         _blockCacheService,
                         _api.SyncProgressResolver,
-                        _api.BlockProcessingQueue,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
@@ -173,7 +171,9 @@ namespace Nethermind.Merge.Plugin
                         payloadPreparationService,
                         _blockCacheService,
                         _beaconSync,
+                        _beaconSync,
                         _beaconPivot,
+                        _peerRefresher,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
@@ -200,13 +200,14 @@ namespace Nethermind.Merge.Plugin
                     throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
                 if (_api.BlockProcessingQueue is null)
                     throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
                 if (_api.BetterPeerStrategy is null) throw new ArgumentNullException(nameof(_api.BetterPeerStrategy));
                 if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
 
                 // ToDo strange place for validators initialization
+                _peerRefresher = new PeerRefresher(_api.SyncPeerPool);
+                _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, new PeerRefresher(_api.SyncPeerPool), _api.LogManager);
                 _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,

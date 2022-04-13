@@ -25,7 +25,8 @@ namespace Nethermind.Db
         public const int SafeBlockHash = 4;
         public const int BeaconSyncPivotNumber = 5;
         public const int BeaconSyncDestinationNumber = 6;
-        public const int DanglingChainMerged = 7;
-        public const int FirstPoSHash = 8;
+        public const int LowestInsertedBeaconHeaderHash = 7;
+        public const int DanglingChainMerged = 8;
+        public const int FirstPoSHash = 9;
     }
 }

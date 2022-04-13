@@ -329,6 +329,18 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+            for (int index = 0; index < _txTracers.Count; index++)
+            {
+                ITxTracer innerTracer = _txTracers[index];
+                if (innerTracer.IsTracingOpLevelStorage)
+                {
+                    innerTracer.LoadOperationStorage(address, storageIndex, value);
+                }
+            }
+        }
+
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
             for (int index = 0; index < _txTracers.Count; index++)

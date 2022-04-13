@@ -19,6 +19,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -37,6 +38,7 @@ using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State;
 using Nethermind.Trie;
 using Newtonsoft.Json;
@@ -545,21 +547,32 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task forkChoiceUpdatedV1_no_common_branch_fails()
+        public async Task forkChoiceUpdatedV1_no_common_branch_failsk()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak? startingHead = chain.BlockTree.HeadHash;
-            BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).TestObject;
-            Block block = Build.A.Block.WithNumber(2).WithParent(parent).TestObject;
-            await rpc.engine_newPayloadV1(new BlockRequestResult(block));
-
-            ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+            Block parent = Build.A.Block.WithNumber(2).WithParentHash(TestItem.KeccakA).WithNonce(0).WithDifficulty(0).TestObject;
+            Block block = Build.A.Block.WithNumber(3).WithParent(parent).WithNonce(0).WithDifficulty(0).TestObject;
+            
+            await rpc.engine_newPayloadV1(new BlockRequestResult(parent));
+            
+            ForkchoiceStateV1 forkchoiceStateV1 = new(parent.Hash!, startingHead, startingHead);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
                 await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-                .Be("SYNCING"); // ToDo wait for final PostMerge sync
+                .Be("SYNCING");
+            
+            await rpc.engine_newPayloadV1(new BlockRequestResult(block));
+            
+            ForkchoiceStateV1 forkchoiceStateV1_1 = new(parent.Hash!, startingHead, startingHead);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult_1 =
+                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1_1, null);
+            forkchoiceUpdatedResult_1.Data.PayloadStatus.Status.Should()
+                .Be("SYNCING");
+            
             AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
+
         }
 
         [Test]
@@ -679,7 +692,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task forkchoiceUpdatedV1_can_reorganize_to_any_block()
+        public async Task forkchoiceUpdatedV1_can_reorganize_to_last_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -697,7 +710,7 @@ namespace Nethermind.Merge.Plugin.Test
                 testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
             }
 
-            async Task CanReorganizeToAnyBlock(MergeTestBlockchain testChain,
+            async Task CanReorganizeToLastBlock(MergeTestBlockchain testChain,
                 params IReadOnlyList<BlockRequestResult>[] branches)
             {
                 foreach (IReadOnlyList<BlockRequestResult>? branch in branches)
@@ -711,7 +724,34 @@ namespace Nethermind.Merge.Plugin.Test
             IReadOnlyList<BlockRequestResult> branch2 =
                 await ProduceBranchV1(rpc, chain, 6, branch1[3], true, TestItem.KeccakC);
 
-            await CanReorganizeToAnyBlock(chain, branch1, branch2);
+            await CanReorganizeToLastBlock(chain, branch1, branch2);
+        }
+        
+        [Test]
+        public async Task forkchoiceUpdatedV1_head_block_after_reorg()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+
+            async Task CanReorganizeToBlock(BlockRequestResult block, MergeTestBlockchain testChain)
+            {
+                ForkchoiceStateV1 forkchoiceStateV1 =
+                    new(block.BlockHash, block.BlockHash, block.BlockHash);
+                ResultWrapper<ForkchoiceUpdatedV1Result> result =
+                    await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+                result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+                result.Data.PayloadId.Should().Be(null);
+                testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
+                testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
+                testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
+            }
+
+            IReadOnlyList<BlockRequestResult> branch1 =
+                await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+            IReadOnlyList<BlockRequestResult> branch2 =
+                await ProduceBranchV1(rpc, chain, 6, branch1[3], true, TestItem.KeccakC);
+
+            await CanReorganizeToBlock(branch2.Last(), chain);
         }
 
         [Test]
@@ -905,7 +945,11 @@ namespace Nethermind.Merge.Plugin.Test
             List<BlockRequestResult> blocks = new();
             BlockRequestResult parentBlock = startingParentBlock;
             parentBlock.TryGetBlock(out Block? block);
+            UInt256? startingTotalDifficulty = block!.IsGenesis
+                ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
             BlockHeader parentHeader = block!.Header;
+            parentHeader.TotalDifficulty = startingTotalDifficulty +
+                                           parentHeader.Difficulty;
             for (int i = 0; i < count; i++)
             {
                 BlockRequestResult? getPayloadResult = await BuildAndGetPayloadOnBranch(rpc, chain, parentHeader,

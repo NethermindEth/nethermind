@@ -74,12 +74,12 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
 
     public bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo)
     {
-        if (_logger.IsInfo) _logger.Info($"IsBetterThanLocalChain BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {_syncProgressResolver.ChainDifficulty} LocalChainBestFullBlock: {_syncProgressResolver.FindBestFullBlock()} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty}");
+        if (_logger.IsTrace) _logger.Trace($"IsBetterThanLocalChain BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {_syncProgressResolver.ChainDifficulty} LocalChainBestFullBlock: {_syncProgressResolver.FindBestFullBlock()} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty}");
         UInt256 localChainDifficulty = _syncProgressResolver.ChainDifficulty;
         if (ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, localChainDifficulty))
             return _preMergeBetterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo); 
         
-        return bestPeerInfo.Number > 0;
+        return bestPeerInfo.Number > _syncProgressResolver.FindBestFullBlock();
     }
 
     public bool IsDesiredPeer((UInt256 TotalDifficulty, long Number) bestPeerInfo, long bestHeader)

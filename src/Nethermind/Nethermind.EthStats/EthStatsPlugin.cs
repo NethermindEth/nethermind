@@ -46,7 +46,7 @@ namespace Nethermind.EthStats
 
         public ValueTask DisposeAsync()
         {
-            _ethStatsIntegration.Dispose();
+            _ethStatsIntegration?.Dispose();
             return ValueTask.CompletedTask;
         }
 

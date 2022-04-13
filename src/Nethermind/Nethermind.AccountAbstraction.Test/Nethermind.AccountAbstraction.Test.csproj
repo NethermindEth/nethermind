@@ -29,7 +29,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <None Remove="TestContracts\EntryPoint_2.json"/>
+      <None Remove="TestContracts\EntryPoint_2.json" />
       <None Remove="TestContracts\SimpleWallet.json" />
       <None Remove="TestContracts\SingletonFactory.json" />
       <None Remove="TestContracts\TestCounter.json" />

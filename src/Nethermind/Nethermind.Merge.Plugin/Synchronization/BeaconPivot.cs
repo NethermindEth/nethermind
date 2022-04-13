@@ -25,7 +25,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization
@@ -36,6 +35,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IMergeConfig _mergeConfig;
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
+        private readonly IPeerRefresher _peerRefresher;
         private readonly ILogger _logger;
         private BlockHeader? _currentBeaconPivot;
         private BlockHeader? _pivotParent;
@@ -46,14 +46,17 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IMergeConfig mergeConfig,
             IDb metadataDb,
             IBlockTree blockTree,
+            IPeerRefresher peerRefresher,
             ILogManager logManager)
         {
             _syncConfig = syncConfig;
             _mergeConfig = mergeConfig;
             _metadataDb = metadataDb;
             _blockTree = blockTree;
+            _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
-            PivotDestinationNumber = 0;
+            // _currentBeaconPivot = _blockTree.LowestInsertedBeaconHeader; // ToDo Sarah: I think it is incorrect, but we should discuss it
+
         }
 
         public long PivotNumber => _currentBeaconPivot?.Number ?? _syncConfig.PivotNumberParsed;
@@ -62,25 +65,25 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public UInt256? PivotTotalDifficulty => _currentBeaconPivot is null ?
             _syncConfig.PivotTotalDifficultyParsed : _currentBeaconPivot.TotalDifficulty;
-        
-        public long PivotDestinationNumber { get; private set; }
 
+        public long PivotDestinationNumber => _currentBeaconPivot is null
+            ? 0
+            // :  Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ?? 0) + 1; // ToDo Sarah the current code is not ready to go to BestSuggestedHeader. I see that beacon finished is trying to reach _syncConfig and we're stuck beacause of that
+            : _syncConfig.PivotNumberParsed + 1;
         public void EnsurePivot(BlockHeader? blockHeader)
         {
             bool beaconPivotExists = BeaconPivotExists();
-            // if (beaconPivotExists && blockHeader != null)
-            // {
-            //     _currentBeaconPivot = blockHeader;
-            //     PivotDestinationNumber = CalculatePivotDestinationNumber(_currentBeaconPivot, blockHeader);
-            // }
-            
-            if (!beaconPivotExists && blockHeader != null)
+            if (blockHeader != null)
             {
+                _peerRefresher.RefreshPeers(blockHeader.Hash!);
+                if (beaconPivotExists && PivotNumber > blockHeader.Number)
+                {
+                    return;
+                }
+                
                 _currentBeaconPivot = blockHeader;
+                _blockTree.LowestInsertedBeaconHeader = blockHeader;
                 if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");
-                PivotDestinationNumber = _syncConfig.PivotNumberParsed == 0 ? 0 : _syncConfig.PivotNumberParsed + 1;
-                _metadataDb.Set(MetadataDbKeys.BeaconSyncDestinationNumber, Rlp.Encode(PivotDestinationNumber).Bytes);
-                _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(PivotNumber).Bytes);
             }
         }
 
@@ -88,7 +91,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             if (_logger.IsInfo) _logger.Info($"Reset beacon pivot, previous pivot: {_currentBeaconPivot}");
             _currentBeaconPivot = null;
-            PivotDestinationNumber = 0;
         }
 
         public bool BeaconPivotExists() => _currentBeaconPivot != null;
@@ -104,23 +106,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (_pivotParentProcessed || _currentBeaconPivot == null)
                 return;
 
-            if (_pivotParent == null)
-                _pivotParent = _blockTree.FindParentHeader(_currentBeaconPivot!,
-                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            _pivotParent ??= _blockTree.FindParentHeader(_currentBeaconPivot!,
+                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
             if (_pivotParent != null)
                 _pivotParentProcessed = _blockTree.WasProcessed(_pivotParent.Number,
                     _pivotParent.Hash ?? _pivotParent.CalculateHash());
-        }
-
-        private long CalculatePivotDestinationNumber(BlockHeader oldPivotHeader, BlockHeader newPivotHeader)
-        {
-            if (newPivotHeader.Number > oldPivotHeader.Number)
-            {
-                return Math.Max(PivotDestinationNumber, oldPivotHeader.Number + 1);
-            }
-
-            return PivotDestinationNumber;
         }
     }
 

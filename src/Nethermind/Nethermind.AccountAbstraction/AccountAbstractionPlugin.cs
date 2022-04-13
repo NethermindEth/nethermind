@@ -40,6 +40,7 @@ namespace Nethermind.AccountAbstraction
 
         private INethermindApi _nethermindApi = null!;
         private IList<Address> _entryPointContractAddresses = new List<Address>();
+        private IList<Address> _whitelistedPaymasters = new List<Address>();
         private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>(); // EntryPoint Address -> Pool
         private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
         private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
@@ -122,6 +123,7 @@ namespace Nethermind.AccountAbstraction
                 _entryPointContractAbi,
                 _create2FactoryAddress,
                 entryPoint,
+                _whitelistedPaymasters.ToArray(),
                 getFromApi.SpecProvider!,
                 getFromApi.BlockTree!,
                 getFromApi.DbProvider!,
@@ -192,8 +194,24 @@ namespace Nethermind.AccountAbstraction
                     }
                     else
                     {
-                        if (_logger.IsInfo) _logger.Info($"Parsed EntryPoint Address: {entryPointContractAddress}");
+                        if (_logger.IsInfo) _logger.Info($"Parsed EntryPoint address: {entryPointContractAddress}");
                         _entryPointContractAddresses.Add(entryPointContractAddress!);
+                    }
+                }
+                
+                IList<string> whitelistedPaymastersString = _accountAbstractionConfig.GetWhitelistedPaymasters().ToList();
+                foreach (string addressString in whitelistedPaymastersString){
+                    bool parsed = Address.TryParse(
+                        addressString,
+                        out Address? whitelistedPaymaster);
+                    if (!parsed)
+                    {
+                        if (_logger.IsError) _logger.Error("Account Abstraction Plugin: Whitelisted Paymaster address could not be parsed");
+                    }
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Parsed Whitelisted Paymaster address: {whitelistedPaymaster}");
+                        _whitelistedPaymasters.Add(whitelistedPaymaster!);
                     }
                 }
 

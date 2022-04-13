@@ -54,18 +54,18 @@ namespace Nethermind.AccountAbstraction.Source
         
         private void NotifyAllPeers(UserOperationWithEntryPoint op)
         {
-            if (_logger.IsDebug) _logger.Debug($"Broadcasting new user operation {op.UserOperation.Hash} to entryPoint {op.EntryPoint} to all peers");
+            if (_logger.IsDebug) _logger.Debug($"Broadcasting new user operation {op.UserOperation.RequestId!} to entryPoint {op.EntryPoint} to all peers");
 
             foreach ((_, IUserOperationPoolPeer peer) in _peers)
             {
                 try
                 {
                     peer.SendNewUserOperation(op);
-                    if (_logger.IsTrace) _logger.Trace($"Notified {peer.Id} about user operation {op.UserOperation.Hash} to entryPoint {op.EntryPoint}.");
+                    if (_logger.IsTrace) _logger.Trace($"Notified {peer.Id} about user operation {op.UserOperation.RequestId!} to entryPoint {op.EntryPoint}.");
                 }
                 catch (Exception e)
                 {
-                    if (_logger.IsError) _logger.Error($"Failed to notify {peer.Id} about user operation {op.UserOperation.Hash} to entryPoint {op.EntryPoint}.", e);
+                    if (_logger.IsError) _logger.Error($"Failed to notify {peer.Id} about user operation {op.UserOperation.RequestId!} to entryPoint {op.EntryPoint}.", e);
                 }
             }
         }
