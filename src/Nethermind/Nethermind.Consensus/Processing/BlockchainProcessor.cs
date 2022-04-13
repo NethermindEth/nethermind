@@ -347,7 +347,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    if (_logger.IsInfo)
+                    if (_logger.IsTrace)
                         _logger.Trace(
                             $"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                     _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());

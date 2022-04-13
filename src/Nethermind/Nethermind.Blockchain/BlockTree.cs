@@ -29,6 +29,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -86,10 +87,18 @@ namespace Nethermind.Blockchain
         public BlockHeader? BestSuggestedBeaconHeader { get; private set; }
 
         public Block? BestSuggestedBeaconBody { get; private set; }
-        public BlockHeader? LowestInsertedBeaconHeader { get; set; }
 
-        private long? _beaconSyncPivotNumber;
-        private long? _beaconSyncDestinationNumber;
+        public BlockHeader? LowestInsertedBeaconHeader
+        {
+            get => _lowestInsertedBeaconHeader;
+            set
+            {
+                _lowestInsertedBeaconHeader = value;
+                _metadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(value?.Hash ?? value?.CalculateHash()).Bytes);
+            }
+        }
+
+        private BlockHeader? _lowestInsertedBeaconHeader;
 
         private long? _lowestInsertedReceiptBlock;
         private long? _highestPersistedState;
@@ -252,28 +261,11 @@ namespace Nethermind.Blockchain
         
         public void LoadLowestInsertedBeaconHeader()
         {
-            if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncDestinationNumber))
+            if (_metadataDb.KeyExists(MetadataDbKeys.LowestInsertedBeaconHeaderHash))
             {
-                _beaconSyncDestinationNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncDestinationNumber)?
-                    .AsRlpValueContext().DecodeLong();
-            }
-
-            if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncPivotNumber))
-            {
-                _beaconSyncPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?
-                    .AsRlpValueContext().DecodeLong();
-            }
-
-            if (!_syncConfig.FastSync)
-            {
-                LowestInsertedBeaconHeader = null;
-            }
-            else if (_beaconSyncDestinationNumber.HasValue && _beaconSyncPivotNumber.HasValue)
-            {
-                long left = _beaconSyncDestinationNumber.Value;
-                long right = _beaconSyncPivotNumber.Value;
-                LowestInsertedBeaconHeader =
-                    BinarySearchBlockHeader(left, right, HasLevel, BinarySearchDirection.Down);
+                Keccak? lowestBeaconHeaderHash = _metadataDb.Get(MetadataDbKeys.LowestInsertedBeaconHeaderHash)?
+                    .AsRlpStream().DecodeKeccak();
+                _lowestInsertedBeaconHeader = FindHeader(lowestBeaconHeaderHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
             if (_logger.IsInfo) _logger.Info($"Loaded LowestInsertedBeaconHeader: {LowestInsertedBeaconHeader}");
@@ -298,19 +290,8 @@ namespace Nethermind.Blockchain
             long left = (Head?.Number ?? 0) == 0
                 ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
                 : Head.Number;
-            // TODO: beaconsync when best known pointer be updated if there is beacon sync?
-            long right;
-            if (_syncConfig.FastSync)
-            {
-                right = _beaconSyncDestinationNumber != LowestInsertedBeaconHeader?.Number &&
-                        _beaconSyncDestinationNumber.HasValue
-                    ? _beaconSyncDestinationNumber.Value
-                    : Math.Max(0, left) + BestKnownSearchLimit;
-            }
-            else
-            {
-                right = LowestInsertedBeaconHeader?.Number ?? Math.Max(0, left) + BestKnownSearchLimit;
-            }
+            // TODO: beaconsync waiting for binary search based on metadata
+            long right = Math.Max(0, left) + BestKnownSearchLimit;
 
             bool LevelExists(long blockNumber)
             {
@@ -543,24 +524,26 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (header.Number > BestKnownBeaconNumber)
+            bool skipBeaconPointers = (options & BlockTreeInsertOptions.UpdateBeaconPointers) == 0;
+            if (!skipBeaconPointers)
             {
-                BestKnownBeaconNumber = header.Number;
-            }
+                if (header.Number > BestKnownBeaconNumber)
+                {
+                    BestKnownBeaconNumber = header.Number;
+                }
 
-            if (header.Number > (BestSuggestedBeaconHeader?.Number ?? 0))
-            {
-                BestSuggestedBeaconHeader = header;
-            }
-
-            if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue)
-                && header.Number >= (_beaconSyncDestinationNumber ?? long.MaxValue)
-                && header.Number <= (_beaconSyncPivotNumber ?? long.MinValue))
-            {
-                if (_logger.IsInfo)
-                    _logger.Info(
-                        $"LowestInsertedBeaconHeader changed, old: {LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
-                LowestInsertedBeaconHeader = header;
+                if (header.Number > (BestSuggestedBeaconHeader?.Number ?? 0))
+                {
+                    BestSuggestedBeaconHeader = header;
+                }
+                
+                if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info(
+                            $"LowestInsertedBeaconHeader changed, old: {LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
+                    LowestInsertedBeaconHeader = header;
+                }
             }
 
             return AddBlockResult.Added;
@@ -1494,6 +1477,22 @@ namespace Nethermind.Blockchain
             if (blockHash == Head?.Hash)
             {
                 return true;
+            }
+
+            if (_headerCache.Get(blockHash) is not null)
+            {
+                return true;
+            }
+
+            ChainLevelInfo level = LoadLevel(number);
+            return level is not null && FindIndex(blockHash, level).HasValue;
+        }
+
+        public bool IsKnownBeaconBlock(long number, Keccak blockHash)
+        {
+            if (number > BestKnownBeaconNumber)
+            {
+                return false;
             }
 
             if (_headerCache.Get(blockHash) is not null)

@@ -49,9 +49,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly IBlockCacheService _blockCacheService;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
+        private readonly IMergeSyncController _mergeSyncController;
         private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
-        private bool synced = false;
+        private readonly IPeerRefresher _peerRefresher;
 
         public ForkchoiceUpdatedV1Handler(
             IBlockTree blockTree,
@@ -62,7 +63,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IPayloadPreparationService payloadPreparationService,
             IBlockCacheService blockCacheService,
             IBeaconSyncStrategy beaconSyncStrategy,
+            IMergeSyncController mergeSyncController,
             IBeaconPivot beaconPivot,
+            IPeerRefresher peerRefresher,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -75,7 +78,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _payloadPreparationService = payloadPreparationService;
             _blockCacheService = blockCacheService;
             _beaconSyncStrategy = beaconSyncStrategy;
+            _mergeSyncController = mergeSyncController;
             _beaconPivot = beaconPivot;
+            _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
         }
 
@@ -83,46 +88,46 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             PayloadAttributes? payloadAttributes)
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
+            if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
+            {
+                _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+            
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
-                    if (!_beaconPivot.BeaconPivotExists())
-                    {
-                        _beaconPivot.EnsurePivot(block.Header);   
-                    }
-
+                    _mergeSyncController.InitSyncing(block.Header);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                    
                     if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
-                else
-                {
-                    if (_logger.IsWarn) { _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}"); }
-                }
-
+                
+                if (_logger.IsWarn) { _logger.Warn($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}"); }
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+            
+            if (!_beaconSyncStrategy.IsBeaconSyncFinished(newHeadBlock.Header))
+            {
+                _peerRefresher.RefreshPeers(newHeadBlock.Hash!);
+                _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}"); }
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (_beaconPivot.BeaconPivotExists())
+            // TODO: beaconsync investigate why this would occur
+            if (newHeadBlock.Header.TotalDifficulty == 0)
             {
-                if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.Hash))
-                {
-                    _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
-                    if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
-                    return ForkchoiceUpdatedV1Result.Syncing;
-                }
-
-                if (newHeadBlock.Header.TotalDifficulty == 0)
-                {
-                    newHeadBlock.Header.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, newHeadBlock.Number);
-                }
-                
-                if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
+                newHeadBlock.Header.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, newHeadBlock.Number);
             }
+            
+            if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
 
-            (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
+                (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
                 ValidateHashForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
             {
@@ -160,20 +165,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}");
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
-            // TODO: beaconsync is this needed?
-            if (_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock!.Hash!) == false)
-            {
-                return ForkchoiceUpdatedV1Result.Syncing;
-            }
-
+ 
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
                 if (_logger.IsWarn)
                     _logger.Warn(
-                        $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, parent block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}");
+                        $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}");
 
                 return ForkchoiceUpdatedV1Result.Error(
-                    $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, parent block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}",
+                    $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}",
                     ErrorCodes.InvalidParams);
             }
 

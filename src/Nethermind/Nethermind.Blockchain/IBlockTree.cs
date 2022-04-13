@@ -122,6 +122,14 @@ namespace Nethermind.Blockchain
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
         bool IsKnownBlock(long number, Keccak blockHash);
+        
+        /// <summary>
+        /// Checks if beacon block was inserted and the block RLP is in the DB
+        /// </summary>
+        /// <param name="number">Number of the block to check (needed for faster lookup)</param>
+        /// <param name="blockHash">Hash of the block to check</param>
+        /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
+        bool IsKnownBeaconBlock(long number, Keccak blockHash);
 
         /// <summary>
         /// Checks if the state changes of the block can be found in the state tree.

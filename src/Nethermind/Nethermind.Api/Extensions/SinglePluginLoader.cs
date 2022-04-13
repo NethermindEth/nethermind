@@ -36,5 +36,7 @@ namespace Nethermind.Api.Extensions
         public IEnumerable<Type> PluginTypes => Enumerable.Repeat(typeof(T), 1);
         
         public void Load(ILogManager logManager) { }
+        
+        public void OrderPlugins(IPluginConfig pluginConfig) { }
     }
 }

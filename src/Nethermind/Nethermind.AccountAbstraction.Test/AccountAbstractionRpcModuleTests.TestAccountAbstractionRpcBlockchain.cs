@@ -83,7 +83,8 @@ namespace Nethermind.AccountAbstraction.Test
 
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
             public Address[] EntryPointAddresses { get; private set; } = null!;
-
+            public Address[] WhitelistedPayamsters { get; private set; } = null!;
+            
             public TestAccountAbstractionRpcBlockchain(UInt256? initialBaseFeePerGas)
             {
                 Signer = new Signer(1, TestItem.PrivateKeyD, LogManager);
@@ -92,21 +93,17 @@ namespace Nethermind.AccountAbstraction.Test
                     .WithGasLimit(GasLimitCalculator.GasLimit)
                     .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
             }
-
-            public IAccountAbstractionRpcModule AccountAbstractionRpcModule { get; set; } =
-                Substitute.For<IAccountAbstractionRpcModule>();
-
-            public ManualGasLimitCalculator GasLimitCalculator = new() { GasLimit = 10_000_000 };
-
-            private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig()
-            {
-                Enabled = true,
-                EntryPointContractAddresses =
-                    "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
-                Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
-                UserOperationPoolSize = 200
-            };
-
+            
+            public IAccountAbstractionRpcModule AccountAbstractionRpcModule { get; set; } = Substitute.For<IAccountAbstractionRpcModule>();
+            public ManualGasLimitCalculator GasLimitCalculator = new() {GasLimit = 10_000_000};
+            private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig() 
+                {
+                    Enabled = true, 
+                    EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
+                    Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
+                    UserOperationPoolSize = 200,
+                    WhitelistedPaymasters = ""
+                };
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
             private ISigner Signer { get; }
 
@@ -178,17 +175,29 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 // Address.TryParse(_accountAbstractionConfig.EntryPointContractAddress, out Address? entryPointContractAddress);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString =
-                    _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in _entryPointContractAddressesString)
+                IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string addressString in entryPointContractAddressesString)
                 {
                     bool parsed = Address.TryParse(
-                        _addressString,
+                        addressString,
                         out Address? entryPointContractAddress);
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
 
                 EntryPointAddresses = entryPointContractAddresses.ToArray();
+                
+                IList<Address> whitelistedPaymasters = new List<Address>();
+                IList<string> whitelistedPaymastersString = _accountAbstractionConfig.GetWhitelistedPaymasters().ToList();
+                foreach (string addressString in whitelistedPaymastersString){
+                    bool parsed = Address.TryParse(
+                        addressString,
+                        out Address? whitelistedPaymaster);
+                    whitelistedPaymasters.Add(whitelistedPaymaster!);
+                }
+
+                WhitelistedPayamsters = whitelistedPaymasters.ToArray();
+                
+                
                 Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
@@ -226,10 +235,11 @@ namespace Nethermind.AccountAbstraction.Test
                         EntryPointContractAbi,
                         create2FactoryAddress!,
                         entryPoint!,
-                        SpecProvider,
-                        BlockTree,
-                        DbProvider,
-                        ReadOnlyTrieStore,
+                        WhitelistedPayamsters,
+                        SpecProvider, 
+                        BlockTree, 
+                        DbProvider, 
+                        ReadOnlyTrieStore, 
                         Timestamper,
                         LogManager);
                 }
@@ -298,12 +308,9 @@ namespace Nethermind.AccountAbstraction.Test
 
             public void SendUserOperation(Address entryPoint, UserOperation userOperation)
             {
-                ResultWrapper<Keccak> resultOfUserOperation =
-                    UserOperationPool[entryPoint].AddUserOperation(userOperation);
-                resultOfUserOperation.GetResult().ResultType.Should()
-                    .NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should()
-                    .Be(userOperation.CalculateRequestId(entryPoint, SpecProvider.ChainId));
+                ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
+                resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
+                resultOfUserOperation.GetData().Should().Be(userOperation.RequestId!);
             }
 
             public void SupportedEntryPoints()

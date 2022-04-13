@@ -77,6 +77,7 @@ namespace Nethermind.Mev
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) { }
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }

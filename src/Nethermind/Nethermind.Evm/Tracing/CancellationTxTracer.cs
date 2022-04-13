@@ -320,6 +320,15 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+            _token.ThrowIfCancellationRequested();
+            if (_innerTracer.IsTracingOpLevelStorage)
+            {
+                _innerTracer.LoadOperationStorage(address, storageIndex, value);
+            }
+        }
+
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
             _token.ThrowIfCancellationRequested();

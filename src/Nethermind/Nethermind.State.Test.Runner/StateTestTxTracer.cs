@@ -124,6 +124,10 @@ namespace Nethermind.State.Test.Runner
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
         {
         }
+        
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+        }
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {

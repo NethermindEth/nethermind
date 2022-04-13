@@ -34,8 +34,8 @@ namespace Nethermind.AccountAbstraction.Test.Network
             Address entryPointId = new Address("0x90f3E1105E63C877bF9587DE5388C23Cdb702c6B");
             ulong chainId = 5;
             Keccak idFromTransaction = new Keccak("0x9f5d37eb5cc7b0707b2898b1da01fa7aac806a18d531b17a981994bc512cbfc8");
-            Keccak idFromUserOperation = userOperation.CalculateRequestId(entryPointId, chainId);
-            Assert.AreEqual(idFromTransaction, idFromUserOperation,
+            userOperation.CalculateRequestId(entryPointId, chainId);
+            Assert.AreEqual(idFromTransaction, userOperation.RequestId!,
                 "Request IDs do not match.");
         }
 
@@ -60,16 +60,14 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 Signature = Bytes.FromHexString(
                     "0xe4ef96c1ebffdae061838b79a0ba2b0289083099dc4d576a7ed0c61c80ed893273ba806a581c72be9e550611defe0bf490f198061b8aa63dd6acfc0b620e0c871c")
             });
-
-            Keccak userOpHash = new Keccak("0x383a961ee4330d90fb5dbe90dc6fb6fceaf173201e29e0204476abca2a9f9571");
-            Assert.AreEqual(userOpHash, userOperation2.CalculateHash(), "user op hashes do not match");
+            
             
             Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
             ulong chainId = 5;
             Keccak idFromTransaction2 =
                 new Keccak("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
-            Keccak idFromUserOperation2 = userOperation2.CalculateRequestId(entryPointId, chainId);
-            Assert.AreEqual(idFromTransaction2, idFromUserOperation2,
+            userOperation2.CalculateRequestId(entryPointId, chainId);
+            Assert.AreEqual(idFromTransaction2, userOperation2.RequestId!,
                 "Request IDs do not match.");
         }
     }

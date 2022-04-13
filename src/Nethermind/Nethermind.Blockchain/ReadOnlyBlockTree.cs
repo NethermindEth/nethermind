@@ -124,6 +124,8 @@ namespace Nethermind.Blockchain
         public BlockHeader FindBestSuggestedHeader() => _wrapped.FindBestSuggestedHeader();
 
         public bool IsKnownBlock(long number, Keccak blockHash) => _wrapped.IsKnownBlock(number, blockHash);
+        
+        public bool IsKnownBeaconBlock(long number, Keccak blockHash) => _wrapped.IsKnownBeaconBlock(number, blockHash);
 
         public bool WasProcessed(long number, Keccak blockHash) => _wrapped.WasProcessed(number, blockHash);
         

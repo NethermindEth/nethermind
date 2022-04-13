@@ -16,8 +16,11 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -28,6 +31,8 @@ using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
+using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -110,7 +115,20 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequest.BlockHash = hash;
             return blockRequest;
         }
-        
+
+        private static BlockRequestResult[] CreateBlockRequestBranch(BlockRequestResult parent, Address miner, int count)
+        {
+            BlockRequestResult currentBlock = parent;
+            BlockRequestResult[] blockRequests = new BlockRequestResult[count];
+            for (int i = 0; i < count; i++)
+            {
+                currentBlock = CreateBlockRequest(currentBlock, miner);
+                blockRequests[i] = currentBlock;
+            }
+
+            return blockRequests;
+        }
+
         private Block? RunForAllBlocksInBranch(IBlockTree blockTree, Keccak blockHash, Func<Block, bool> shouldStop,
             bool requireCanonical)
         {

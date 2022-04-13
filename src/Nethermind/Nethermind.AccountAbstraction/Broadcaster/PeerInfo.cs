@@ -37,7 +37,7 @@ namespace Nethermind.AccountAbstraction.Broadcaster
 
         public void SendNewUserOperation(UserOperationWithEntryPoint uop)
         {
-            if (NotifiedUserOperations.Set(uop.UserOperation.Hash))
+            if (NotifiedUserOperations.Set(uop.UserOperation.RequestId!))
             {
                 Peer.SendNewUserOperation(uop);
             }
@@ -53,7 +53,7 @@ namespace Nethermind.AccountAbstraction.Broadcaster
         {
             foreach (UserOperationWithEntryPoint uop in uops)
             {
-                if (NotifiedUserOperations.Set(uop.UserOperation.Hash))
+                if (NotifiedUserOperations.Set(uop.UserOperation.RequestId!))
                 {
                     yield return uop;
                 }
