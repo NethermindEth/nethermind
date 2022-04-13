@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public TxReceipt[] Get(Keccak blockHash)
         {
-            TxReceipt[]? receipts = _receiptStorage.Get(blockHash);
+            var receipts = _receiptStorage.Get(blockHash);
             
             if (_receiptsRecovery.NeedRecover(receipts))
             {
