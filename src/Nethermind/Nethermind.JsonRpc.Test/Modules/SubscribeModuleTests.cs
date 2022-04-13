@@ -440,7 +440,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockEventArgs blockEventArgs = new(block);
@@ -482,7 +482,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
 
             TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject};
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockEventArgs blockEventArgs = new(block);
@@ -520,7 +520,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(33).WithLogs(logEntryB, logEntryC).TestObject
             };
             
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             BlockEventArgs blockEventArgs = new(block);
@@ -574,7 +574,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
             };
             
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
             BlockEventArgs blockEventArgs = new(block);
@@ -621,7 +621,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
             };
 
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
             BlockEventArgs blockEventArgs = new(block);
@@ -671,7 +671,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryB, logEntryE, logEntryA, logEntryB).TestObject,
             };
             
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
             BlockEventArgs blockEventArgs = new(block);
@@ -704,7 +704,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
             Block block = Build.A.Block.WithHeader(blockHeader).TestObject;
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
 
             List<JsonRpcResult> jsonRpcResults = new();
             
