@@ -209,7 +209,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public void Insert(Block block, params TxReceipt[] txReceipts) => Insert(block, false, txReceipts);
 
-        public void Insert(Block block, bool wasRecovered, params TxReceipt[] txReceipts)
+        public void Insert(Block block, bool wasRecovered = false, params TxReceipt[] txReceipts)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             int txReceiptsLength = txReceipts.Length;
