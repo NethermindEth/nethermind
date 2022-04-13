@@ -112,6 +112,7 @@ namespace Nethermind.JsonRpc.Benchmark
             LogFinder logFinder = new(
                 blockTree,
                 new InMemoryReceiptStorage(),
+                new InMemoryReceiptStorage(),
                 bloomStorage,
                 LimboLogs.Instance,
                 new ReceiptsRecovery(ecdsa, specProvider));
