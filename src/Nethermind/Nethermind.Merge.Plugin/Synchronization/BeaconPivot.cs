@@ -55,7 +55,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _blockTree = blockTree;
             _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
-            _currentBeaconPivot = _blockTree.LowestInsertedBeaconHeader;
+            // _currentBeaconPivot = _blockTree.LowestInsertedBeaconHeader; // ToDo Sarah: I think it is incorrect, but we should discuss it
+
         }
 
         public long PivotNumber => _currentBeaconPivot?.Number ?? _syncConfig.PivotNumberParsed;
