@@ -85,6 +85,22 @@ namespace Nethermind.TxPool.Test
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
             => TestAddAndGetReceiptEip658(_persistentStorage);
 
+        [Test]
+        public void should_not_throw_if_receiptFinder_asked_for_not_existing_receipts_by_block()
+        {
+            Block block = Build.A.Block.WithNumber(0).WithTransactions(5, _specProvider).TestObject;
+            TxReceipt[] receipts = _receiptFinder.Get(block);
+            receipts.Should().BeEmpty();
+        }
+        
+        [Test]
+        public void should_not_throw_if_receiptFinder_asked_for_not_existing_receipts_by_hash()
+        {
+            Block block = Build.A.Block.WithNumber(0).WithTransactions(5, _specProvider).TestObject;
+            TxReceipt[] receipts = _receiptFinder.Get(block.Hash);
+            receipts.Should().BeEmpty();
+        }
+
         private void TestAddAndCheckLowest(IReceiptStorage storage, bool updateLowest)
         {
             var transaction = GetSignedTransaction();

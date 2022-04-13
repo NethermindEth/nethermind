@@ -109,10 +109,16 @@ namespace Nethermind.Blockchain.Receipts
 
             if (_receiptsCache.TryGet(block.Hash, out var receipts))
             {
-                return receipts;
+                return receipts ?? Array.Empty<TxReceipt>();
             }
             
             var receiptsData = _blocksDb.GetSpan(block.Hash);
+
+            if (receiptsData.IsEmpty)
+            {
+                return Array.Empty<TxReceipt>();
+            }
+            
             try
             {
                 bool shouldCache = true;
