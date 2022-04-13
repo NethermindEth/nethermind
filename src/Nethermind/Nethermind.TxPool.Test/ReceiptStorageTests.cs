@@ -101,6 +101,9 @@ namespace Nethermind.TxPool.Test
         
         private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder? receiptFinder = null)
         {
+            bool shouldRecoverSender = receiptFinder is not null;
+            receiptFinder ??= storage;
+
             var transaction = GetSignedTransaction();
             transaction.SenderAddress = null;
             var block = GetBlock(transaction);
@@ -108,20 +111,14 @@ namespace Nethermind.TxPool.Test
             storage.Insert(block, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
-
-            TxReceipt fetchedReceipt;
-            if (receiptFinder is not null)
-            {
-                fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
-                receipt.Sender.Should().BeEquivalentTo(TestItem.AddressA);
-            }
-            else
-            {
-                fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
-            }
+            var fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
+            if (shouldRecoverSender)
+            {
+                receipt.Sender.Should().BeEquivalentTo(TestItem.AddressA);
+            }
         }
 
         private void TestAddAndGetReceiptEip658(IReceiptStorage storage)
