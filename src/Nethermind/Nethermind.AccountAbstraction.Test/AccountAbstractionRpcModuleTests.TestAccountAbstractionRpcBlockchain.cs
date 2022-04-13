@@ -184,7 +184,7 @@ namespace Nethermind.AccountAbstraction.Test
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State, Storage),
                     State,
                     Storage,
                     ReceiptStorage,

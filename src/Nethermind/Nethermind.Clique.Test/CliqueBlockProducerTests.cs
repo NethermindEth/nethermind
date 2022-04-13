@@ -140,7 +140,7 @@ namespace Nethermind.Clique.Test
                     goerliSpecProvider,
                     Always.Valid,
                     NoBlockRewards.Instance,
-                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                    new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, storageProvider),
                     stateProvider,
                     storageProvider,
                     NullReceiptStorage.Instance,

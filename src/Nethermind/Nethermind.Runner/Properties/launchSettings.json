@@ -9,7 +9,7 @@
     },
     "Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet.cfg --Sync.FastSync true",
+      "commandLineArgs": "--config configs\\mainnet.cfg --Sync.FastSync false --baseDbPath F:\\nethermind_db --JsonRpc.Enabled true",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -23,7 +23,7 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\goerli_mem_fast --JsonRpc.Enabled true"
+      "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\goerli_mem_fast --JsonRpc.Enabled true --Network.P2PPort 30308 --Network.DiscoveryPort 30308 --Sync.FastSync false"
     },
     "Sokol": {
       "commandName": "Project",
@@ -35,7 +35,7 @@
     },
     "xDai": {
       "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath C:\\nethermind_db --Network.P2PPort 30308 --Network.DiscoveryPort 30308 --Sync.FastSync false"
     },
     "AuRaTestMiner": {
       "commandName": "Project",

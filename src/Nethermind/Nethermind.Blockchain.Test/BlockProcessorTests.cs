@@ -55,13 +55,14 @@ namespace Nethermind.Blockchain.Test
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             BlockProcessor processor = new(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, storageProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -87,13 +88,14 @@ namespace Nethermind.Blockchain.Test
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
+            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             BlockProcessor processor = new(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, storageProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                storageProvider,
                 NullReceiptStorage.Instance,
                 witnessCollector,
                 LimboLogs.Instance);
@@ -117,13 +119,14 @@ namespace Nethermind.Blockchain.Test
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             BlockProcessor processor = new(
                 RinkebySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, storageProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
+                storageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);

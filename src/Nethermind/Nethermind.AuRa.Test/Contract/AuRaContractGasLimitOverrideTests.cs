@@ -107,7 +107,7 @@ namespace Nethermind.AuRa.Test.Contract
                     SpecProvider,
                     Always.Valid,
                     new RewardCalculator(SpecProvider),
-                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
+                    new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State, Storage),
                     State,
                     Storage,
                     ReceiptStorage,

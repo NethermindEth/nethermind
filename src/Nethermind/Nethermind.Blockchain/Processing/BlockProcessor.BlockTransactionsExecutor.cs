@@ -45,15 +45,10 @@ public partial class BlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(i, currentTx, receiptsTracer.TxReceipts[i]));
             }
             return receiptsTracer.TxReceipts.ToArray();
-        }
-        
-        private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
-        {
-            _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
-            TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
         }
     }
 }

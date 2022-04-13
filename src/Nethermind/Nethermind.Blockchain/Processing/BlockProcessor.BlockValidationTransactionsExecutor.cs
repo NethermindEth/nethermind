@@ -34,13 +34,17 @@ namespace Nethermind.Blockchain.Processing
     {
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
+            private readonly IStateProvider _stateProvider;
+            private readonly IStorageProvider _storageProvider;
             private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
             private readonly ITransactionProcessorAdapter _executeAdapter;
             private readonly ITransactionProcessorAdapter _buildUpAdapter;
             private readonly ChangeableTransactionProcessorAdapter _changeableTransactionProcessorAdapter;
 
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider, IStorageProvider storageProvider)
             {
+                _stateProvider = stateProvider;
+                _storageProvider = storageProvider;
                 _changeableTransactionProcessorAdapter = new ChangeableTransactionProcessorAdapter(transactionProcessor);
                 _executeAdapter = _changeableTransactionProcessorAdapter.CurrentAdapter;
                 _buildUpAdapter = new BuildUpTransactionProcessorAdapter(transactionProcessor);
@@ -49,8 +53,19 @@ namespace Nethermind.Blockchain.Processing
 
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
-                _changeableTransactionProcessorAdapter.CurrentAdapter = spec.IsEip658Enabled ? _buildUpAdapter : _executeAdapter;
-                return _blockTransactionsExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, spec);
+                if (spec.IsEip658Enabled)
+                {
+                    _changeableTransactionProcessorAdapter.CurrentAdapter = _buildUpAdapter;
+                    TxReceipt[] receipts =  _blockTransactionsExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, spec);
+                    _storageProvider.Commit(receiptsTracer.IsTracingState ? receiptsTracer : NullStorageTracer.Instance);
+                    _stateProvider.Commit(spec, receiptsTracer.IsTracingState ? receiptsTracer : NullStateTracer.Instance);
+                    return receipts;
+                }
+                else
+                {
+                    _changeableTransactionProcessorAdapter.CurrentAdapter = _executeAdapter;
+                    return _blockTransactionsExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, spec);
+                }
             }
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
