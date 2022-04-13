@@ -56,6 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IBlockTree _blockTree;
         private ITxPool _txPool;
         private IReceiptStorage _receiptStorage;
+        private IReceiptFinder _receiptFinder;
         private IFilterStore _filterStore;
         private ISubscriptionManager _subscriptionManager;
         private IJsonRpcDuplexClient _jsonRpcDuplexClient;
@@ -69,6 +70,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
+            _receiptFinder = Substitute.For<IReceiptFinder>();
             _specProvider = Substitute.For<ISpecProvider>();
             _filterStore = new FilterStore();
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
@@ -82,6 +84,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockTree,
                 _txPool,
                 _receiptStorage,
+                _receiptFinder,
                 _filterStore,
                 new EthSyncingInfo(_blockTree),
                 _specProvider,
@@ -123,7 +126,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         
         private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, BlockEventArgs blockEventArgs, out string subscriptionId)
         {
-            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
+            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptStorage, _receiptFinder, _filterStore, _blockTree, _logManager, filter);
             
             List<JsonRpcResult> jsonRpcResults = new();
 
@@ -695,7 +698,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 55555;
             Filter filter = null;
             
-            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
+            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptStorage, _receiptFinder, _filterStore, _blockTree, _logManager, filter);
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
@@ -1067,7 +1070,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 55555;
             Filter filter = null;
             
-            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptStorage, _filterStore, _blockTree, _logManager, filter);
+            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptStorage, _receiptFinder, _filterStore, _blockTree, _logManager, filter);
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = {Build.A.Receipt.WithLogs(logEntry).WithBlockNumber(blockNumber).TestObject};

@@ -32,19 +32,22 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
     public class LogsSubscription : Subscription
     {
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
 
         public LogsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
-            IReceiptStorage? receiptStorage, 
-            IFilterStore? store, 
-            IBlockTree? blockTree, 
-            ILogManager? logManager, 
-            Filter? filter = null) 
+            IReceiptStorage? receiptStorage,
+            IReceiptFinder? receiptFinder,
+            IFilterStore? store,
+            IBlockTree? blockTree,
+            ILogManager? logManager,
+            Filter? filter = null)
             : base(jsonRpcDuplexClient)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             IFilterStore filterStore = store ?? throw new ArgumentNullException(nameof(store));
@@ -75,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             if (e.Block is not null)
             {
-                TryPublishReceiptsInBackground(e.Block.Header, () =>  _receiptStorage.Get(e.Block), nameof(_blockTree.NewHeadBlock));
+                TryPublishReceiptsInBackground(e.Block.Header, () =>  _receiptFinder.Get(e.Block), nameof(_blockTree.NewHeadBlock));
             }
         }
 
