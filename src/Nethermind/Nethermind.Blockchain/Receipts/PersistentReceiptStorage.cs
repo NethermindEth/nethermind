@@ -107,74 +107,14 @@ namespace Nethermind.Blockchain.Receipts
                 return Array.Empty<TxReceipt>();
             }
 
-            if (_receiptsCache.TryGet(block.Hash, out var receipts))
-            {
-                return receipts ?? Array.Empty<TxReceipt>();
-            }
-            
-            var receiptsData = _blocksDb.GetSpan(block.Hash);
-
-            if (receiptsData.IsEmpty)
-            {
-                return Array.Empty<TxReceipt>();
-            }
-            
-            try
-            {
-                bool shouldCache = true;
-                
-                if (!receiptsData.IsNullOrEmpty())
-                {
-                    receipts = DecodeArray(receiptsData);
-                }
-                else
-                {
-                    // didn't bring performance uplift that was expected
-                    // var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
-                    // return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
-
-                    receipts = new TxReceipt[block.Transactions.Length];
-                    for (int i = 0; i < block.Transactions.Length; i++)
-                    {
-                        receipts[i] = FindReceiptObsolete(block.Transactions[i].Hash);
-                        shouldCache &= receipts[i] != null;
-                    }
-                }
-
-                shouldCache &= receipts.Length > 0;
-                
-                if (shouldCache)
-                {
-                    _receiptsCache.Set(block.Hash, receipts);
-                }
-
-                return receipts;
-            }
-            finally
-            {
-                _blocksDb.DangerousReleaseMemory(receiptsData);
-            }
+            return Get(block.Hash);
         }
-
-        private static TxReceipt[] DecodeArray(in Span<byte> receiptsData)
-        {
-            var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
-            try
-            {
-                return StorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
-            }
-            catch (RlpException)
-            {
-                decoderContext.Position = 0;
-                return StorageDecoder.DecodeArray(ref decoderContext);
-            }
-        }
-
+        
         public TxReceipt[] Get(Keccak blockHash)
         {
             if (_receiptsCache.TryGet(blockHash, out var receipts))
             {
-                return receipts;
+                return receipts ?? Array.Empty<TxReceipt>();
             }
             
             var receiptsData = _blocksDb.GetSpan(blockHash);
@@ -194,6 +134,20 @@ namespace Nethermind.Blockchain.Receipts
             finally
             {
                 _blocksDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        private static TxReceipt[] DecodeArray(in Span<byte> receiptsData)
+        {
+            var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
+            try
+            {
+                return StorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+            }
+            catch (RlpException)
+            {
+                decoderContext.Position = 0;
+                return StorageDecoder.DecodeArray(ref decoderContext);
             }
         }
 
