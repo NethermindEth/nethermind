@@ -219,7 +219,7 @@ namespace Nethermind.Blockchain.Receipts
                     $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
             }
 
-            bool wasRecovered = _receiptsRecovery.TryRecover(block, txReceipts, false);
+            _receiptsRecovery.TryRecover(block, txReceipts, false);
             
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
@@ -243,7 +243,9 @@ namespace Nethermind.Blockchain.Receipts
             
             _receiptsCache.Set(block.Hash, txReceipts);
 
-            if (!wasRecovered || wasRemoved)
+            // Subscription with new receipts is invoked by NewHeadBlock event.
+            // Here we want to invoke ReceiptsInserted event only to send removed receipts (after reorg).
+            if (wasRemoved)
             {
                 ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
             }
