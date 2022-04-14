@@ -971,7 +971,8 @@ namespace Nethermind.Merge.Plugin.Test
                 blocks.Add((getPayloadResult));
                 parentBlock = getPayloadResult;
                 parentBlock.TryGetBlock(out block!);
-                parentHeader = block!.Header;
+                block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
+                parentHeader = block.Header;
             }
 
             return blocks;
