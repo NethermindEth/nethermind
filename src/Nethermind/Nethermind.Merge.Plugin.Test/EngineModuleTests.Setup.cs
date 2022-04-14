@@ -52,7 +52,7 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) 
+        protected virtual async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
             => await new MergeTestBlockchain(mergeConfig, mockedPayloadService)
                 .Build(
                     new SingleReleaseSpecProvider(London.Instance, 1));
@@ -75,7 +75,7 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.LogManager);
         }
 
-        private class MergeTestBlockchain : TestBlockchain
+        public class MergeTestBlockchain : TestBlockchain
         {
             public IMergeConfig MergeConfig { get; set; }
             
@@ -104,7 +104,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
             
-            public IEthSyncingInfo EthSyncingInfo { get; private set; }
+            public IEthSyncingInfo EthSyncingInfo { get; protected set; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
