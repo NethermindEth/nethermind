@@ -203,12 +203,7 @@ namespace Nethermind.Blockchain.Receipts
             
             _receiptsCache.Set(block.Hash, txReceipts);
 
-            // Subscription with new receipts is invoked by NewHeadBlock event.
-            // Here we want to invoke ReceiptsInserted event only to send removed receipts (after reorg).
-            if (wasRemoved)
-            {
-                ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
-            }
+            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
         }
 
         public long? LowestInsertedReceiptBlockNumber
