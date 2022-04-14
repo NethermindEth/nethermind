@@ -33,12 +33,12 @@ namespace Nethermind.Blockchain.Receipts
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
         
-        public bool TryRecover(Block block, TxReceipt[] receipts, bool force = true)
+        public bool TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true)
         {
             var canRecover = block.Transactions.Length == receipts?.Length;
             if (canRecover)
             {
-                var needRecover = NeedRecover(receipts, force);
+                var needRecover = NeedRecover(receipts, forceRecoverSender);
                 if (needRecover)
                 {
                     var releaseSpec = _specProvider.GetSpec(block.Number);
@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Receipts
                         if (receipts.Length > receiptIndex)
                         {
                             TxReceipt receipt = receipts[receiptIndex];
-                            RecoverReceiptData(releaseSpec, receipt, block, transaction, receiptIndex, gasUsedBefore, force);
+                            RecoverReceiptData(releaseSpec, receipt, block, transaction, receiptIndex, gasUsedBefore, forceRecoverSender);
                             gasUsedBefore = receipt.GasUsedTotal;
                         }
                     }
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Receipts
             return false;
         }
         
-        public bool NeedRecover(TxReceipt[] receipts, bool force = true) => receipts?.Length > 0 && (receipts[0].BlockHash == null || (force && receipts[0].Sender == null));
+        public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true) => receipts?.Length > 0 && (receipts[0].BlockHash == null || (forceRecoverSender && receipts[0].Sender == null));
 
         private void RecoverReceiptData(IReleaseSpec releaseSpec, TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore, bool force)
         {
