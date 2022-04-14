@@ -53,6 +53,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
         private readonly IPeerRefresher _peerRefresher;
+        private int i = 0;
 
         public ForkchoiceUpdatedV1Handler(
             IBlockTree blockTree,
@@ -88,13 +89,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             PayloadAttributes? payloadAttributes)
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
-            if (!_beaconSyncStrategy.IsBeaconSyncHeadersFinished())
-            {
-                _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
-                if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
-                return ForkchoiceUpdatedV1Result.Syncing;
-            }
-            
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {
@@ -103,7 +97,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _mergeSyncController.InitSyncing(block.Header);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     
-                    if (_logger.IsInfo) { _logger.Info($"Syncing... Request: {requestStr}"); }
+                    if (_logger.IsInfo) { _logger.Info($"Start new sync process... Request: {requestStr}"); }
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
                 
@@ -113,7 +107,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (!_beaconSyncStrategy.IsBeaconSyncFinished(newHeadBlock.Header))
             {
-                _peerRefresher.RefreshPeers(newHeadBlock.Hash!);
+                // ToDO of course we shouldn't refresh the peers in this way. This need to be optimized and we need to rethink refreshing
+                if (i % 10 == 0)
+                    _peerRefresher.RefreshPeers(newHeadBlock.Hash!);
+                ++i;
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                 if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}"); }
                 return ForkchoiceUpdatedV1Result.Syncing;

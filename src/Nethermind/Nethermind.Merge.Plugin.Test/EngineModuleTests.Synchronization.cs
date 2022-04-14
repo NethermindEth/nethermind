@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -247,13 +248,23 @@ public partial class EngineModuleTests
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
+        
         // finish beacon forwards sync
         foreach (Block block in missingBlocks)
         {
             await chain.BlockTree.SuggestBlockAsync(block);
         }
         bestBeaconBlockRequest.TryGetBlock(out Block? bestBeaconBlock);
+        SemaphoreSlim bestBlockProcessed = new(0);
+        chain.BlockProcessor.BlockProcessed += (s, e) =>
+        {
+            if (e.Block.Hash == bestBeaconBlock!.Hash)
+                    bestBlockProcessed.Release(1);
+        };
         await chain.BlockTree.SuggestBlockAsync(bestBeaconBlock!);
+
+        await bestBlockProcessed.WaitAsync();
+        
         // beacon sync should be finished
         bestBeaconBlockRequest = CreateBlockRequest(bestBeaconBlockRequest, Address.Zero);
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);

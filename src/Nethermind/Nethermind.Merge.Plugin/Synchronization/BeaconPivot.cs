@@ -76,6 +76,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
             if (blockHeader != null)
             {
                 _peerRefresher.RefreshPeers(blockHeader.Hash!);
+                
+                // ToDo Sarah in some cases this could be wrong
                 if (beaconPivotExists && PivotNumber > blockHeader.Number)
                 {
                     return;
