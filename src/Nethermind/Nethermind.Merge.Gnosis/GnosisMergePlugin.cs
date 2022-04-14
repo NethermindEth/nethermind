@@ -15,11 +15,17 @@ using System.Collections.Generic;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.State;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.Gnosis
 {
-    public class GCMergePlugin : MergePlugin
+    public class GnosisMergePlugin : MergePlugin
     {
+        protected override bool MatchChain(ChainSpec chainSpec)
+        {
+            return chainSpec.ChainId == ChainId.xDai;
+        }
+
         protected override void InitRewardCalculatorSource() { }
 
         protected override ITxSource? CreateTxSource(IStateProvider stateProvider)
@@ -91,7 +97,7 @@ namespace Nethermind.Merge.Gnosis
 
                 return new TxPriorityTxSource(
                     _api.TxPool!,
-                    stateReader,
+                    _api.StateReader!,
                     _api.LogManager,
                     txFilterPipeline,
                     whitelistContractDataStore,
