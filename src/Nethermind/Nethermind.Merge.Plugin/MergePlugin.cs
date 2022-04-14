@@ -156,6 +156,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconPivot,
                         _blockCacheService,
                         _api.SyncProgressResolver,
+                        _beaconSync,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
@@ -207,7 +208,7 @@ namespace Nethermind.Merge.Plugin
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
-                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.DbProvider.MetadataDb, _api.LogManager);
+                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.DbProvider.MetadataDb, _blockCacheService, _api.LogManager);
 
                 _api.BetterPeerStrategy =
                     new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.SyncProgressResolver, _poSSwitcher, _api.LogManager);

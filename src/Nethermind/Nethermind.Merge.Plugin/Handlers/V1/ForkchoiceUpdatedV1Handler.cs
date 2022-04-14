@@ -96,15 +96,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     _mergeSyncController.InitSyncing(block.Header);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
-                    
-                    if (_logger.IsInfo) { _logger.Info($"Start new sync process... Request: {requestStr}"); }
+
+                    if (_logger.IsInfo) { _logger.Info($"Start a new sync process... Request: {requestStr}"); }
+
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
-                
-                if (_logger.IsWarn) { _logger.Warn($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}"); }
+
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}");
+                }
+
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
-            
+
             if (!_beaconSyncStrategy.IsBeaconSyncFinished(newHeadBlock.Header))
             {
                 // ToDO of course we shouldn't refresh the peers in this way. This need to be optimized and we need to rethink refreshing
@@ -113,18 +118,21 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 ++i;
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                 if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}"); }
+
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
+            if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
+            _mergeSyncController.StopSyncing();
 
             // TODO: beaconsync investigate why this would occur
             if (newHeadBlock.Header.TotalDifficulty == 0)
             {
-                newHeadBlock.Header.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, newHeadBlock.Number);
+                newHeadBlock.Header.TotalDifficulty =
+                    _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, newHeadBlock.Number);
             }
-            
-            if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
 
-                (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
+
+            (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
                 ValidateHashForFinalization(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
             {
@@ -162,7 +170,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}");
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
- 
+
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
                 if (_logger.IsWarn)
@@ -177,7 +185,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
             if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead)
             {
-                if (_logger.IsInfo) { _logger.Info($"VALID. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}"); }
+                if (_logger.IsInfo)
+                {
+                    _logger.Info(
+                        $"VALID. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}");
+                }
+
                 return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
 
@@ -221,8 +234,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             if (_logger.IsInfo) { _logger.Info($"Valid. Request: {requestStr}"); }
+
             return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
-         }
+        }
 
         // This method will detect reorg in terminal PoW block
         private void EnsureTerminalBlock(ForkchoiceStateV1 forkchoiceState, Block[]? blocks)

@@ -1165,6 +1165,28 @@ namespace Nethermind.Merge.Plugin.Test
                 blockRequestResult2B.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult2B = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState2B);
             forkchoiceUpdatedResult2B.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+            
+            // New payload unknown parent hash
+            BlockRequestResult blockRequestResult3A = CreateBlockRequest(blockRequestResult2A, TestItem.AddressA);
+            ResultWrapper<PayloadStatusV1> newPayloadResult3A = await rpc.engine_newPayloadV1(blockRequestResult3A);
+            newPayloadResult3A.Data.Status.Should().Be(PayloadStatus.Accepted);
+
+            // Fork choice updated with unknown parent hash
+            ForkchoiceStateV1 forkChoiceState3A = new ForkchoiceStateV1(blockRequestResult3A.BlockHash,
+                blockRequestResult3A.BlockHash,
+                blockRequestResult3A.BlockHash);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult3A = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState3A);
+            forkchoiceUpdatedResult3A.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Syncing);
+            
+            BlockRequestResult blockRequestResult3B = CreateBlockRequest(blockRequestResult2B, TestItem.AddressA);
+            ResultWrapper<PayloadStatusV1> newPayloadResult3B = await rpc.engine_newPayloadV1(blockRequestResult3B);
+            newPayloadResult3B.Data.Status.Should().Be(PayloadStatus.Valid);
+
+            // Fork choice updated with correct parent hash
+            ForkchoiceStateV1 forkChoiceState3B = new ForkchoiceStateV1(blockRequestResult3B.BlockHash, blockRequestResult3B.BlockHash,
+                blockRequestResult3B.BlockHash);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult3B = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState3B);
+            forkchoiceUpdatedResult3B.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         }
 
         private async Task<BlockRequestResult> BuildAndGetPayloadResult(

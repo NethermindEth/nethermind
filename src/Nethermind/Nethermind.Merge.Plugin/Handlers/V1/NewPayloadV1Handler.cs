@@ -58,6 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockCacheService _blockCacheService;
         private readonly ISyncProgressResolver _syncProgressResolver;
+        private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
@@ -74,6 +75,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBeaconPivot beaconPivot,
             IBlockCacheService blockCacheService,
             ISyncProgressResolver syncProgressResolver,
+            IMergeSyncController mergeSyncController,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -86,6 +88,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
             _syncProgressResolver = syncProgressResolver;
+            _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
         }
 
@@ -199,6 +202,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidTerminalBlock;
             }
 
+            _mergeSyncController.StopSyncing();
             (ValidationResult ValidationResult, string? Message) result =
                 ValidateBlockAndProcess(block, out Block? processedBlock, parentHeader);
             if ((result.ValidationResult & ValidationResult.AlreadyKnown) != 0 ||
