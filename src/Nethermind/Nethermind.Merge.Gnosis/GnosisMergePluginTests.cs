@@ -1,21 +1,26 @@
+using System;
+using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
-using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Specs;
-using NSubstitute;
-using Nethermind.Consensus.AuRa;
-using Nethermind.Consensus.AuRa.Config;
-using System;
-using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Merge.Plugin.Test;
+using Nethermind.Int256;
 using Nethermind.Merge.Plugin;
-using System.Threading.Tasks;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Test;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Gnosis.Tests
@@ -23,7 +28,10 @@ namespace Nethermind.Merge.Gnosis.Tests
     class MergeAuRaTestBlockchain : EngineModuleTests.MergeTestBlockchain
     {
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
-         : base(mergeConfig, mockedPayloadPreparationService) { }
+         : base(mergeConfig, mockedPayloadPreparationService)
+        {
+            SealEngineType = Nethermind.Core.SealEngineType.AuRa;
+        }
 
         protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
         {
@@ -57,7 +65,7 @@ namespace Nethermind.Merge.Gnosis.Tests
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
-                blockProducerEnv, BlockProductionTrigger);
+                blockProducerEnv, ((EngineModuleTests.MergeTestBlockchain)this).BlockProductionTrigger);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(postMergeBlockProducer, BlockProductionTrigger, SealEngine,
                 MergeConfig, TimerFactory.Default, LogManager);
@@ -68,7 +76,7 @@ namespace Nethermind.Merge.Gnosis.Tests
             AuRaBlockProducer preMergeBlockProducer = new(
                 txPoolTxSource,
                 blockProducerEnvFactory.Create().ChainProcessor,
-                BlockProductionTrigger,
+                ((TestBlockchain)this).BlockProductionTrigger,
                 State,
                 sealer,
                 BlockTree,

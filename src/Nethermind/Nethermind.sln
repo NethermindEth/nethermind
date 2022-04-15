@@ -215,7 +215,6 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AccountAbstraction", "Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj", "{4AD050F4-2C44-4E00-B6E6-2BE0ACD3A414}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.AccountAbstraction.Test", "Nethermind.AccountAbstraction.Test\Nethermind.AccountAbstraction.Test.csproj", "{B2B7E43C-B459-488D-9ED0-A9A83B24AF1B}"
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Init", "Nethermind.Init\Nethermind.Init.csproj", "{F6356747-7925-46D9-AA4C-72671B199A31}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Hive", "Hive", "{C9AFA242-6BFF-4579-B67E-956B013BFE4A}"
 EndProject
@@ -234,6 +233,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Dns", "Nethermind.Network.Dns\Nethermind.Network.Dns.csproj", "{DB6AD9E1-415C-44B3-93BA-F5A97ED53B9B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Dns.Test", "Nethermind.Network.Dns.Test\Nethermind.Network.Dns.Test.csproj", "{0DD96857-0F06-42CA-B249-45B4AF4E81CA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Gnosis", "Nethermind.Merge.Gnosis\Nethermind.Merge.Gnosis.csproj", "{1980B129-2366-49C9-A74A-37D0B4A846E6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -617,6 +618,10 @@ Global
 		{0DD96857-0F06-42CA-B249-45B4AF4E81CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0DD96857-0F06-42CA-B249-45B4AF4E81CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0DD96857-0F06-42CA-B249-45B4AF4E81CA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1980B129-2366-49C9-A74A-37D0B4A846E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1980B129-2366-49C9-A74A-37D0B4A846E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1980B129-2366-49C9-A74A-37D0B4A846E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1980B129-2366-49C9-A74A-37D0B4A846E6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
