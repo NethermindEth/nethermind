@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private const int BYTES_LIMIT = 1000_000;
+        private const int BYTES_LIMIT = 10_000_000;
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;

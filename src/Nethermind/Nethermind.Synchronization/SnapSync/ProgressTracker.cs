@@ -18,8 +18,8 @@ namespace Nethermind.Synchronization.SnapSync
     {
         long _testReqCount;
 
-        private const int STORAGE_BATCH_SIZE = 1_200;
-        private const int CODES_BATCH_SIZE = 1_000;
+        private const int STORAGE_BATCH_SIZE = 2_200;
+        private const int CODES_BATCH_SIZE = 2_000;
         private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         private int _activeAccountRequests;
