@@ -74,7 +74,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task processing_block_should_serialize_valid_responses()
+        public virtual async Task processing_block_should_serialize_valid_responses()
         {
             using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
             {
@@ -186,7 +186,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task
+        public virtual async Task
             engine_forkchoiceUpdatedV1_with_payload_attributes_should_create_block_on_top_of_genesis_and_not_change_head()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
