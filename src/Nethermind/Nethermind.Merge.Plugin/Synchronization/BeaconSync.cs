@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 
@@ -32,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly IDb _metadataDb;
+        private readonly IBlockCacheService _blockCacheService;
         private bool _isInBeaconModeControl = false;
         private bool _danglingChainMerged;
         private readonly ILogger _logger;
@@ -41,12 +43,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBlockTree blockTree,
             ISyncConfig syncConfig,
             IDb metadataDb,
+            IBlockCacheService blockCacheService,
             ILogManager logManager)
         {
             _beaconPivot = beaconPivot;
             _blockTree = blockTree;
             _syncConfig = syncConfig;
             _metadataDb = metadataDb;
+            _blockCacheService = blockCacheService;
             _logger = logManager.GetClassLogger();
 
             Initialize();
@@ -64,8 +68,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     .AsRlpValueContext().DecodeBool() ?? true;
         }
 
-        public void SwitchToBeaconModeControl()
+        public void StopSyncing()
         {
+            if (!_isInBeaconModeControl)
+            {
+                _beaconPivot.ResetPivot();
+                _blockCacheService.BlockCache.Clear();
+            }
+
             _isInBeaconModeControl = true;
         }
 
@@ -126,7 +136,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
     public interface IMergeSyncController
     {
-        void SwitchToBeaconModeControl();
+        void StopSyncing();
 
         void InitSyncing(BlockHeader? blockHeader);
         
