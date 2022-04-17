@@ -184,7 +184,7 @@
     },
     "Goerli ShadowFork": {
       "commandName": "Project",
-      "commandLineArgs": "--config goerli_shadowfork.cfg  --Init.DiagnosticMode MemDb --Merge.Enabled true"
+      "commandLineArgs": "--config goerli_shadowfork.cfg --Merge.Enabled true"
     }
   }
 }
