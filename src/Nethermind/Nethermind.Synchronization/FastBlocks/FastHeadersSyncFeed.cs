@@ -196,13 +196,13 @@ namespace Nethermind.Synchronization.FastBlocks
 
             if (_pending.TryDequeue(out HeadersSyncBatch? batch))
             {
-                if (_logger.IsInfo) _logger.Info($"Dequeue batch {batch}");
+                if (_logger.IsTrace) _logger.Trace($"Dequeue batch {batch}");
                 batch!.MarkRetry();
             }
             else if (ShouldBuildANewBatch())
             {
                 batch = BuildNewBatch();
-                if (_logger.IsInfo) _logger.Info($"New batch {batch}");
+                if (_logger.IsTrace) _logger.Trace($"New batch {batch}");
             }
 
             if (batch is not null)
