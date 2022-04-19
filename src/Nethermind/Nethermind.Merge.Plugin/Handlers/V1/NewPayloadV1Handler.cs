@@ -241,8 +241,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         }
                         else
                         {
+                            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.All;
                             _logger.Info($"Inserted {block}");
-                            _blockTree.Insert(block, true);
+                            _blockTree.Insert(block, true, insertOptions);
                         }
                     }
                     
