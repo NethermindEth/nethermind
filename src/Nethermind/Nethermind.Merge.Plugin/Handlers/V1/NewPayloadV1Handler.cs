@@ -150,6 +150,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (state > 0)
                 {
                     block.Header.IsPostMerge = true;
+                    block.Header.TotalDifficulty = parentHeader!.TotalDifficulty + block.Difficulty;
                     if (_logger.IsInfo) _logger.Info($"Validating block {block.ToString(Block.Format.FullHashAndNumber)}");
                     bool isValid = _blockValidator.ValidateSuggestedBlock(block);
                     if (!isValid)
@@ -187,7 +188,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 // }
 
                 // TODO: beaconsync add TDD and validation checks
-            //    block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
                 block.Header.IsPostMerge = true;
                 if (!parentProcessed)
                 {
@@ -197,6 +197,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         if (state > 0)
                         {
                             block.Header.IsPostMerge = true;
+                            block.Header.TotalDifficulty = parentHeader!.TotalDifficulty + block.Difficulty;
                             if (_logger.IsInfo) _logger.Info($"Validating block {block.ToString(Block.Format.FullHashAndNumber)}");
                             bool isValid = _blockValidator.ValidateSuggestedBlock(block);
                             if (!isValid)
