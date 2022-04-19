@@ -15,11 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Logging;
 
-namespace Nethermind.Merge.Plugin;
+namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
@@ -41,7 +42,7 @@ public class ChainLevelHelper : IChainLevelHelper
     
     public BlockHeader[] GetNextHeaders(int maxCount)
     {
-        BlockHeader?[] headersToDownload = new BlockHeader[maxCount];
+        List<BlockHeader> headersToDownload = new(maxCount);
         int i = 0;
         long currentNumber = _blockTree.BestSuggestedBody?.Number + 1 ?? 0;
         while (i < maxCount)
@@ -49,16 +50,29 @@ public class ChainLevelHelper : IChainLevelHelper
             ChainLevelInfo? level = _blockTree.FindLevel(currentNumber);
             if (level == null)
             {
-                if (_logger.IsInfo) _logger.Info($"Level {currentNumber} not found");
+                if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - level {currentNumber} not found");
                 break;
             }
+
+            for (int j = 0; j < level.BlockInfos.Length; ++j)
+            {
+                BlockHeader? newHeader = _blockTree.FindHeader(level.BlockInfos[j].BlockHash);
+                if (newHeader == null)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - header {currentNumber} not found");
+                    continue;
+                }
                 
-            BlockHeader? newHeader = _blockTree.FindHeader(level.MainChainBlock.BlockHash);
-            headersToDownload[i] = newHeader;
-            ++i;
+                if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
+                headersToDownload.Add(newHeader);
+                ++i;
+                if (i >= maxCount)
+                    break;
+            }
+            
             ++currentNumber;
         }
 
-        return headersToDownload;
+        return headersToDownload.ToArray();
     }
 }

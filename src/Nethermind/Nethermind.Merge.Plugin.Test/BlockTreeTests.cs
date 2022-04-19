@@ -23,13 +23,14 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
 
-public class BlockTreeTests
+public partial class BlockTreeTests
 {
     private BlockTreeInsertOptions GetBlockTreeInsertOptions()
     {
@@ -165,6 +166,7 @@ public class BlockTreeTests
                 private BlockTree? _syncedTree;
                 private BlockTreeBuilder? _notSyncedTreeBuilder;
                 private BlockTree? _notSyncedTree;
+                private IChainLevelHelper? _chainLevelHelper;
 
                 public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1)
                 {
@@ -195,6 +197,7 @@ public class BlockTreeTests
                             LimboLogs.Instance);
                     }
 
+                    _chainLevelHelper = new ChainLevelHelper(_notSyncedTree, LimboLogs.Instance);
                     return this;
                 }
 
@@ -217,6 +220,24 @@ public class BlockTreeTests
                     }
                     return this;
                 }
+                
+                public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2)
+                {
+                    BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount);
+                    while (headers.Length !=0)
+                    {
+                        for (int i = 0; i < headers.Length; ++i)
+                        {
+                            Block? beaconBlock = _syncedTree!.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
+                            AddBlockResult insertResult = _notSyncedTree!.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock);
+                            Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
+                        }
+                        
+                        headers = _chainLevelHelper!.GetNextHeaders(maxCount);
+                    }
+                    
+                    return this;
+                }
 
                 public ScenarioBuilder InsertHeaders(long low, long high)
                 {
@@ -225,6 +246,18 @@ public class BlockTreeTests
                     {
                         BlockHeader? beaconHeader = _syncedTree!.FindHeader(i, BlockTreeLookupOptions.None);
                         AddBlockResult insertResult = _notSyncedTree!.Insert(beaconHeader!, options);
+                        Assert.AreEqual(AddBlockResult.Added, insertResult);
+                    }
+                    return this;
+                }
+                
+                public ScenarioBuilder InsertBeaconBlocks(long low, long high)
+                {
+                    BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+                    for (long i = high; i >= low; --i)
+                    {
+                        Block? beaconBlock = _syncedTree!.FindBlock(i, BlockTreeLookupOptions.None);
+                        AddBlockResult insertResult = _notSyncedTree!.Insert(beaconBlock!, true, insertOptions);
                         Assert.AreEqual(AddBlockResult.Added, insertResult);
                     }
                     return this;
@@ -350,6 +383,21 @@ public class BlockTreeTests
             .Restart()
             .AssertBestSuggestedBody(6)
             .AssertLowestInsertedBeaconHeader(1);
+    }
+    
+    [Test]
+    [Ignore("Need to be fixed in LoadBestKnown (BlockTree constructor)")]
+    public void Best_pointers_should_not_move_if_sync_is_not_finished()
+    {
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .InsertBeaconBlocks(7, 9)
+            .Restart()
+            .AssertBestKnownNumber(3)
+            .AssertBestSuggestedHeader(3)
+            .AssertBestSuggestedBody(3);
     }
     
 }

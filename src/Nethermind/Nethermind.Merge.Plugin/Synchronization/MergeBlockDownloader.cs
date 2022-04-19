@@ -45,6 +45,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ISpecProvider _specProvider;
         private readonly ISyncReport _syncReport;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IChainLevelHelper _chainLevelHelper;
         private int _sinceLastTimeout;
 
         public MergeBlockDownloader(
@@ -59,11 +60,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IReceiptStorage? receiptStorage,
             ISpecProvider specProvider,
             IBetterPeerStrategy betterPeerStrategy,
+            IChainLevelHelper chainLevelHelper,
             ILogManager logManager)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, logManager), betterPeerStrategy, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _chainLevelHelper = chainLevelHelper ?? throw new ArgumentNullException(nameof(chainLevelHelper));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
@@ -149,7 +152,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation

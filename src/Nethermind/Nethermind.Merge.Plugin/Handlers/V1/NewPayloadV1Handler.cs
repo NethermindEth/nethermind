@@ -113,8 +113,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return NewPayloadV1Result.InvalidBlockHash;
             }
-            
-            
+
+
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             bool parentExists = parentHeader != null;
             bool parentProcessed = parentExists && _blockTree.WasProcessed(parentHeader!.Number,
@@ -130,7 +130,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     {
                         if (inserted)
                             _logger.Info(
-                            $"BeaconSync not finished - block {block} inserted");
+                                $"BeaconSync not finished - block {block} inserted");
                         else
                             _logger.Info(
                                 $"BeaconSync not finished - block {block} accepted");
@@ -143,10 +143,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
                 return NewPayloadV1Result.Accepted;
             }
-            
+
             if (!parentProcessed && !beaconPivotExists)
             {
-                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.All;
+                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
                 _blockTree.Insert(block, true, insertOptions);
                 if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
                 return NewPayloadV1Result.Syncing;
@@ -156,40 +156,38 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (parentHeader.TotalDifficulty == 0)
                 {
-                    parentHeader.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
+                    parentHeader.TotalDifficulty =
+                        _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
                 }
 
                 // TODO: beaconsync add TDD and validation checks
                 block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
                 block.Header.IsPostMerge = true;
-                if (!parentProcessed)
+
+                if (_beaconSyncStrategy.FastSyncEnabled)
                 {
-                    if (_beaconSyncStrategy.FastSyncEnabled)
+                    TryProcessChainFromStateSyncBlock(parentHeader, block);
+                }
+                else
+                {
+                    bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
+                    if (parentPivotProcessed)
                     {
-                        TryProcessChainFromStateSyncBlock(parentHeader, block);
+                        // ToDo add beaconSync validation
+                        _logger.Info(
+                            $"Parent pivot was processed. Pivot: {_beaconPivot.PivotNumber} {_beaconPivot.PivotHash} Suggesting block {block}");
+                        _blockTree.SuggestBlock(block);
                     }
                     else
                     {
-                        bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
-                        if (parentPivotProcessed)
-                        {
-                            // ToDo add beaconSync validation
-                            _logger.Info(
-                                $"Parent pivot was processed. Pivot: {_beaconPivot.PivotNumber} {_beaconPivot.PivotHash} Suggesting block {block}");
-                            _blockTree.SuggestBlock(block);
-                        }
-                        else
-                        {
-                            _logger.Info($"Inserted {block}");
-                            _blockTree.Insert(block, true);
-                        }
+                        _logger.Info($"Inserted {block}");
+                        _blockTree.Insert(block, true);
                     }
-                    
-                    if (_logger.IsInfo) _logger.Info($"Headers sync finished but beacon sync still not finished for {requestStr}");
-                    return NewPayloadV1Result.Syncing;
                 }
 
-                _blockCacheService.BlockCache.Clear();
+                if (_logger.IsInfo)
+                    _logger.Info($"Headers sync finished but beacon sync still not finished for {requestStr}");
+                return NewPayloadV1Result.Syncing;
             }
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
@@ -276,7 +274,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             bool valid = ValidateBlock(block, parent, out processedBlock);
             if (!valid) return false;
-            
+
             _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
             processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
             if (processedBlock == null)
@@ -375,7 +373,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private bool TryInsertDanglingBlock(Block block)
         {
-            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.All;
+            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
 
             if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
             {
@@ -396,6 +394,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         {
                             break;
                         }
+
                         _blockCacheService.BlockCache.TryGetValue(current.ParentHash, out Block? parentBlock);
                         current = parentBlock;
                     }
@@ -418,7 +417,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             return true;
         }
-        
+
         // TODO: beaconsync this should be moved to be part of the forward beacon sync
         private void TryProcessChainFromStateSyncBlock(BlockHeader parentHeader, Block block)
         {
@@ -438,8 +437,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         {
                             break;
                         }
-                        
-                        if (_logger.IsInfo) _logger.Info($"TryProcessChainFromStateSyncBlock - Adding block to stack {block}");
+
+                        if (_logger.IsInfo)
+                            _logger.Info($"TryProcessChainFromStateSyncBlock - Adding block to stack {block}");
                         stack.Push(current);
                         current = _blockTree.FindBlock(parent.Hash,
                             BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -450,7 +450,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     while (stack.TryPop(out Block child))
                     {
                         // ToDo Sarah block validaor?
-                        if (_logger.IsInfo) _logger.Info($"TryProcessChainFromStateSyncBlock - Add block to processing queue {block} from stack");
+                        if (_logger.IsInfo)
+                            _logger.Info(
+                                $"TryProcessChainFromStateSyncBlock - Add block to processing queue {block} from stack");
                         _blockTree.SuggestBlock(child);
                     }
                 }
