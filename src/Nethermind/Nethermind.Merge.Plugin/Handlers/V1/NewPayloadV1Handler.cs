@@ -146,6 +146,33 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (!parentProcessed && !beaconPivotExists)
             {
+                long state = _state == 0 ? _syncProgressResolver.FindBestFullState() : _state;
+                if (state > 0)
+                {
+                    block.Header.IsPostMerge = true;
+                    if (_logger.IsInfo) _logger.Info($"Validating block {block.ToString(Block.Format.FullHashAndNumber)}");
+                    bool isValid = _blockValidator.ValidateSuggestedBlock(block);
+                    if (!isValid)
+                    {
+                        if (_logger.IsWarn)
+                        {
+                            _logger.Warn(
+                                $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
+                        }
+                    }
+
+                    if (isValid == false)
+                    {
+                        return NewPayloadV1Result.Invalid(_blockTree.Head?.Hash, "Rejected incorrect block");
+                    }
+                    
+                    
+                    if (_logger.IsInfo) _logger.Info("Non zero state - suggesting blocks");
+                    _blockTree.SuggestBlock(block);
+                    if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
+                    return NewPayloadV1Result.Syncing;
+                }
+
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.All;
                 _blockTree.Insert(block, true, insertOptions);
                 if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
@@ -154,19 +181,53 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (!parentProcessed && beaconPivotExists)
             {
-                if (parentHeader.TotalDifficulty == 0)
-                {
-                    parentHeader.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
-                }
+                // if (parentHeader.TotalDifficulty == 0)
+                // {
+                //     parentHeader.TotalDifficulty = _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
+                // }
 
                 // TODO: beaconsync add TDD and validation checks
-                block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
+            //    block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
                 block.Header.IsPostMerge = true;
                 if (!parentProcessed)
                 {
                     if (_beaconSyncStrategy.FastSyncEnabled)
                     {
-                        TryProcessChainFromStateSyncBlock(parentHeader, block);
+                        long state = _state == 0 ? _syncProgressResolver.FindBestFullState() : _state;
+                        if (state > 0)
+                        {
+                            block.Header.IsPostMerge = true;
+                            if (_logger.IsInfo) _logger.Info($"Validating block {block.ToString(Block.Format.FullHashAndNumber)}");
+                            bool isValid = _blockValidator.ValidateSuggestedBlock(block);
+                            if (!isValid)
+                            {
+                                if (_logger.IsWarn)
+                                {
+                                    _logger.Warn(
+                                        $"BeaconPivotExists Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
+                                }
+                            }
+
+                            if (isValid == false)
+                            {
+                                return NewPayloadV1Result.Invalid(_blockTree.Head?.Hash, "Rejected incorrect block");
+                            }
+                    
+                    
+                            if (_logger.IsInfo) _logger.Info("Non zero state - suggesting blocks");
+                            _blockTree.SuggestBlock(block);
+                            if (_logger.IsInfo) _logger.Info("BeaconPivotExists Syncing... Parent wasn't processed. Inserting block.");
+                            return NewPayloadV1Result.Syncing;
+                        }
+                        else
+                        {
+                            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.All;
+                            _blockTree.Insert(block, true, insertOptions);
+                            if (_logger.IsInfo) _logger.Info("BeaconPivotExists Syncing... Parent wasn't processed. Inserting block.");
+                            return NewPayloadV1Result.Syncing;
+                        }
+                       // TryProcessChainFromStateSyncBlock(parentHeader, block);
+                        
                     }
                     else
                     {
