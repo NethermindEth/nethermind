@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-#nullable enable
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -115,7 +114,7 @@ namespace Nethermind.TxPool.Test
             storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? (long?)0 : null);
         }
         
-        private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder? receiptFinder = null)
+        private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder receiptFinder = null)
         {
             bool recoverSender = receiptFinder is not null;
             receiptFinder ??= storage;

@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
-            bool isReceiptRemoved = e.TxReceipts.FirstOrDefault()?.Removed == true;
+            bool isReceiptRemoved = e.WasRemoved;
             if (isReceiptRemoved)
             {
                 TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptStorage.ReceiptsInserted));

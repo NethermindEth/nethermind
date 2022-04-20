@@ -709,7 +709,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             List<JsonRpcResult> jsonRpcResults = new();
             
             ManualResetEvent manualResetEvent = new(false);
-            ReceiptsEventArgs receiptsEventArgs = new(blockHeader, txReceipts);
+            ReceiptsEventArgs receiptsEventArgs = new(blockHeader, txReceipts, txReceipts[0].Removed);
             logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
                 jsonRpcResults.Add(j);
@@ -1090,7 +1090,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             _receiptStorage.Insert(Arg.Any<Block>(), Arg.Do<TxReceipt[]>(r =>
             {
-                ReceiptsEventArgs receiptsEventArgs = new(blockHeader, r);
+                ReceiptsEventArgs receiptsEventArgs = new(blockHeader, r, r[0].Removed);
                 _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
             }));
             
