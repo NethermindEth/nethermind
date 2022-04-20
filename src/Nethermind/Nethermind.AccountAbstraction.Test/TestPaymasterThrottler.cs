@@ -17,6 +17,7 @@
 
 using System;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Core;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -26,6 +27,15 @@ namespace Nethermind.AccountAbstraction.Test
         {
             base.UpdateUserOperationMaps(source, args);
         }
+
+        public new uint GetOpsSeen(Address paymaster)
+        {
+            return base.GetOpsSeen(paymaster);
+        }
         
+        public new uint GetOpsIncluded(Address paymaster)
+        {
+            return base.GetOpsIncluded(paymaster);
+        }
     }
 }

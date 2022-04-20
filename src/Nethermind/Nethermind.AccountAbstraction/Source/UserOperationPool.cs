@@ -34,6 +34,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -51,6 +52,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly ILogFinder _logFinder;
         private readonly ISigner _signer;
         private readonly IStateProvider _stateProvider;
+        private readonly ISpecProvider _specProvider;
         private readonly ITimestamper _timestamper;
         private readonly Keccak _userOperationEventTopic;
         private readonly IUserOperationSimulator _userOperationSimulator;
@@ -73,6 +75,7 @@ namespace Nethermind.AccountAbstraction.Source
             ILogFinder logFinder,
             ISigner signer,
             IStateProvider stateProvider,
+            ISpecProvider specProvider,
             ITimestamper timestamper,
             IUserOperationSimulator userOperationSimulator,
             UserOperationSortedPool userOperationSortedPool,
@@ -82,6 +85,7 @@ namespace Nethermind.AccountAbstraction.Source
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
+            _specProvider = specProvider;
             _paymasterThrottler = paymasterThrottler;
             _logFinder = logFinder;
             _signer = signer;
@@ -174,6 +178,8 @@ namespace Nethermind.AccountAbstraction.Source
                         try
                         {
                             RemoveProcessedUserOperations(args.Block);
+                            UInt256 baseFee = CalculateCurrentBaseFee();
+                            IncrementOpsSeenForOpsSurpassingBaseFee(baseFee);
                         }
                         catch (Exception e)
                         {
@@ -231,6 +237,27 @@ namespace Nethermind.AccountAbstraction.Source
             return _userOperationSortedPool.CanInsert(userOperation);
         }
 
+        // we only want to increment opsSeen for ops whose maxFeePerGas passes baseFee
+        // else paymasters could be griefed by submitting many ops which might never 
+        // make it on chain but will increase opsSeen
+        private void IncrementOpsSeenForOpsSurpassingBaseFee(UInt256 baseFee)
+        {
+            foreach (UserOperation userOperation in _userOperationSortedPool
+                .GetSnapshot()
+                .Where(op => !op.PassedBaseFee && op.MaxFeePerGas >= baseFee))
+            {
+                userOperation.PassedBaseFee = true;
+                _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
+            }
+        }
+        
+        private UInt256 CalculateCurrentBaseFee()
+        {
+            IReleaseSpec spec = _specProvider.GetSpec(_blockTree.Head!.Number + 1);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(_blockTree.Head!.Header, spec);
+            return baseFee;
+        }
+
         public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
         {
             userOperation.CalculateRequestId(_entryPointAddress, _chainId);
@@ -247,7 +274,12 @@ namespace Nethermind.AccountAbstraction.Source
                 if (_userOperationSortedPool.TryInsert(userOperation.RequestId!, userOperation))
                 {
                     Metrics.UserOperationsPending++;
-                    _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
+                    UInt256 baseFee = CalculateCurrentBaseFee();
+                    if (userOperation.MaxFeePerGas >= baseFee)
+                    {
+                        userOperation.PassedBaseFee = true;
+                        _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
+                    }
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} inserted into pool");
                     _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));                    
                     NewPending?.Invoke(this, userOperationEventArgs);
@@ -320,6 +352,12 @@ namespace Nethermind.AccountAbstraction.Source
             // make sure op not already in pool
             if (_userOperationSortedPool.TryGetValue(userOperation.RequestId!, out _))
                 return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
+
+            UInt256 baseFee = CalculateCurrentBaseFee();
+            if (userOperation.MaxFeePerGas < baseFee * 70 / 100)
+            {
+                return ResultWrapper<Keccak>.Fail($"maxFeePerGas must be at least 70% of baseFee to be accepted into pool");
+            }
             
 
             PaymasterStatus paymasterStatus =

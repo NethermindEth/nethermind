@@ -45,6 +45,7 @@ namespace Nethermind.AccountAbstraction.Data
 
             AccessList = UserOperationAccessList.Empty;
             AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty;
+            PassedBaseFee = false;
         }
 
         private Keccak CalculateHash()
@@ -91,5 +92,6 @@ namespace Nethermind.AccountAbstraction.Data
         public UserOperationAccessList AccessList { get; set; }
         public IDictionary<Address, Keccak> AddressesToCodeHashes { get; set; }
         public bool AlreadySimulated { get; set; }
+        public bool PassedBaseFee { get; set; } // if the MaxFeePerGas has ever exceeded the basefee
     }
 }

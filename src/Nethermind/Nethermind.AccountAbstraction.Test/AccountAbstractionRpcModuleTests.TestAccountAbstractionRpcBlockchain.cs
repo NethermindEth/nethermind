@@ -234,6 +234,7 @@ namespace Nethermind.AccountAbstraction.Test
                         LogFinder, 
                         Signer, 
                         State, 
+                        SpecProvider,
                         Timestamper, 
                         UserOperationSimulator[entryPoint], 
                         new UserOperationSortedPool(

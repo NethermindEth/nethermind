@@ -98,6 +98,7 @@ namespace Nethermind.AccountAbstraction
                 _nethermindApi.LogFinder!,
                 _nethermindApi.EngineSigner!,
                 _nethermindApi.StateProvider!,
+                _nethermindApi.SpecProvider!,
                 _nethermindApi.Timestamper,
                 UserOperationSimulator(entryPoint),
                 userOperationSortedPool,
