@@ -337,9 +337,10 @@ namespace Nethermind.Synchronization.Peers
 
         public void SetPeerPriority(PublicKey id)
         {
-            if (_peers.TryGetValue(id, out PeerInfo peerInfo))
+            if (_peers.TryGetValue(id, out PeerInfo peerInfo) && !peerInfo.SyncPeer.IsPriority)
             {
                 peerInfo.SyncPeer.IsPriority = true;
+                Interlocked.Increment(ref PriorityPeerCount);
             }
         }
 
