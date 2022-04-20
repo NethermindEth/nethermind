@@ -185,7 +185,9 @@ namespace Nethermind.AccountAbstraction
 
             if (_accountAbstractionConfig.Enabled)
             {
-                _nethermindApi.Config<INetworkConfig>().PriorityPeersMaxCount = _accountAbstractionConfig.AaPriorityPeersMaxCount;
+                // Increasing number of priority peers in network config by AaPriorityPeersMaxCount.
+                // Be careful if there is another plugin with priority peers - they won't be distinguished in SyncPeerPool.
+                _nethermindApi.Config<INetworkConfig>().PriorityPeersMaxCount += _accountAbstractionConfig.AaPriorityPeersMaxCount;
                 IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
                 foreach (string addressString in entryPointContractAddressesString){
                     bool parsed = Address.TryParse(
