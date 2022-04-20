@@ -238,7 +238,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
-        public int PriorityPeerCount => _peers.Values.Count(p => p.SyncPeer.IsPriority.Equals(true));
+        public int PriorityPeerCount = 0;
         public int InitializedPeersCount => InitializedPeers.Count();
         public int PeerMaxCount { get; }
         private int PriorityPeerMaxCount { get; }
@@ -268,6 +268,13 @@ namespace Nethermind.Synchronization.Peers
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
             
+            if (syncPeer.IsPriority)
+            {
+                Interlocked.Increment(ref PriorityPeerCount);
+                Metrics.PriorityPeers = PriorityPeerCount;
+            }
+            if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
+            
             BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is not null)
             {
@@ -275,9 +282,6 @@ namespace Nethermind.Synchronization.Peers
             }
             else
             {
-                if (syncPeer.IsPriority) Metrics.PriorityPeers = PriorityPeerCount;
-                if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
-                
                 if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
                 _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer));
@@ -308,7 +312,12 @@ namespace Nethermind.Synchronization.Peers
             }
 
             Metrics.SyncPeers = _peers.Count;
-            if (syncPeer.IsPriority) Metrics.PriorityPeers = PriorityPeerCount;
+            
+            if (syncPeer.IsPriority)
+            {
+                Interlocked.Decrement(ref PriorityPeerCount);
+                Metrics.PriorityPeers = PriorityPeerCount;
+            }
             if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
             
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
