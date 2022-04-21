@@ -44,7 +44,7 @@ public class ChainLevelHelper : IChainLevelHelper
     {
         List<BlockHeader> headersToDownload = new(maxCount);
         int i = 0;
-        long currentNumber = _blockTree.BestSuggestedBody?.Number + 1 ?? 0;
+        long currentNumber = _blockTree.BestKnownNumber;
         while (i < maxCount)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(currentNumber);
