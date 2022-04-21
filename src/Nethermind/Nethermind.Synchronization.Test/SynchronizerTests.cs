@@ -324,9 +324,6 @@ namespace Nethermind.Synchronization.Test
                 
                 PoSSwitcher poSSwitcher = new(mergeConfig, dbProvider.MetadataDb, BlockTree, MainnetSpecProvider.Instance, _logManager);
                 
-                if (IsMerge()) SyncPeerPool = new SyncPeerPool(BlockTree, stats, new MergeBetterPeerStrategy( new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance),null, poSSwitcher, LimboLogs.Instance), 25, _logManager);    
-                else SyncPeerPool = new SyncPeerPool(BlockTree, stats, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, _logManager);
-
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
@@ -334,6 +331,16 @@ namespace Nethermind.Synchronization.Test
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     _logManager);
+
+                if (IsMerge())
+                    SyncPeerPool = new SyncPeerPool(BlockTree, stats,
+                        new MergeBetterPeerStrategy(
+                            new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, LimboLogs.Instance),
+                            syncProgressResolver, poSSwitcher, LimboLogs.Instance), 25, _logManager);
+                else
+                    SyncPeerPool = new SyncPeerPool(BlockTree, stats,
+                        new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, LimboLogs.Instance), 25,
+                        _logManager);
 
                 TotalDifficultyBasedBetterPeerStrategy totalDifficultyBasedBetterPeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
                 IBetterPeerStrategy bestPeerStrategy;
@@ -349,6 +356,7 @@ namespace Nethermind.Synchronization.Test
                 IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge())
                 {
+                    IBlockCacheService blockCacheService = new BlockCacheService();
                     IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, mergeConfig, dbProvider.MetadataDb,
                         BlockTree, new PeerRefresher(SyncPeerPool), _logManager);
                     blockDownloaderFactory = new MergeBlockDownloaderFactory(
@@ -377,7 +385,7 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         blockDownloaderFactory,
                         pivot,
-                        new BeaconSync(beaconPivot,BlockTree,syncConfig,dbProvider.MetadataDb,LimboLogs.Instance),
+                        new BeaconSync(beaconPivot, BlockTree,syncConfig, dbProvider.MetadataDb, blockCacheService, LimboLogs.Instance),
                         mergeConfig,
                         new BlockCacheService(),
                         syncProgressResolver,
