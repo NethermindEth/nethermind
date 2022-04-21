@@ -23,7 +23,9 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,6 +40,9 @@ using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -50,6 +55,9 @@ namespace Nethermind.Synchronization.Test
 {
     [TestFixture(SynchronizerType.Fast)]
     [TestFixture(SynchronizerType.Full)]
+    [TestFixture(SynchronizerType.Eth2MergeFull)]
+    [TestFixture(SynchronizerType.Eth2MergeFast)]
+    [TestFixture(SynchronizerType.Eth2MergeFastWithoutTTD)]
     [Parallelizable(ParallelScope.All)]
     public class SynchronizerTests
     {
@@ -283,9 +291,17 @@ namespace Nethermind.Synchronization.Test
                     synchronizerType switch
                     {
                         SynchronizerType.Fast => SyncConfig.WithFastSync,
-                        SynchronizerType.Eth2Merge => SyncConfig.WithEth2Merge,
                         SynchronizerType.Full => SyncConfig.WithFullSyncOnly,
+                        SynchronizerType.Eth2MergeFast => new SyncConfig {FastSync = true},
+                        SynchronizerType.Eth2MergeFastWithoutTTD => new SyncConfig {FastSync = true},
+                        SynchronizerType.Eth2MergeFull => SyncConfig.WithEth2Merge,
                         _ => throw new ArgumentOutOfRangeException(nameof(synchronizerType), synchronizerType, null)
+                    };
+                bool IsMerge() =>
+                    synchronizerType switch
+                    {
+                        SynchronizerType.Eth2MergeFast or SynchronizerType.Eth2MergeFull or SynchronizerType.Eth2MergeFastWithoutTTD => true,
+                        _ => false
                     };
 
                 _logger = _logManager.GetClassLogger();
@@ -299,7 +315,17 @@ namespace Nethermind.Synchronization.Test
                     new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullBloomStorage.Instance, _logManager);
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
-                SyncPeerPool = new SyncPeerPool(BlockTree, stats, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, _logManager);
+                
+                MergeConfig? mergeConfig = new() {Enabled = true };
+                if (synchronizerType == SynchronizerType.Eth2MergeFastWithoutTTD)
+                {
+                    mergeConfig.TerminalTotalDifficulty = "0";
+                }
+                
+                PoSSwitcher poSSwitcher = new(mergeConfig, dbProvider.MetadataDb, BlockTree, MainnetSpecProvider.Instance, _logManager);
+                
+                if (IsMerge()) SyncPeerPool = new SyncPeerPool(BlockTree, stats, new MergeBetterPeerStrategy( new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance),null, poSSwitcher, LimboLogs.Instance), 25, _logManager);    
+                else SyncPeerPool = new SyncPeerPool(BlockTree, stats, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, _logManager);
 
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
@@ -308,35 +334,86 @@ namespace Nethermind.Synchronization.Test
                     new TrieStore(stateDb, LimboLogs.Instance),
                     syncConfig,
                     _logManager);
+
+                TotalDifficultyBasedBetterPeerStrategy totalDifficultyBasedBetterPeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
+                IBetterPeerStrategy bestPeerStrategy;
+                bestPeerStrategy = IsMerge()
+                    ? new MergeBetterPeerStrategy(totalDifficultyBasedBetterPeerStrategy, syncProgressResolver,
+                        poSSwitcher, LimboLogs.Instance)
+                    : totalDifficultyBasedBetterPeerStrategy;
                 
-                TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool,
                     syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
                 Pivot pivot = new (syncConfig);
-                BlockDownloaderFactory blockDownloaderFactory = new(MainnetSpecProvider.Instance,
-                    BlockTree,
-                    NullReceiptStorage.Instance,
-                    Always.Valid,
-                    Always.Valid,
-                    SyncPeerPool,
-                    stats,
-                    syncModeSelector,
-                    syncConfig,
-                    pivot,
-                    new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, _logManager),
-                    _logManager);
-                Synchronizer = new Synchronizer(
-                    dbProvider,
-                    MainnetSpecProvider.Instance,
-                    BlockTree,
-                    NullReceiptStorage.Instance,
-                    SyncPeerPool,
-                    stats,
-                    syncModeSelector,
-                    syncConfig,
-                    blockDownloaderFactory,
-                    pivot,
-                    _logManager);
+
+                IBlockDownloaderFactory blockDownloaderFactory;
+                if (IsMerge())
+                {
+                    IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, mergeConfig, dbProvider.MetadataDb,
+                        BlockTree, new PeerRefresher(SyncPeerPool), _logManager);
+                    blockDownloaderFactory = new MergeBlockDownloaderFactory(
+                        poSSwitcher,
+                        beaconPivot,
+                        MainnetSpecProvider.Instance,
+                        BlockTree,
+                        NullReceiptStorage.Instance,
+                        Always.Valid,
+                        Always.Valid,
+                        SyncPeerPool,
+                        stats,
+                        syncModeSelector,
+                        syncConfig,
+                        bestPeerStrategy,
+                        _logManager
+                    );
+                    Synchronizer = new MergeSynchronizer(
+                        dbProvider,
+                        MainnetSpecProvider.Instance,
+                        BlockTree,
+                        NullReceiptStorage.Instance,
+                        SyncPeerPool,
+                        stats,
+                        syncModeSelector,
+                        syncConfig,
+                        blockDownloaderFactory,
+                        pivot,
+                        new BeaconSync(beaconPivot,BlockTree,syncConfig,dbProvider.MetadataDb,LimboLogs.Instance),
+                        mergeConfig,
+                        new BlockCacheService(),
+                        syncProgressResolver,
+                        new TestBlockValidator(),
+                        Substitute.For<IBlockProcessingQueue>(),
+                        _logManager);
+                }
+                else
+                {
+                    blockDownloaderFactory = new BlockDownloaderFactory(
+                        MainnetSpecProvider.Instance,
+                        BlockTree,
+                        NullReceiptStorage.Instance,
+                        Always.Valid,
+                        Always.Valid,
+                        SyncPeerPool,
+                        stats,
+                        syncModeSelector,
+                        syncConfig,
+                        pivot,
+                        new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, _logManager),
+                        _logManager);
+                    
+                    Synchronizer = new Synchronizer(
+                        dbProvider,
+                        MainnetSpecProvider.Instance,
+                        BlockTree,
+                        NullReceiptStorage.Instance,
+                        SyncPeerPool,
+                        stats,
+                        syncModeSelector,
+                        syncConfig,
+                        blockDownloaderFactory,
+                        pivot,
+                        _logManager);
+                }
 
                 SyncServer = new SyncServer(
                     stateDb,
@@ -725,15 +802,15 @@ namespace Nethermind.Synchronization.Test
                 return receivedBlock && peerBNewBlock.Hash == peerA.HeadBlock.Hash;
             }, WaitTime);
 
-            if (_synchronizerType == SynchronizerType.Eth2Merge)
-            {
-                Assert.IsNull(peerBNewBlock);
-                Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
-            }
-            else
-            {
+            // if (_synchronizerType == SynchronizerType.Eth2MergeFull)
+            // {
+            //     Assert.IsNull(peerBNewBlock);
+            //     Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
+            // }
+            // else
+            // {
                 Assert.AreEqual(peerBNewBlock?.Header.Hash!, peerA.HeadBlock.Hash);
-            }
+            // }
         }
 
         [Test, Retry(3)]
@@ -805,6 +882,10 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_reorg_based_on_total_difficulty()
         {
+            if (_synchronizerType == SynchronizerType.Eth2MergeFastWithoutTTD)
+            {
+                return;
+            }
             SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(10);
 
@@ -843,6 +924,10 @@ namespace Nethermind.Synchronization.Test
         [Test, Retry(3)]
         public void Can_extend_chain_on_new_block_when_high_difficulty_low_number()
         {
+            if (_synchronizerType == SynchronizerType.Eth2MergeFastWithoutTTD)
+            {
+                return;
+            }
             SyncPeerMock peerA = new("A");
             peerA.AddBlocksUpTo(10);
 
