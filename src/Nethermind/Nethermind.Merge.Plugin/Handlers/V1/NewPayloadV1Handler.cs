@@ -144,7 +144,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Accepted;
             }
 
-            if (!parentProcessed && !beaconPivotExists)
+            if (!parentProcessed)
             {
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
                 _blockTree.Insert(block, true, insertOptions);
