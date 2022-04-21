@@ -60,7 +60,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (_logger.IsInfo)
             {
-                _logger.Info(block.Header.ToString(BlockHeader.Format.Full));
+                _logger.Info($"GetPayloadV1 result: {block.Header.ToString(BlockHeader.Format.Full)}");
             }
 
             BlockRequestResult result = new(block);

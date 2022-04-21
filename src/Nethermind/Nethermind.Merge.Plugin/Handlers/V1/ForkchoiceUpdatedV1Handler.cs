@@ -89,6 +89,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             PayloadAttributes? payloadAttributes)
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
+            if (_logger.IsInfo) { _logger.Info($"Received: {requestStr}"); }
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {
