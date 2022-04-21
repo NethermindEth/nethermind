@@ -93,6 +93,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
+            public void SetPeerPriority(PublicKey id)
+            {
+            }
+
             public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash)
             {
             }

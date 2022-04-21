@@ -82,18 +82,31 @@ namespace Nethermind.Synchronization.Peers
             : this(blockTree, nodeStatsManager, peersMaxCount, 1000, logManager)
         {
         }
+        
+        public SyncPeerPool(IBlockTree blockTree,
+            INodeStatsManager nodeStatsManager,
+            int peersMaxCount,
+            int allocationsUpgradeIntervalInMsInMs,
+            ILogManager logManager)
+            : this(blockTree, nodeStatsManager, peersMaxCount, 0, allocationsUpgradeIntervalInMsInMs, logManager)
+        {
+        }
 
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             int peersMaxCount,
+            int priorityPeerMaxCount,
             int allocationsUpgradeIntervalInMsInMs,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             PeerMaxCount = peersMaxCount;
+            PriorityPeerMaxCount = priorityPeerMaxCount;
             _allocationsUpgradeIntervalInMs = allocationsUpgradeIntervalInMsInMs;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            
+            if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
         }
 
         public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts)
@@ -225,8 +238,10 @@ namespace Nethermind.Synchronization.Peers
         }
 
         public int PeerCount => _peers.Count;
+        public int PriorityPeerCount = 0;
         public int InitializedPeersCount => InitializedPeers.Count();
         public int PeerMaxCount { get; }
+        private int PriorityPeerMaxCount { get; }
 
         public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak blockHash)
         {
@@ -252,6 +267,13 @@ namespace Nethermind.Synchronization.Peers
             PeerInfo peerInfo = new(syncPeer);
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
             Metrics.SyncPeers = _peers.Count;
+            
+            if (syncPeer.IsPriority)
+            {
+                Interlocked.Increment(ref PriorityPeerCount);
+                Metrics.PriorityPeers = PriorityPeerCount;
+            }
+            if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
             
             BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is not null)
@@ -290,7 +312,14 @@ namespace Nethermind.Synchronization.Peers
             }
 
             Metrics.SyncPeers = _peers.Count;
-
+            
+            if (syncPeer.IsPriority)
+            {
+                Interlocked.Decrement(ref PriorityPeerCount);
+                Metrics.PriorityPeers = PriorityPeerCount;
+            }
+            if (_logger.IsDebug) _logger.Debug($"PeerCount: {PeerCount}, PriorityPeerCount: {PriorityPeerCount}");
+            
             foreach ((SyncPeerAllocation allocation, _) in _replaceableAllocations)
             {
                 if (allocation.Current?.SyncPeer.Node.Id == id)
@@ -303,6 +332,15 @@ namespace Nethermind.Synchronization.Peers
             if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
             {
                 initCancelTokenSource?.Cancel();
+            }
+        }
+
+        public void SetPeerPriority(PublicKey id)
+        {
+            if (_peers.TryGetValue(id, out PeerInfo peerInfo) && !peerInfo.SyncPeer.IsPriority)
+            {
+                peerInfo.SyncPeer.IsPriority = true;
+                Interlocked.Increment(ref PriorityPeerCount);
             }
         }
 
@@ -511,7 +549,7 @@ namespace Nethermind.Synchronization.Peers
                 PeerInfo? worstPeer = null;
                 foreach (PeerInfo peerInfo in NonStaticPeers)
                 {
-                    if (peerInfo.HeadNumber < lowestBlockNumber)
+                    if (peerInfo.HeadNumber < lowestBlockNumber && (!peerInfo.SyncPeer.IsPriority || PriorityPeerCount >= PriorityPeerMaxCount))
                     {
                         lowestBlockNumber = peerInfo.HeadNumber;
                         worstPeer = peerInfo;
