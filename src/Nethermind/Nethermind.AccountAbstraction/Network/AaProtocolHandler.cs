@@ -54,6 +54,8 @@ namespace Nethermind.AccountAbstraction.Network
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _userOperationPools = userOperationPools ?? throw new ArgumentNullException(nameof(userOperationPools));
             _peerManager = peerManager;
+            
+            IsPriority = _peerManager.NumberOfPriorityAaPeers > 0;
         }
 
         public PublicKey Id => _session.Node.Id;
@@ -65,7 +67,6 @@ namespace Nethermind.AccountAbstraction.Network
         public override int MessageIdSpaceSize => 4;
 
         public override string Name => "aa";
-        public override bool IsPriority => _peerManager.NumberOfPriorityAaPeers > 0;
 
         protected override TimeSpan InitTimeout => Timeouts.Eth;
 
