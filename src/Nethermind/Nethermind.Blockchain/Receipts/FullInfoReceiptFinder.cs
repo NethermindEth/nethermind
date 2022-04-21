@@ -23,40 +23,47 @@ namespace Nethermind.Blockchain.Receipts
 {
     public class FullInfoReceiptFinder : IReceiptFinder
     {
-        private readonly IReceiptFinder _innerFinder;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly IBlockFinder _blockFinder;
 
-        public FullInfoReceiptFinder(IReceiptFinder innerFinder, IReceiptsRecovery receiptsRecovery, IBlockFinder blockFinder)
+        public FullInfoReceiptFinder(IReceiptStorage receiptStorage, IReceiptsRecovery receiptsRecovery, IBlockFinder blockFinder)
         {
-            _innerFinder = innerFinder ?? throw new ArgumentNullException(nameof(innerFinder));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
         
-        public Keccak FindBlockHash(Keccak txHash) => _innerFinder.FindBlockHash(txHash);
+        public Keccak FindBlockHash(Keccak txHash) => _receiptStorage.FindBlockHash(txHash);
 
         public TxReceipt[] Get(Block block)
         {
-            var receipts = _innerFinder.Get(block);
-            _receiptsRecovery.TryRecover(block, receipts);
+            var receipts = _receiptStorage.Get(block);
+            if (_receiptsRecovery.TryRecover(block, receipts))
+            {
+                _receiptStorage.Insert(block, receipts);
+            }
+            
             return receipts;
         }
 
         public TxReceipt[] Get(Keccak blockHash)
         {
-            var receipts = _innerFinder.Get(blockHash);
+            var receipts = _receiptStorage.Get(blockHash);
             
             if (_receiptsRecovery.NeedRecover(receipts))
             {
                 var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                _receiptsRecovery.TryRecover(block, receipts);
+                if (_receiptsRecovery.TryRecover(block, receipts))
+                {
+                    _receiptStorage.Insert(block, receipts);
+                }
             }
 
             return receipts;
         }
 
-        public bool CanGetReceiptsByHash(long blockNumber) => _innerFinder.CanGetReceiptsByHash(blockNumber);
-        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _innerFinder.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        public bool CanGetReceiptsByHash(long blockNumber) => _receiptStorage.CanGetReceiptsByHash(blockNumber);
+        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
     }
 }
