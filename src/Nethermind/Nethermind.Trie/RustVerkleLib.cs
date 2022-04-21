@@ -105,6 +105,9 @@ public static class RustVerkleLib {
     private static extern IntPtr verkle_trie_flush(IntPtr verkleTrie);
     [DllImport("rust_verkle")]
     private static extern IntPtr verkle_trie_clear(IntPtr verkleTrie);
+    
+    [DllImport("rust_verkle")]
+    private static extern unsafe IntPtr calculate_pedersan_hash(byte * value);
 
     public static RustVerkleDb VerkleDbNew(
         DatabaseScheme databaseScheme = DatabaseScheme.MemoryDb,
@@ -207,6 +210,17 @@ public static class RustVerkleLib {
             return managedValue;
         }
         
+    }
+    
+    public static unsafe byte[] CalculatePedersenHash(Span<byte> value)
+    {
+        fixed (byte* p = &MemoryMarshal.GetReference(value))
+        {
+            IntPtr hash = calculate_pedersan_hash(p);
+            byte[] managedValue = new byte[32];
+            Marshal.Copy(hash, managedValue, 0, 32);
+            return managedValue;
+        }
     }
     
     public static unsafe byte[]? VerkleTrieGet(RustVerkle verkleTrie, byte[] key)
