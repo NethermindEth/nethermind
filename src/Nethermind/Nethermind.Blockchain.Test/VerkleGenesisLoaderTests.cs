@@ -50,6 +50,12 @@ public class VerkleGenesisLoaderTests
     }
     
     [Test]
+    public void Can_load_genesis_geth_test()
+    {
+        AssertBlockHash("0x911c5bec9533d8ad3a55da54ba62b94e14810ddce8482aabe2ee82c64f46afb6", "Specs/verkle_genesis.json");
+    }
+    
+    [Test]
     public void Can_load_genesis_with_precompile_that_has_zero_balance()
     {
         AssertBlockHash("0x29bb430a24d6a390fede6d5b92111b118d9d2e054d29cf6fd9ef1a753b9ed122", "Specs/hive_zero_balance_test.json");

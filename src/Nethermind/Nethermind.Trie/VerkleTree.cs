@@ -178,13 +178,18 @@ public class VerkleTree
         // allocate the array on stack  
         Span<byte> keyPrefix = stackalloc byte[64];
         // first 12 bytes are '0' padding to convert 12 byte address -> 32 bytes
-        Span<byte> cursor = keyPrefix.Slice(12);
+        // Span<byte> cursor = keyPrefix.Slice(12);
+        Span<byte> cursor = keyPrefix.Slice(0);
         address.Bytes.CopyTo(cursor);
-        // copy the address to the remaining 20 bytes
-        cursor = cursor.Slice(20);
+        // copy the address to the remaining 20 bytes - 
+        //TODO: correct this when geth corrects it, it should be left padded and not right
+        // cursor = cursor.Slice(20);
+        cursor = cursor.Slice(32);
         // copy the tree index to the remaining 32 bytes
         treeIndex.ToBigEndian(cursor);
-        return Keccak.Compute(keyPrefix).Bytes;
+        byte[] prefix = RustVerkleLib.CalculatePedersenHash(keyPrefix);
+        prefix[31] = 0;
+        return prefix;
     }
     
     public byte[] GetTreeKeyPrefixAccount(Address address) => GetTreeKeyPrefix(address, 0);

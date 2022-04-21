@@ -73,11 +73,11 @@ namespace Nethermind.State
                 return null;
             }
 
-            UInt256 balanceU = new (balance, true);
-            UInt256 nonceU = new (nonce, true);
+            UInt256 balanceU = new (balance);
+            UInt256 nonceU = new (nonce);
             Keccak codeHash = new (codeKeccak.ToArray());
-            UInt256 codeSizeU = new (codeSize, true);
-            UInt256 versionU = new (version, true);
+            UInt256 codeSizeU = new (codeSize);
+            UInt256 versionU = new (version);
         
             if (
                 versionU.Equals(UInt256.Zero) &&
@@ -108,19 +108,19 @@ namespace Nethermind.State
             byte[] keyPrefix = GetTreeKeyPrefixAccount(address);
             if (account is null)
             {
-                SetValue(keyPrefix, AccountTreeIndexes.Version, UInt256.Zero.ToBigEndian());
-                SetValue(keyPrefix, AccountTreeIndexes.Balance, UInt256.Zero.ToBigEndian());
-                SetValue(keyPrefix, AccountTreeIndexes.Nonce, UInt256.Zero.ToBigEndian());
+                SetValue(keyPrefix, AccountTreeIndexes.Version, UInt256.Zero.ToLittleEndian());
+                SetValue(keyPrefix, AccountTreeIndexes.Balance, UInt256.Zero.ToLittleEndian());
+                SetValue(keyPrefix, AccountTreeIndexes.Nonce, UInt256.Zero.ToLittleEndian());
                 SetValue(keyPrefix, AccountTreeIndexes.CodeHash, Keccak.Zero.Bytes);
-                SetValue(keyPrefix, AccountTreeIndexes.CodeSize, UInt256.Zero.ToBigEndian());
+                SetValue(keyPrefix, AccountTreeIndexes.CodeSize, UInt256.Zero.ToLittleEndian());
             }
             else
             {
-                SetValue(keyPrefix,AccountTreeIndexes.Version, account.Version.ToBigEndian());
-                SetValue(keyPrefix,AccountTreeIndexes.Balance, account.Balance.ToBigEndian());
-                SetValue(keyPrefix,AccountTreeIndexes.Nonce, account.Nonce.ToBigEndian());
+                SetValue(keyPrefix,AccountTreeIndexes.Version, account.Version.ToLittleEndian());
+                SetValue(keyPrefix,AccountTreeIndexes.Balance, account.Balance.ToLittleEndian());
+                SetValue(keyPrefix,AccountTreeIndexes.Nonce, account.Nonce.ToLittleEndian());
                 SetValue(keyPrefix,AccountTreeIndexes.CodeHash, account.CodeHash.Bytes);
-                SetValue(keyPrefix,AccountTreeIndexes.CodeSize, account.CodeSize.ToBigEndian());
+                SetValue(keyPrefix,AccountTreeIndexes.CodeSize, account.CodeSize.ToLittleEndian());
                 if (account.Code != null)
                 {
                     SetCode(address, account.Code.ToArray());
