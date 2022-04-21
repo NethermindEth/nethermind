@@ -78,9 +78,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
         protected override long GetCurrentNumber(PeerInfo bestPeer)
         {
             long currentNumber = _beaconPivot.BeaconPivotExists()
-                ? Math.Max(0, Math.Min(_blockTree.BestSuggestedBody.Number, bestPeer.HeadNumber - 1))
+                ? Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1))
                 : base.GetCurrentNumber(bestPeer);
-            if (_logger.IsTrace) _logger.Trace($"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody.Number}");
+            if (_logger.IsTrace) _logger.Trace($"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}");
             return currentNumber;
         }
         
