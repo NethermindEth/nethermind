@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -23,6 +24,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.TxPool.Test
@@ -35,6 +37,7 @@ namespace Nethermind.TxPool.Test
         private ISpecProvider _specProvider;
         private IEthereumEcdsa _ethereumEcdsa;
         private IReceiptStorage _persistentStorage;
+        private IReceiptFinder _receiptFinder;
         private IReceiptStorage _inMemoryStorage;
         
         public ReceiptStorageTests(bool useEip2718)
@@ -49,6 +52,7 @@ namespace Nethermind.TxPool.Test
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
             ReceiptsRecovery receiptsRecovery = new(_ethereumEcdsa, _specProvider);
             _persistentStorage = new PersistentReceiptStorage(new MemColumnsDb<ReceiptsColumns>(), _specProvider, receiptsRecovery);
+            _receiptFinder = new FullInfoReceiptFinder(_persistentStorage, receiptsRecovery, Substitute.For<IBlockFinder>());
             _inMemoryStorage = new InMemoryReceiptStorage();
         }
 
@@ -70,15 +74,31 @@ namespace Nethermind.TxPool.Test
 
         [Test]
         public void should_add_and_fetch_receipt_from_in_memory_storage()
-            => TestAddAndGetReceipt(_inMemoryStorage, false);
+            => TestAddAndGetReceipt(_inMemoryStorage);
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
-            => TestAddAndGetReceipt(_persistentStorage, true);
+            => TestAddAndGetReceipt(_persistentStorage, _receiptFinder);
         
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
             => TestAddAndGetReceiptEip658(_persistentStorage);
+
+        [Test]
+        public void should_not_throw_if_receiptFinder_asked_for_not_existing_receipts_by_block()
+        {
+            Block block = Build.A.Block.WithNumber(0).WithTransactions(5, _specProvider).TestObject;
+            TxReceipt[] receipts = _receiptFinder.Get(block);
+            receipts.Should().BeEmpty();
+        }
+        
+        [Test]
+        public void should_not_throw_if_receiptFinder_asked_for_not_existing_receipts_by_hash()
+        {
+            Block block = Build.A.Block.WithNumber(0).WithTransactions(5, _specProvider).TestObject;
+            TxReceipt[] receipts = _receiptFinder.Get(block.Hash);
+            receipts.Should().BeEmpty();
+        }
 
         private void TestAddAndCheckLowest(IReceiptStorage storage, bool updateLowest)
         {
@@ -94,8 +114,11 @@ namespace Nethermind.TxPool.Test
             storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? (long?)0 : null);
         }
         
-        private void TestAddAndGetReceipt(IReceiptStorage storage, bool recoverSender)
+        private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder receiptFinder = null)
         {
+            bool recoverSender = receiptFinder is not null;
+            receiptFinder ??= storage;
+
             var transaction = GetSignedTransaction();
             transaction.SenderAddress = null;
             var block = GetBlock(transaction);
@@ -103,7 +126,7 @@ namespace Nethermind.TxPool.Test
             storage.Insert(block, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
-            var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
+            var fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
