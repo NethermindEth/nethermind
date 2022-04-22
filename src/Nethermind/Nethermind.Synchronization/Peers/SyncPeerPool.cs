@@ -46,6 +46,7 @@ namespace Nethermind.Synchronization.Peers
     public class SyncPeerPool : ISyncPeerPool
     {
         private const int InitTimeout = 3000; // the Eth.Timeout hits us at 5000 (or whatever it is configured to)
+        public const int DefaultUpgradeIntervalInMs = 1000;
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -72,23 +73,23 @@ namespace Nethermind.Synchronization.Peers
         private Task? _refreshLoopTask;
 
         private readonly ManualResetEvent _signals = new(true);
-        private readonly TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(1000);
+        private readonly TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(DefaultUpgradeIntervalInMs);
         private Timer? _upgradeTimer;
 
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             int peersMaxCount,
             ILogManager logManager)
-            : this(blockTree, nodeStatsManager, peersMaxCount, 1000, logManager)
+            : this(blockTree, nodeStatsManager, peersMaxCount, DefaultUpgradeIntervalInMs, logManager)
         {
         }
         
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             int peersMaxCount,
-            int allocationsUpgradeIntervalInMsInMs,
+            int allocationsUpgradeIntervalInMs,
             ILogManager logManager)
-            : this(blockTree, nodeStatsManager, peersMaxCount, 0, allocationsUpgradeIntervalInMsInMs, logManager)
+            : this(blockTree, nodeStatsManager, peersMaxCount, 0, allocationsUpgradeIntervalInMs, logManager)
         {
         }
 
