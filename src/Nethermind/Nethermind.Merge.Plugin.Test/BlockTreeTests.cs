@@ -386,13 +386,13 @@ public partial class BlockTreeTests
     }
     
     [Test]
-    [Ignore("Need to be fixed in LoadBestKnown (BlockTree constructor)")]
+  //  [Ignore("Need to be fixed in LoadBestKnown (BlockTree constructor)")]
     public void Best_pointers_should_not_move_if_sync_is_not_finished()
     {
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
-            .InsertHeaders(4, 6)
+            .InsertHeaders(5, 6)
             .InsertBeaconBlocks(7, 9)
             .Restart()
             .AssertBestKnownNumber(3)
