@@ -140,7 +140,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             }
         }
 
-        _logger.Info($"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
+        if (_logger.IsTrace) _logger.Trace($"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
         return insertOutcome;
     }
 }

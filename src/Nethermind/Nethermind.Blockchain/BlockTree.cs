@@ -539,8 +539,8 @@ namespace Nethermind.Blockchain
                 
                 if (header.Number < (LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
                 {
-                    if (_logger.IsInfo)
-                        _logger.Info(
+                    if (_logger.IsTrace)
+                        _logger.Trace(
                             $"LowestInsertedBeaconHeader changed, old: {LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
                     LowestInsertedBeaconHeader = header;
                 }
