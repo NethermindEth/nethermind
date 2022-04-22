@@ -68,4 +68,7 @@ public class AuRaBetterPeerStrategy : IBetterPeerStrategy
         return false;
         
     }
+
+    public bool IsLowerThanTerminalTotalDifficulty(UInt256 totalDifficulty) =>
+        _betterPeerStrategy.IsLowerThanTerminalTotalDifficulty(totalDifficulty);
 }

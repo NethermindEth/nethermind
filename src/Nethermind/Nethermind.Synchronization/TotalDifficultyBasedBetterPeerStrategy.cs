@@ -41,6 +41,8 @@ public interface IBetterPeerStrategy
     bool IsBetterThanLocalChain((UInt256 TotalDifficulty, long Number) bestPeerInfo);
 
     bool IsDesiredPeer((UInt256 TotalDifficulty, long Number) bestPeerInfo, long bestHeader);
+    
+    bool IsLowerThanTerminalTotalDifficulty(UInt256 totalDifficulty);
 }
 
 
@@ -95,4 +97,6 @@ public class TotalDifficultyBasedBetterPeerStrategy : IBetterPeerStrategy
 
         return desiredPeerKnown;
     }
+
+    public bool IsLowerThanTerminalTotalDifficulty(UInt256 totalDifficulty) => true;
 }
