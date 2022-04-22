@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (_beaconSyncStrategy.ShouldBeInBeaconModeControl())
                 {
                     // everything is in beacon node control, so we don't need other modes
-                    newModes = SyncMode.BeaconControlMode;
+                    newModes = SyncMode.WaitingForBlock;
                 }
                 else
                 {

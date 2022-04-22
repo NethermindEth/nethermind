@@ -189,6 +189,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _logger.Info($"Headers sync finished but beacon sync still not finished for {requestStr}");
                 return NewPayloadV1Result.Syncing;
             }
+            
+            if (parentHeader!.TotalDifficulty == 0)
+            {
+                parentHeader.TotalDifficulty =
+                    _blockTree.BackFillTotalDifficulty(block.Number - 1, block.Number - 1);
+            }
 
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 parentHeader!.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
