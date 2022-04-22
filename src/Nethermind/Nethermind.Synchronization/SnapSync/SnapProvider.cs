@@ -33,6 +33,8 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ILogger _logger;
 
         public ProgressTracker _progressTracker;
+        
+        public event EventHandler<EventArgs> RemoveSnapCapability;
 
         public SnapProvider(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager)
         {
@@ -261,6 +263,18 @@ namespace Nethermind.Synchronization.SnapSync
 
         }
 
-        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
+        private bool _isSnapGetRangesFinished;
+        public bool IsSnapGetRangesFinished() => _isSnapGetRangesFinished || CheckIfSnapGetRangesFinished();
+        private bool CheckIfSnapGetRangesFinished()
+        {
+            _isSnapGetRangesFinished = _progressTracker.IsSnapGetRangesFinished();
+
+            if (_isSnapGetRangesFinished)
+            {
+                RemoveSnapCapability?.Invoke(this, EventArgs.Empty);
+            }
+
+            return _isSnapGetRangesFinished;
+        }
     }
 }

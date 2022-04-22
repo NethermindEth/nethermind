@@ -27,6 +27,7 @@ namespace Nethermind.Network
         void AddSupportedCapability(Capability capability);
         void SendNewCapability(Capability capability);
         void AddProtocol(string code, Func<ISession, IProtocolHandler> factory);
+        void RemoveSnapCapabilityOnEvent();
         event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
     }
 }

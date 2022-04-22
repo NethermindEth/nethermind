@@ -473,6 +473,7 @@ namespace Nethermind.Init.Steps
                 protocolValidator,
                 peerStorage,
                 _api.SpecProvider!,
+                _api.SnapProvider,
                 _api.LogManager);
             
             if (_syncConfig.WitnessProtocolEnabled)
@@ -483,6 +484,7 @@ namespace Nethermind.Init.Steps
             if (_syncConfig.SnapSyncProtocolEnabled)
             {
                 _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+                _api.ProtocolsManager.RemoveSnapCapabilityOnEvent();
             }
             
             _api.ProtocolValidator = protocolValidator;

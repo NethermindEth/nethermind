@@ -25,5 +25,6 @@ namespace Nethermind.Synchronization.SnapSync
         void RetryRequest(SnapSyncBatch batch);
 
         bool IsSnapGetRangesFinished();
+        event EventHandler<EventArgs> RemoveSnapCapability;
     }
 }

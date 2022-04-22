@@ -40,6 +40,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 
 namespace Nethermind.Network
@@ -63,6 +64,7 @@ namespace Nethermind.Network
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
         private readonly ISpecProvider _specProvider;
+        private readonly ISnapProvider _snapProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
@@ -81,6 +83,7 @@ namespace Nethermind.Network
             IProtocolValidator protocolValidator,
             INetworkStorage peerStorage,
             ISpecProvider specProvider,
+            ISnapProvider snapProvider,
             ILogManager logManager)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -94,6 +97,7 @@ namespace Nethermind.Network
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _snapProvider = snapProvider;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -409,6 +413,24 @@ namespace Nethermind.Network
             }
 
             _capabilities.Add(capability);
+        }
+        
+        public void RemoveSnapCapabilityOnEvent()
+        {
+            _snapProvider.RemoveSnapCapability += OnRemoveSnapCapability;
+        }
+
+        private void OnRemoveSnapCapability(object? sender, EventArgs e)
+        {
+            _snapProvider.RemoveSnapCapability -= OnRemoveSnapCapability;
+
+            Capability snapCapability = new(Protocol.Snap, 1);
+
+            if (_capabilities.Contains(snapCapability))
+            {
+                _capabilities.Remove(snapCapability);
+                if (_logger.IsDebug) _logger.Debug("SnapSync capability disabled");
+            }
         }
 
         public void SendNewCapability(Capability capability)
