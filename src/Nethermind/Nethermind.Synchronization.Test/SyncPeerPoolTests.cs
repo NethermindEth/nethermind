@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -72,6 +73,7 @@ namespace Nethermind.Synchronization.Test
             public long HeadNumber { get; set; }
             public UInt256 TotalDifficulty { get; set; } = 1;
             public bool IsInitialized { get; set; }
+            public bool IsPriority { get; set; }
 
             public bool DisconnectRequested { get; set; }
 
@@ -180,6 +182,84 @@ namespace Nethermind.Synchronization.Test
             await WaitForPeersInitialization(ctx);
             ctx.Pool.DropUselessPeers(true);
             Assert.True(peers.Any(p => p.DisconnectRequested));
+        }
+        
+        [TestCase(0)]
+        [TestCase(10)]
+        [TestCase(24)]
+        public async Task Will_not_disconnect_any_priority_peer_if_their_amount_is_lower_than_max(byte number)
+        {
+            const int peersMaxCount = 25;
+            const int priorityPeersMaxCount = 25;
+            await using Context ctx = new();
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            var peers = await SetupPeers(ctx, peersMaxCount);
+            
+            // setting priority to all peers except one - peers[number]
+            for (int i = 0; i < priorityPeersMaxCount; i++)
+            {
+                if (i != number)
+                {
+                    ctx.Pool.SetPeerPriority(peers[i].Id);
+                }
+            }
+            await WaitForPeersInitialization(ctx);
+            ctx.Pool.DropUselessPeers(true);
+            Assert.True(peers[number].DisconnectRequested);
+        }
+        
+        [Test]
+        public async Task Can_disconnect_priority_peer_if_their_amount_is_max()
+        {
+            const int peersMaxCount = 25;
+            const int priorityPeersMaxCount = 25;
+            await using Context ctx = new();
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            var peers = await SetupPeers(ctx, peersMaxCount);
+            
+            foreach (SimpleSyncPeerMock peer in peers)
+            {
+                ctx.Pool.SetPeerPriority(peer.Id);
+            }
+            await WaitForPeersInitialization(ctx);
+            ctx.Pool.DropUselessPeers(true);
+            Assert.True(peers.Any(p => p.DisconnectRequested));
+        }
+
+        [Test]
+        public async Task Should_increment_PriorityPeerCount_when_added_priority_peer_and_decrement_after_removal()
+        {
+            const int peersMaxCount = 1;
+            const int priorityPeersMaxCount = 1;
+            await using Context ctx = new();
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            
+            SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = true };
+            ctx.Pool.Start();
+            ctx.Pool.AddPeer(peer);
+            await WaitForPeersInitialization(ctx);
+            ctx.Pool.PriorityPeerCount.Should().Be(1);
+            
+            ctx.Pool.RemovePeer(peer);
+            ctx.Pool.PriorityPeerCount.Should().Be(0);
+        }
+        
+        [Test]
+        public async Task Should_increment_PriorityPeerCount_when_called_SetPriorityPeer()
+        {
+            const int peersMaxCount = 1;
+            const int priorityPeersMaxCount = 1;
+            await using Context ctx = new();
+            ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
+            
+            SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = false };
+            ctx.Pool.Start();
+            ctx.Pool.AddPeer(peer);
+            await WaitForPeersInitialization(ctx);
+            ctx.Pool.PriorityPeerCount.Should().Be(0);
+            
+            ctx.Pool.SetPeerPriority(peer.Id);
+            ctx.Pool.PriorityPeerCount.Should().Be(1);
         }
 
         [Test]

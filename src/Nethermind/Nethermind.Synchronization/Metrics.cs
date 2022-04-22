@@ -46,6 +46,9 @@ namespace Nethermind.Synchronization
 
         [Description("Number of sync peers.")]
         public static long SyncPeers;
+        
+        [Description("Number of priority peers.")]
+        public static long PriorityPeers;
 
         [Description("State branch progress (percentage of completed branches at second level).")]
         public static long StateBranchProgress;
