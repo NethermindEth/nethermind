@@ -25,8 +25,8 @@ namespace Nethermind.Synchronization.Blocks
     {
         private ILogger _logger;
         
-        public const int Max = 512;
-        public const int Min = 2;
+        public const int Max = 4;
+        public const int Min = 1;
 
         public int Current { get; private set; }
 
