@@ -12,13 +12,13 @@ namespace Nethermind.State.Snap
     {
         public PathWithAccount() { }
 
-        public PathWithAccount(Keccak addressHash, Account account)
+        public PathWithAccount(Keccak path, Account account)
         {
-            AddressHash = addressHash;
+            Path = path;
             Account = account;
         }
 
-        public Keccak AddressHash { get; set; }
+        public Keccak Path { get; set; }
         public Account Account { get; set; }
     }
 }

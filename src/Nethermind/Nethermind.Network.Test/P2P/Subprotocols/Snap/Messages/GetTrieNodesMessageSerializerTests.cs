@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,6 +20,7 @@ using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.State.Snap;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
@@ -32,27 +33,27 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         {
             GetTrieNodesMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(), 
+                RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = new MeasuredArray<MeasuredArray<byte[]>>(Array.Empty<MeasuredArray<byte[]>>()) ,
+                Paths = Array.Empty<PathGroup>(), //new MeasuredArray<MeasuredArray<byte[]>>(<MeasuredArray<byte[]>>()) ,
                 Bytes = 10
             };
             GetTrieNodesMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, msg);
         }
-        
+
         [Test]
         public void Roundtrip_OneAccountPath()
         {
             GetTrieNodesMessage msg = new()
             {
-                RequestId = MessageConstants.Random.NextLong(), 
+                RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = new MeasuredArray<MeasuredArray<byte[]>>( new MeasuredArray<byte[]>[]
+                Paths = new PathGroup[]
                     {
-                        new (new []{TestItem.RandomDataA}) 
-                    }),
+                        new PathGroup(){Group = new []{TestItem.RandomDataA}}
+                    },
                 Bytes = 10
             };
             GetTrieNodesMessageSerializer serializer = new();
@@ -67,10 +68,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(), 
                 RootHash = TestItem.KeccakA,
-                Paths = new MeasuredArray<MeasuredArray<byte[]>>( new MeasuredArray<byte[]>[]
-                {
-                    new (new []{TestItem.RandomDataA, TestItem.RandomDataB}), new(new []{TestItem.RandomDataC}) 
-                }),
+                Paths = new PathGroup[]
+                    {
+                        new PathGroup(){Group = new []{TestItem.RandomDataA, TestItem.RandomDataB}},
+                        new PathGroup(){Group = new []{TestItem.RandomDataC}}
+                    },
                 Bytes = 10
             };
             GetTrieNodesMessageSerializer serializer = new();

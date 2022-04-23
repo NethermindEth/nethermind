@@ -26,7 +26,8 @@ namespace Nethermind.Synchronization.SnapSync
         private static int _accCommitInProgress = 0;
         private static int _slotCommitInProgress = 0;
 
-        public static (bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes) AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+        public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes) 
+            AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
 
@@ -35,9 +36,14 @@ namespace Nethermind.Synchronization.SnapSync
             //var first = proofs.Select((p) => { var n = (new TrieNode(NodeType.Unknown, p, true)); n.ResolveNode(tree.TrieStore); return n; }) ;
 
 
-            Keccak lastHash = accounts.Last().AddressHash;
+            Keccak lastHash = accounts.Last().Path;
 
-            (Keccak _, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
+            (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
+
+            if(result != AddRangeResult.OK)
+            {
+                return (result, true, null, null);
+            }
 
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
             IList<Keccak> codeHashes = new List<Keccak>();
@@ -56,7 +62,7 @@ namespace Nethermind.Synchronization.SnapSync
                         codeHashes.Add(account.Account.CodeHash);
                     }
 
-                    tree.Set(account.AddressHash, account.Account);
+                    tree.Set(account.Path, account.Account);
                 }
             }
             catch (Exception)
@@ -68,8 +74,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (tree.RootHash != expectedRootHash)
             {
-                // TODO: log incorrect range
-                return (true, null, null);
+                return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
             try
@@ -91,16 +96,21 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
             }
 
-            return (moreChildrenToRight, accountsWithStorage, codeHashes);
+            return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
-        public static (Keccak? rootHash, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash = null, byte[][] proofs = null)
+        public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash, byte[][] proofs = null)
         {
             // TODO: Check the slots boundaries and sorting
 
             Keccak lastHash = slots.Last().Path;
 
-            (Keccak rootHash, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash: expectedRootHash, proofs);
+            (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
+
+            if (result != AddRangeResult.OK)
+            {
+                return (result, true);
+            }
 
             // TODO: try-catch not needed, just for debug
             try
@@ -117,11 +127,10 @@ namespace Nethermind.Synchronization.SnapSync
 
             tree.UpdateRootHash();
 
-            //if (tree.RootHash != rootHash)
-            //{
-            //    // TODO: log incorrect range
-            //    return (Keccak.EmptyTreeHash, true); ;
-            //}
+            if (tree.RootHash != expectedRootHash)
+            {
+                return (AddRangeResult.DifferentRootHash, true);
+            }
 
             try
             {
@@ -141,14 +150,14 @@ namespace Nethermind.Synchronization.SnapSync
                 throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
             }
 
-            return (tree.RootHash, moreChildrenToRight);
+            return (AddRangeResult.OK, moreChildrenToRight);
         }
 
-        private static (Keccak expectedRootHash, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak startingHash, Keccak endHash, Keccak expectedRootHash = null, byte[][] proofs = null)
+        private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak startingHash, Keccak endHash, Keccak expectedRootHash, byte[][] proofs = null)
         {
             if (proofs is null || proofs.Length == 0)
             {
-                return (expectedRootHash, null, false);
+                return (AddRangeResult.OK, null, false);
             }
 
             if (tree == null)
@@ -159,7 +168,12 @@ namespace Nethermind.Synchronization.SnapSync
             startingHash ??= Keccak.Zero;
             List<TrieNode> sortedBoundaryList = new();
 
-            (TrieNode root, Dictionary<Keccak, TrieNode> dict) = CreateProofDict(proofs, tree.TrieStore, expectedRootHash);
+            Dictionary<Keccak, TrieNode> dict = CreateProofDict(proofs, tree.TrieStore);
+
+            if(!dict.TryGetValue(expectedRootHash, out TrieNode root))
+            {
+                return (AddRangeResult.MissingRootHashInProofs, null, true);
+            }
 
             Keccak rootHash = new Keccak(root.Keccak.Bytes);
 
@@ -255,12 +269,11 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            return (rootHash, sortedBoundaryList, moreChildrenToRight);
+            return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
         }
 
-        private static (TrieNode root, Dictionary<Keccak, TrieNode> dict) CreateProofDict(byte[][] proofs, ITrieStore store, Keccak expectedRootHash = null)
+        private static Dictionary<Keccak, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
         {
-            TrieNode root = null;
             Dictionary<Keccak, TrieNode> dict = new();
 
             for (int i = 0; i < proofs.Length; i++)
@@ -272,14 +285,9 @@ namespace Nethermind.Synchronization.SnapSync
                 node.ResolveKey(store, i == 0);
 
                 dict[node.Keccak] = node;
-
-                if (i == 0 || expectedRootHash == node.Keccak)
-                {
-                    root = node;
-                }
             }
 
-            return (root, dict);
+            return dict;
         }
 
         private static void StitchBoundaries(IList<TrieNode> sortedBoundaryList, ITrieStore store)

@@ -102,6 +102,10 @@ namespace Nethermind.Synchronization.SnapSync
             {
                  _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
             }
+            else if (batch.AccountsToRefreshResponse is not null)
+            {
+                _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
+            }
             else
             {
                 _snapProvider.RetryRequest(batch);
