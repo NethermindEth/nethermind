@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -215,11 +216,21 @@ namespace Nethermind.Synchronization.SnapSync
                 if (reqi < respLength)
                 {
                     byte[] nodeData = response[reqi];
-                    var node = new TrieNode(NodeType.Unknown, nodeData, true);
-                    node.ResolveNode(_store);
-                    if (node.TryResolveStorageRootHash(_store, out var storageRootHash))
-                    {                  
-                        requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(storageRootHash);
+
+                    if(nodeData.Length == 0)
+                    {
+                        RetryAccountRefresh(requestedPath);
+                        _logger.Warn($"Empty Account Refresh:{requestedPath.PathAndAccount.Path}");
+                        continue;
+                    }
+
+                    try
+                    {
+                        var node = new TrieNode(NodeType.Unknown, nodeData, true);
+                        node.ResolveNode(_store);
+                        node.ResolveKey(_store, true);
+
+                        requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Keccak);
 
                         if (requestedPath.StorageStartingHash > Keccak.Zero)
                         {
@@ -236,12 +247,22 @@ namespace Nethermind.Synchronization.SnapSync
                             _progressTracker.EnqueueAccountStorage(requestedPath.PathAndAccount);
                         }
                     }
+                    catch (Exception exc)
+                    {
+                        RetryAccountRefresh(requestedPath);
+                        _logger.Warn($"{exc.Message}:{requestedPath.PathAndAccount.Path}:{Bytes.ToHexString(nodeData)}");
+                    }
                 }
                 else
                 {
-                    _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
+                    RetryAccountRefresh(requestedPath);
                 }
             }
+        }
+
+        private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath)
+        {
+            _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
         public void AddCodes(Keccak[] requestedHashes, byte[][] codes)
