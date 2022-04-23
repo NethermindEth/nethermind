@@ -156,8 +156,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private static void ProcessAccountRange(StateTree remoteStateTree, StateTree localStateTree, int blockNumber, Keccak rootHash, PathWithAccount[] accounts)
         {
-            Keccak startingHash = accounts.First().AddressHash;
-            Keccak endHash = accounts.Last().AddressHash;
+            Keccak startingHash = accounts.First().Path;
+            Keccak endHash = accounts.Last().Path;
 
             AccountProofCollector accountProofCollector = new(startingHash.Bytes);
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
@@ -166,7 +166,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            (_, _, _) = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, accounts, firstProof!.Concat(lastProof!).ToArray());
+            (_, _, _, _) = SnapProviderHelper.AddAccountRange(localStateTree, blockNumber, rootHash, startingHash, accounts, firstProof!.Concat(lastProof!).ToArray());
         }
     }
 }

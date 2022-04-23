@@ -22,6 +22,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         void AddCodes(Keccak[] requestedHashes, byte[][] codes);
 
+        void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response);
+
         void RetryRequest(SnapSyncBatch batch);
 
         bool IsSnapGetRangesFinished();

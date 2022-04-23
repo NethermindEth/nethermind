@@ -30,5 +30,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         public Keccak[] CodesRequest { get; set; }
         public byte[][] CodesResponse { get; set; }
+
+        public AccountsToRefreshRequest AccountsToRefreshRequest { get; set; }
+        public byte[][] AccountsToRefreshResponse { get; set; }
     }
 }

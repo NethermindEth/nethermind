@@ -20,28 +20,20 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
-using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.SnapSync;
-using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
     {
-        private const int BYTES_LIMIT = 10_000_000;
+        private const int BYTES_LIMIT = 2_000_000;
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -53,6 +45,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private readonly MessageQueue<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
         private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
         private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
+        private readonly MessageQueue<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
 
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
@@ -63,6 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getAccountRangeRequests = new(Send);
             _getStorageRangeRequests = new(Send);
             _getByteCodesRequests = new(Send);
+            _getTrieNodesRequests = new(Send);
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -120,12 +114,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 case SnapMessageCode.GetTrieNodes:
                     GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
                     ReportIn(getTrieNodesMessage);
-                    //Handle(msg);
+                    Handle(getTrieNodesMessage);
                     break;
                 case SnapMessageCode.TrieNodes:
                     TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
                     ReportIn(trieNodesMessage);
-                    //Handle(msg);
+                    Handle(trieNodesMessage, size);
                     break;
             }
         }
@@ -148,6 +142,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getByteCodesRequests.Handle(msg, size);
         }
 
+        private void Handle(TrieNodesMessage msg, long size)
+        {
+            // TODO: increment metrics
+            _getTrieNodesRequests.Handle(msg, size);
+        }
+
         private void Handle(GetAccountRangeMessage msg)
         {
             //throw new NotImplementedException();
@@ -159,6 +159,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
+        {
+            //throw new NotImplementedException();
+        }
+
+        private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
             //throw new NotImplementedException();
         }
@@ -205,6 +210,35 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             ByteCodesMessage response = await SendRequest(request, _getByteCodesRequests, token);
 
             return response.Codes;
+        }
+
+        public async Task<byte[][]> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+        {
+            PathGroup[] groups = GetPathGroups(request);
+
+            GetTrieNodesMessage reqMsg = new ()
+            {
+                RootHash = request.RootHash,
+                Paths = groups,
+                Bytes = BYTES_LIMIT
+            };
+
+            TrieNodesMessage response = await SendRequest(reqMsg, _getTrieNodesRequests, token);
+
+            return response.Nodes;
+        }
+
+        private PathGroup[] GetPathGroups(AccountsToRefreshRequest request)
+        {
+            PathGroup[] groups = new PathGroup[request.Paths.Length];
+
+            for (int i = 0; i < request.Paths.Length; i++)
+            {
+                AccountWithStorageStartingHash path = request.Paths[i];
+                groups[i] = new PathGroup() { Group = new byte[][] { path.PathAndAccount.Path.Bytes } };
+            }
+
+            return groups;
         }
 
         private async Task<Tout> SendRequest<Tin, Tout>(Tin msg, MessageQueue<Tin, Tout> _requestQueue, CancellationToken token)

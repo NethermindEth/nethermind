@@ -76,12 +76,12 @@ namespace Nethermind.Core.Test.Builders
 
             public static void FillStateTreeWithTestAccounts(StateTree stateTree)
             {
-                stateTree.Set(AccountsWithPaths[0].AddressHash, AccountsWithPaths[0].Account);
-                stateTree.Set(AccountsWithPaths[1].AddressHash, AccountsWithPaths[1].Account);
-                stateTree.Set(AccountsWithPaths[2].AddressHash, AccountsWithPaths[2].Account);
-                stateTree.Set(AccountsWithPaths[3].AddressHash, AccountsWithPaths[3].Account);
-                stateTree.Set(AccountsWithPaths[4].AddressHash, AccountsWithPaths[4].Account);
-                stateTree.Set(AccountsWithPaths[5].AddressHash, AccountsWithPaths[5].Account);
+                stateTree.Set(AccountsWithPaths[0].Path, AccountsWithPaths[0].Account);
+                stateTree.Set(AccountsWithPaths[1].Path, AccountsWithPaths[1].Account);
+                stateTree.Set(AccountsWithPaths[2].Path, AccountsWithPaths[2].Account);
+                stateTree.Set(AccountsWithPaths[3].Path, AccountsWithPaths[3].Account);
+                stateTree.Set(AccountsWithPaths[4].Path, AccountsWithPaths[4].Account);
+                stateTree.Set(AccountsWithPaths[5].Path, AccountsWithPaths[5].Account);
                 stateTree.Commit(0);
             }
 

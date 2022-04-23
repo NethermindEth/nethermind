@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -17,6 +17,7 @@
 
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
@@ -24,27 +25,33 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, GetTrieNodesMessage message)
         {
-            int contentLength = CalculateLengths(message);
+            (int contentLength, int allPathsLength, int[] pathsLengths)  = CalculateLengths(message);
+
             byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
             NettyRlpStream stream = new (byteBuffer);
+
             stream.StartSequence(contentLength);
             
             stream.Encode(message.RequestId);
             stream.Encode(message.RootHash);
+
             if (message.Paths == null || message.Paths.Length == 0)
             {
                 stream.EncodeNullObject();
             }
             else
             {
-                stream.StartSequence(message.Paths.RlpLength.Value);
+                stream.StartSequence(allPathsLength);
+
                 for (int i = 0; i < message.Paths.Length; i++)
                 {
-                    var accountPaths = message.Paths.Array[i];
-                    stream.StartSequence(accountPaths.RlpLength.Value);
-                    for (int j = 0; j < accountPaths.Length; j++)
+                    PathGroup group = message.Paths[i];
+
+                    stream.StartSequence(pathsLengths[i]);
+
+                    for (int j = 0; j < group.Group.Length; j++)
                     {
-                        stream.Encode(accountPaths.Array[j]);
+                        stream.Encode(group.Group[j]);
                     }
                 }
             }
@@ -61,48 +68,53 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             message.RequestId = stream.DecodeLong();
             message.RootHash = stream.DecodeKeccak();
-            message.Paths = new MeasuredArray<MeasuredArray<byte[]>>(stream.DecodeArray(DecodeAccountPaths));
+            message.Paths = stream.DecodeArray(DecodeGroup);
             
             message.Bytes = stream.DecodeLong();
 
             return message;
         }
         
-        private MeasuredArray<byte[]> DecodeAccountPaths(RlpStream stream)
+        private PathGroup DecodeGroup(RlpStream stream)
         {
-            byte[][] path = stream.DecodeArray(s => stream.DecodeByteArray());
-            
-            return new MeasuredArray<byte[]>(path);
+            PathGroup group = new PathGroup();
+            group.Group = stream.DecodeArray(s => stream.DecodeByteArray());
+
+            return group;
         }
         
-        private int CalculateLengths(GetTrieNodesMessage message)
+        private (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)
         {
             int contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.RootHash);
             
             int allPathsLength = 0;
-            if (message.Paths != null)
+            int[] pathsLengths = new int[message.Paths.Length];
+
+            if (message.Paths == null || message.Paths.Length == 0)
+            {
+                allPathsLength = 1;
+            }
+            else
             {
                 for (var i = 0; i < message.Paths.Length; i++)
                 {
-                    int accountPathLength = 0;
-                    MeasuredArray<byte[]> accountPaths = message.Paths.Array[i];
-                    foreach (byte[] path in accountPaths.Array)
+                    PathGroup pathGroup = message.Paths[i];
+                    int groupLength = 0;
+
+                    foreach (byte[] path in pathGroup.Group)
                     {
-                        accountPathLength += Rlp.LengthOf(path);
+                        groupLength += Rlp.LengthOf(path);
                     }
 
-                    accountPaths.RlpLength = accountPathLength;
-                    allPathsLength += Rlp.LengthOfSequence(accountPathLength);
+                    pathsLengths[i] = groupLength;
+                    allPathsLength += Rlp.LengthOfSequence(groupLength);
                 }
-
-                message.Paths.RlpLength = allPathsLength;
             }
 
             contentLength += Rlp.LengthOfSequence(allPathsLength);
-            contentLength += Rlp.LengthOf(message.Bytes);
 
-            return contentLength;
+            return (contentLength, allPathsLength, pathsLengths);
         }
     }
 }

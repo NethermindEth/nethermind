@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Core.Crypto;
+using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
@@ -31,7 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// Trie paths to retrieve the nodes for, grouped by account
         /// </summary>
-        public MeasuredArray<MeasuredArray<byte[]>> Paths { get; set; }
+        public PathGroup[] Paths { get; set; }
         
         /// <summary>
         /// Soft limit at which to stop returning data
