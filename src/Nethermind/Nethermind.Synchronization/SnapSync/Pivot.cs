@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             get
             {
-                return _blockTree.BestSuggestedHeader?.Number ?? 0 - _bestHeader.Number;
+                return (_blockTree.BestSuggestedHeader?.Number ?? 0) - _bestHeader.Number;
             }
         }
 

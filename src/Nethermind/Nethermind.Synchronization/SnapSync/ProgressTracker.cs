@@ -73,6 +73,24 @@ namespace Nethermind.Synchronization.SnapSync
 
             SnapSyncBatch request = new();
 
+            if(blockNumber == -1)
+            {
+                AccountWithStorageStartingHash[] paths = new AccountWithStorageStartingHash[]
+                {
+                    new AccountWithStorageStartingHash()
+                    {
+                        PathAndAccount = new PathWithAccount()
+                        {
+                            Path = new Keccak("0x00d012dbe1914fba0434a6972f6e69c7cf0ea3f6d7284f2a2adfa58ce485db0f")
+                        }
+                    }
+                };
+
+                request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths };
+
+                return (request, false);
+            }
+
             if(AccountsToRefresh.Count > 0)
             {
                 LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
