@@ -41,7 +41,6 @@ namespace Nethermind.Synchronization.SnapSync
             //TODO: replace with a constant "snap"
             if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
             {
-
                 if (batch.AccountRangeRequest is not null)
                 {
                     Task<AccountsAndProofs> task = handler.GetAccountRange(batch.AccountRangeRequest, cancellationToken);
@@ -82,7 +81,7 @@ namespace Nethermind.Synchronization.SnapSync
                             }
                         }, batch);
                 }
-                if (batch.CodesRequest is not null)
+                else if (batch.CodesRequest is not null)
                 {
                     Task<byte[][]> task = handler.GetByteCodes(batch.CodesRequest, cancellationToken);
 
@@ -99,6 +98,26 @@ namespace Nethermind.Synchronization.SnapSync
                             if (t.IsCompletedSuccessfully)
                             {
                                 batchLocal.CodesResponse = t.Result;
+                            }
+                        }, batch);
+                }
+                else if (batch.AccountsToRefreshRequest is not null)
+                {
+                    Task<byte[][]> task = handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
+
+                    await task.ContinueWith(
+                        (t, state) =>
+                        {
+                            if (t.IsFaulted)
+                            {
+                                if (Logger.IsTrace)
+                                    Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
+                            }
+
+                            SnapSyncBatch batchLocal = (SnapSyncBatch)state!;
+                            if (t.IsCompletedSuccessfully)
+                            {
+                                batchLocal.AccountsToRefreshResponse = t.Result;
                             }
                         }, batch);
                 }

@@ -345,6 +345,29 @@ namespace Nethermind.Trie
             }
         }
 
+        public bool TryResolveStorageRootHash(ITrieNodeResolver resolver, out Keccak? storageRootHash)
+        {
+            storageRootHash = null;
+
+            if (IsLeaf)
+            {
+                try
+                {
+                    storageRootHash = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    if (storageRootHash is not null && storageRootHash != Keccak.EmptyTreeHash)
+                    {
+                        return true;
+                    }
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
         internal byte[] RlpEncode(ITrieNodeResolver tree)
         {
             byte[] rlp = _nodeDecoder.Encode(tree, this);

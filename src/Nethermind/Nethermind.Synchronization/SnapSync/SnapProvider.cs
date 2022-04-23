@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.SnapSync
@@ -61,9 +62,9 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
-                AddAccountRange(request.BlockNumber.Value, request.RootHash, request.StartingHash, response.PathAndAccounts, response.Proofs);
+                bool success = AddAccountRange(request.BlockNumber.Value, request.RootHash, request.StartingHash, response.PathAndAccounts, response.Proofs);
 
-                if (response.PathAndAccounts.Length > 0)
+                if (success && response.PathAndAccounts.Length > 0)
                 {
                     Interlocked.Add(ref Metrics.SyncedAccounts, response.PathAndAccounts.Length);
                 }
@@ -75,12 +76,11 @@ namespace Nethermind.Synchronization.SnapSync
         public bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             StateTree tree = new(_store, _logManager);
-            (bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
+
+            (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> accountsWithStorage, IList<Keccak> codeHashes) =
                 SnapProviderHelper.AddAccountRange(tree, blockNumber, expectedRootHash, startingHash, accounts, proofs);
 
-            bool success = expectedRootHash == tree.RootHash;
-
-            if (success)
+            if (result == AddRangeResult.OK)
             {
                 foreach (var item in accountsWithStorage)
                 {
@@ -89,15 +89,21 @@ namespace Nethermind.Synchronization.SnapSync
 
                 _progressTracker.EnqueueCodeHashes(codeHashes);
 
-                _progressTracker.NextAccountPath = accounts[accounts.Length - 1].AddressHash;
+                _progressTracker.NextAccountPath = accounts[accounts.Length - 1].Path;
                 _progressTracker.MoreAccountsToRight = moreChildrenToRight;
+
+                return true;
             }
-            else
+            else if(result == AddRangeResult.MissingRootHashInProofs)
             {
-                _logger.Warn($"SNAP - AddAccountRange failed, {blockNumber}:{expectedRootHash}, startingHash:{startingHash}");
+                _logger.Warn($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
+            }
+            else if(result == AddRangeResult.DifferentRootHash)
+            {
+                _logger.Warn($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
             }
 
-            return success;
+            return false;
         }
 
         public void AddStorageRange(StorageRange request, SlotsAndProofs response)
@@ -165,11 +171,9 @@ namespace Nethermind.Synchronization.SnapSync
             // TODO: use expectedRootHash (StorageRootHash from Account), it can change when PIVOT changes
 
             StorageTree tree = new(_store, _logManager);
-            (Keccak? calculatedRootHash, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, proofs: proofs);
+            (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
 
-            bool success = calculatedRootHash != Keccak.EmptyTreeHash;
-
-            if (success)
+            if (result == AddRangeResult.OK)
             {
                 if (moreChildrenToRight)
                 {
@@ -181,28 +185,63 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueStorageRange(range);
                 }
+
+                return true;
             }
-            else
+            else if(result == AddRangeResult.MissingRootHashInProofs)
             {
-                _logger.Warn($"SNAP - AddStorageRange failed, {blockNumber}:{expectedRootHash}, startingHash:{startingHash}");
+                _logger.Warn($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
 
-                if (startingHash > Keccak.Zero)
+                _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+            }
+            else if(result == AddRangeResult.DifferentRootHash)
+            {
+                _logger.Warn($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+
+                _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+            }
+
+            return false;
+        }
+
+        public void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response)
+        {
+            int respLength = response.Length;
+
+            for (int reqi = 0; reqi < request.Paths.Length; reqi++)
+            {
+                var requestedPath = request.Paths[reqi];
+
+                if (reqi < respLength)
                 {
-                    StorageRange range = new()
-                    {
-                        Accounts = new[] { pathWithAccount },
-                        StartingHash = startingHash
-                    };
+                    byte[] nodeData = response[reqi];
+                    var node = new TrieNode(NodeType.Unknown, nodeData, true);
+                    node.ResolveNode(_store);
+                    if (node.TryResolveStorageRootHash(_store, out var storageRootHash))
+                    {                  
+                        requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(storageRootHash);
 
-                    _progressTracker.EnqueueStorageRange(range);
+                        if (requestedPath.StorageStartingHash > Keccak.Zero)
+                        {
+                            StorageRange range = new()
+                            {
+                                Accounts = new[] { requestedPath.PathAndAccount },
+                                StartingHash = requestedPath.StorageStartingHash
+                            };
+
+                            _progressTracker.EnqueueStorageRange(range);
+                        }
+                        else
+                        {
+                            _progressTracker.EnqueueAccountStorage(requestedPath.PathAndAccount);
+                        }
+                    }
                 }
                 else
                 {
-                    _progressTracker.EnqueueAccountStorage(pathWithAccount);
+                    _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
                 }
             }
-
-            return success;
         }
 
         public void AddCodes(Keccak[] requestedHashes, byte[][] codes)
@@ -257,8 +296,10 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 _progressTracker.ReportCodeRequestFinished(batch.CodesRequest);
             }
-
-
+            else if (batch.AccountsToRefreshRequest != null)
+            {
+                _progressTracker.ReportAccountRefreshFinished(batch.AccountsToRefreshRequest);
+            }
         }
 
         public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();

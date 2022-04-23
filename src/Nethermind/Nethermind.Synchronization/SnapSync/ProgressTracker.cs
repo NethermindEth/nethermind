@@ -18,8 +18,8 @@ namespace Nethermind.Synchronization.SnapSync
     {
         long _testReqCount;
 
-        private const int STORAGE_BATCH_SIZE = 2_200;
-        private const int CODES_BATCH_SIZE = 2_000;
+        private const int STORAGE_BATCH_SIZE = 1_200;
+        private const int CODES_BATCH_SIZE = 1_000;
         private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         private int _activeAccountRequests;
@@ -34,6 +34,7 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<StorageRange> NextSlotRange { get; set; } = new();
         private ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; set; } = new();
         private ConcurrentQueue<Keccak> CodesToRetrieve { get; set; } = new();
+        private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
         public bool MoreAccountsToRight { get; set; } = true;
 
@@ -72,7 +73,27 @@ namespace Nethermind.Synchronization.SnapSync
 
             SnapSyncBatch request = new();
 
-            if (MoreAccountsToRight && _activeAccountRequests == 0 && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE)
+            if(AccountsToRefresh.Count > 0)
+            {
+                LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
+
+                int queueLength = AccountsToRefresh.Count;
+                AccountWithStorageStartingHash[] paths = new AccountWithStorageStartingHash[queueLength];
+
+                for (int i = 0; i < queueLength && AccountsToRefresh.TryDequeue(out var acc); i++)
+                {
+                    paths[i] = acc;
+                }
+
+                // TODO:
+                //Interlocked.Increment(ref );
+
+                request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths};
+
+                return (request, false);
+
+            }
+            else if (MoreAccountsToRight && _activeAccountRequests == 0 && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE)
             {
                 // some contract hardcoded
                 //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
@@ -174,9 +195,25 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Decrement(ref _activeCodeRequests);
         }
 
+        public void ReportAccountRefreshFinished(AccountsToRefreshRequest accountsToRefreshRequest)
+        {
+            if (accountsToRefreshRequest is not null)
+            {
+                foreach (var path in accountsToRefreshRequest.Paths)
+                {
+                    AccountsToRefresh.Enqueue(path);
+                }
+            }
+        }
+
         public void EnqueueAccountStorage(PathWithAccount pwa)
         {
             StoragesToRetrieve.Enqueue(pwa);
+        }
+
+        public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, Keccak startingHash)
+        {
+            AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash});
         }
 
         public void ReportFullStorageRequestFinished(PathWithAccount[] storages = null)
@@ -253,7 +290,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (_testReqCount % 1 == 0)
             {
-                _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff}) AccountRequests:{_activeAccountRequests} | StorageRequests:{_activeStorageRequests} | CodeRequests:{_activeCodeRequests} | {NextAccountPath} | {NextSlotRange.Count} | {StoragesToRetrieve.Count} | {CodesToRetrieve.Count}");
+                _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff})\t AccountRequests:{_activeAccountRequests} | StorageRequests:{_activeStorageRequests} | CodeRequests:{_activeCodeRequests} | {NextAccountPath} | Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Accounts:{AccountsToRefresh.Count}");
             }
         }
     }

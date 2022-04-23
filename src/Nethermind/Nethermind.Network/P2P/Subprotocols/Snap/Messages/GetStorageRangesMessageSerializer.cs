@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             rlpStream.Encode(message.RequestId);
             rlpStream.Encode(message.StoragetRange.RootHash);
-            rlpStream.Encode(message.StoragetRange.Accounts.Select(a => a.AddressHash).ToArray()); // TODO: optimize this
+            rlpStream.Encode(message.StoragetRange.Accounts.Select(a => a.Path).ToArray()); // TODO: optimize this
             rlpStream.Encode(message.StoragetRange.StartingHash);
             rlpStream.Encode(message.StoragetRange.LimitHash);
             rlpStream.Encode(message.ResponseBytes);
@@ -58,14 +58,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         private PathWithAccount DecodePathWithRlpData(RlpStream stream)
         {
-            return new() { AddressHash = stream.DecodeKeccak() };
+            return new() { Path = stream.DecodeKeccak() };
         }
 
         public override int GetLength(GetStorageRangeMessage message, out int contentLength)
         {
             contentLength = Rlp.LengthOf(message.RequestId);
             contentLength += Rlp.LengthOf(message.StoragetRange.RootHash);
-            contentLength += Rlp.LengthOf(message.StoragetRange.Accounts.Select(a => a.AddressHash).ToArray(), true); // TODO: optimize this
+            contentLength += Rlp.LengthOf(message.StoragetRange.Accounts.Select(a => a.Path).ToArray(), true); // TODO: optimize this
             contentLength += Rlp.LengthOf(message.StoragetRange.StartingHash);
             contentLength += Rlp.LengthOf(message.StoragetRange.LimitHash);
             contentLength += Rlp.LengthOf(message.ResponseBytes);
