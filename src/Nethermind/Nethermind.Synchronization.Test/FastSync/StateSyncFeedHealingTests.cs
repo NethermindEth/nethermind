@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             dbContext.CompareTrees("END");
             Assert.AreEqual(dbContext.RemoteStateTree.RootHash, dbContext.LocalStateTree.RootHash);
-            Assert.AreEqual(4, data.RequestedNodesCount);   // 4 boundary proof nodes 
+            Assert.AreEqual(0, data.RequestedNodesCount);   // 4 boundary proof nodes stitched together => 0
         }
 
         [Test]

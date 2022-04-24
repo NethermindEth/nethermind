@@ -51,6 +51,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -355,6 +356,9 @@ namespace Nethermind.Synchronization.Test
             SyncProgressResolver resolver = new(
                 tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, null, syncConfig, logManager);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, logManager);
+
+            SnapProvider snapProvider = new SnapProvider(tree, dbProvider, LimboLogs.Instance);
+
             Synchronizer synchronizer = new(
                 dbProvider,
                 MainnetSpecProvider.Instance,
@@ -366,7 +370,7 @@ namespace Nethermind.Synchronization.Test
                 nodeStatsManager,
                 StaticSelector.Full,
                 syncConfig,
-                null,
+                snapProvider,
                 logManager);
             SyncServer syncServer = new(
                 stateDb,
