@@ -35,6 +35,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -72,8 +73,11 @@ namespace Nethermind.Synchronization.Test
                 null,
                 syncConfig,
                 LimboLogs.Instance);
+
+            SnapProvider snapProvider = new SnapProvider(_blockTree, dbProvider, LimboLogs.Instance);
+
             MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, LimboLogs.Instance);
-            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, null, LimboLogs.Instance);
+            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, snapProvider, LimboLogs.Instance);
             _syncServer = new SyncServer(
                 _stateDb,
                 _codeDb,

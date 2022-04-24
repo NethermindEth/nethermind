@@ -45,6 +45,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -304,6 +305,9 @@ namespace Nethermind.Synchronization.Test
                     syncConfig,
                     _logManager);
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
+
+                SnapProvider snapProvider = new SnapProvider(BlockTree, dbProvider, LimboLogs.Instance);
+
                 Synchronizer = new Synchronizer(
                     dbProvider,
                     MainnetSpecProvider.Instance,
@@ -315,7 +319,7 @@ namespace Nethermind.Synchronization.Test
                     stats,
                     syncModeSelector,
                     syncConfig,
-                    null,
+                    snapProvider,
                     _logManager);
 
                 SyncServer = new SyncServer(
