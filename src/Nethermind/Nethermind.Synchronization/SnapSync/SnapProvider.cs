@@ -258,6 +258,8 @@ namespace Nethermind.Synchronization.SnapSync
                     RetryAccountRefresh(requestedPath);
                 }
             }
+
+            _progressTracker.ReportAccountRefreshFinished();
         }
 
         private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath)
