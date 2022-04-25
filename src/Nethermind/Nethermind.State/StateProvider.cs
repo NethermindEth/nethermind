@@ -70,6 +70,16 @@ namespace Nethermind.State
         {
         }
 
+        public byte[] GetWitnessProofForMultipleKeys(byte[,] keys)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool VerifyWitnessProofMultipleKeys(byte[] verkleProof, byte[,] keys, byte[,] values)
+        {
+            throw new NotImplementedException();
+        }
+
         private bool _needsStateRootUpdate;
 
         public void RecalculateStateRoot()

@@ -508,4 +508,14 @@ public class VerkleTree
         _verkleTrieStore.FinishBlockCommit(TrieType, blockNumber);
     }
 
+    public byte[] GetVerkleProofForMultipleKeys(byte[,] keys)
+    {
+        return RustVerkleLib.VerkleProofGetMultiple(_verkleTrie, keys, keys.Length);
+    }
+
+    public bool VerifyVerkleProofMultipleKeys(byte[] verkleProof, byte[,] keys, byte[,] values)
+    {
+        return RustVerkleLib.VerkleProofVerifyMultiple(_verkleTrie, verkleProof, verkleProof.Length, keys, values,
+            keys.Length);
+    }
 }

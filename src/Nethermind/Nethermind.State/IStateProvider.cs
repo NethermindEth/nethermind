@@ -69,5 +69,9 @@ namespace Nethermind.State
         /// pruning hack
         /// </summary>
         void CommitCode();
+
+        public byte[] GetWitnessProofForMultipleKeys(byte[,] keys);
+
+        public bool VerifyWitnessProofMultipleKeys(byte[] verkleProof, byte[,] keys, byte[,] values);
     }
 }

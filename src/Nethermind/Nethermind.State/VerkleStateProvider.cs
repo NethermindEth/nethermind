@@ -100,6 +100,12 @@ namespace Nethermind.State
             set => _tree.RootHash = value;
         }
 
+        public byte[] GetWitnessProofForMultipleKeys(byte[,] keys) => _tree.GetVerkleProofForMultipleKeys(keys);
+
+        public bool VerifyWitnessProofMultipleKeys(byte[] verkleProof, byte[,] keys, byte[,] values) =>
+            _tree.VerifyVerkleProofMultipleKeys(verkleProof, keys, values);
+
+
         public Account GetAccount(Address address)
         {
             return GetThroughCache(address) ?? Account.TotallyEmpty;
