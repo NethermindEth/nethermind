@@ -74,7 +74,8 @@ namespace Nethermind.Synchronization.Test
                 syncConfig,
                 LimboLogs.Instance);
 
-            SnapProvider snapProvider = new SnapProvider(_blockTree, dbProvider, LimboLogs.Instance);
+            ProgressTracker progressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, LimboLogs.Instance);
             _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, snapProvider, LimboLogs.Instance);
