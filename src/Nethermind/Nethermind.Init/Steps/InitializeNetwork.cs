@@ -181,7 +181,6 @@ namespace Nethermind.Init.Steps
             });
 
             SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
-            _api.DisposeStack.Push(snapCapabilitySwitcher);
 
             if (cancellationToken.IsCancellationRequested)
             {

@@ -24,7 +24,7 @@ namespace Nethermind.Network;
 
 // Temporary class used for removing snap capability after SnapSync finish.
 // Will be removed after implementing missing functionality - serving data via snap protocol.
-public class SnapCapabilitySwitcher : IDisposable
+public class SnapCapabilitySwitcher
 {
     private readonly IProtocolsManager _protocolsManager;
     private readonly ProgressTracker _progressTracker;
@@ -41,10 +41,5 @@ public class SnapCapabilitySwitcher : IDisposable
     {
         _progressTracker.SnapSyncFinished -= OnSnapSyncFinished;
         _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
-    }
-
-    public void Dispose()
-    {
-        _progressTracker.SnapSyncFinished -= OnSnapSyncFinished;
     }
 }
