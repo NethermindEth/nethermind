@@ -312,7 +312,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
-            bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
+            bool notNeedToWaitForHeaders = true; // NotNeedToWaitForHeaders;
 
             bool result =
                 postPivotPeerAvailable &&
