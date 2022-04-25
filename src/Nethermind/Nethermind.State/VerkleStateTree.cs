@@ -56,7 +56,7 @@ namespace Nethermind.State
         public Account? Get(Address address, Keccak? rootHash = null)
         {
             // byte[]? bytes = GetValue(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            byte[] key = GetTreeKeyPrefixAccount(address);
+            byte[] key = VerkleUtils.GetTreeKeyPrefixAccount(address);
             
             // byte[]? bytes = GetValue(ValueKeccak.Compute(address.Bytes).BytesAsSpan);
             // if (bytes is null)
@@ -105,7 +105,7 @@ namespace Nethermind.State
 
         public void Set(Address address, Account? account)
         {
-            byte[] keyPrefix = GetTreeKeyPrefixAccount(address);
+            byte[] keyPrefix = VerkleUtils.GetTreeKeyPrefixAccount(address);
             if (account is null)
             {
                 SetValue(keyPrefix, AccountTreeIndexes.Version, UInt256.Zero.ToLittleEndian());
@@ -131,13 +131,13 @@ namespace Nethermind.State
         
         public void SetStorageValue(StorageCell storageCell, byte[] value)
         {
-            byte[] storageKey = GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
+            byte[] storageKey = VerkleUtils.GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
             SetValue(storageKey, value);
         }
 
         public byte[] GetStorageValue(StorageCell storageCell)
         {
-            byte[] storageKey = GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
+            byte[] storageKey = VerkleUtils.GetTreeKeyForStorageSlot(storageCell.Address, storageCell.Index);
             byte[]? value = GetValue(storageKey);
             if (value is null)
             {

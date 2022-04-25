@@ -34,21 +34,7 @@ namespace Nethermind.Trie;
 
 public class VerkleTree
 {
-    private const int VersionLeafKey = 0;
-    private const int BalanceLeafKey = 1;
-    private const int NonceLeafKey = 2;
-    private const int CodeKeccakLeafKey = 3;
-    private const int CodeSizeLeafKey = 4;
-    
-    private readonly UInt256 HeaderStorageOffset = 64;
-    private readonly UInt256 CodeOffset = 128;
-    private readonly UInt256 VerkleNodeWidth = 256;
-        
-    private readonly UInt256 MainStorageOffsetBase = 256;
-    private const int MainStorageOffsetExponent = 31;
-    private readonly UInt256 MainStorageOffset;
 
-    
     protected readonly IVerkleTrieStore _verkleTrieStore;
     protected readonly RustVerkle _verkleTrie;
     private readonly ILogger _logger;
@@ -84,7 +70,6 @@ public class VerkleTree
         _logger.Info(_verkleTrieStore.ToString());
         _allowCommits = allowCommits;
         RootHash = rootHash;
-        MainStorageOffsetBase.LeftShift(MainStorageOffsetExponent, out MainStorageOffset);
         
         if (_allowCommits)
         {
@@ -115,7 +100,6 @@ public class VerkleTree
         _logger.Info(_verkleTrieStore.ToString());
         _allowCommits = allowCommits;
         RootHash = rootHash;
-        MainStorageOffsetBase.LeftShift(MainStorageOffsetExponent, out MainStorageOffset);
         
         if (_allowCommits)
         {
@@ -172,27 +156,6 @@ public class VerkleTree
         keyPrefix[31] = subIndex;
         RustVerkleLib.VerkleTrieInsert(_verkleTrie, keyPrefix, value);
     }
-
-    public byte[] GetTreeKeyPrefix(Address address, UInt256 treeIndex)
-    {
-        // allocate the array on stack  
-        Span<byte> keyPrefix = stackalloc byte[64];
-        // first 12 bytes are '0' padding to convert 12 byte address -> 32 bytes
-        // Span<byte> cursor = keyPrefix.Slice(12);
-        Span<byte> cursor = keyPrefix.Slice(0);
-        address.Bytes.CopyTo(cursor);
-        // copy the address to the remaining 20 bytes - 
-        //TODO: correct this when geth corrects it, it should be left padded and not right
-        // cursor = cursor.Slice(20);
-        cursor = cursor.Slice(32);
-        // copy the tree index to the remaining 32 bytes
-        treeIndex.ToBigEndian(cursor);
-        byte[] prefix = RustVerkleLib.CalculatePedersenHash(keyPrefix);
-        prefix[31] = 0;
-        return prefix;
-    }
-    
-    public byte[] GetTreeKeyPrefixAccount(Address address) => GetTreeKeyPrefix(address, 0);
     
     public byte[]? GetValue(byte[] keyPrefix, byte subIndex)
     {
@@ -209,7 +172,7 @@ public class VerkleTree
 
     private byte[] GetTreeKey(Address address, UInt256 treeIndex, byte subIndexBytes)
     {
-        byte[] treeKeyPrefix = GetTreeKeyPrefix(address, treeIndex);
+        byte[] treeKeyPrefix = VerkleUtils.GetTreeKeyPrefix(address, treeIndex);
         treeKeyPrefix[31] = subIndexBytes;
         return treeKeyPrefix;
     }
@@ -245,41 +208,7 @@ public class VerkleTree
     // {
     //     return GetTreeKey(address, UInt256.Zero, leaf);
     // }
-
-    private byte[] GetTreeKeyForVersion(Address address) => GetTreeKey(address, UInt256.Zero, VersionLeafKey);
-    private byte[] GetTreeKeyForBalance(Address address) => GetTreeKey(address, UInt256.Zero, BalanceLeafKey);
-    private byte[] GetTreeKeyForNonce(Address address) => GetTreeKey(address, UInt256.Zero, NonceLeafKey);
-    private byte[] GetTreeKeyForCodeKeccak(Address address) => GetTreeKey(address, UInt256.Zero, CodeKeccakLeafKey);
-    private byte[] GetTreeKeyForCodeSize(Address address) => GetTreeKey(address, UInt256.Zero, CodeSizeLeafKey);
     
-    public byte[] GetTreeKeyForCodeChunk(Address address, UInt256 chunk)
-    {
-        UInt256 chunkOffset = CodeOffset + chunk;
-        
-        UInt256 treeIndex = chunkOffset / VerkleNodeWidth;
-        
-        UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
-        return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[31]);
-    }
-
-    public byte[] GetTreeKeyForStorageSlot(Address address, UInt256 storageKey)
-    {
-        UInt256 pos;
-        
-        if (storageKey < CodeOffset - HeaderStorageOffset)
-        {
-            pos = HeaderStorageOffset + storageKey;
-        } 
-        else
-        {
-            pos = MainStorageOffset + storageKey;
-        }
-
-        UInt256 treeIndex = pos / VerkleNodeWidth;
-        
-        UInt256.Mod(pos, VerkleNodeWidth, out UInt256 subIndex);
-        return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[31]);
-    }
         
     public void SetCode(Address address, byte[] code)
     {
@@ -295,123 +224,24 @@ public class VerkleTree
         
         UInt256 i = 0;
         Span<byte> subIndexBytes = stackalloc byte[32];
-        CodeChunkEnumerator chunkEnumerator = new(code);
+        VerkleUtils.CodeChunkEnumerator chunkEnumerator = new(code);
         while (chunkEnumerator.TryGetNextChunk(out byte[] chunk))
         {
             // byte[] chunkKey = GetTreeKeyForCodeChunk(address, (UInt256)i);
             
             // find tree index and the sub index in verkle tree for the code chunk
-            FillTreeAndSubIndexForChunk(i, ref subIndexBytes, out UInt256 treeIndex);
+            VerkleUtils.FillTreeAndSubIndexForChunk(i, ref subIndexBytes, out UInt256 treeIndex);
             
-            byte[] chunkKey = GetTreeKeyPrefix(address, treeIndex);
+            byte[] chunkKey = VerkleUtils.GetTreeKeyPrefix(address, treeIndex);
             chunkKey[31] = subIndexBytes[31];
             SetValue(chunkKey, chunk);
             i++;
         }
     }
 
-    private void FillTreeAndSubIndexForChunk(UInt256 chunkId, ref Span<byte> subIndexBytes, out UInt256 treeIndex)
-    {
-        UInt256 chunkOffset = CodeOffset + chunkId;
-        treeIndex = chunkOffset / VerkleNodeWidth;
-        UInt256.Mod(chunkOffset, VerkleNodeWidth, out UInt256 subIndex);
-        subIndex.ToBigEndian(subIndexBytes);
-    }
+    
 
-    private ref struct CodeChunkEnumerator
-    {
-        const byte PushOffset = 95;
-        const byte Push1 = PushOffset + 1;
-        const byte Push32 = PushOffset + 32;
-        
-        private Span<byte> _code;
-        private byte _rollingOverPushLength = 0;
-        private readonly byte[] _bufferChunk = new byte[32];
-        private readonly Span<byte> _bufferChunkCodePart;
-
-        public CodeChunkEnumerator(Span<byte> code)
-        {
-            _code = code;
-            _bufferChunkCodePart = _bufferChunk.AsSpan().Slice(1);
-        }
-
-        // Try get next chunk
-        public bool TryGetNextChunk(out byte[] chunk)
-        {
-            chunk = _bufferChunk;
-            
-            // we don't have chunks left
-            if (_code.IsEmpty)
-            {
-                return false;
-            }
-
-            // we don't have full chunk
-            if (_code.Length < 31)
-            {
-                // need to have trailing zeroes
-                _bufferChunkCodePart.Fill(0);
-                
-                // set number of push bytes
-                _bufferChunk[0] = _rollingOverPushLength;
-                
-                // copy main bytes
-                _code.CopyTo(_bufferChunkCodePart);
-                
-                // we are done
-                _code = Span<byte>.Empty;
-            }
-            else
-            {
-                // fill up chunk to store
-                
-                // get current chunk of code
-                Span<byte> currentChunk = _code.Slice(0, 31);
-
-                // copy main bytes
-                currentChunk.CopyTo(_bufferChunkCodePart);
-
-                switch (_rollingOverPushLength)
-                {
-                    case 32 or 31: // all bytes are roll over
-                        
-                        // set number of push bytes
-                        _bufferChunk[0] = 31;
-                        
-                        // if 32, then we will roll over with 1 to even next chunk
-                        _rollingOverPushLength -= 31;
-                        break;
-                    default:
-                        // set number of push bytes
-                        _bufferChunk[0] = _rollingOverPushLength;
-                        _rollingOverPushLength = 0;
-
-                        // check if we have a push instruction in remaining code
-                        // ignore the bytes we rolled over, they are not instructions
-                        for (int i =  _bufferChunk[0]; i < 31;)
-                        {
-                            byte instruction = currentChunk[i];
-                            i++;
-                            if (instruction is >= Push1 and <= Push32)
-                            {
-                                // we calculate data to ignore in code
-                                i += instruction - PushOffset;
-
-                                // check if we rolled over the chunk
-                                _rollingOverPushLength = (byte)Math.Max(i - 31, 0);
-                            }
-                        }
-
-                        break;
-                }
-                
-                // move to next chunk
-                _code = _code.Slice(31);
-            }
-
-            return true;
-        }
-    }
+    
 
     private static Span<byte> PrepareCodeForChunkification(byte[] code)
     {

@@ -49,7 +49,7 @@ public class VerkleTreeTests
     public void Set_Get_Keys()
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
+        byte[] keyPrefix = VerkleUtils.GetTreeKeyPrefixAccount(TestItem.AddressA);
         
         byte[] value =  {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
@@ -73,7 +73,7 @@ public class VerkleTreeTests
     public void Set_Account_Value_Keys()
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
+        byte[] keyPrefix = VerkleUtils.GetTreeKeyPrefixAccount(TestItem.AddressA);
         byte[] version = {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1
         };
@@ -109,7 +109,7 @@ public class VerkleTreeTests
     public void Set_Account_Data_Type_Keys()
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
+        byte[] keyPrefix = VerkleUtils.GetTreeKeyPrefixAccount(TestItem.AddressA);
         UInt256 version = UInt256.Zero;
         UInt256 balance = new (2);
         UInt256 nonce = UInt256.Zero;
@@ -134,7 +134,7 @@ public class VerkleTreeTests
     public void Set_Account_Keys()
     {
         VerkleStateTree tree = new(LimboLogs.Instance);
-        byte[] keyPrefix = tree.GetTreeKeyPrefixAccount(TestItem.AddressA);
+        byte[] keyPrefix = VerkleUtils.GetTreeKeyPrefixAccount(TestItem.AddressA);
         byte[] version = account.Version.ToBigEndian();
         byte[] balance = account.Balance.ToBigEndian();
         byte[] nonce = account.Nonce.ToBigEndian();
@@ -162,13 +162,13 @@ public class VerkleTreeTests
         byte[] code = {1, 2, 3, 4};
         tree.SetCode(TestItem.AddressA, code);
 
-        byte[] key =tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        byte[] key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
         byte[] value = tree.GetValue(key);
         value.Should().NotBeNull();
         value.Slice(0, 5).Should().BeEquivalentTo(new byte[] {0, 1, 2, 3, 4}); 
         value.Slice(5, 27).Should().BeEquivalentTo(new byte[27]);
         
-        key =tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
         value = tree.GetValue(key);
 
         value.Should().BeNull();
@@ -181,13 +181,13 @@ public class VerkleTreeTests
         byte[] code = {97, 1, 2, 3, 4};
         tree.SetCode(TestItem.AddressA, code);
 
-        byte[] key =tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        byte[] key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
         byte[] value = tree.GetValue(key);
         value.Should().NotBeNull();
         value.Slice(0, 6).Should().BeEquivalentTo(new byte[] {0, 97, 1, 2, 3, 4}); 
         value.Slice(6, 26).Should().BeEquivalentTo(new byte[26]);
         
-        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
         value = tree.GetValue(key);
 
         value.Should().BeNull();
@@ -199,7 +199,7 @@ public class VerkleTreeTests
         };
         tree.SetCode(TestItem.AddressA, code2);
         
-        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
         value = tree.GetValue(key);
 
         byte[] firstCodeChunk =
@@ -214,7 +214,7 @@ public class VerkleTreeTests
 
         value.Should().BeEquivalentTo(firstCodeChunk);
         
-        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
         value = tree.GetValue(key);
         
         value.Slice(0, 16).Should().BeEquivalentTo(secondCodeChunk); 
@@ -249,15 +249,15 @@ public class VerkleTreeTests
             1, 62, 63, 64, 65
         };
         
-        byte[] key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        byte[] key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
         byte[] value = tree.GetValue(key);
         value.Should().BeEquivalentTo(firstCodeChunk);
         
-        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
         value = tree.GetValue(key);
         value.Should().BeEquivalentTo(secondCodeChunk); 
         
-        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 2);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 2);
         value = tree.GetValue(key);
         value.Slice(0, 5).Should().BeEquivalentTo(thirdCodeChunk); 
     }
@@ -289,15 +289,15 @@ public class VerkleTreeTests
             0, 62, 63, 64, 65
         };
         
-        byte[] key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        byte[] key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
         byte[] value = tree.GetValue(key);
         value.Should().BeEquivalentTo(firstCodeChunk);
         
-        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
         value = tree.GetValue(key);
         value.Should().BeEquivalentTo(secondCodeChunk); 
         
-        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 2);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 2);
         value = tree.GetValue(key);
         value.Slice(0, 5).Should().BeEquivalentTo(thirdCodeChunk); 
     }
@@ -329,15 +329,15 @@ public class VerkleTreeTests
             0, 62, 63, 64, 65
         };
         
-        byte[] key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
+        byte[] key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 0);
         byte[] value = tree.GetValue(key);
         value.Should().BeEquivalentTo(firstCodeChunk);
         
-        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 1);
         value = tree.GetValue(key);
         value.Should().BeEquivalentTo(secondCodeChunk); 
         
-        key = tree.GetTreeKeyForCodeChunk(TestItem.AddressA, 2);
+        key = VerkleUtils.GetTreeKeyForCodeChunk(TestItem.AddressA, 2);
         value = tree.GetValue(key);
         value.Slice(0, 5).Should().BeEquivalentTo(thirdCodeChunk); 
     }
