@@ -299,7 +299,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (_testReqCount % 1 == 0)
             {
-                _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff})\t AccountRequests:{_activeAccountRequests} | StorageRequests:{_activeStorageRequests} | CodeRequests:{_activeCodeRequests} | {NextAccountPath} | Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Accounts:{AccountsToRefresh.Count}");
+                _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff}) {NextAccountPath}\t AccountRequests:{_activeAccountRequests} | StorageRequests:{_activeStorageRequests} | CodeRequests:{_activeCodeRequests} | AccountsToRefresh{_activeAccRefreshRequests} | {Environment.NewLine}Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | AccountsToRefresh:{AccountsToRefresh.Count}");
             }
         }
     }
