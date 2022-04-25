@@ -292,14 +292,16 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _testReqCount++;
 
-            if(_testReqCount % 100 == 0)
+            if(_testReqCount % 10 == 0)
             {
+                var progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
+                _logger.Warn($"SNAP - progres of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress)}{new string(' ', 100 - (int)progress)}]");
             }
 
             if (_testReqCount % 1 == 0)
             {
-                _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff}) {NextAccountPath}\t AccountRequests:{_activeAccountRequests} | StorageRequests:{_activeStorageRequests} | CodeRequests:{_activeCodeRequests} | AccountsToRefresh{_activeAccRefreshRequests} | {Environment.NewLine}Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | AccountsToRefresh:{AccountsToRefresh.Count}");
+                _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff}) {NextAccountPath}\t AccountRequests:{_activeAccountRequests} | StorageRequests:{_activeStorageRequests} | CodeRequests:{_activeCodeRequests} | AccountsToRefresh:{_activeAccRefreshRequests} | {Environment.NewLine}Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | AccountsToRefresh:{AccountsToRefresh.Count}");
             }
         }
     }
