@@ -66,7 +66,7 @@ namespace Nethermind.Network
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
-        private readonly IList<Capability> _capabilities = new List<Capability>();
+        private readonly HashSet<Capability> _capabilities = new();
         public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
 
         public ProtocolsManager(
@@ -405,19 +405,13 @@ namespace Nethermind.Network
 
         public void AddSupportedCapability(Capability capability)
         {
-            if (_capabilities.Contains(capability))
-            {
-                return;
-            }
-
             _capabilities.Add(capability);
         }
         
         public void RemoveSupportedCapability(Capability capability)
         {
-            if (_capabilities.Contains(capability))
+            if (_capabilities.Remove(capability))
             {
-                _capabilities.Remove(capability);
                 if (_logger.IsDebug) _logger.Debug($"Removed supported capability: {capability}");
             }
         }
