@@ -25,6 +25,7 @@ namespace Nethermind.Synchronization.SnapSync
         private int _activeAccountRequests;
         private int _activeStorageRequests;
         private int _activeCodeRequests;
+        private int _activeAccRefreshRequests;
 
         private readonly ILogger _logger;
         private readonly IDb _db;
@@ -73,24 +74,6 @@ namespace Nethermind.Synchronization.SnapSync
 
             SnapSyncBatch request = new();
 
-            if(blockNumber == -1)
-            {
-                AccountWithStorageStartingHash[] paths = new AccountWithStorageStartingHash[]
-                {
-                    new AccountWithStorageStartingHash()
-                    {
-                        PathAndAccount = new PathWithAccount()
-                        {
-                            Path = new Keccak("0x00d012dbe1914fba0434a6972f6e69c7cf0ea3f6d7284f2a2adfa58ce485db0f")
-                        }
-                    }
-                };
-
-                request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths };
-
-                return (request, false);
-            }
-
             if(AccountsToRefresh.Count > 0)
             {
                 LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
@@ -103,8 +86,7 @@ namespace Nethermind.Synchronization.SnapSync
                     paths[i] = acc;
                 }
 
-                // TODO:
-                //Interlocked.Increment(ref );
+                Interlocked.Increment(ref _activeAccRefreshRequests);
 
                 request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths};
 
@@ -213,7 +195,7 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Decrement(ref _activeCodeRequests);
         }
 
-        public void ReportAccountRefreshFinished(AccountsToRefreshRequest accountsToRefreshRequest)
+        public void ReportAccountRefreshFinished(AccountsToRefreshRequest accountsToRefreshRequest = null)
         {
             if (accountsToRefreshRequest is not null)
             {
@@ -222,6 +204,8 @@ namespace Nethermind.Synchronization.SnapSync
                     AccountsToRefresh.Enqueue(path);
                 }
             }
+
+            Interlocked.Decrement(ref _activeAccRefreshRequests);
         }
 
         public void EnqueueAccountStorage(PathWithAccount pwa)
@@ -274,9 +258,11 @@ namespace Nethermind.Synchronization.SnapSync
                 && StoragesToRetrieve.Count == 0
                 && NextSlotRange.Count == 0
                 && CodesToRetrieve.Count == 0
+                && AccountsToRefresh.Count == 0
                 && _activeAccountRequests == 0
                 && _activeStorageRequests == 0
-                && _activeCodeRequests == 0;
+                && _activeCodeRequests == 0
+                && _activeAccRefreshRequests == 0;
         }
 
         private void GetSyncProgress()
@@ -305,6 +291,11 @@ namespace Nethermind.Synchronization.SnapSync
         private void LogRequest(string reqType)
         {
             _testReqCount++;
+
+            if(_testReqCount % 100 == 0)
+            {
+
+            }
 
             if (_testReqCount % 1 == 0)
             {
