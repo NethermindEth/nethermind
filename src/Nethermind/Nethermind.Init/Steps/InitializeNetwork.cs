@@ -114,7 +114,7 @@ namespace Nethermind.Init.Steps
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
-            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, _api.LogManager);
+            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, 1000, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
             _api.SnapProvider = new SnapProvider(_api.BlockTree, _api.DbProvider, _api.LogManager);
