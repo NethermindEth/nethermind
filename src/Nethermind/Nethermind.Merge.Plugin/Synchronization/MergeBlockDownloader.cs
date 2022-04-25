@@ -153,6 +153,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
+                if (headers.Length == 0)
+                    break;
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
@@ -171,6 +173,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 }
 
                 Block[] blocks = context.Blocks;
+                if (blocks == null || blocks.Length == 0)
+                    break;
                 Block blockZero = blocks[0];
                 if (context.FullBlocksCount > 0)
                 {
