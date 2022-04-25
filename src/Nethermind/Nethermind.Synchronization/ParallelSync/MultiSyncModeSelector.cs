@@ -42,7 +42,6 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
-        private readonly bool _needToWaitForHeaders;
         protected readonly ILogger _logger;
 
         private long PivotNumber;
@@ -55,7 +54,6 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksBodiesFinished => !FastBodiesEnabled || _syncProgressResolver.IsFastBlocksBodiesFinished();
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
-        private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
 
         internal long? LastBlockThatEnabledFullSync { get; set; }
 
@@ -71,14 +69,12 @@ namespace Nethermind.Synchronization.ParallelSync
             ISyncProgressResolver syncProgressResolver,
             ISyncPeerPool syncPeerPool,
             ISyncConfig syncConfig,
-            ILogManager logManager,
-            bool needToWaitForHeaders = false)
+            ILogManager logManager)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
-            _needToWaitForHeaders = needToWaitForHeaders;
 
             if (syncConfig.FastSyncCatchUpHeightDelta <= FastSyncLag)
             {
@@ -159,7 +155,6 @@ namespace Nethermind.Synchronization.ParallelSync
                             best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
                             best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
                             bool canBeInSnapRangesPhase = CanBeInSnapRangesPhase(best);
-                            bool canBeInTrieSyncPhase = CanBeInTrieSyncPhase();
 
                             newModes = SyncMode.None;
                             CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
@@ -167,7 +162,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
                             CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
                             CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
-                            CheckAddFlag(best.IsInStateSync && !canBeInSnapRangesPhase && canBeInTrieSyncPhase, SyncMode.StateNodes, ref newModes);
+                            CheckAddFlag(best.IsInStateSync && !canBeInSnapRangesPhase, SyncMode.StateNodes, ref newModes);
                             CheckAddFlag(best.IsInStateSync && canBeInSnapRangesPhase, SyncMode.SnapSync, ref newModes);
                             CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                             CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
@@ -312,7 +307,6 @@ namespace Nethermind.Synchronization.ParallelSync
             bool postPivotPeerAvailable = AnyPostPivotPeerKnown(best.PeerBlock);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
             bool notHasJustStartedFullSync = !HasJustStartedFullSync(best);
-            bool notNeedToWaitForHeaders = true; // NotNeedToWaitForHeaders;
 
             bool result =
                 postPivotPeerAvailable &&
@@ -320,8 +314,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // OR standard fast sync)
                 notInAStickyFullSync &&
                 heightDeltaGreaterThanLag &&
-                notHasJustStartedFullSync &&
-                notNeedToWaitForHeaders;
+                notHasJustStartedFullSync;
 
             if (_logger.IsTrace)
             {
@@ -329,8 +322,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(heightDeltaGreaterThanLag), heightDeltaGreaterThanLag),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
-                    (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync),
-                    (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
+                    (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync));
             }
 
             return result;
@@ -343,14 +335,12 @@ namespace Nethermind.Synchronization.ParallelSync
             bool hasFastSyncBeenActive = best.Header >= PivotNumber;
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
-            bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
             bool result = desiredPeerKnown &&
                           postPivotPeerAvailable &&
                           hasFastSyncBeenActive &&
                           notInFastSync &&
-                          notInStateSync &&
-                          notNeedToWaitForHeaders;
+                          notInStateSync;
 
             if (_logger.IsTrace)
             {
@@ -359,8 +349,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(postPivotPeerAvailable), postPivotPeerAvailable),
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(notInFastSync), notInFastSync),
-                    (nameof(notInStateSync), notInStateSync),
-                    (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
+                    (nameof(notInStateSync), notInStateSync));
             }
 
             return result;
@@ -495,17 +484,6 @@ namespace Nethermind.Synchronization.ParallelSync
             return SnapSyncEnabled
                 && isCloseToHead
                 && snapNotFinished;
-        }
-
-        private bool CanBeInTrieSyncPhase()
-        {
-            if (_logger.IsTrace)
-            {
-                LogDetailedSyncModeChecks("TRIE_SYNC",
-                    (nameof(NotNeedToWaitForHeaders), NotNeedToWaitForHeaders));
-            }
-
-            return NotNeedToWaitForHeaders;
         }
 
         private bool HasJustStartedFullSync(Snapshot best) =>

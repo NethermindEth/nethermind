@@ -231,7 +231,7 @@ namespace Nethermind.Init.Steps
         }
 
         protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
-            => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
+            => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, _api.LogManager);
 
         private Task StartDiscovery()
         {
