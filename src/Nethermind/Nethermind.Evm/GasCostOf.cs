@@ -70,5 +70,12 @@ namespace Nethermind.Evm
         
         public const long AccessAccountListEntry = 2400; // eip-2930
         public const long AccessStorageListEntry = 1900; // eip-2930
+        
+        public const long WitnessChunkRead = 200; // verkle-trie
+        public const long WitnessChunkWrite = 500; // verkle-trie
+        public const long WitnessChunkFill = 6200; // verkle-trie
+        public const long WitnessBranchRead = 1900; // verkle-trie
+        public const long WitnessBranchWrite = 3000; // verkle-trie
+        
     }
 }
