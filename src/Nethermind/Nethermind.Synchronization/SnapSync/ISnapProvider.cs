@@ -25,7 +25,5 @@ namespace Nethermind.Synchronization.SnapSync
         void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response);
 
         void RetryRequest(SnapSyncBatch batch);
-
-        bool IsSnapGetRangesFinished();
     }
 }

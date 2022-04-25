@@ -40,6 +40,7 @@ namespace Nethermind.Synchronization.SnapSync
         public bool MoreAccountsToRight { get; set; } = true;
 
         private readonly Pivot _pivot;
+        public event EventHandler<EventArgs> SnapSyncFinished;
 
         public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager)
         {
@@ -286,6 +287,8 @@ namespace Nethermind.Synchronization.SnapSync
             MoreAccountsToRight = false;
             NextAccountPath = Keccak.MaxValue;
             _db.Set(ACC_PROGRESS_KEY, NextAccountPath.Bytes);
+            
+            SnapSyncFinished?.Invoke(this, EventArgs.Empty);
         }
 
         private void LogRequest(string reqType)

@@ -412,6 +412,14 @@ namespace Nethermind.Network
 
             _capabilities.Add(capability);
         }
+        
+        public void RemoveSupportedCapability(Capability capability)
+        {
+            if (_capabilities.Contains(capability))
+            {
+                _capabilities.Remove(capability);
+            }
+        }
 
         public void SendNewCapability(Capability capability)
         {

@@ -41,7 +41,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IReceiptStorage _receiptStorage;
         private readonly IDb _stateDb;
         private readonly ITrieNodeResolver _trieNodeResolver;
-        private readonly ISnapProvider _snapProvider;
+        private readonly ProgressTracker _progressTracker;
         private readonly ISyncConfig _syncConfig;
 
         // ReSharper disable once NotAccessedField.Local
@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization.ParallelSync
             IReceiptStorage receiptStorage,
             IDb stateDb,
             ITrieNodeResolver trieNodeResolver,
-            ISnapProvider snapProvider,
+            ProgressTracker progressTracker,
             ISyncConfig syncConfig,
             ILogManager logManager)
         {
@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
-            _snapProvider = snapProvider;
+            _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
             _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
@@ -191,7 +191,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                                                                .LowestInsertedReceiptBlockNumber ??
                                                                            long.MaxValue) <= _receiptsBarrier);
 
-        public bool IsSnapGetRangesFinished() => _snapProvider.IsSnapGetRangesFinished();
+        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
 
         private bool IsFastBlocks()
         {

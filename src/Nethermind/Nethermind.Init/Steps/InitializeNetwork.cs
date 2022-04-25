@@ -117,14 +117,15 @@ namespace Nethermind.Init.Steps
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, 1000, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
-            _api.SnapProvider = new SnapProvider(_api.BlockTree, _api.DbProvider, _api.LogManager);
+            ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager);
+            _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
             SyncProgressResolver syncProgressResolver = new(
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.DbProvider.StateDb,
                 _api.ReadOnlyTrieStore!,
-                _api.SnapProvider,
+                progressTracker,
                 _syncConfig,
                 _api.LogManager);
             
@@ -178,6 +179,9 @@ namespace Nethermind.Init.Steps
                     _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
+
+            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
+            _api.DisposeStack.Push(snapCapabilitySwitcher);
 
             if (cancellationToken.IsCancellationRequested)
             {

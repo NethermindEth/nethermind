@@ -36,10 +36,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         public ProgressTracker _progressTracker;
 
-        public SnapProvider(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager)
+        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _progressTracker = new ProgressTracker(blockTree, dbProvider.StateDb, logManager);
+            _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
 
             _store = new TrieStore(
                 _dbProvider.StateDb,
@@ -324,7 +324,5 @@ namespace Nethermind.Synchronization.SnapSync
                 _progressTracker.ReportAccountRefreshFinished(batch.AccountsToRefreshRequest);
             }
         }
-
-        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
     }
 }
