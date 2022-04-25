@@ -418,6 +418,7 @@ namespace Nethermind.Network
             if (_capabilities.Contains(capability))
             {
                 _capabilities.Remove(capability);
+                if (_logger.IsDebug) _logger.Debug($"Removed supported capability: {capability}");
             }
         }
 
