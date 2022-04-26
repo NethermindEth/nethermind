@@ -52,6 +52,236 @@ public class VerkleWitness: IVerkleWitness
     {
         _accessedSubtrees = new JournalSet<byte[]>();
         _accessedLeaves = new JournalSet<byte[]>();
+        _modifiedLeaves = new JournalSet<byte[]>();
+        _modifiedSubtrees = new JournalSet<byte[]>();
+    }
+    /// <summary>
+    /// When a non-precompile address is the target of a CALL, CALLCODE,
+    /// DELEGATECALL, SELFDESTRUCT, EXTCODESIZE, or EXTCODECOPY opcode,
+    /// or is the target address of a contract creation whose initcode
+    /// starts execution.
+    /// </summary>
+    /// <param name="caller"></param>
+    /// <returns></returns>
+    public long AccessForCodeOpCodes(Address caller)
+    {
+        // (address, 0, VERSION_LEAF_KEY)
+        // (address, 0, CODE_SIZE_LEAF_KEY)
+        bool[] accountAccess = {true, false, false, false, true};
+        return AccessAccount(caller, accountAccess);
+    }
+
+    /// <summary>
+    /// Use this in two scenarios: 
+    /// 1. If a call is value-bearing (ie. it transfers nonzero wei), whether
+    /// or not the callee is a precompile
+    /// 2. If the SELFDESTRUCT/SENDALL opcode is called by some caller_address
+    /// targeting some target_address (regardless of whether it’s value-bearing
+    /// or not)
+    /// </summary>
+    /// <param name="caller"></param>
+    /// <param name="callee"></param>
+    /// <param name="isWrite"></param>
+    /// <returns></returns>
+    public long AccessValueTransfer(Address caller, Address callee)
+    {
+        // (caller_address, 0, BALANCE_LEAF_KEY)
+        // (callee_address, 0, BALANCE_LEAF_KEY)
+        bool[] accountAccess = {false, true, false, false, false};
+        return AccessAccount(caller, accountAccess, true) + AccessAccount(callee, accountAccess, true);
+    }
+    
+    /// <summary>
+    /// When a contract creation is initialized.
+    /// </summary>
+    /// <param name="contractAddress"></param>
+    /// <param name="isValueTransfer"></param>
+    /// <returns></returns>
+    public long AccessForContractCreationInit(Address contractAddress, bool isValueTransfer)
+    {
+        // (contract_address, 0, VERSION_LEAF_KEY)
+        // (contract_address, 0, NONCE_LEAF_KEY)
+        bool[] accountAccess = {true, false, true, false, false};
+        if (isValueTransfer)
+        {
+            // (contract_address, 0, BALANCE_LEAF_KEY)
+            accountAccess[1] = true;
+        }
+        return AccessAccount(contractAddress, accountAccess, true);
+    }
+    
+    /// <summary>
+    /// When a contract is created.
+    /// </summary>
+    /// <param name="contractAddress"></param>
+    /// <returns></returns>
+    public long AccessContractCreated(Address contractAddress)
+    {
+        // (contract_address, 0, VERSION_LEAF_KEY)
+        // (contract_address, 0, NONCE_LEAF_KEY)
+        // (contract_address, 0, BALANCE_LEAF_KEY)
+        // (contract_address, 0, CODE_KECCAK_LEAF_KEY)
+        // (contract_address, 0, CODE_SIZE_LEAF_KEY)
+        return AccessCompleteAccount(contractAddress, true);
+    }
+    
+    /// <summary>
+    /// If the BALANCE opcode is called targeting some address.
+    /// </summary>
+    /// <param name="address"></param>
+    /// <returns></returns>
+    public long AccessBalance(Address address)
+    {
+        // (address, 0, BALANCE_LEAF_KEY)
+        bool[] accountAccess = {false, true, false, false, false};
+        return AccessAccount(address, accountAccess);
+    }
+    
+    /// <summary>
+    /// If the EXTCODEHASH opcode is called targeting some address.
+    /// </summary>
+    /// <param name="address"></param>
+    /// <returns></returns>
+    public long AccessCodeHash(Address address)
+    {
+        
+        bool[] accountAccess = {false, false, false, true, false};
+        return AccessAccount(address, accountAccess);
+    }
+    
+    /// <summary>
+    /// When SLOAD and SSTORE opcodes are called with a given address
+    /// and key.
+    /// </summary>
+    /// <param name="address"></param>
+    /// <param name="key"></param>
+    /// <param name="isWrite"></param>
+    /// <returns></returns>
+    public long AccessStorage(Address address, byte key, bool isWrite)
+    {
+        return AccessKey(VerkleUtils.GetTreeKeyForStorageSlot(address, key), isWrite);
+    }
+    
+    /// <summary>
+    /// When the code chunk chunk_id is accessed is accessed 
+    /// </summary>
+    /// <param name="address"></param>
+    /// <param name="chunkId"></param>
+    /// <param name="isWrite"></param>
+    /// <returns></returns>
+    public long AccessCodeChunk(Address address, byte chunkId, bool isWrite)
+    {
+        return AccessKey(VerkleUtils.GetTreeKeyForCodeChunk(address, chunkId), isWrite);
+    }
+    
+    /// <summary>
+    /// When you are starting to execute a transaction.
+    /// </summary>
+    /// <param name="originAddress"></param>
+    /// <param name="destinationAddress"></param>
+    /// <param name="isValueTransfer"></param>
+    /// <param name="isWrite"></param>
+    /// <returns></returns>
+    public long AccessForTransaction(Address originAddress, Address destinationAddress, bool isValueTransfer)
+    {
+        
+        long gasCost = AccessCompleteAccount(originAddress) + AccessCompleteAccount(destinationAddress);
+        
+        // when you are executing a transaction, you are writing to the nonce of the origin address
+        bool[] accountAccess = {false, false, true, false, false};
+        gasCost += AccessAccount(originAddress, accountAccess, true);
+        if (isValueTransfer)
+        {
+            // when you are executing a transaction with value transfer,
+            // you are writing to the balance of the origin and destination address
+            gasCost += AccessValueTransfer(originAddress, destinationAddress);
+        }
+
+        return gasCost;
+    }
+    
+    /// <summary>
+    /// When you have to access the complete account
+    /// </summary>
+    /// <param name="address"></param>
+    /// <param name="isWrite"></param>
+    /// <returns></returns>
+    public long AccessCompleteAccount(Address address, bool isWrite = false)
+    {
+        bool[] accountAccess = {true, true, true, true, true};
+        return AccessAccount(address, accountAccess, isWrite);
+    }
+    
+    /// <summary>
+    /// When you have to access the certain keys for the account
+    /// you can specify the keys you want to access using the bitVector.
+    /// set the bits to true if you want to access the key.
+    /// bitVector[0] for VersionLeafKey
+    /// bitVector[1] for BalanceLeafKey
+    /// bitVector[2] for NonceLeafKey
+    /// bitVector[3] for CodeKeccakLeafKey
+    /// bitVector[4] for CodeSizeLeafKey
+    /// </summary>
+    /// <param name="address"></param>
+    /// <param name="bitVector"></param>
+    /// <param name="isWrite"></param>
+    /// <returns></returns>
+    public long AccessAccount(Address address, bool[] bitVector, bool isWrite=false)
+    {
+
+        long gasUsed = 0;
+        for (int i = 0; i < bitVector.Length; i++)
+        {
+            if (bitVector[i])
+            {
+                gasUsed += AccessKey(VerkleUtils.GetTreeKey(address, UInt256.Zero,(byte) i), isWrite);
+            }
+        }
+
+        return gasUsed;
+    }
+    
+    public long AccessKey(byte[] key, bool isWrite = false)
+    {
+        bool newSubTreeAccess = false;
+        bool newSubTreeWrite = false;
+        bool newLeafAccess = false;
+        bool newLeafWrite = false;
+        bool newLeafFill = false;
+        
+        if (!_accessedLeaves.Contains((key)))
+        {
+            newLeafAccess = true;
+            _accessedLeaves.Add((key));
+        }
+
+        if (!_accessedSubtrees.Add(key[..31]))
+        {
+            newSubTreeAccess = true;
+            _accessedSubtrees.Add(key[..31]);
+        }
+        
+        if (isWrite)
+        {
+            if (!_modifiedLeaves.Contains((key)))
+            {
+                newLeafWrite = true;
+                _modifiedLeaves.Add((key));
+                // are we just writing or filling the chunk? - implement the difference
+            }
+
+            if (!_modifiedSubtrees.Add(key[..31]))
+            {
+                newSubTreeWrite = true;
+                _modifiedSubtrees.Add(key[..31]);
+            }
+        }
+
+        return (newLeafAccess ? WitnessChunkRead : 0) +
+               (newLeafWrite ? WitnessChunkWrite : 0) +
+               (newLeafFill ? WitnessChunkFill : 0) +
+               (newSubTreeAccess ? WitnessBranchRead : 0) +
+               (newSubTreeWrite ? WitnessBranchWrite : 0);
     }
 
     public byte[,] GetAccessedKeys()
@@ -93,102 +323,6 @@ public class VerkleWitness: IVerkleWitness
         int[] Snapshot = _snapshots[snapshot]; 
         _accessedSubtrees.Restore(Snapshot[0]);
         _accessedLeaves.Restore(Snapshot[1]);
-    }
-
-    public long AccessCodeOpCodes(Address caller)
-    {
-        bool[] accountAccess = {true, false, false, false, true};
-        return AccessAccount(caller, accountAccess);
-    }
-
-    public long AccessValueTransfer(Address caller, Address callee)
-    {
-        bool[] accountAccess = {false, true, false, false, false};
-        return AccessAccount(caller, accountAccess) + AccessAccount(callee, accountAccess);
-    }
-    
-    public long AccessContractCreationInit(Address contractAddress)
-    {
-        bool[] accountAccess = {true, true, true, false, false};
-        return AccessAccount(contractAddress, accountAccess);
-    }
-    
-    public long AccessContractCreated(Address contractAddress)
-    {
-        bool[] accountAccess = {true, true, true, true, true};
-        return AccessAccount(contractAddress, accountAccess);
-    }
-    
-    public long AccessBalance(Address address)
-    {
-        bool[] accountAccess = {false, true, false, false, false};
-        return AccessAccount(address, accountAccess);
-    }
-    
-    public long AccessCodeHash(Address address)
-    {
-        bool[] accountAccess = {false, false, false, true, false};
-        return AccessAccount(address, accountAccess);
-    }
-    
-    public long AccessStorage(Address address, byte key)
-    {
-        (int stemAccess, int chunkAccess) = AccessKey(VerkleUtils.GetTreeKeyForStorageSlot(address, key));
-        return stemAccess * WitnessBranchRead + chunkAccess + WitnessChunkRead;
-    }
-
-    public long AccessCodeChunk(Address address, byte chunkId)
-    {
-        (int stemAccess, int chunkAccess) = AccessKey(VerkleUtils.GetTreeKeyForCodeChunk(address, chunkId));
-        return stemAccess + WitnessBranchRead + chunkAccess + WitnessChunkRead;
-    }
-    
-    public long AccessCompleteAccount(Address address)
-    {
-        bool[] accountAccess = {true, true, true, true, true};
-        return AccessAccount(address, accountAccess);
-    }
-    
-    public long AccessAccount(Address address, bool[] bitVector)
-    {
-
-        long gasUsed = 0;
-        for (int i = 0; i < bitVector.Length; i++)
-        {
-            if (bitVector[i])
-            {
-                (int stemAccess, int chunkAccess) = AccessKey(VerkleUtils.GetTreeKey(address, UInt256.Zero,(byte) i));
-                gasUsed += stemAccess + WitnessBranchRead + chunkAccess + WitnessChunkRead;
-            }
-        }
-
-        return gasUsed;
-    }
-    
-    public (int, int) AccessKey(byte[] key)
-    {
-        bool newSubTree = false;
-        bool newLeaf = false;
-        
-        if (!_accessedLeaves.Contains((key)))
-        {
-            newLeaf = true;
-            _accessedLeaves.Add((key));
-        }
-
-        if (!_accessedSubtrees.Add(key[..31]))
-        {
-            newSubTree = true;
-            _accessedSubtrees.Add(key[..31]);
-        }
-
-        return (newSubTree?1:0, newLeaf?1:0);
-    }
-    
-    
-    public long AccessForTransaction(Address originAddress, Address destinationAddress)
-    {
-        return AccessCompleteAccount(originAddress) + AccessCompleteAccount(destinationAddress);
     }
     
 }

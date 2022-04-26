@@ -22,11 +22,10 @@ public interface IVerkleWitness: IJournal<int>
 {
 
     public byte[,] GetAccessedKeys();
-    public long AccessCodeOpCodes(Address caller);
-    
+    public long AccessForCodeOpCodes(Address caller);  
     public long AccessValueTransfer(Address caller, Address callee);
 
-    public long AccessContractCreationInit(Address contractAddress);
+    public long AccessForContractCreationInit(Address contractAddress, bool isValueTransfer);
     
     public long AccessContractCreated(Address contractAddress);
    
@@ -34,16 +33,14 @@ public interface IVerkleWitness: IJournal<int>
 
     public long AccessCodeHash(Address address);
 
-    public long AccessStorage(Address address, byte key);
+    public long AccessStorage(Address address, byte key, bool isWrite);
 
-    public long AccessCodeChunk(Address address, byte chunkId);
+    public long AccessCodeChunk(Address address, byte chunkId, bool isWrite);
 
-    public long AccessCompleteAccount(Address address);
+    public long AccessCompleteAccount(Address address, bool isWrite = false);
 
-    public long AccessAccount(Address address, bool[] bitVector);
+    public long AccessAccount(Address address, bool[] bitVector, bool isWrite = false);
+    public long AccessKey(byte[] key, bool isWrite = false);
 
-    public (int, int) AccessKey(byte[] key);
-    
-    public long AccessForTransaction(Address originAddress, Address destinationAddress);
-
+    public long AccessForTransaction(Address originAddress, Address destinationAddress, bool isValueTransfer);
 }
