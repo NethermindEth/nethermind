@@ -150,7 +150,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                bool isPostBeaconPivot = false; // currentNumber > _beaconPivot.PivotNumber;
+                bool isPostBeaconPivot = false; // ToDo currentNumber > _beaconPivot.PivotNumber;
                 Block[]? blocks = null;
                 TxReceipt[]?[]? receipts = null;
                 if (isPostBeaconPivot)
@@ -237,7 +237,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                     bool blockExists = _blockTree.FindBlock(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null;
                     bool isKnownBlock = _blockTree.IsKnownBlock(currentBlock.Number, currentBlock.Hash) != null;
-                    bool isOnMainChain = true;
+                    bool isOnMainChain = true; // ToDo
                     BlockTreeSuggestOptions suggestOptions = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
                     if (_logger.IsTrace) _logger.Trace($"Current block {currentBlock}, BlockExists {blockExists} IsOnMainChain: {isOnMainChain} BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBlock: {isKnownBlock}");
                     if (blockExists && isOnMainChain == false)

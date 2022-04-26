@@ -121,8 +121,15 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
                         " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
                         $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
                 // beacon header set to (global) lowest inserted header
-                _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
-          //  }
+             //   _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
+             if (header.Number < ( _blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+             {
+                 if (_logger.IsInfo)
+                     _logger.Info(
+                         $"LowestInsertedBeaconHeader AlreadyKnown changed, old: { _blockTree.LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
+                 _blockTree.LowestInsertedBeaconHeader = header;
+             }
+             //}
             _mergedChain = true;
         }
         
