@@ -41,15 +41,16 @@ namespace Nethermind.Synchronization.Test;
 
 public partial class BlockDownloaderTests
 {
-    [TestCase(32L, DownloaderOptions.Process, 32)]
-    public async Task Merge_Happy_path(long headNumber, int options, int threshold)
+    [TestCase(32L, DownloaderOptions.Process, 32, 32)]
+    [TestCase(32L, DownloaderOptions.Process, 32, 29)]
+    public async Task Merge_Happy_path(long headNumber, int options, int threshold, long insertedBeaconBlocks)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
             .WithBlockTrees(4, (int)headNumber + 1)
             .InsertBeaconPivot(16)
             .InsertHeaders(4, 16)
-            .InsertBeaconBlocks(16, headNumber - 3);
+            .InsertBeaconBlocks(16, insertedBeaconBlocks);
         BlockTree notSyncedTree = blockTrees.NotSyncedTree;
         BlockTree syncedTree = blockTrees.SyncedTree;
         Context ctx = new(notSyncedTree);
@@ -74,13 +75,11 @@ public partial class BlockDownloaderTests
             responseOptions |= Response.WithTransactions;
         }
 
-        // normally chain length should be head number + 1 so here we setup a slightly shorter chain which
-        // will only be fixed slightly later
         SyncPeerMock syncPeer = new(syncedTree, withReceipts, responseOptions);
-
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-        ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, peerInfo.HeadNumber));
+        ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
+        ctx.BlockTree.BestSuggestedBody.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
         ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader.Hash).Should()
             .Be(downloaderOptions != DownloaderOptions.Process);
 

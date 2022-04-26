@@ -130,8 +130,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             int ancestorLookupLevel = 0;
 
             long currentNumber = GetCurrentNumber(bestPeer);
-            // pivot number - 6 for uncle validation
-            // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
 
 
         bool HasMoreToSync()
