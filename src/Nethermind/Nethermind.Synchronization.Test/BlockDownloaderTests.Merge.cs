@@ -94,7 +94,6 @@ public partial class BlockDownloaderTests
 
         receiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
     }
-
     private IBetterPeerStrategy CreateMergePeerChoiceStrategy(IPoSSwitcher poSSwitcher)
     {
         ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();

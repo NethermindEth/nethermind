@@ -47,6 +47,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IReceiptStorage _receiptStorage;
         private readonly IChainLevelHelper _chainLevelHelper;
         private int _sinceLastTimeout;
+        private const int MaxBlocksFromDb = 512;
 
         public MergeBlockDownloader(
             IPoSSwitcher posSwitcher,
@@ -110,6 +111,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public override async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
             CancellationToken cancellation)
         {
+
+            
             if (_beaconPivot.BeaconPivotExists() == false)
                 return await base.DownloadBlocks(bestPeer, blocksRequest, cancellation);
             
@@ -128,10 +131,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             int blocksSynced = 0;
             int ancestorLookupLevel = 0;
-
+            
             long currentNumber = GetCurrentNumber(bestPeer);
-
-
         bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
             while(ImprovementRequirementSatisfied(bestPeer!) && HasMoreToSync())
@@ -147,34 +148,52 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 }
 
                 headersToRequest = Math.Min(headersToRequest, bestPeer.MaxHeadersPerRequest());
+
                 if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
+                
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
-                if (headers.Length == 0)
-                    break;
-                BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
-
-                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                await RequestBodies(bestPeer, cancellation, context);
-
-                if (downloadReceipts)
+                bool isPostBeaconPivot = false; // currentNumber > _beaconPivot.PivotNumber;
+                Block[]? blocks = null;
+                TxReceipt[]?[]? receipts = null;
+                if (isPostBeaconPivot)
                 {
+                    if (_logger.IsTrace) _logger.Trace($"Syncing blocks from database. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}");
                     if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                    await RequestReceipts(bestPeer, cancellation, context);
+                    blocks = _chainLevelHelper.GetNextBlocks(MaxBlocksFromDb);
+                    // ToDo add downloading receipts here
                 }
-
-                _sinceLastTimeout++;
-                if (_sinceLastTimeout > 2)
+                else
                 {
-                    _syncBatchSize.Expand();
+                    if (_logger.IsTrace) _logger.Trace($"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
+                    BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
+                    BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts,
+                        _receiptsRecovery);
+
+                    if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                    await RequestBodies(bestPeer, cancellation, context);
+
+                    if (downloadReceipts)
+                    {
+                        if (cancellation.IsCancellationRequested)
+                            return blocksSynced; // check before every heavy operation
+                        await RequestReceipts(bestPeer, cancellation, context);
+                    }
+                    
+                    _sinceLastTimeout++;
+                    if (_sinceLastTimeout > 2)
+                    {
+                        _syncBatchSize.Expand();
+                    }
+
+                    blocks = context.Blocks;
+                    receipts = context.ReceiptsForBlocks;
                 }
 
-                Block[] blocks = context.Blocks;
                 if (blocks == null || blocks.Length == 0)
                     break;
                 Block blockZero = blocks[0];
-                if (context.FullBlocksCount > 0)
+                if (blocks.Length > 0)
                 {
                     bool parentIsKnown = _blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
                     if (!parentIsKnown)
@@ -193,7 +212,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 }
 
                 ancestorLookupLevel = 0;
-                for (int blockIndex = 0; blockIndex < context.FullBlocksCount; blockIndex++)
+                for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
                     {
@@ -212,7 +231,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                     if (downloadReceipts)
                     {
-                        TxReceipt[]? contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
+                        TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
                         if (currentBlock.Header.HasBody && contextReceiptsForBlock == null)
                         {
                             throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
@@ -239,7 +258,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     {
                         if (downloadReceipts)
                         {
-                            TxReceipt[]? contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
+                            TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
                             if (contextReceiptsForBlock != null)
                             {
                                 _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
@@ -278,5 +297,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             return blocksSynced;
         }
+
+  
     }
 }
