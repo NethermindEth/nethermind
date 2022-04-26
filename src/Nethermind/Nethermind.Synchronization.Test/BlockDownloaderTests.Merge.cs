@@ -50,7 +50,7 @@ public partial class BlockDownloaderTests
             .WithBlockTrees(4, (int)headNumber + 1)
             .InsertBeaconPivot(16)
             .InsertHeaders(4, 16)
-            .InsertBeaconBlocks(16, insertedBeaconBlocks);
+            .InsertBeaconBlocks(16, insertedBeaconBlocks, true);
         BlockTree notSyncedTree = blockTrees.NotSyncedTree;
         BlockTree syncedTree = blockTrees.SyncedTree;
         Context ctx = new(notSyncedTree);

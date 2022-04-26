@@ -58,13 +58,15 @@ public class ChainLevelHelper : IChainLevelHelper
 
             for (int j = 0; j < level.BlockInfos.Length; ++j)
             {
-                BlockHeader? newHeader = _blockTree.FindHeader(level.BlockInfos[j].BlockHash);
+                BlockHeader? newHeader = _blockTree.FindHeader(level.BlockInfos[j].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
                 if (newHeader == null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - header {currentNumber} not found");
                     continue;
                 }
                 
+                newHeader.TotalDifficulty = level.BlockInfos[j].TotalDifficulty == 0 ? null : level.BlockInfos[j].TotalDifficulty;
                 if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
                 headers.Add(newHeader);
                 ++i;
@@ -101,6 +103,7 @@ public class ChainLevelHelper : IChainLevelHelper
                     continue;
                 }
                 
+                newBlock.Header.TotalDifficulty = level.BlockInfos[j].TotalDifficulty == 0 ? null : level.BlockInfos[j].TotalDifficulty;
                 if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - A new block block {newBlock.ToString(Block.Format.FullHashAndNumber)}");
                 blocks.Add(newBlock);
                 ++i;

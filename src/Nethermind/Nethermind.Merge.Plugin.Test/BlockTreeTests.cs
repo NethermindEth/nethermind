@@ -248,12 +248,13 @@ public partial class BlockTreeTests
                     return this;
                 }
                 
-                public ScenarioBuilder InsertBeaconBlocks(long low, long high)
+                public ScenarioBuilder InsertBeaconBlocks(long low, long high, bool nullableTd = false)
                 {
                     BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
                     for (long i = high; i >= low; --i)
                     {
                         Block? beaconBlock = SyncedTree!.FindBlock(i, BlockTreeLookupOptions.None);
+                        if (nullableTd) beaconBlock!.Header.TotalDifficulty = null;
                         AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, true, insertOptions);
                         Assert.AreEqual(AddBlockResult.Added, insertResult);
                     }

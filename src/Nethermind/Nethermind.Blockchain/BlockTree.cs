@@ -606,8 +606,8 @@ namespace Nethermind.Blockchain
         {
             bool shouldProcess = (options & BlockTreeSuggestOptions.ShouldProcess) != 0;
             bool tryProcessKnownBlock = (options & BlockTreeSuggestOptions.TryProcessKnownBlock) != 0;
-            if (_logger.IsInfo)
-                _logger.Info(
+            if (_logger.IsTrace)
+                _logger.Trace(
                     $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {tryProcessKnownBlock}");
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -636,14 +636,14 @@ namespace Nethermind.Blockchain
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
             if (!tryProcessKnownBlock && isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
-                if (_logger.IsInfo) _logger.Info($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} already known.");
-                     return AddBlockResult.AlreadyKnown;
+                if (_logger.IsTrace) _logger.Trace($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} already known.");
+                return AddBlockResult.AlreadyKnown;
             }
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
             {
-                if (_logger.IsInfo)
-                    _logger.Info($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
+                if (_logger.IsTrace)
+                    _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
                 return AddBlockResult.UnknownParent;
             }
 
@@ -668,12 +668,8 @@ namespace Nethermind.Blockchain
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
                 UpdateOrCreateLevel(header.Number, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
-
             }
             
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
             if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
             {
                 if (header.IsGenesis)

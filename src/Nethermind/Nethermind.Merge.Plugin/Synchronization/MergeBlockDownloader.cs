@@ -111,11 +111,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public override async Task<long> DownloadBlocks(PeerInfo? bestPeer, BlocksRequest blocksRequest,
             CancellationToken cancellation)
         {
-
-            
             if (_beaconPivot.BeaconPivotExists() == false)
                 return await base.DownloadBlocks(bestPeer, blocksRequest, cancellation);
-            
             
             if (bestPeer == null)
             {
