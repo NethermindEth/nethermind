@@ -35,12 +35,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
-
-    private bool _mergedChain;
-
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
-    protected override bool AllHeadersDownloaded => _mergedChain 
-        || (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed + 1;
+    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <= _pivot.PivotDestinationNumber;
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
     public BeaconHeadersSyncFeed(
@@ -130,7 +126,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
                  _blockTree.LowestInsertedBeaconHeader = header;
              }
              //}
-            _mergedChain = true;
         }
         
 
