@@ -22,6 +22,7 @@ namespace Nethermind.Synchronization.Test
         Fast,
         Eth2MergeFull,
         Eth2MergeFast,
-        Eth2MergeFastWithoutTTD
+        Eth2MergeFastWithoutTTD,
+        Eth2MergeFullWithoutTTD
     }
 }
