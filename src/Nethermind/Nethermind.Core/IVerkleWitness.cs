@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Int256;
+
 namespace Nethermind.Core;
 
 
@@ -33,7 +35,7 @@ public interface IVerkleWitness: IJournal<int>
 
     public long AccessCodeHash(Address address);
 
-    public long AccessStorage(Address address, byte key, bool isWrite);
+    public long AccessStorage(Address address, UInt256 key, bool isWrite);
 
     public long AccessCodeChunk(Address address, byte chunkId, bool isWrite);
 

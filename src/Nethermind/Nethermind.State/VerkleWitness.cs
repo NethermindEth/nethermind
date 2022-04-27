@@ -157,7 +157,7 @@ public class VerkleWitness: IVerkleWitness
     /// <param name="key"></param>
     /// <param name="isWrite"></param>
     /// <returns></returns>
-    public long AccessStorage(Address address, byte key, bool isWrite)
+    public long AccessStorage(Address address, UInt256 key, bool isWrite)
     {
         return AccessKey(VerkleUtils.GetTreeKeyForStorageSlot(address, key), isWrite);
     }
