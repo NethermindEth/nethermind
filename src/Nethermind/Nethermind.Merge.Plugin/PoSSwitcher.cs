@@ -196,7 +196,7 @@ namespace Nethermind.Merge.Plugin
 
             bool isTerminal = false, isPostMerge = false;
 
-            if (header.TotalDifficulty == null || header.TotalDifficulty == 0)
+            if (header.TotalDifficulty == null || (header.TotalDifficulty == 0 && header.IsGenesis == false))
             {
                 header.IsPostMerge = header.Difficulty == 0;
                 return (false, header.Difficulty == 0);

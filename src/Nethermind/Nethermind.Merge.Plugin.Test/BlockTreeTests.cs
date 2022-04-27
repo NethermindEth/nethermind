@@ -16,10 +16,12 @@
 // 
 
 using System;
+using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Logging;
@@ -27,6 +29,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NUnit.Framework;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -403,5 +406,29 @@ public partial class BlockTreeTests
             .AssertBestSuggestedBody(3);
     }
     
+
+    [Test]
+    [Ignore("Need to be fixed - Latest block after reorg")]
+    public void MarkChainAsProcessed_does_not_change_main_chain()
+    {
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(10);
+        BlockTree blockTree = new(
+            blockTreeBuilder.BlocksDb,
+            blockTreeBuilder.HeadersDb,
+            blockTreeBuilder.BlockInfoDb,
+            blockTreeBuilder.MetadataDb,
+            blockTreeBuilder.ChainLevelInfoRepository,
+            MainnetSpecProvider.Instance,
+            NullBloomStorage.Instance,
+            new SyncConfig(),
+            LimboLogs.Instance);
+        Block? parentBlock = blockTree.FindBlock(8, BlockTreeLookupOptions.None);
+        Block newBlock = Build.A.Block.WithParent(parentBlock!)
+                        .WithNumber(parentBlock!.Number + 1).TestObject;
+        newBlock.Header.Hash = newBlock.CalculateHash();
+        blockTree.SuggestBlock(newBlock);
+        blockTree.MarkChainAsProcessed(new []{ newBlock });
+        Assert.False(blockTree.IsMainChain(newBlock.Header));
+    }
 }
 
