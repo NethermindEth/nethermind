@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nethermind.Core;
@@ -27,6 +28,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
+using Nethermind.Trie;
 using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Evm.TransactionProcessing
@@ -508,8 +510,10 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (_specProvider.GetSpec(block.Number).IsVerkleTreeEIPEnabled)
                 {
-                    byte[,] accessedKeys = transaction.VerkleWitness.GetAccessedKeys();
-                    byte[] verkleProof = _stateProvider.GetWitnessProofForMultipleKeys(accessedKeys);
+                    byte[][] accessedKeys = transaction.VerkleWitness.GetAccessedKeys();
+                    // TODO: figure out a way to get pre state here?
+                    block.VerkleWitnesses = accessedKeys.ToDictionary(key => key, key => _stateProvider.GetValueForKeyWitness(key));
+                    byte[] verkleProof = _stateProvider.GetWitnessProofForMultipleKeys(VerkleUtils.To2D(accessedKeys));
                     block.VerkleProof = verkleProof;
                 }
                 _storageProvider.Commit(txTracer.IsTracingState ? txTracer : NullStorageTracer.Instance);

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Attributes;
@@ -79,7 +80,7 @@ namespace Nethermind.Core
         
         public byte[]? VerkleProof { get; set; }
         
-        public byte[,]? VerkleWitnesses { get; set; }
+        public Dictionary<byte[], byte[]>? VerkleWitnesses { get; set; }
 
         public bool HasBody => UnclesHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
