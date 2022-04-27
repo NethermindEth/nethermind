@@ -76,6 +76,10 @@ namespace Nethermind.Core
         public byte[]? AuRaSignature { get; set; }
         public long? AuRaStep { get; set; }
         public UInt256 BaseFeePerGas { get; set; }
+        
+        public byte[]? VerkleProof { get; set; }
+        
+        public byte[,]? VerkleWitnesses { get; set; }
 
         public bool HasBody => UnclesHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
@@ -99,6 +103,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");
             builder.AppendLine($"{indent}BaseFeePerGas: {BaseFeePerGas}");
+            builder.AppendLine($"{indent}Verkle Proof: {VerkleProof?.ToHexString()}");
 
             return builder.ToString();
         }
