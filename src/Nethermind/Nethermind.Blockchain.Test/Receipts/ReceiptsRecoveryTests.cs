@@ -46,10 +46,9 @@ public class ReceiptsRecoveryTests
     [TestCase(0, 1, true, ReceiptsRecoveryResult.Fail)]
     [TestCase(5, 4, true, ReceiptsRecoveryResult.Fail)]
     [TestCase(1, 2, true, ReceiptsRecoveryResult.Fail)]
-    public void should_return_correct_receipts_recovery_result(int blockTxsLength, int receiptsLength, bool forceRecoverSender, ReceiptsRecoveryResult expected)
+    public void TryRecover_should_return_correct_receipts_recovery_result(int blockTxsLength, int receiptsLength, bool forceRecoverSender, ReceiptsRecoveryResult expected)
     {
         Transaction[] txs = new Transaction[blockTxsLength];
-        
         for (int i = 0; i < blockTxsLength; i++)
         {
             txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
@@ -58,7 +57,6 @@ public class ReceiptsRecoveryTests
         Block block = Build.A.Block.WithTransactions(txs).TestObject;
 
         TxReceipt[] receipts = new TxReceipt[receiptsLength];
-        
         for (int i = 0; i < receiptsLength; i++)
         {
             receipts[i] = Build.A.Receipt.WithBlockHash(block.Hash).TestObject;
