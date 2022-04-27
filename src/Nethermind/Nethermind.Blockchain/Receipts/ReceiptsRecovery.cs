@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Receipts
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
         
-        public bool TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true)
+        public ReceiptsRecoveryResult TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true)
         {
             var canRecover = block.Transactions.Length == receipts?.Length;
             if (canRecover)
@@ -53,12 +53,14 @@ namespace Nethermind.Blockchain.Receipts
                             gasUsedBefore = receipt.GasUsedTotal;
                         }
                     }
-                    
-                    return true;
+
+                    return ReceiptsRecoveryResult.Success;
                 }
+
+                return ReceiptsRecoveryResult.Skipped;
             }
 
-            return false;
+            return ReceiptsRecoveryResult.Fail;
         }
         
         public bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true) => receipts?.Length > 0 && (receipts[0].BlockHash == null || (forceRecoverSender && receipts[0].Sender == null));
