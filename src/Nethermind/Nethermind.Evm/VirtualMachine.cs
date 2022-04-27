@@ -462,13 +462,62 @@ namespace Nethermind.Evm
         {
             gasAvailable += refund;
         }
-        
-        private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
+
+        private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec,
+            bool chargeForWarm = true, bool valueTransfer = false, Instruction opCode = Instruction.STOP)
         {
             // Console.WriteLine($"Accessing {address}");
             
             bool result = true;
-            if (spec.UseHotAndColdStorage)
+            if (spec.IsVerkleTreeEIPEnabled)
+            {
+                bool isAddressPreCompile = address.IsPrecompile(spec);
+                switch (opCode)
+                {
+                    case Instruction.BALANCE:
+                    {
+                        result = UpdateGas(
+                            vmState.VerkleTreeWitness.AccessBalance(address), ref gasAvailable);
+                        break;
+                    }
+                    case Instruction.EXTCODESIZE:
+                    case Instruction.EXTCODECOPY:
+                    case Instruction.SELFDESTRUCT:
+                    case Instruction.CALL:
+                    case Instruction.CALLCODE:
+                    case Instruction.DELEGATECALL:
+                    case Instruction.STATICCALL:
+                    {
+                        if (!isAddressPreCompile)
+                        {
+                            result = UpdateGas(
+                                vmState.VerkleTreeWitness.AccessForCodeOpCodes(address), ref gasAvailable);
+                            if (!result)
+                            {
+                                break;
+                            }
+                        }
+
+                        if (valueTransfer)
+                        {
+                            result = UpdateGas(
+                                vmState.VerkleTreeWitness.AccessBalance(address), ref gasAvailable);
+                        }
+                        break;
+                    }
+                    case Instruction.EXTCODEHASH:
+                    {
+                        result = UpdateGas(
+                            vmState.VerkleTreeWitness.AccessCodeHash(address), ref gasAvailable);
+                        break;
+                    }
+                    default:
+                    {
+                        throw new ArgumentOutOfRangeException(nameof(opCode), opCode, null);
+                    }
+                }
+            }
+            else if (spec.UseHotAndColdStorage)
             {
                 if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
                 {
@@ -505,7 +554,13 @@ namespace Nethermind.Evm
             // Console.WriteLine($"Accessing {storageCell} {storageAccessType}");
             
             bool result = true;
-            if (spec.UseHotAndColdStorage)
+            if (spec.IsVerkleTreeEIPEnabled)
+            {
+                result = UpdateGas(
+                    vmState.VerkleTreeWitness.AccessStorage(storageCell.Address, storageCell.Index,
+                        storageAccessType == StorageAccessType.SSTORE), ref gasAvailable);
+            }
+            else if (spec.UseHotAndColdStorage)
             {
                 if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
                 {
@@ -1343,7 +1398,7 @@ namespace Nethermind.Evm
                         }
 
                         Address address = stack.PopAddress();
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, opCode: instruction))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
@@ -1493,7 +1548,7 @@ namespace Nethermind.Evm
                         }
 
                         Address address = stack.PopAddress();
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, opCode: instruction))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
@@ -1519,7 +1574,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
                         
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, opCode: instruction))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
@@ -2411,13 +2466,6 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 gasLimit);
                         Address codeSource = stack.PopAddress();
                         
-                        // Console.WriteLine($"CALLIN {codeSource}");
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec))
-                        {
-                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
-                            return CallResult.OutOfGasException;
-                        }
-                        
                         UInt256 callValue;
                         switch (instruction)
                         {
@@ -2433,6 +2481,28 @@ namespace Nethermind.Evm
                         }
 
                         UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
+                        // Console.WriteLine($"CALLIN {codeSource}");
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec, valueTransfer: !transferValue.IsZero, opCode: instruction))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+                        
+                        // UInt256 callValue;
+                        // switch (instruction)
+                        // {
+                        //     case Instruction.STATICCALL:
+                        //         callValue = UInt256.Zero;
+                        //         break;
+                        //     case Instruction.DELEGATECALL:
+                        //         callValue = env.Value;
+                        //         break;
+                        //     default:
+                        //         stack.PopUInt256(out callValue);
+                        //         break;
+                        // }
+                        //
+                        // UInt256 transferValue = instruction == Instruction.DELEGATECALL ? UInt256.Zero : callValue;
                         stack.PopUInt256(out UInt256 dataOffset);
                         stack.PopUInt256(out UInt256 dataLength);
                         stack.PopUInt256(out UInt256 outputOffset);
@@ -2561,7 +2631,8 @@ namespace Nethermind.Evm
                             instruction == Instruction.STATICCALL || vmState.IsStatic,
                             vmState,
                             false,
-                            false);
+                            false,
+                            vmState.VerkleTreeWitness);
 
                         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
                         EndInstructionTrace();
@@ -2613,7 +2684,7 @@ namespace Nethermind.Evm
                         Metrics.SelfDestructs++;
 
                         Address inheritor = stack.PopAddress();
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false))
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false, opCode: instruction))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
@@ -2767,7 +2838,7 @@ namespace Nethermind.Evm
                         }
 
                         Address address = stack.PopAddress();
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec))
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, opCode: instruction))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
