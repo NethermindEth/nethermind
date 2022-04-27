@@ -73,5 +73,8 @@ namespace Nethermind.State
         public byte[] GetWitnessProofForMultipleKeys(byte[,] keys);
 
         public bool VerifyWitnessProofMultipleKeys(byte[] verkleProof, byte[,] keys, byte[,] values);
+        
+        public byte[] GetValueForKeyWitness(byte[] key);
+        
     }
 }

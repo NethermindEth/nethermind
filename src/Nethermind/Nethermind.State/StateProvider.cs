@@ -80,6 +80,11 @@ namespace Nethermind.State
             throw new NotImplementedException();
         }
 
+        public byte[] GetValueForKeyWitness(byte[] key)
+        {
+            throw new NotImplementedException();
+        }
+
         private bool _needsStateRootUpdate;
 
         public void RecalculateStateRoot()

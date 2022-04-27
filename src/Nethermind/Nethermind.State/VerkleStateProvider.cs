@@ -105,6 +105,11 @@ namespace Nethermind.State
         public bool VerifyWitnessProofMultipleKeys(byte[] verkleProof, byte[,] keys, byte[,] values) =>
             _tree.VerifyVerkleProofMultipleKeys(verkleProof, keys, values);
 
+        public byte[]? GetValueForKeyWitness(byte[] key)
+        {
+            return _tree.GetValue(key);
+        }
+
 
         public Account GetAccount(Address address)
         {
