@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Receipts
                             gasUsedBefore = receipt.GasUsedTotal;
                         }
                     }
-                                                        
+
                     return ReceiptsRecoveryResult.Success;
                 }
 
