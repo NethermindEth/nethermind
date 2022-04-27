@@ -103,7 +103,7 @@ namespace Nethermind.Synchronization.FastSync
                     return await Task.FromResult(result);
                 }
 
-                if (requestHashes.Count == 0 && secondsInCurrentSync >= Timeouts.Eth.Seconds)
+                if (requestHashes.Count == 0 && secondsInCurrentSync >= Timeouts.Eth.TotalSeconds)
                 {
                     // trying to reproduce past behaviour where we can recognize the transition time this way
                     Interlocked.Increment(ref _hintsToResetRoot);
