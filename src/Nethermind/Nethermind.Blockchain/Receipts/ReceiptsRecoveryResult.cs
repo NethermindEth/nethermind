@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2022 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,14 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
+namespace Nethermind.Blockchain.Receipts;
 
-namespace Nethermind.Blockchain.Receipts
+public enum ReceiptsRecoveryResult
 {
-    public interface IReceiptsRecovery
-    {
-        ReceiptsRecoveryResult TryRecover(Block block, TxReceipt[] receipts, bool forceRecoverSender = true);
-        bool NeedRecover(TxReceipt[] receipts, bool forceRecoverSender = true);
-    }
+    Success,
+    Fail,
+    Skipped
 }
