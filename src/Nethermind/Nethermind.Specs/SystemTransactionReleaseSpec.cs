@@ -122,6 +122,7 @@ namespace Nethermind.Specs
         public bool IsEip3541Enabled => _spec.IsEip3541Enabled;
         public bool IsEip3675Enabled => _spec.IsEip3675Enabled;		
         public bool IsEip3607Enabled => _spec.IsEip3607Enabled;
+        public bool IsVerkleTreeEIPEnabled => _spec.IsVerkleTreeEIPEnabled;
 
         public bool IsEip158IgnoredAccount(Address address)
         {

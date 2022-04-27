@@ -256,6 +256,12 @@ namespace Nethermind.Core.Specs
         bool IsEip3675Enabled { get; }
 
         /// <summary>
+        /// Upgrade state to verkle treechange the EIP number when it it written and finalized
+        /// TODO: change the EIP number when it it written and finalized
+        /// </summary>
+        bool IsVerkleTreeEIPEnabled => false;
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
