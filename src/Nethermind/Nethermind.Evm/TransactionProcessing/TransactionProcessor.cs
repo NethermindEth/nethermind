@@ -142,7 +142,11 @@ namespace Nethermind.Evm.TransactionProcessing
             ExecutionOptions executionOptions)
         {
             bool eip658NotEnabled = !_specProvider.GetSpec(block.Number).IsEip658Enabled;
-
+            long witnessAccessCost = 0;
+            if (_specProvider.GetSpec(block.Number).IsVerkleTreeEIPEnabled)
+            {
+                transaction.VerkleWitness = new VerkleWitness();
+            }
             // restore is CallAndRestore - previous call, we will restore state after the execution
             bool restore = (executionOptions & ExecutionOptions.Restore) == ExecutionOptions.Restore;
             bool noValidation = (executionOptions & ExecutionOptions.NoValidation) == ExecutionOptions.NoValidation;
@@ -283,11 +287,55 @@ namespace Nethermind.Evm.TransactionProcessing
             _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
             if (commit)
             {
+                //////////////// TODO: why commit here?
                 _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
             }
-
+            // TODO: add access events here:  corresponding to the transaction
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
+            
+            if (_specProvider.GetSpec(block.Number).IsVerkleTreeEIPEnabled)   
+            {
+                try
+                {
+                    // access complete account for transaction sender
+                    Address? recipient =
+                        transaction.GetRecipient(transaction.IsContractCreation ? _stateProvider.GetNonce(caller) : 0);
+                    witnessAccessCost = transaction.VerkleWitness.AccessForTransaction(caller, recipient, transaction.Value !=0);
+                    if (unspentGas < witnessAccessCost)
+                    {
+                        throw new OutOfGasException();
+                    }
+                    unspentGas -= witnessAccessCost;
+                    
+                    if (transaction.IsContractCreation)
+                    {
+                        witnessAccessCost =
+                            transaction.VerkleWitness.AccessForContractCreationInit(recipient, transaction.Value != 0);
+                        if (unspentGas < witnessAccessCost)
+                        {
+                            throw new OutOfGasException();
+                        }
+                        unspentGas -= witnessAccessCost;
+                    }
+                    else
+                    {
+                        witnessAccessCost = transaction.VerkleWitness.AccessCompleteAccount(recipient);
+                        if (unspentGas < witnessAccessCost)
+                        {
+                            throw new OutOfGasException();
+                        }
+                        unspentGas -= witnessAccessCost;
+                    }
+                }
+                catch (Exception ex) when ( ex is EvmException )
+                {
+                    TraceLogInvalidTx(transaction,
+                        $"INSUFFICIENT_GAS_TO_COVER_WITNESS_COST: {unspentGas} < {witnessAccessCost}");
+                    QuickFail(transaction, block, txTracer, eip658NotEnabled, "insufficient gas to cover witness access cost");
+                    return;
+                }
+            }
 
             Snapshot snapshot = _worldState.TakeSnapshot();
             _stateProvider.SubtractFromBalance(caller, value, spec);
@@ -329,7 +377,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 ExecutionType executionType =
                     transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
                 using (EvmState state =
-                    new(unspentGas, env, executionType, true, snapshot, false))
+                    new(unspentGas, env, executionType, true, snapshot, false, transaction.VerkleWitness))
                 {
                     if (spec.UseTxAccessLists)
                     {
@@ -458,6 +506,12 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (commit)
             {
+                if (_specProvider.GetSpec(block.Number).IsVerkleTreeEIPEnabled)
+                {
+                    byte[,] accessedKeys = transaction.VerkleWitness.GetAccessedKeys();
+                    byte[] verkleProof = _stateProvider.GetWitnessProofForMultipleKeys(accessedKeys);
+                    block.VerkleProof = verkleProof;
+                }
                 _storageProvider.Commit(txTracer.IsTracingState ? txTracer : NullStorageTracer.Instance);
                 _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullStateTracer.Instance);
             }
