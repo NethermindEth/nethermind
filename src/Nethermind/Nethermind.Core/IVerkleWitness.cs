@@ -23,7 +23,7 @@ namespace Nethermind.Core;
 public interface IVerkleWitness: IJournal<int>
 {
 
-    public byte[,] GetAccessedKeys();
+    public byte[][] GetAccessedKeys();
     public long AccessForCodeOpCodes(Address caller);  
     public long AccessValueTransfer(Address caller, Address callee);
 
