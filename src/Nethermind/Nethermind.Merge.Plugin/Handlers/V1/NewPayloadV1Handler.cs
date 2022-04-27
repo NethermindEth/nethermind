@@ -152,50 +152,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Syncing;
             }
 
-            if (!parentProcessed && beaconPivotExists)
-            {
-                if (parentHeader.TotalDifficulty == 0)
-                {
-                    parentHeader.TotalDifficulty =
-                        _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, block.Number - 1);
-                }
-
-                // TODO: beaconsync add TDD and validation checks
-                block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Difficulty;
-                block.Header.IsPostMerge = true;
-
-                if (_beaconSyncStrategy.FastSyncEnabled)
-                {
-                    TryProcessChainFromStateSyncBlock(parentHeader, block);
-                }
-                else
-                {
-                    bool parentPivotProcessed = _beaconPivot.IsPivotParentProcessed();
-                    if (parentPivotProcessed)
-                    {
-                        // ToDo add beaconSync validation
-                        _logger.Info(
-                            $"Parent pivot was processed. Pivot: {_beaconPivot.PivotNumber} {_beaconPivot.PivotHash} Suggesting block {block}");
-                        _blockTree.SuggestBlock(block);
-                    }
-                    else
-                    {
-                        _logger.Info($"Inserted {block}");
-                        _blockTree.Insert(block, true);
-                    }
-                }
-
-                if (_logger.IsInfo)
-                    _logger.Info($"Headers sync finished but beacon sync still not finished for {requestStr}");
-                return NewPayloadV1Result.Syncing;
-            }
-            
-            if (parentHeader!.TotalDifficulty == 0)
-            {
-                parentHeader.TotalDifficulty =
-                    _blockTree.BackFillTotalDifficulty(block.Number - 1, block.Number - 1);
-            }
-
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
                 parentHeader!.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {

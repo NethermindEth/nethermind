@@ -683,8 +683,8 @@ namespace Nethermind.Blockchain
 
                 if (block is not null && shouldProcess)
                 {
-                    if (_logger.IsInfo)
-                        _logger.Info(
+                    if (_logger.IsTrace)
+                        _logger.Trace(
                             $"New best suggested block. PreviousBestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
                     BestSuggestedBody = block;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));

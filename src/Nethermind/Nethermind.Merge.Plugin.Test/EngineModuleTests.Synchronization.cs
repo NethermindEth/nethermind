@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -176,6 +175,7 @@ public partial class EngineModuleTests
     }
     
     [Test]
+    [Ignore("ToDo should be fixed with restarts and pointers")]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
