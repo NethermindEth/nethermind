@@ -206,5 +206,25 @@ public static class VerkleUtils
             return true;
         }
     }
+    
+    public static byte[,] To2D(byte[][] jagged) 
+    {
+        byte [,] keys = new byte[jagged.Length, 32];
+        unsafe
+        {
+            for (int i = 0; i < jagged.Length; i++)
+            {
+                fixed(byte * pInKey = jagged[i])
+                {
+                    fixed(byte * pOutKey = &keys[i, 0])
+                    {
+                        Buffer.MemoryCopy(pInKey, pOutKey, 32, 32);
+                    }
+                }
+            }
+        }
+
+        return keys;
+    }
 
 }
