@@ -224,7 +224,7 @@ public partial class BlockTreeTests
                 public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2)
                 {
                     BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount);
-                    while (headers.Length !=1)
+                    while (headers != null && headers.Length > 0)
                     {
                         for (int i = 0; i < headers.Length; ++i)
                         {
