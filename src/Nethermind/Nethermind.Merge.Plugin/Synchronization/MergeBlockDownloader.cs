@@ -76,15 +76,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _logger = logManager.GetClassLogger();
         }
         
-        protected override long GetCurrentNumber(PeerInfo bestPeer)
-        {
-            long currentNumber = _beaconPivot.BeaconPivotExists()
-                ? Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1))
-                : base.GetCurrentNumber(bestPeer);
-            if (_logger.IsTrace) _logger.Trace($"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}");
-            return currentNumber;
-        }
-        
         protected override long GetUpperDownloadBoundary(PeerInfo bestPeer, BlocksRequest blocksRequest)
         {
             long preMergeUpperDownloadBoundary = base.GetUpperDownloadBoundary(bestPeer, blocksRequest);
@@ -127,9 +118,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
             bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
 
             int blocksSynced = 0;
-            int ancestorLookupLevel = 0;
-            
-            long currentNumber = GetCurrentNumber(bestPeer);
+            long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
+            if (_logger.IsTrace) _logger.Trace($"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}");
         bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
             while(ImprovementRequirementSatisfied(bestPeer!) && HasMoreToSync())
@@ -164,6 +154,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 {
                     if (_logger.IsTrace) _logger.Trace($"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
                     BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
+                    if (headers == null || headers.Length == 0)
+                        break;
                     BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts,
                         _receiptsRecovery);
 
@@ -189,26 +181,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 if (blocks == null || blocks.Length == 0)
                     break;
-                Block blockZero = blocks[0];
-                if (blocks.Length > 0)
-                {
-                    bool parentIsKnown = _blockTree.IsKnownBlock(blockZero.Number - 1, blockZero.ParentHash);
-                    if (!parentIsKnown)
-                    {
-                        ancestorLookupLevel++;
-                        if (ancestorLookupLevel >= _ancestorJumps.Length)
-                        {
-                            if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
-                            throw new EthSyncException("Peer with inconsistent chain in sync");
-                        }
-
-                        int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1];
-                        currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
-                        continue;
-                    }
-                }
-
-                ancestorLookupLevel = 0;
+                
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
@@ -294,7 +267,5 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             return blocksSynced;
         }
-
-  
     }
 }

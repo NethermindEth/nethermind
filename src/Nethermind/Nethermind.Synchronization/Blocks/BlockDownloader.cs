@@ -263,7 +263,7 @@ namespace Nethermind.Synchronization.Blocks
             int blocksSynced = 0;
             int ancestorLookupLevel = 0;
 
-            long currentNumber = GetCurrentNumber(bestPeer);
+            long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             
@@ -392,11 +392,6 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             return blocksSynced;
-        }
-
-        protected virtual long GetCurrentNumber(PeerInfo bestPeer)
-        {
-            return Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
         }
         
         protected virtual long GetUpperDownloadBoundary(PeerInfo bestPeer, BlocksRequest blocksRequest)
