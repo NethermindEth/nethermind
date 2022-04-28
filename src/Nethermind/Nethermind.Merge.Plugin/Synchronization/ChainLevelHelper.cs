@@ -128,7 +128,7 @@ public class ChainLevelHelper : IChainLevelHelper
     {
         long startingPoint = _blockTree.BestKnownNumber + 1;
         bool parentBlockExists = false;
-        // in normal cases we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
+        // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
         {
             BlockHeader? header = _blockTree.FindHeader(startingPoint, BlockTreeLookupOptions.All);
@@ -140,6 +140,7 @@ public class ChainLevelHelper : IChainLevelHelper
 
             Block? block = _blockTree.FindBlock(header!.ParentHash ?? header.CalculateHash());
             parentBlockExists = block != null;
+            if (_logger.IsTrace) _logger.Trace($"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, Block: {block?.ToString(Block.Format.FullHashAndNumber)}");
             --startingPoint;
         } while (!parentBlockExists);
 
