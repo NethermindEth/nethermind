@@ -16,6 +16,8 @@
 // 
 
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
@@ -26,6 +28,41 @@ namespace Nethermind.Synchronization.Test;
 
 public class TotalDifficultyBasedBetterPeerStrategyTests
 {
+    
+    [TestCase(9, -1)]
+    [TestCase(10, 0)]
+    [TestCase(11, 1)]
+    public void Compare_with_header_and_peer_return_expected_results(long td, int expectedResult)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns((UInt256)10);
+        syncPeer.HeadNumber.Returns(10);
+        BlockHeader header = Build.A.BlockHeader.WithTotalDifficulty(td).TestObject;
+        TotalDifficultyBasedBetterPeerStrategy betterPeerStrategy = new(null, LimboLogs.Instance);
+        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(header, syncPeer));
+    }
+    
+    [TestCase(9, -1)]
+    [TestCase(10, 0)]
+    [TestCase(11, 1)]
+    public void Compare_with_value_and_peer_return_expected_results(long td, int expectedResult)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns((UInt256)10);
+        syncPeer.HeadNumber.Returns(10);
+        TotalDifficultyBasedBetterPeerStrategy betterPeerStrategy = new(null, LimboLogs.Instance);
+        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(((UInt256)td, 10), syncPeer));
+    }
+    
+    [TestCase(9, -1)]
+    [TestCase(10, 0)]
+    [TestCase(11, 1)]
+    public void Compare_with_values_return_expected_results(long td, int expectedResult)
+    {
+        TotalDifficultyBasedBetterPeerStrategy betterPeerStrategy = new(null, LimboLogs.Instance);
+        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(((UInt256)td, 10), ((UInt256)10, 10)));
+    }
+    
     [TestCase(9, false)]
     [TestCase(10, false)]
     [TestCase(11, true)]
@@ -37,15 +74,27 @@ public class TotalDifficultyBasedBetterPeerStrategyTests
         Assert.AreEqual(expectedResult, betterPeerStrategy.IsBetterThanLocalChain(((UInt256)td, 10)));
     }
     
-    [TestCase(9, -1)]
-    [TestCase(10, 0)]
-    [TestCase(11, 1)]
-    public void Compare_return_expected_results(long td, int expectedResult)
+    [TestCase(3,4,5,2, true)]
+    [TestCase(3,2,3,4, true)]
+    [TestCase(4,2,3,4, false)]
+    [TestCase(3,4,3,2, false)]
+    public void IsDesiredPeer_return_expected_results(long chainDifficulty, long bestHeader, long peerTotalDifficulty, long peerNumber, bool expectedResult)
     {
+        ISyncProgressResolver resolver = Substitute.For<ISyncProgressResolver>();
+        resolver.ChainDifficulty.Returns((UInt256)chainDifficulty);
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.TotalDifficulty.Returns((UInt256)10);
-        syncPeer.HeadNumber.Returns(10);
-        TotalDifficultyBasedBetterPeerStrategy betterPeerStrategy = new(null, LimboLogs.Instance);
-        Assert.AreEqual(expectedResult, betterPeerStrategy.Compare(((UInt256)td, 10), syncPeer));
+        syncPeer.TotalDifficulty.Returns((UInt256)peerTotalDifficulty);
+        syncPeer.HeadNumber.Returns(peerNumber);
+        TotalDifficultyBasedBetterPeerStrategy betterPeerStrategy = new(resolver, LimboLogs.Instance);
+        Assert.AreEqual(expectedResult, betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber),bestHeader));
     }
+
+    
+    [Test]
+    public void IsLowerThanTerminalTotalDifficulty_return_expected_results()
+    {
+        TotalDifficultyBasedBetterPeerStrategy betterPeerStrategy = new(null, LimboLogs.Instance);
+        Assert.AreEqual(true, betterPeerStrategy.IsLowerThanTerminalTotalDifficulty((UInt256)10));
+    }
+
 }
