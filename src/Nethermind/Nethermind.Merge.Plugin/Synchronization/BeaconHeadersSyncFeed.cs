@@ -120,8 +120,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
              //   _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
              if (header.Number < ( _blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
              {
-                 if (_logger.IsInfo)
-                     _logger.Info(
+                 if (_logger.IsTrace)
+                     _logger.Trace(
                          $"LowestInsertedBeaconHeader AlreadyKnown changed, old: { _blockTree.LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
                  _blockTree.LowestInsertedBeaconHeader = header;
              }
