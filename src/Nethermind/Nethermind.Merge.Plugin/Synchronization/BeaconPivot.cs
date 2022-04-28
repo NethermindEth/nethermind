@@ -88,41 +88,21 @@ namespace Nethermind.Merge.Plugin.Synchronization
             }
         }
 
-        public void ResetPivot()
+        public void RemoveBeaconPivot()
         {
-            if (_logger.IsInfo) _logger.Info($"Reset beacon pivot, previous pivot: {_currentBeaconPivot}");
+            if (_logger.IsInfo) _logger.Info($"Removing beacon pivot, previous pivot: {_currentBeaconPivot}");
             _currentBeaconPivot = null;
+            // ToDo clear DB
         }
 
         public bool BeaconPivotExists() => _currentBeaconPivot != null;
-
-        public bool  IsPivotParentProcessed()
-        {
-            EnsurePivotParentProcessed();
-            return _pivotParentProcessed;
-        }
-
-        private void EnsurePivotParentProcessed()
-        {
-            if (_pivotParentProcessed || _currentBeaconPivot == null)
-                return;
-
-            _pivotParent ??= _blockTree.FindParentHeader(_currentBeaconPivot!,
-                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-
-            if (_pivotParent != null)
-                _pivotParentProcessed = _blockTree.WasProcessed(_pivotParent.Number,
-                    _pivotParent.Hash ?? _pivotParent.CalculateHash());
-        }
     }
 
     public interface IBeaconPivot : IPivot
     {
-        bool  IsPivotParentProcessed();
-
         void  EnsurePivot(BlockHeader? blockHeader);
 
-        void ResetPivot();
+        void RemoveBeaconPivot();
 
         bool BeaconPivotExists();
     }
