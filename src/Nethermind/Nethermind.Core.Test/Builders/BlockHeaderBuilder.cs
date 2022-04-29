@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -181,6 +182,13 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal.AuRaStep = step;
             TestObjectInternal.AuRaSignature = signature;
+            return this;
+        }
+        
+        public BlockHeaderBuilder WithVerkleWitness(byte[]? verkleProof = null, List<byte[][]> verkleWitness = null)
+        {
+            TestObjectInternal.VerkleProof = verkleProof;
+            TestObjectInternal.VerkleWitnesses = verkleWitness;
             return this;
         }
     }

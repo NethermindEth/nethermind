@@ -80,7 +80,7 @@ namespace Nethermind.Core
         
         public byte[]? VerkleProof { get; set; }
         
-        public Dictionary<byte[], byte[]>? VerkleWitnesses { get; set; }
+        public List<byte[][]>? VerkleWitnesses { get; set; }
 
         public bool HasBody => UnclesHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;

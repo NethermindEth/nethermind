@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -117,6 +118,42 @@ namespace Nethermind.Core.Test.Encoding
             finally
             {
                 HeaderDecoder.Eip1559TransitionBlock = long.MaxValue;
+            }
+        }
+        
+        [Test]
+        public void Can_encode_decode_with_verlkle_proof()
+        {
+            try
+            {
+                byte[] verkleProof =
+                {
+                    121, 85, 7, 198, 131, 230, 143, 90, 165, 129, 173, 81, 186, 89, 19, 191, 13, 107, 197, 120, 243,
+                    229, 224, 183, 72, 25, 6, 8, 210, 159, 31, 3
+                };
+                byte[] key =  {
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                };
+
+                byte[] value =  {
+                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2
+                };
+                List<byte[][]> verkleWitness = new();
+                verkleWitness.Add(new[]{key, value});
+                HeaderDecoder.Eip1559TransitionBlock = 0;
+                HeaderDecoder.VerkleTreeTransitionBlock = 0;
+                BlockHeader header = Build.A.BlockHeader.WithBaseFee(123).WithVerkleWitness(verkleProof, verkleWitness).TestObject;
+                Rlp rlp = Rlp.Encode(header);
+                BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+                blockHeader.BaseFeePerGas.Should().Be(123);
+                blockHeader.VerkleProof.Should().BeEquivalentTo(verkleProof);
+                blockHeader.VerkleWitnesses[0][0].Should().BeEquivalentTo(key);
+                blockHeader.VerkleWitnesses[0][1].Should().BeEquivalentTo(value);
+            }
+            finally
+            {
+                HeaderDecoder.Eip1559TransitionBlock = long.MaxValue;
+                HeaderDecoder.VerkleTreeTransitionBlock = long.MaxValue;
             }
         }
     }

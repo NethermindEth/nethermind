@@ -512,7 +512,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     byte[][] accessedKeys = transaction.VerkleWitness.GetAccessedKeys();
                     // TODO: figure out a way to get pre state here?
-                    block.VerkleWitnesses = accessedKeys.ToDictionary(key => key, key => _stateProvider.GetValueForKeyWitness(key));
+                    List<byte[][]> preStates = new();
+                    for (int i = 0; i < accessedKeys.Length; i++)
+                    {
+                        byte[] accessedValue = _stateProvider.GetValueForKeyWitness(accessedKeys[i]);
+                        preStates.Add(new[] { accessedKeys[i], accessedValue });
+                    }
+
+                    block.VerkleWitnesses = preStates;
                     byte[] verkleProof = _stateProvider.GetWitnessProofForMultipleKeys(VerkleUtils.To2D(accessedKeys));
                     block.VerkleProof = verkleProof;
                 }
