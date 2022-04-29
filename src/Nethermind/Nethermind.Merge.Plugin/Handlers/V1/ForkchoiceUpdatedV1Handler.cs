@@ -264,7 +264,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.None);
             if (block is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Syncing... Block {headBlockHash} not found.");
+                if (_logger.IsInfo) _logger.Info($"Syncing... Block {headBlockHash} not found.");
             }
 
             return block;
