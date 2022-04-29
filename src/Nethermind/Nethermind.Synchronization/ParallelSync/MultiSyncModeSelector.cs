@@ -468,8 +468,6 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
             bool stickyStateNodes = best.PeerBlock - best.Header < (FastSyncLag + StickyStateNodesDelta);
-            bool stickyBeaconStateNodes =
-                best.PeerBlock - best.BeaconHeader < (FastSyncLag + StickyStateNodesDelta);
             bool stateNotDownloadedYet = (best.PeerBlock - best.State > FastSyncLag ||
                                           best.Header > best.State && best.Header > best.Block);
             bool notInAStickyFullSync = !IsInAStickyFullSyncMode(best);
@@ -478,7 +476,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool result = fastSyncEnabled &&
                           hasFastSyncBeenActive &&
                           hasAnyPostPivotPeer &&
-                          (notInFastSync || stickyStateNodes || stickyBeaconStateNodes) &&
+                          (notInFastSync || stickyStateNodes) &&
                           stateNotDownloadedYet &&
                           notHasJustStartedFullSync &&
                           notInAStickyFullSync && 
