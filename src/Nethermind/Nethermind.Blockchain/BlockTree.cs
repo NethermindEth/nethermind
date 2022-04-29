@@ -1200,7 +1200,7 @@ namespace Nethermind.Blockchain
 
                 BlockInfo info = level.BlockInfos[index.Value];
                 info.WasProcessed = true;
-                if (index.Value != 0 && block.Number<previousHeadNumber) 
+                if (block.Number<previousHeadNumber) 
                 {
                     (level.BlockInfos[index.Value], level.BlockInfos[0]) =
                         (level.BlockInfos[0], level.BlockInfos[index.Value]);
