@@ -184,7 +184,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
-            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead)
+            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead && newHeadBlock.Number <_blockTree.Head.Number)
             {
                 if (_logger.IsInfo)
                 {
