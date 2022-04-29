@@ -122,15 +122,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
-            if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
-            _mergeSyncController.StopSyncing();
-
-            // TODO: beaconsync investigate why this would occur
-            if (newHeadBlock.Header.TotalDifficulty == 0)
-            {
-                newHeadBlock.Header.TotalDifficulty =
-                    _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, newHeadBlock.Number);
-            }
+            if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed");
 
 
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
