@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -33,13 +34,16 @@ public interface IChainLevelHelper
 public class ChainLevelHelper : IChainLevelHelper
 {
     private readonly IBlockTree _blockTree;
+    private readonly ISyncConfig _syncConfig;
     private readonly ILogger _logger;
 
     public ChainLevelHelper(
         IBlockTree blockTree,
+        ISyncConfig syncConfig,
         ILogManager logManager)
     {
         _blockTree = blockTree;
+        _syncConfig = syncConfig;
         _logger = logManager.GetClassLogger();
     }
     
@@ -142,6 +146,11 @@ public class ChainLevelHelper : IChainLevelHelper
             parentBlockExists = block != null;
             if (_logger.IsTrace) _logger.Trace($"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, Block: {block?.ToString(Block.Format.FullHashAndNumber)}");
             --startingPoint;
+            if (_syncConfig.FastSync && startingPoint <= _syncConfig.PivotNumberParsed)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");
+                break;
+            }
         } while (!parentBlockExists);
 
         return startingPoint;

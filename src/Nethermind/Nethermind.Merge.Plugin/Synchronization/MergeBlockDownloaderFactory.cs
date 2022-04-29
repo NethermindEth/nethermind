@@ -72,7 +72,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _betterPeerStrategy = betterPeerStrategy;
             _logManager = logManager;
-            _chainLevelHelper = new ChainLevelHelper(_blockTree, _logManager);
+            _chainLevelHelper = new ChainLevelHelper(_blockTree, syncConfig, _logManager);
 
             _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, beaconPivot, logManager);
         }

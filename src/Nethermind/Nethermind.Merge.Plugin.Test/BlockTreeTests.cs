@@ -197,7 +197,7 @@ public partial class BlockTreeTests
                             LimboLogs.Instance);
                     }
 
-                    _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, LimboLogs.Instance);
+                    _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, new SyncConfig(), LimboLogs.Instance);
                     return this;
                 }
 
