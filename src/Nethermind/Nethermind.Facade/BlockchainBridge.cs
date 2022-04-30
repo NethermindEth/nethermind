@@ -47,7 +47,7 @@ namespace Nethermind.Facade
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly ReadOnlyTxProcessingEnv _processingEnv;
+        private readonly IReadOnlyTxProcessorSource _processingEnv;
         private readonly ITxPool _txPool;
         private readonly IBlockTree _blockTree;
         private readonly IFilterStore _filterStore;
@@ -62,7 +62,7 @@ namespace Nethermind.Facade
         private readonly ISpecProvider _specProvider;
 
 
-        public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
+        public BlockchainBridge(IReadOnlyTxProcessorSourceExt processingEnv,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
