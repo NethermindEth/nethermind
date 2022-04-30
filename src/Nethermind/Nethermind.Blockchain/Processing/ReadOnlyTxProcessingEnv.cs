@@ -28,7 +28,7 @@ using Nethermind.Trie.Pruning;
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.Blockchain.Processing
 {
-    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSource
+    public class ReadOnlyTxProcessingEnv : IReadOnlyTxProcessorSourceExt
     {
         private readonly ReadOnlyDb _codeDb;
         public IStateReader StateReader { get; }
