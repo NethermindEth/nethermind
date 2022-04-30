@@ -130,6 +130,7 @@ namespace Nethermind.Specs
         }
 
         public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
+        public long VerkleTreeTransitionBlock => _spec.VerkleTreeTransitionBlock;
 
         public Address Eip1559FeeCollector => _spec.Eip1559FeeCollector;
     }

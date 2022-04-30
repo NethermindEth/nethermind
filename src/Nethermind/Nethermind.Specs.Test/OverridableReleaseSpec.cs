@@ -146,6 +146,8 @@ namespace Nethermind.Specs.Test
                 _overridenEip1559TransitionBlock = value;
             }
         }
+        
+        public long VerkleTreeTransitionBlock { get; set; }
 
         public Address? Eip1559FeeCollector => _spec.Eip1559FeeCollector;
     }
