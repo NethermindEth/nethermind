@@ -122,7 +122,7 @@ namespace Nethermind.Core.Test.Encoding
         }
         
         [Test]
-        public void Can_encode_decode_with_verlkle_proof()
+        public void Can_encode_decode_with_verkle_proof()
         {
             try
             {
