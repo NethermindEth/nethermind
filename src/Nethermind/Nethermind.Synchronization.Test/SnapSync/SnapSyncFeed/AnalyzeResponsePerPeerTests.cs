@@ -113,5 +113,21 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             snapProvider.Received(1).UpdatePivot();
         }
+
+        [Test]
+        public void Test04()
+        {
+            PeerInfo peer1 = new(null);
+
+            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+
+            SnapSyncFeed feed = new(selector, snapProvider, null, LimboLogs.Instance);
+
+            for (int i = 0; i < 200; i++)
+            {
+                feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
+            }
+        }
     }
 }

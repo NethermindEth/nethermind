@@ -33,6 +33,8 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
+        private object _syncLock = new object();
+
         private const int AllowedInvalidResponses = 5;
         private LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
 
@@ -148,10 +150,16 @@ namespace Nethermind.Synchronization.SnapSync
             int maxSize = 10 * AllowedInvalidResponses;
             while (_resultLog.Count > maxSize)
             {
-                _resultLog.RemoveLast();
+                lock (_syncLock)
+                {
+                    _resultLog.RemoveLast();
+                }
             }
 
-            _resultLog.AddFirst((peer, result));
+            lock (_syncLock)
+            {
+                _resultLog.AddFirst((peer, result));
+            }
 
             if (result == AddRangeResult.OK)
             {
@@ -193,7 +201,12 @@ namespace Nethermind.Synchronization.SnapSync
                                 if(allLastSuccess == 0 && allLastFailures > peerLastFailures)
                                 {
                                     _snapProvider.UpdatePivot();
-                                    _resultLog.Clear();
+
+                                    lock (_syncLock)
+                                    {
+                                        _resultLog.Clear();
+                                    }
+
                                     break;
                                 }
                             }
