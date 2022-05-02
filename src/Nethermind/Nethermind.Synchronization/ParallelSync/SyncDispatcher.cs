@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             try
                             {
-                                SyncResponseHandlingResult result = Feed.HandleResponse(request);
+                                SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
                                 ReactToHandlingResult(request, result, allocatedPeer);
                             }
                             catch (ObjectDisposedException)

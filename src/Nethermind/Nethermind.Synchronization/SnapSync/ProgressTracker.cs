@@ -66,6 +66,11 @@ namespace Nethermind.Synchronization.SnapSync
             return true;
         }
 
+        public void UpdatePivot()
+        {
+            _pivot.UpdateHeaderForcefully();
+        }
+
         public (SnapSyncBatch request, bool finished) GetNextRequest()
         {
             var pivotHeader = _pivot.GetPivotHeader();
@@ -74,7 +79,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             SnapSyncBatch request = new();
 
-            if(AccountsToRefresh.Count > 0)
+            if (AccountsToRefresh.Count > 0)
             {
                 LogRequest($"AccountsToRefresh:{AccountsToRefresh.Count}");
 
@@ -88,7 +93,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 Interlocked.Increment(ref _activeAccRefreshRequests);
 
-                request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths};
+                request.AccountsToRefreshRequest = new AccountsToRefreshRequest() { RootHash = rootHash, Paths = paths };
 
                 return (request, false);
 
@@ -167,8 +172,10 @@ namespace Nethermind.Synchronization.SnapSync
                 return (request, false);
             }
 
+            LogRequest("NO REQUEST");
+
             bool rangePhaseFinished = IsSnapGetRangesFinished();
-            if(rangePhaseFinished)
+            if (rangePhaseFinished)
             {
                 _logger.Info($"SNAP - State Ranges (Phase 1) finished.");
                 FinishRangePhase();
@@ -292,16 +299,19 @@ namespace Nethermind.Synchronization.SnapSync
         {
             _testReqCount++;
 
-            if(_testReqCount % 10 == 0)
+            if (reqType != "NO REQUEST" || _testReqCount % 1000 == 0)
             {
-                var progress = 100 * NextAccountPath.Bytes[0] / (double)256;
+                if (_testReqCount % 10 == 0)
+                {
+                    var progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
-                _logger.Warn($"SNAP - progres of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress)}{new string(' ', 100 - (int)progress)}]");
-            }
+                    _logger.Warn($"SNAP - progres of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
+                }
 
-            if (_testReqCount % 1 == 0)
-            {
-                _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff}) {NextAccountPath} Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | ToRefresh:{_activeAccRefreshRequests} | QUEUES Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | ToRefresh:{AccountsToRefresh.Count}");
+                if (_testReqCount % 1 == 0)
+                {
+                    _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff}) {MoreAccountsToRight}:{NextAccountPath} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
+                }
             }
         }
     }

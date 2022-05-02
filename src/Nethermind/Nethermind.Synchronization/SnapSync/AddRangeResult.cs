@@ -6,10 +6,11 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    internal enum AddRangeResult
+    public enum AddRangeResult
     {
         OK,
         MissingRootHashInProofs,
-        DifferentRootHash
+        DifferentRootHash,
+        ExpiredRootHash
     }
 }
