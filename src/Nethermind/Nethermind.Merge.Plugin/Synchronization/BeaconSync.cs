@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly IBlockCacheService _blockCacheService;
-        private bool _isInBeaconModeControl;
+        private bool _isInBeaconModeControl = false;
         private readonly ILogger _logger;
 
         public BeaconSync(
