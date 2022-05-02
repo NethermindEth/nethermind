@@ -71,7 +71,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (result == AddRangeResult.OK)
                 {
-                    Interlocked.Add(ref Metrics.SyncedAccounts, response.PathAndAccounts.Length);
+                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Length);
                 }
             }
 
@@ -168,9 +168,9 @@ namespace Nethermind.Synchronization.SnapSync
                     _progressTracker.ReportFullStorageRequestFinished();
                 }
 
-                if (slotCount > 0)
+                if (result == AddRangeResult.OK && slotCount > 0)
                 {
-                    Interlocked.Add(ref Metrics.SyncedStorageSlots, slotCount);
+                    Interlocked.Add(ref Metrics.SnapSyncedStorageSlots, slotCount);
                 }
             }
 
@@ -307,6 +307,8 @@ namespace Nethermind.Synchronization.SnapSync
                     _dbProvider.CodeDb.Set(codeHash, code);
                 }
             }
+
+            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Length);
 
             _progressTracker.ReportCodeRequestFinished(set);
         }
