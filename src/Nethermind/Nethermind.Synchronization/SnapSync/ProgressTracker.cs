@@ -301,11 +301,11 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (reqType != "NO REQUEST" || _testReqCount % 1000 == 0)
             {
-                if (_testReqCount % 10 == 0)
+                if (_testReqCount % 100 == 0)
                 {
                     var progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
-                    _logger.Warn($"SNAP - progres of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
+                    _logger.Info($"SNAP - progres of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
                 }
 
                 if (_testReqCount % 1 == 0)
