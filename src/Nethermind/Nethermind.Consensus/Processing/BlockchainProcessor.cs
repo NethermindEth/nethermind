@@ -338,20 +338,20 @@ namespace Nethermind.Consensus.Processing
 
             if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
             {
-                if (lastProcessed!.IsPostMerge == false)
-                {
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
-                    _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
-                }
-                else
-                {
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
-                    _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
-                }
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
+                _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
+
+                Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
+            }
+
+            if ((options & ProcessingOptions.MarkAsProcessed) != 0)
+            {
+                if (_logger.IsTrace)
+                    _logger.Trace(
+                        $"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
+                _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
 
                 Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
             }
@@ -411,7 +411,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
                     {
-                       _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
+                        _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
                         if (_logger.IsDebug)
                             _logger.Debug(
                                 $"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
@@ -456,8 +456,8 @@ namespace Nethermind.Consensus.Processing
             finally
             {
                 if (invalidBlockHash is not null)
-                { 
-                   DeleteInvalidBlocks(invalidBlockHash);
+                {
+                    DeleteInvalidBlocks(invalidBlockHash);
                 }
             }
 
@@ -499,7 +499,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private ProcessingBranch  PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
+        private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
         {
             BlockHeader branchingPoint = null;
             List<Block> blocksToBeAddedToMain = new();

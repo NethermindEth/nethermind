@@ -58,7 +58,13 @@ namespace Nethermind.Consensus.Processing
         /// total difficulty.
         /// </summary>
         DoNotUpdateHead = 64,
-        All = 127,
+        
+        /// <summary>
+        /// Used in EngineApi in NewPayload method for marking blocks as processed
+        /// </summary>
+        MarkAsProcessed = 128,
+        
+        All = 255,
         
         /// <summary>
         /// Combination of switches for block producers when they preprocess block for state root calculation.
@@ -68,7 +74,9 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// EVM tracing needs to process blocks without storing the data on chain.
         /// </summary>
-        Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation
+        Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
+        
+        EthereumMerge = MarkAsProcessed | DoNotUpdateHead
     }
 
     public static class ProcessingOptionsExtensions
