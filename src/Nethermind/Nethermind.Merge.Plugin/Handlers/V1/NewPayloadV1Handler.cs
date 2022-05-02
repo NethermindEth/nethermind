@@ -119,7 +119,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool parentExists = parentHeader != null;
             bool parentProcessed = parentExists && _blockTree.WasProcessed(parentHeader!.Number,
                 parentHeader!.Hash ?? parentHeader.CalculateHash());
-            bool beaconPivotExists = _beaconPivot.BeaconPivotExists();
             if (!parentExists)
             {
                 // possible that headers sync finished before this was called, so blocks in cache weren't inserted

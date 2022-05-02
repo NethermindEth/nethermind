@@ -59,7 +59,7 @@ public partial class BlockDownloaderTests
         InMemoryReceiptStorage receiptStorage = new();
         MergeConfig mergeConfig = new() { Enabled = true };
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true }, metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, metadataDb, notSyncedTree,
             RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), mergeConfig, metadataDb, notSyncedTree,
             new PeerRefresher(Substitute.For<ISyncPeerPool>()), LimboLogs.Instance);
@@ -80,8 +80,6 @@ public partial class BlockDownloaderTests
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
         ctx.BlockTree.BestSuggestedBody.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
-        ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader.Hash).Should()
-            .Be(downloaderOptions != DownloaderOptions.Process);
 
         int receiptCount = 0;
         for (int i = (int)Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)

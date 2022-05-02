@@ -111,7 +111,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (!_beaconSyncStrategy.IsBeaconSyncFinished(newHeadBlock.Header))
+            if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.Hash ?? newHeadBlock.CalculateHash()))
             {
                 // ToDO of course we shouldn't refresh the peers in this way. This need to be optimized and we need to rethink refreshing
                 if (i % 10 == 0)
