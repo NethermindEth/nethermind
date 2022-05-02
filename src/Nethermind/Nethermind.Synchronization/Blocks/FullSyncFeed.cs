@@ -38,7 +38,7 @@ namespace Nethermind.Synchronization.Blocks
         // ReSharper disable once RedundantTypeArgumentsOfMethod
         public override Task<BlocksRequest?> PrepareRequest() => Task.FromResult<BlocksRequest?>(ShouldBeActive() ? _blocksRequest : null);
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response)
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response, PeerInfo peer = null)
         {
             FallAsleep();
             return SyncResponseHandlingResult.OK;

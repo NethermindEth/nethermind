@@ -275,12 +275,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 long bytesPerMillisecond = (long)((decimal)batch.ResponseSize / Math.Max(1, elapsed));
                 if (Logger.IsTrace)
                     Logger.Trace($"{this} speed is {batch.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, bytesPerMillisecond);
+                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.SnapRanges, bytesPerMillisecond);
 
                 return task.Result;
             }
 
-            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.NodeData, 0L);
+            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.SnapRanges, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(Tin)}");
         }
     }
