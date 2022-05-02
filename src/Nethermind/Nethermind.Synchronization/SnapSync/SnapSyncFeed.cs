@@ -27,13 +27,14 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Core.Crypto;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
         private const int AllowedInvalidResponses = 5;
-        private ConcurrentQueue<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
+        private LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
 
         private const SnapSyncBatch EmptyBatch = null;
 
@@ -49,9 +50,9 @@ namespace Nethermind.Synchronization.SnapSync
         
         public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapProvider snapProvider, IBlockTree blockTree, ILogManager logManager)
         {
-            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-            _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider)); ;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _syncModeSelector = syncModeSelector;
+            _snapProvider = snapProvider;
+            _logger = logManager.GetClassLogger();
 
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
@@ -129,7 +130,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else
                 {
-                    _logger.Warn($"SNAP - timeout? {peer.SyncPeer.Id}");
+                    _logger.Warn($"SNAP - timeout? {peer}");
                     return SyncResponseHandlingResult.LesserQuality;
                 }
             }
@@ -137,7 +138,7 @@ namespace Nethermind.Synchronization.SnapSync
             return AnalyzeResponsePerPeer(result, peer);
         }
 
-        private SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
         {
             if(peer == null)
             {
@@ -147,14 +148,13 @@ namespace Nethermind.Synchronization.SnapSync
             int maxSize = 10 * AllowedInvalidResponses;
             while (_resultLog.Count > maxSize)
             {
-                _resultLog.TryDequeue(out _);
+                _resultLog.RemoveLast();
             }
 
-            _resultLog.Enqueue((peer, result));
+            _resultLog.AddFirst((peer, result));
 
             if (result == AddRangeResult.OK)
             {
-                _resultLog.Enqueue((peer, AddRangeResult.OK));
                 return SyncResponseHandlingResult.OK;
             }
             else
@@ -162,6 +162,7 @@ namespace Nethermind.Synchronization.SnapSync
                 int allLastSuccess = 0;
                 int allLastFailures = 0;
                 int peerLastFailures = 0;
+
                 foreach (var item in _resultLog)
                 {
                     if(item.result == AddRangeResult.OK)
@@ -185,7 +186,7 @@ namespace Nethermind.Synchronization.SnapSync
                             {
                                 if(allLastFailures == peerLastFailures)
                                 {
-                                    _logger.Warn($"SNAP - peer to be punished:{peer.SyncPeer.Id}");
+                                    _logger.Warn($"SNAP - peer to be punished:{peer}");
                                     return SyncResponseHandlingResult.LesserQuality;
                                 }
 
@@ -193,6 +194,7 @@ namespace Nethermind.Synchronization.SnapSync
                                 {
                                     _snapProvider.UpdatePivot();
                                     _resultLog.Clear();
+                                    break;
                                 }
                             }
                         }
