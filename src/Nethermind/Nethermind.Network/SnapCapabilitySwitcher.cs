@@ -33,8 +33,15 @@ public class SnapCapabilitySwitcher
     {
         _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
         _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
+    }
 
-        _progressTracker.SnapSyncFinished += OnSnapSyncFinished;
+    public void AddSnapCapabilityIfSnapSyncIsNotFinishedAndRemoveAfterFinished()
+    {
+        if (!_progressTracker.IsSnapGetRangesFinished())
+        {
+            _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+            _progressTracker.SnapSyncFinished += OnSnapSyncFinished;
+        }
     }
 
     private void OnSnapSyncFinished(object? sender, EventArgs e)

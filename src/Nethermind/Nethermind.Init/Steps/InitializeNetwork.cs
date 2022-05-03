@@ -180,7 +180,11 @@ namespace Nethermind.Init.Steps
                 }
             });
 
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
+            if (_syncConfig.SnapSyncProtocolEnabled)
+            {
+                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
+                snapCapabilitySwitcher.AddSnapCapabilityIfSnapSyncIsNotFinishedAndRemoveAfterFinished();
+            }
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -482,11 +486,6 @@ namespace Nethermind.Init.Steps
             if (_syncConfig.WitnessProtocolEnabled)
             {
                 _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
-            }
-            
-            if (_syncConfig.SnapSyncProtocolEnabled)
-            {
-                _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
             }
             
             _api.ProtocolValidator = protocolValidator;
