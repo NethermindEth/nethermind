@@ -32,7 +32,8 @@
     "verkleTransition": "0x0",
     "eip3198Transition": "0x0",
     "eip3529Transition": "0x0",
-    "eip3541Transition": "0x0"
+    "eip3541Transition": "0x0",
+    "verkleTreeTransition": "0x0"
   },
   "genesis": {
     "seal": {
@@ -48,9 +49,6 @@
     "extraData": "0x",
     "gasLimit": "0x2fefd8"
   },
-  "nodes": [
-    "enode://bc57276085419e3dd13ed4f4ba14d6fe513582d25e6b8fbf830f5e331d5911348c6df4f776685bb83eb6948f42697cf0941b6f58796872be426b9206ed15946e@206.189.52.190:30303"
-  ],
   "accounts": {
     "0x0000000000000000000000000000000000000001": {
       "builtin": {
