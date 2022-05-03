@@ -26,12 +26,20 @@ using Nethermind.State.Snap;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Core.Crypto;
+using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
+        private object _syncLock = new object();
+
+        private const int AllowedInvalidResponses = 5;
+        private LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
+
         private const SnapSyncBatch EmptyBatch = null;
+
         private int _emptyRequestCount;
         private int _retriesCount;
 
@@ -44,9 +52,9 @@ namespace Nethermind.Synchronization.SnapSync
         
         public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapProvider snapProvider, IBlockTree blockTree, ILogManager logManager)
         {
-            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-            _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider)); ;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _syncModeSelector = syncModeSelector;
+            _snapProvider = snapProvider;
+            _logger = logManager.GetClassLogger();
 
             _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
@@ -82,7 +90,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch)
+        public override SyncResponseHandlingResult HandleResponse(SnapSyncBatch? batch, PeerInfo peer)
         {
             if (batch == null)
             {
@@ -90,17 +98,19 @@ namespace Nethermind.Synchronization.SnapSync
                 return SyncResponseHandlingResult.InternalError;
             }
 
+            AddRangeResult result = AddRangeResult.OK;
+
             if (batch.AccountRangeResponse is not null)
             {
-                _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
+                result = _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
             }
-            else if(batch.StorageRangeResponse is not null)
+            else if (batch.StorageRangeResponse is not null)
             {
-                _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
+                result = _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
             }
-            else if(batch.CodesResponse is not null)
+            else if (batch.CodesResponse is not null)
             {
-                 _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
+                _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
             }
             else if (batch.AccountsToRefreshResponse is not null)
             {
@@ -116,12 +126,96 @@ namespace Nethermind.Synchronization.SnapSync
                     _logger.Info($"SNAP - retriesCount:{_retriesCount}");
                 }
 
-                // Other option - What if the peer didn't respond? Timeout
-                return SyncResponseHandlingResult.NotAssigned;
-                //return SyncResponseHandlingResult.NoProgress;
+                if (peer == null)
+                {
+                    return SyncResponseHandlingResult.NotAssigned;
+                }
+                else
+                {
+                    _logger.Warn($"SNAP - timeout? {peer}");
+                    return SyncResponseHandlingResult.LesserQuality;
+                }
             }
 
-            return SyncResponseHandlingResult.OK;
+            return AnalyzeResponsePerPeer(result, peer);
+        }
+
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo peer)
+        {
+            if(peer == null)
+            {
+                return SyncResponseHandlingResult.OK;
+            }
+
+            int maxSize = 10 * AllowedInvalidResponses;
+            while (_resultLog.Count > maxSize)
+            {
+                lock (_syncLock)
+                {
+                    _resultLog.RemoveLast();
+                }
+            }
+
+            lock (_syncLock)
+            {
+                _resultLog.AddFirst((peer, result));
+            }
+
+            if (result == AddRangeResult.OK)
+            {
+                return SyncResponseHandlingResult.OK;
+            }
+            else
+            {
+                int allLastSuccess = 0;
+                int allLastFailures = 0;
+                int peerLastFailures = 0;
+
+                foreach (var item in _resultLog)
+                {
+                    if(item.result == AddRangeResult.OK)
+                    {
+                        allLastSuccess++;
+
+                        if (item.peer == peer)
+                        {
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        allLastFailures++;
+
+                        if (item.peer == peer)
+                        {
+                            peerLastFailures++;
+
+                            if(peerLastFailures > AllowedInvalidResponses)
+                            {
+                                if(allLastFailures == peerLastFailures)
+                                {
+                                    _logger.Warn($"SNAP - peer to be punished:{peer}");
+                                    return SyncResponseHandlingResult.LesserQuality;
+                                }
+
+                                if(allLastSuccess == 0 && allLastFailures > peerLastFailures)
+                                {
+                                    _snapProvider.UpdatePivot();
+
+                                    lock (_syncLock)
+                                    {
+                                        _resultLog.Clear();
+                                    }
+
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return SyncResponseHandlingResult.OK;
+            }
         }
 
         public void Dispose()

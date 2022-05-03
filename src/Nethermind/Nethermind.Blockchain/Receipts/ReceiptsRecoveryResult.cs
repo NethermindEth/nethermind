@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2022 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,27 +13,13 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Synchronization.Peers;
+namespace Nethermind.Blockchain.Receipts;
 
-namespace Nethermind.Synchronization.ParallelSync
+public enum ReceiptsRecoveryResult
 {
-    public interface ISyncFeed<T>
-    {
-        int FeedId { get; }
-        SyncFeedState CurrentState { get; }
-        event EventHandler<SyncFeedStateEventArgs> StateChanged;
-        Task<T> PrepareRequest();
-        SyncResponseHandlingResult HandleResponse(T response, PeerInfo peer = null);
-        
-        /// <summary>
-        /// Multifeed can prepare and handle multiple requests concurrently.
-        /// </summary>
-        bool IsMultiFeed { get; }
-
-        AllocationContexts Contexts { get; }
-        void Activate();
-    }
+    Success,
+    Fail,
+    Skipped
 }

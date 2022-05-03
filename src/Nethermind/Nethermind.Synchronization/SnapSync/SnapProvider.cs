@@ -55,26 +55,32 @@ namespace Nethermind.Synchronization.SnapSync
 
         public (SnapSyncBatch request, bool finished) GetNextRequest() => _progressTracker.GetNextRequest();
 
-        public void AddAccountRange(AccountRange request, AccountsAndProofs response)
+        public AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response)
         {
+            AddRangeResult result;
+
             if (response.PathAndAccounts.Length == 0 && response.Proofs.Length == 0)
             {
                 _logger.Warn($"GetAccountRange: Requested expired RootHash:{request.RootHash}");
+
+                result = AddRangeResult.ExpiredRootHash;
             }
             else
             {
-                bool success = AddAccountRange(request.BlockNumber.Value, request.RootHash, request.StartingHash, response.PathAndAccounts, response.Proofs);
+                result = AddAccountRange(request.BlockNumber.Value, request.RootHash, request.StartingHash, response.PathAndAccounts, response.Proofs);
 
-                if (success && response.PathAndAccounts.Length > 0)
+                if (result == AddRangeResult.OK)
                 {
-                    Interlocked.Add(ref Metrics.SyncedAccounts, response.PathAndAccounts.Length);
+                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Length);
                 }
             }
 
             _progressTracker.ReportAccountRequestFinished();
+
+            return result;
         }
 
-        public bool AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
+        public AddRangeResult AddAccountRange(long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             StateTree tree = new(_store, _logManager);
 
@@ -92,8 +98,6 @@ namespace Nethermind.Synchronization.SnapSync
 
                 _progressTracker.NextAccountPath = accounts[accounts.Length - 1].Path;
                 _progressTracker.MoreAccountsToRight = moreChildrenToRight;
-
-                return true;
             }
             else if(result == AddRangeResult.MissingRootHashInProofs)
             {
@@ -104,16 +108,20 @@ namespace Nethermind.Synchronization.SnapSync
                 _logger.Warn($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
             }
 
-            return false;
+            return result;
         }
 
-        public void AddStorageRange(StorageRange request, SlotsAndProofs response)
+        public AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response)
         {
+            AddRangeResult result = AddRangeResult.OK;
+
             if (response.PathsAndSlots.Length == 0 && response.Proofs.Length == 0)
             {
                 _logger.Warn($"GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count()}), {request.StartingHash}");
 
                 _progressTracker.ReportStorageRangeRequestFinished(request);
+
+                return AddRangeResult.ExpiredRootHash;
             }
             else
             {
@@ -146,7 +154,7 @@ namespace Nethermind.Synchronization.SnapSync
                         proofs = response.Proofs;
                     }
 
-                    AddStorageRange(request.BlockNumber.Value, request.Accounts[i], request.Accounts[i].Account.StorageRoot, request.StartingHash, response.PathsAndSlots[i], proofs);
+                    result = AddStorageRange(request.BlockNumber.Value, request.Accounts[i], request.Accounts[i].Account.StorageRoot, request.StartingHash, response.PathsAndSlots[i], proofs);
 
                     slotCount += response.PathsAndSlots[i].Length;
                 }
@@ -160,17 +168,17 @@ namespace Nethermind.Synchronization.SnapSync
                     _progressTracker.ReportFullStorageRequestFinished();
                 }
 
-                if (slotCount > 0)
+                if (result == AddRangeResult.OK && slotCount > 0)
                 {
-                    Interlocked.Add(ref Metrics.SyncedStorageSlots, slotCount);
+                    Interlocked.Add(ref Metrics.SnapSyncedStorageSlots, slotCount);
                 }
             }
+
+            return result;
         }
 
-        public bool AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
+        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
         {
-            // TODO: use expectedRootHash (StorageRootHash from Account), it can change when PIVOT changes
-
             StorageTree tree = new(_store, _logManager);
             (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
 
@@ -186,8 +194,6 @@ namespace Nethermind.Synchronization.SnapSync
 
                     _progressTracker.EnqueueStorageRange(range);
                 }
-
-                return true;
             }
             else if(result == AddRangeResult.MissingRootHashInProofs)
             {
@@ -202,7 +208,7 @@ namespace Nethermind.Synchronization.SnapSync
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
 
-            return false;
+            return result;
         }
 
         public void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response)
@@ -302,6 +308,8 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
+            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Length);
+
             _progressTracker.ReportCodeRequestFinished(set);
         }
 
@@ -323,6 +331,13 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 _progressTracker.ReportAccountRefreshFinished(batch.AccountsToRefreshRequest);
             }
+        }
+
+        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
+
+        public void UpdatePivot()
+        {
+            _progressTracker.UpdatePivot();
         }
     }
 }

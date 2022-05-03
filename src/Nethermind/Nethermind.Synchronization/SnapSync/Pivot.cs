@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             get
             {
-                return (_blockTree.BestSuggestedHeader?.Number ?? 0) - _bestHeader.Number;
+                return (_blockTree.BestSuggestedHeader?.Number ?? 0) - (_bestHeader?.Number ?? 0);
             }
         }
 
@@ -32,10 +32,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         public BlockHeader GetPivotHeader()
         {
-            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 20)
+            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 10)
             {
-                _logger.Warn($"SNAP - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
-
+                LogPivotChanged($"distance from HEAD:{Diff}");
                 _bestHeader = _blockTree.BestSuggestedHeader;
             }
 
@@ -46,6 +45,20 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             return _bestHeader;
+        }
+
+        private void LogPivotChanged(string msg)
+        {
+            _logger.Warn($"SNAP - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
+        }
+
+        public void UpdateHeaderForcefully()
+        {
+            if (_blockTree.BestSuggestedHeader?.Number > _bestHeader.Number)
+            {
+                LogPivotChanged("to many empty responses");
+                _bestHeader = _blockTree.BestSuggestedHeader;
+            }
         }
     }
 }

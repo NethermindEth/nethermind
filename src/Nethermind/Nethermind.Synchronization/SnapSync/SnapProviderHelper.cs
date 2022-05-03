@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.SnapSync
         private static int _accCommitInProgress = 0;
         private static int _slotCommitInProgress = 0;
 
-        public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes) 
+        public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes)
             AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
@@ -40,7 +40,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
-            if(result != AddRangeResult.OK)
+            if (result != AddRangeResult.OK)
             {
                 return (result, true, null, null);
             }
@@ -48,26 +48,19 @@ namespace Nethermind.Synchronization.SnapSync
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
             IList<Keccak> codeHashes = new List<Keccak>();
 
-            try
+            foreach (var account in accounts)
             {
-                foreach (var account in accounts)
+                if (account.Account.HasStorage)
                 {
-                    if (account.Account.HasStorage)
-                    {
-                        accountsWithStorage.Add(account);
-                    }
-
-                    if (account.Account.HasCode)
-                    {
-                        codeHashes.Add(account.Account.CodeHash);
-                    }
-
-                    tree.Set(account.Path, account.Account);
+                    accountsWithStorage.Add(account);
                 }
-            }
-            catch (Exception)
-            {               
-                throw;
+
+                if (account.Account.HasCode)
+                {
+                    codeHashes.Add(account.Account.CodeHash);
+                }
+
+                tree.Set(account.Path, account.Account);
             }
 
             tree.UpdateRootHash();
@@ -112,17 +105,9 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true);
             }
 
-            // TODO: try-catch not needed, just for debug
-            try
+            foreach (var slot in slots)
             {
-                foreach (var slot in slots)
-                {
-                    tree.Set(slot.Path, slot.SlotRlpValue, false);
-                }
-            }
-            catch (Exception)
-            {
-                throw;
+                tree.Set(slot.Path, slot.SlotRlpValue, false);
             }
 
             tree.UpdateRootHash();
