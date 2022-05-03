@@ -909,10 +909,7 @@ namespace Nethermind.Synchronization.Test
             {
                 _withReceipts = withReceipts;
                 Flags = flags;
-                UpdateFromTree(chainLength, withReceipts);
-                HeadNumber = BlockTree.Head.Number;
-                HeadHash = BlockTree.HeadHash;
-                TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
+                BuildTree(chainLength, withReceipts);
             }
 
             public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty)
@@ -925,7 +922,7 @@ namespace Nethermind.Synchronization.Test
                 TotalDifficulty = peerTotalDifficulty;
             }
 
-            private void UpdateFromTree(long chainLength, bool withReceipts)
+            private void BuildTree(long chainLength, bool withReceipts)
             {
                 _receiptStorage = new InMemoryReceiptStorage();
                 BlockTreeBuilder builder = Build.A.BlockTree();
@@ -944,7 +941,7 @@ namespace Nethermind.Synchronization.Test
 
             public void ExtendTree(long newLength)
             {
-                UpdateFromTree(newLength, _withReceipts);
+                BuildTree(newLength, _withReceipts);
             }
 
             public Node Node { get; }
