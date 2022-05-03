@@ -82,7 +82,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
-        ctx.BlockTree.BestSuggestedBody.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
+        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, insertedBeaconBlocks));
 
         int receiptCount = 0;
         for (int i = (int)Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)
