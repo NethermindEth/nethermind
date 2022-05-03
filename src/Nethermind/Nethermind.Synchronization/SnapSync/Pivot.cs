@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public BlockHeader GetPivotHeader()
         {
-            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 36)
+            if(_bestHeader is null || _blockTree.BestSuggestedHeader?.Number - _bestHeader.Number >= Constants.MaxDistanceFromHead - 10)
             {
                 LogPivotChanged($"distance from HEAD:{Diff}");
                 _bestHeader = _blockTree.BestSuggestedHeader;
