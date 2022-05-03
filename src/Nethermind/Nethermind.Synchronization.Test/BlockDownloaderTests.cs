@@ -906,6 +906,8 @@ namespace Nethermind.Synchronization.Test
                 _withReceipts = withReceipts;
                 Flags = flags;
                 UpdateFromTree(chainLength, withReceipts);
+                HeadNumber = BlockTree.Head.Number;
+                HeadHash = BlockTree.HeadHash;
                 TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
             }
 
@@ -914,14 +916,9 @@ namespace Nethermind.Synchronization.Test
                 _withReceipts = withReceipts;
                 Flags = flags;
                 BlockTree = blockTree;
-                UpdateTree();
-                TotalDifficulty = peerTotalDifficulty;
-            }
-
-            private void UpdateTree()
-            {
                 HeadNumber = BlockTree.Head.Number;
                 HeadHash = BlockTree.HeadHash;
+                TotalDifficulty = peerTotalDifficulty;
             }
 
             private void UpdateFromTree(long chainLength, bool withReceipts)
@@ -935,8 +932,6 @@ namespace Nethermind.Synchronization.Test
 
                 builder = builder.OfChainLength((int) chainLength);
                 BlockTree = builder.TestObject;
-
-                UpdateTree();
             }
 
             public void ExtendTree(long newLength)
