@@ -225,10 +225,11 @@ namespace Nethermind.Synchronization.Blocks
                     // loop iterator to start with o
                     if (HandleAddResult(bestPeer, currentHeader, i == 0, _blockTree.Insert(currentHeader)))
                     {
+                        TryUpdateTerminalBlock(currentHeader, false);
                         headersSynced++;
                     }
 
-                    currentNumber = currentNumber + 1;
+                    currentNumber += 1;
                 }
 
                 if (headersSynced > 0)
@@ -273,7 +274,7 @@ namespace Nethermind.Synchronization.Blocks
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
-                long upperDownloadBoundary = GetUpperDownloadBoundary(bestPeer, blocksRequest);
+                long upperDownloadBoundary = bestPeer.HeadNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
                 long blocksLeft = upperDownloadBoundary - currentNumber;
                 int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
@@ -352,6 +353,7 @@ namespace Nethermind.Synchronization.Blocks
 
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None)))
                     {
+                        TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
                         if (downloadReceipts)
                         {
                             TxReceipt[]? contextReceiptsForBlock = context.ReceiptsForBlocks![blockIndex];
@@ -393,12 +395,6 @@ namespace Nethermind.Synchronization.Blocks
 
             return blocksSynced;
         }
-        
-        protected virtual long GetUpperDownloadBoundary(PeerInfo bestPeer, BlocksRequest blocksRequest)
-        {
-            return bestPeer.HeadNumber - (blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
-        }
-
         protected virtual bool ImprovementRequirementSatisfied(PeerInfo? bestPeer)
         {
             return bestPeer!.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0);
@@ -602,6 +598,8 @@ namespace Nethermind.Synchronization.Blocks
                     throw new NotSupportedException($"Unknown {nameof(AddBlockResult)} {addResult}");
             }
         }
+
+        protected virtual void TryUpdateTerminalBlock(BlockHeader header, bool shouldProcess) { }
 
         public event EventHandler<SyncEventArgs>? SyncEvent;
 

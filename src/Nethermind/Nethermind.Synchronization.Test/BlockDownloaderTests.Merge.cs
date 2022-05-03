@@ -43,6 +43,9 @@ public partial class BlockDownloaderTests
 {
     [TestCase(32L, DownloaderOptions.Process, 32, 32)]
     [TestCase(32L, DownloaderOptions.Process, 32, 29)]
+    [TestCase(32L, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 0, 32)]
+    [TestCase(SyncBatchSize.Max * 8, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 32, 32)]
+    [TestCase(SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, 32)]
     public async Task Merge_Happy_path(long headNumber, int options, int threshold, long insertedBeaconBlocks)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
@@ -79,7 +82,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
-        ctx.BlockTree.BestSuggestedBody.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
+        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, insertedBeaconBlocks));
 
         int receiptCount = 0;
         for (int i = (int)Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)
