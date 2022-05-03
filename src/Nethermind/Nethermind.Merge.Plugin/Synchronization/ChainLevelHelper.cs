@@ -136,7 +136,7 @@ public class ChainLevelHelper : IChainLevelHelper
     private long? GetStartingPoint()
     {
         long startingPoint = _blockTree.BestKnownNumber + 1;
-        bool parentBlockExists = false;
+        bool parentBlockExists;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
         {
