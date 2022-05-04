@@ -129,7 +129,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private void LogRequest(IByteBuffer buffer)
         {
-            Logger.Info($"SNAP - GetNodeData{Bytes.ToHexString(buffer.Array)}");
+            Logger.Info($"SNAP - GetNodeData:{Bytes.ToHexString(buffer.Array)}");
         }
 
         private void Handle(AccountRangeMessage msg, long size)

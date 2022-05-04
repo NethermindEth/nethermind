@@ -31,7 +31,6 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly IDb _db;
 
         public Keccak NextAccountPath { get; set; } = Keccak.Zero;
-        //public Keccak NextAccountPath { get; set; } = new("0xffe0000000000000000000000000000000000000000000000000000000000000");
         private ConcurrentQueue<StorageRange> NextSlotRange { get; set; } = new();
         private ConcurrentQueue<PathWithAccount> StoragesToRetrieve { get; set; } = new();
         private ConcurrentQueue<Keccak> CodesToRetrieve { get; set; } = new();
@@ -47,6 +46,8 @@ namespace Nethermind.Synchronization.SnapSync
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
             _pivot = new Pivot(blockTree, logManager);
+
+            _logger.Info($"SNAP - batch sizes - storage:{STORAGE_BATCH_SIZE}, codes:{CODES_BATCH_SIZE}");
 
             //TODO: maybe better to move to a init methot instead of the constructor
             GetSyncProgress();
