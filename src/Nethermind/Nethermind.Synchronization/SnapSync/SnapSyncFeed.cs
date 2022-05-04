@@ -152,7 +152,10 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 lock (_syncLock)
                 {
-                    _resultLog.RemoveLast();
+                    if (_resultLog.Count > 0)
+                    {
+                        _resultLog.RemoveLast();
+                    }
                 }
             }
 
@@ -171,43 +174,43 @@ namespace Nethermind.Synchronization.SnapSync
                 int allLastFailures = 0;
                 int peerLastFailures = 0;
 
-                foreach (var item in _resultLog)
+                lock(_syncLock)
                 {
-                    if(item.result == AddRangeResult.OK)
+                    foreach (var item in _resultLog)
                     {
-                        allLastSuccess++;
-
-                        if (item.peer == peer)
+                        if (item.result == AddRangeResult.OK)
                         {
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        allLastFailures++;
+                            allLastSuccess++;
 
-                        if (item.peer == peer)
-                        {
-                            peerLastFailures++;
-
-                            if(peerLastFailures > AllowedInvalidResponses)
+                            if (item.peer == peer)
                             {
-                                if(allLastFailures == peerLastFailures)
-                                {
-                                    _logger.Warn($"SNAP - peer to be punished:{peer}");
-                                    return SyncResponseHandlingResult.LesserQuality;
-                                }
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            allLastFailures++;
 
-                                if(allLastSuccess == 0 && allLastFailures > peerLastFailures)
-                                {
-                                    _snapProvider.UpdatePivot();
+                            if (item.peer == peer)
+                            {
+                                peerLastFailures++;
 
-                                    lock (_syncLock)
+                                if (peerLastFailures > AllowedInvalidResponses)
+                                {
+                                    if (allLastFailures == peerLastFailures)
                                     {
-                                        _resultLog.Clear();
+                                        _logger.Warn($"SNAP - peer to be punished:{peer}");
+                                        return SyncResponseHandlingResult.LesserQuality;
                                     }
 
-                                    break;
+                                    if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
+                                    {
+                                        _snapProvider.UpdatePivot();
+
+                                        _resultLog.Clear();
+
+                                        break;
+                                    }
                                 }
                             }
                         }
