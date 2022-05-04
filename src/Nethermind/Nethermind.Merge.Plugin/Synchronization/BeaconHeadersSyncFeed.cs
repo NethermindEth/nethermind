@@ -68,11 +68,9 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
         Keccak? startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash;
-        // TODO: beaconsync TD should not be final total difficulty if pivot destination < TDD block
         UInt256? startTotalDifficulty =
             lowestInserted?.TotalDifficulty ?? _mergeConfig.FinalTotalDifficultyParsed ?? null;
-        //  ?? _mergeConfig.FinalTotalDifficultyParsed;
-        
+
         _nextHeaderHash = startHeaderHash;
         _nextHeaderDiff = startTotalDifficulty;
         
