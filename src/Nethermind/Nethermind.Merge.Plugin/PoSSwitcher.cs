@@ -92,6 +92,8 @@ namespace Nethermind.Merge.Plugin
 
             if (_terminalBlockNumber == null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
+            
+            if (_logger.IsInfo) _logger.Info($"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {_hasEverReachedTerminalDifficulty}, Terminal Block Number {_terminalBlockNumber}");
         }
 
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e)
