@@ -117,14 +117,15 @@ namespace Nethermind.Init.Steps
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
 
-            _api.SnapProvider = new SnapProvider(_api.BlockTree, _api.DbProvider, _api.LogManager);
+            ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager);
+            _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
             SyncProgressResolver syncProgressResolver = new(
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.DbProvider.StateDb,
                 _api.ReadOnlyTrieStore!,
-                _api.SnapProvider,
+                progressTracker,
                 _syncConfig,
                 _api.LogManager);
             
@@ -178,6 +179,12 @@ namespace Nethermind.Init.Steps
                     _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
+
+            if (_syncConfig.SnapSyncProtocolEnabled)
+            {
+                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
+                snapCapabilitySwitcher.AddSnapCapabilityIfSnapSyncIsNotFinishedAndRemoveAfterFinished();
+            }
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -479,11 +486,6 @@ namespace Nethermind.Init.Steps
             if (_syncConfig.WitnessProtocolEnabled)
             {
                 _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
-            }
-            
-            if (_syncConfig.SnapSyncProtocolEnabled)
-            {
-                _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
             }
             
             _api.ProtocolValidator = protocolValidator;

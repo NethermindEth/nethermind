@@ -306,8 +306,8 @@ namespace Nethermind.Synchronization.Test
                     _logManager);
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
 
-                SnapProvider snapProvider = new SnapProvider(BlockTree, dbProvider, LimboLogs.Instance);
-
+                ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
+                SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
                 Synchronizer = new Synchronizer(
                     dbProvider,
                     MainnetSpecProvider.Instance,

@@ -128,7 +128,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new ();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
-            SnapProvider snapProvider = new(null, dbProvider, LimboLogs.Instance);
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(AddRangeResult.OK, result);
@@ -151,7 +152,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
-            SnapProvider snapProvider = new(null, dbProvider, LimboLogs.Instance);
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.AreEqual(AddRangeResult.OK, result);
@@ -167,7 +169,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
-            SnapProvider snapProvider = new(null, dbProvider, LimboLogs.Instance);
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
             Assert.AreEqual(AddRangeResult.OK, result);
@@ -184,7 +187,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
-            SnapProvider snapProvider = new(null, dbProvider, LimboLogs.Instance);
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -233,7 +237,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new ();
             DbProvider dbProvider = new(DbModeHint.Mem);
             dbProvider.RegisterDb(DbNames.State, db);
-            SnapProvider snapProvider = new(null, dbProvider, LimboLogs.Instance);
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
