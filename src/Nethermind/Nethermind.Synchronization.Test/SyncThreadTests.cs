@@ -353,11 +353,12 @@ namespace Nethermind.Synchronization.Test
                 new MiningConfig(),
                 logManager);
 
+            ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);
+            
             SyncProgressResolver resolver = new(
-                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, null, syncConfig, logManager);
+                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, logManager);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, logManager);
 
-            ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             Synchronizer synchronizer = new(

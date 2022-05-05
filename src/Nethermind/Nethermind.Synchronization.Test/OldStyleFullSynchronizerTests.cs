@@ -65,16 +65,16 @@ namespace Nethermind.Synchronization.Test
             var stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _pool = new SyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
             SyncConfig syncConfig = new();
+            ProgressTracker progressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
             SyncProgressResolver resolver = new(
                 _blockTree,
                 _receiptStorage,
                 _stateDb,
                 new TrieStore(_stateDb, LimboLogs.Instance),  
-                null,
+                progressTracker,
                 syncConfig,
                 LimboLogs.Instance);
 
-            ProgressTracker progressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, LimboLogs.Instance);

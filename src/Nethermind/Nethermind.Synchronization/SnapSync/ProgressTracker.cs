@@ -277,7 +277,7 @@ namespace Nethermind.Synchronization.SnapSync
         private void GetSyncProgress()
         {
             byte[] progress = _db.Get(ACC_PROGRESS_KEY);
-            if (progress != null)
+            if (progress is { Length: 32 })
             {
                 NextAccountPath = new Keccak(progress);
                 _logger.Info($"SNAP - State Ranges (Phase 1) progress loaded from DB:{NextAccountPath}");
