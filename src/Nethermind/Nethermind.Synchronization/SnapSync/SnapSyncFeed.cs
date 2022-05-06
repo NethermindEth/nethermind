@@ -117,7 +117,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else
                 {
-                    _logger.Warn($"SNAP - timeout? {peer}");
+                    _logger.Trace($"SNAP - timeout {peer}");
                     return SyncResponseHandlingResult.LesserQuality;
                 }
             }
@@ -184,7 +184,7 @@ namespace Nethermind.Synchronization.SnapSync
                                 {
                                     if (allLastFailures == peerLastFailures)
                                     {
-                                        _logger.Warn($"SNAP - peer to be punished:{peer}");
+                                        _logger.Trace($"SNAP - peer to be punished:{peer}");
                                         return SyncResponseHandlingResult.LesserQuality;
                                     }
 
