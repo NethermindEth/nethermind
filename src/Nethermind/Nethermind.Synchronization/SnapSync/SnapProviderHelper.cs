@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -166,7 +167,8 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                         else
                         {
-                            if (Bytes.Comparer.Compare(path.ToArray(), leftBoundary[0..path.Count()].ToArray()) >= 0
+                            Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
+                            if (Bytes.Comparer.Compare(pathSpan, leftBoundary[0..path.Count]) >= 0
                                 && parent is not null
                                 && parent.IsBranch)
                             {
@@ -188,8 +190,9 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     pathIndex++;
 
-                    int left = Bytes.Comparer.Compare(path.ToArray(), leftBoundary[0..path.Count()].ToArray()) == 0 ? leftBoundary[pathIndex] : 0;
-                    int right = Bytes.Comparer.Compare(path.ToArray(), rightBoundary[0..path.Count()].ToArray()) == 0 ? rightBoundary[pathIndex] : 15;
+                    Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
+                    int left = Bytes.Comparer.Compare(pathSpan, leftBoundary[0..path.Count]) == 0 ? leftBoundary[pathIndex] : 0;
+                    int right = Bytes.Comparer.Compare(pathSpan, rightBoundary[0..path.Count]) == 0 ? rightBoundary[pathIndex] : 15;
 
                     int maxIndex = moreChildrenToRight ? right : 15;
 
