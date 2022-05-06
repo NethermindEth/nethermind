@@ -666,7 +666,7 @@ namespace Nethermind.Blockchain
                 _headerDb.Set(header.Hash, newRlp.Bytes);
 
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-                UpdateOrCreateLevel(header.Number, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
+                UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
             
@@ -760,7 +760,7 @@ namespace Nethermind.Blockchain
                             $"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
                     SetTotalDifficulty(header);
                     blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty!.Value);
-                    level = UpdateOrCreateLevel(header.Number, blockInfo);
+                    level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                 }
                 else
                 {
@@ -1547,7 +1547,7 @@ namespace Nethermind.Blockchain
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
         }
 
-        private ChainLevelInfo UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
+        private ChainLevelInfo UpdateOrCreateLevel(long number, Keccak hash, BlockInfo blockInfo, bool setAsMain = false)
         {
             using (BatchWrite? batch = _chainLevelInfoRepository.StartBatch())
             {
@@ -1556,15 +1556,23 @@ namespace Nethermind.Blockchain
                 if (level is not null)
                 {
                     BlockInfo[] blockInfos = level.BlockInfos;
-                    Array.Resize(ref blockInfos, blockInfos.Length + 1);
+
+                    int? foundIndex = FindIndex(hash, level);
+                    if (!foundIndex.HasValue)
+                    {
+                        Array.Resize(ref blockInfos, blockInfos.Length + 1);
+                    }
+
+                    int index = foundIndex ?? blockInfos.Length;
+
                     if (setAsMain)
                     {
-                        blockInfos[^1] = blockInfos[0];
+                        blockInfos[index] = blockInfos[0];
                         blockInfos[0] = blockInfo;
                     }
                     else
                     {
-                        blockInfos[^1] = blockInfo;
+                        blockInfos[index] = blockInfo;
                     }
 
                     level.BlockInfos = blockInfos;
@@ -1771,7 +1779,7 @@ namespace Nethermind.Blockchain
                             $"Entering missing block info in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}");
                     SetTotalDifficulty(block.Header);
                     blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty!.Value);
-                    level = UpdateOrCreateLevel(block.Number, blockInfo);
+                    level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo);
                 }
                 else
                 {
@@ -1828,7 +1836,7 @@ namespace Nethermind.Blockchain
                 {
                     child.TotalDifficulty = current.TotalDifficulty + child.Difficulty;
                     BlockInfo blockInfo = new(child.Hash, child.TotalDifficulty.Value);
-                    UpdateOrCreateLevel(child.Number, blockInfo);
+                    UpdateOrCreateLevel(child.Number, child.Hash, blockInfo);
                     if (_logger.IsTrace)
                         _logger.Trace($"Calculated total difficulty for {child} is {child.TotalDifficulty}");
                     current = child;
