@@ -255,6 +255,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (set.Remove(codeHash))
                 {
+                    Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
                     _dbProvider.CodeDb.Set(codeHash, code);
                 }
             }

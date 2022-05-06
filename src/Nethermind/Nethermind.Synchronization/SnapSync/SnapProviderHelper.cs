@@ -52,7 +52,11 @@ namespace Nethermind.Synchronization.SnapSync
                     codeHashes.Add(account.Account.CodeHash);
                 }
 
-                tree.Set(account.Path, account.Account);
+                Rlp rlp = tree.Set(account.Path, account.Account);
+                if (rlp is not null)
+                {
+                    Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
+                }
             }
 
             tree.UpdateRootHash();
@@ -87,6 +91,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             foreach (var slot in slots)
             {
+                Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
                 tree.Set(slot.Path, slot.SlotRlpValue, false);
             }
 
