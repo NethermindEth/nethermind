@@ -194,7 +194,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return new AccountsAndProofs() { PathAndAccounts = response.PathsWithAccounts, Proofs = response.Proofs };
         }
 
-        public async Task<SlotsAndProofs> GetStoragetRange(StorageRange range, CancellationToken token)
+        public async Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
         {
             var request = new GetStorageRangeMessage()
             {

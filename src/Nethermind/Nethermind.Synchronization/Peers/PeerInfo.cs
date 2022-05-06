@@ -57,11 +57,6 @@ namespace Nethermind.Synchronization.Peers
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool CanBeAllocated(AllocationContexts contexts)
         {
-            //if ((contexts & AllocationContexts.Snap) != AllocationContexts.Snap)
-            //{
-            //    return false;
-            //}
-
             return !IsAsleep(contexts) &&
                    !IsAllocated(contexts) &&
                    this.SupportsAllocation(contexts);

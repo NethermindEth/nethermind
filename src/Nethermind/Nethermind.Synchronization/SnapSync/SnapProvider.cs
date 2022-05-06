@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -18,23 +15,12 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapProvider : ISnapProvider
     {
-        // TODO: to be removed, only for dev
-        int _testStorePartResponsesCount;
-        int _testStoreFullResponsesCount;
-        int _testCodePartResponsesCount;
-        int _testCodeFullResponsesCount;
-
-        long _testStorageRespSize;
-        int _testStorageReqCount;
-        long _testCodeRespSize;
-        int _testCodeReqCount;
-
         private readonly ITrieStore _store;
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
-        public ProgressTracker _progressTracker;
+        private readonly ProgressTracker _progressTracker;
 
         public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
         {
@@ -61,7 +47,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (response.PathAndAccounts.Length == 0 && response.Proofs.Length == 0)
             {
-                _logger.Warn($"GetAccountRange: Requested expired RootHash:{request.RootHash}");
+                _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
 
                 result = AddRangeResult.ExpiredRootHash;
             }
@@ -101,11 +87,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if(result == AddRangeResult.MissingRootHashInProofs)
             {
-                _logger.Warn($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
+                _logger.Trace($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
             }
             else if(result == AddRangeResult.DifferentRootHash)
             {
-                _logger.Warn($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
             }
 
             return result;
@@ -117,7 +103,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (response.PathsAndSlots.Length == 0 && response.Proofs.Length == 0)
             {
-                _logger.Warn($"GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count()}), {request.StartingHash}");
+                _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count()}), {request.StartingHash}");
 
                 _progressTracker.ReportStorageRangeRequestFinished(request);
 
@@ -129,21 +115,6 @@ namespace Nethermind.Synchronization.SnapSync
 
                 int requestLength = request.Accounts.Length;
                 int responseLength = response.PathsAndSlots.Length;
-
-                if(requestLength == responseLength)
-                {
-                    _testStoreFullResponsesCount++;
-                }
-                else
-                {
-                    _testStorePartResponsesCount++;
-                }
-
-                if (requestLength > 1)
-                {
-                    _testStorageReqCount++;
-                    _testStorageRespSize += responseLength;
-                }
 
                 for (int i = 0; i < responseLength; i++)
                 {
@@ -177,7 +148,7 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak startingHash, PathWithStorageSlot[] slots, byte[][] proofs = null)
+        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, Keccak expectedRootHash, Keccak? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
             StorageTree tree = new(_store, _logManager);
             (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
@@ -197,13 +168,13 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if(result == AddRangeResult.MissingRootHashInProofs)
             {
-                _logger.Warn($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
+                _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
 
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
             else if(result == AddRangeResult.DifferentRootHash)
             {
-                _logger.Warn($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
                 _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
             }
@@ -226,7 +197,7 @@ namespace Nethermind.Synchronization.SnapSync
                     if(nodeData.Length == 0)
                     {
                         RetryAccountRefresh(requestedPath);
-                        _logger.Warn($"Empty Account Refresh:{requestedPath.PathAndAccount.Path}");
+                        _logger.Trace($"SNAP - Empty Account Refresh:{requestedPath.PathAndAccount.Path}");
                         continue;
                     }
 
@@ -256,7 +227,7 @@ namespace Nethermind.Synchronization.SnapSync
                     catch (Exception exc)
                     {
                         RetryAccountRefresh(requestedPath);
-                        _logger.Warn($"{exc.Message}:{requestedPath.PathAndAccount.Path}:{Bytes.ToHexString(nodeData)}");
+                        _logger.Warn($"SNAP - {exc.Message}:{requestedPath.PathAndAccount.Path}:{Bytes.ToHexString(nodeData)}");
                     }
                 }
                 else
@@ -275,26 +246,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void AddCodes(Keccak[] requestedHashes, byte[][] codes)
         {
-            if (requestedHashes.Length == codes.Length)
-            {
-                _testCodeFullResponsesCount++;
-            }
-            else
-            {
-                _testCodePartResponsesCount++;
-            }
-
-            if (requestedHashes.Length > 1)
-            {
-                _testCodeReqCount++;
-                _testCodeRespSize += codes.Length;
-
-                if (_testCodeReqCount % 10 == 0)
-                {
-                    _logger.Warn($"SNAP - Storage AVG:{_testStorageRespSize / _testStorageReqCount}, Full:{_testStoreFullResponsesCount}, Part:{_testStorePartResponsesCount}, Codes AVG:{_testCodeRespSize / _testCodeReqCount}, Full:{_testCodeFullResponsesCount}, Part:{_testCodePartResponsesCount}");
-                }
-            }
-
             HashSet<Keccak> set = requestedHashes.ToHashSet();
 
             for (int i = 0; i < codes.Length; i++)

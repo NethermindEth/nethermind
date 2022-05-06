@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (batch.StorageRangeRequest is not null)
                 {
-                    Task<SlotsAndProofs> task = handler.GetStoragetRange(batch.StorageRangeRequest, cancellationToken);
+                    Task<SlotsAndProofs> task = handler.GetStorageRange(batch.StorageRangeRequest, cancellationToken);
 
                     await task.ContinueWith(
                         (t, state) =>

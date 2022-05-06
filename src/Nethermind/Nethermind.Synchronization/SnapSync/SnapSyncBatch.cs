@@ -22,16 +22,16 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncBatch
     {
-        public AccountRange AccountRangeRequest { get; set; }
-        public AccountsAndProofs AccountRangeResponse { get; set; }
+        public AccountRange? AccountRangeRequest { get; set; }
+        public AccountsAndProofs? AccountRangeResponse { get; set; }
 
-        public StorageRange StorageRangeRequest { get; set; }
-        public SlotsAndProofs StorageRangeResponse { get; set; }
+        public StorageRange? StorageRangeRequest { get; set; }
+        public SlotsAndProofs? StorageRangeResponse { get; set; }
 
-        public Keccak[] CodesRequest { get; set; }
-        public byte[][] CodesResponse { get; set; }
+        public Keccak[]? CodesRequest { get; set; }
+        public byte[][]? CodesResponse { get; set; }
 
-        public AccountsToRefreshRequest AccountsToRefreshRequest { get; set; }
-        public byte[][] AccountsToRefreshResponse { get; set; }
+        public AccountsToRefreshRequest? AccountsToRefreshRequest { get; set; }
+        public byte[][]? AccountsToRefreshResponse { get; set; }
     }
 }

@@ -108,17 +108,5 @@ namespace Nethermind.State
                 Set(rawKey, rlpEncoded);
             }
         }
-
-        //public void Set(in UInt256 index, byte[] value)
-        //{
-        //    if (value.IsZero())
-        //    {
-        //        Set(GetKey(index), Array.Empty<byte>());
-        //    }
-        //    else
-        //    {
-        //        Set(GetKey(index), Rlp.Encode(value));
-        //    }
-        //}
     }
 }

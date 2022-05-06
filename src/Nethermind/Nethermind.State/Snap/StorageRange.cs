@@ -9,15 +9,6 @@ namespace Nethermind.State.Snap
 {
     public class StorageRange
     {
-        //public StorageRange(Keccak rootHash, PathWithAccount[] accounts, Keccak startingHash = null, Keccak limitHash = null, long? blockNumber = null)
-        //{
-        //    RootHash = rootHash;
-        //    Accounts = accounts;
-        //    StartingHash = startingHash;
-        //    BlockNumber = blockNumber;
-        //    LimitHash = limitHash;
-        //}
-
         public long? BlockNumber { get; set; }
 
         /// <summary>

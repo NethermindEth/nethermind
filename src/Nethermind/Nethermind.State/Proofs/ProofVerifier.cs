@@ -61,55 +61,5 @@ namespace Nethermind.State.Proofs
 
             return trieNode.Value;
         }
-
-        /// <summary>
-        /// Verifies multiple proofs - address paths from the bottom to the root.
-        /// Proofs are aligned one after another. Each proof should start with a root node to be proved correct. 
-        /// </summary>
-        /// <returns>True - if all proofs are proved to be correct
-        /// List of proved values</returns>
-        public static (bool provedToBeCorrect, IList<byte[]?> provedValues) VerifyMultipleProofs(byte[][] proofs, Keccak root)
-        {
-            if (proofs.Length == 0)
-            {
-                return (false, null);
-            }
-
-            List<byte[]?> provedValues = new();
-            int leafIndex = proofs.Length - 1;
-
-            var rlps = proofs.Select(p => $"{Keccak.Compute(p).ToString(false)}:{new Rlp(p).ToString(false)}").ToArray();
-
-            var res = string.Join($"{Environment.NewLine}{Environment.NewLine}", rlps);
-
-            for (int i = proofs.Length - 1; i >= 0; i--)
-            {
-                Keccak proofHash = Keccak.Compute(proofs[i]);
-                if (proofHash != root)
-                {
-                    if (i > 0)
-                    {
-                        if (!new Rlp(proofs[i - 1]).ToString(false).Contains(proofHash.ToString(false)))
-                        {
-                            return (false, provedValues);
-                        }
-                    }
-                    else
-                    {
-                        return (false, provedValues);
-                    }
-                }
-                else
-                {
-                    TrieNode trieNode = new(NodeType.Unknown, proofs[leafIndex]);
-                    trieNode.ResolveNode(null);
-                    provedValues.Add(trieNode.Value);
-
-                    leafIndex = i - 1;
-                }
-            }
-
-            return (true, provedValues);
-        }
     }
 }

@@ -33,15 +33,12 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
     {
-        private object _syncLock = new object();
+        private readonly object _syncLock = new ();
 
         private const int AllowedInvalidResponses = 5;
-        private LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
+        private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
 
         private const SnapSyncBatch EmptyBatch = null;
-
-        private int _emptyRequestCount;
-        private int _retriesCount;
 
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISnapProvider _snapProvider;
@@ -70,12 +67,6 @@ namespace Nethermind.Synchronization.SnapSync
                     if (finished)
                     {
                         Finish();
-                    }
-
-                    _emptyRequestCount++;
-                    if (_emptyRequestCount % 100 == 0)
-                    {
-                        _logger.Info($"SNAP - emptyRequestCount:{_emptyRequestCount}");
                     }
 
                     return Task.FromResult(EmptyBatch);
@@ -119,12 +110,6 @@ namespace Nethermind.Synchronization.SnapSync
             else
             {
                 _snapProvider.RetryRequest(batch);
-
-                _retriesCount++;
-                if (_retriesCount % 100 == 0)
-                {
-                    _logger.Info($"SNAP - retriesCount:{_retriesCount}");
-                }
 
                 if (peer == null)
                 {

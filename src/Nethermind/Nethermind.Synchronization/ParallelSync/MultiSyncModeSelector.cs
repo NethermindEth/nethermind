@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private long PivotNumber;
         private bool FastSyncEnabled => _syncConfig.FastSync;
-        private bool SnapSyncEnabled => FastSyncEnabled && _syncConfig.SnapSyncProtocolEnabled;
+        private bool SnapSyncEnabled => FastSyncEnabled && _syncConfig.SnapSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
         private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;

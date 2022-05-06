@@ -676,7 +676,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     _configActions.Add(() =>
                     {
                         SyncConfig.FastSync = true;
-                        SyncConfig.SnapSyncProtocolEnabled = true;
+                        SyncConfig.SnapSync = true;
                         SyncConfig.FastBlocks = true;
                         return "snap sync with fast blocks";
                     });
@@ -689,7 +689,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     _configActions.Add(() =>
                     {
                         SyncConfig.FastSync = true;
-                        SyncConfig.SnapSyncProtocolEnabled = true;
+                        SyncConfig.SnapSync = true;
                         SyncConfig.FastBlocks = false;
                         return "snap sync without fast blocks";
                     });

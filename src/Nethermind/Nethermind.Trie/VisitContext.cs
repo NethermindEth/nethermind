@@ -21,8 +21,6 @@ namespace Nethermind.Trie
 {
     public class TrieVisitContext : IDisposable
     {
-        public string MissingMsg { get; set; }
-
         private SemaphoreSlim? _semaphore;
         private readonly int _maxDegreeOfParallelism = 1;
 

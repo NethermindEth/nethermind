@@ -38,10 +38,13 @@ namespace Nethermind.Synchronization.SnapSync
                 _bestHeader = _blockTree.BestSuggestedHeader;
             }
 
-            var currentHeader = _blockTree.FindHeader(_bestHeader.Number);
-            if(currentHeader.StateRoot != _bestHeader.StateRoot)
+            if (_logger.IsDebug)
             {
-                _logger.Warn($"SNAP - Pivot:{_bestHeader.StateRoot}, Current:{currentHeader.StateRoot}");
+                var currentHeader = _blockTree.FindHeader(_bestHeader.Number);
+                if (currentHeader.StateRoot != _bestHeader.StateRoot)
+                {
+                    _logger.Warn($"SNAP - Pivot:{_bestHeader.StateRoot}, Current:{currentHeader.StateRoot}");
+                }
             }
 
             return _bestHeader;
@@ -49,7 +52,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void LogPivotChanged(string msg)
         {
-            _logger.Warn($"SNAP - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
+            _logger.Info($"SNAP - {msg} - Pivot changed from {_bestHeader?.Number} to {_blockTree.BestSuggestedHeader?.Number}");
         }
 
         public void UpdateHeaderForcefully()

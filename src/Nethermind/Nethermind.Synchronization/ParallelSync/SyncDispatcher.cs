@@ -19,8 +19,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.SnapSync;
-using System.Linq;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -153,7 +151,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
                     else
                     {
-                        Logger.Info($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
+                        Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
                         SyncResponseHandlingResult result = Feed.HandleResponse(request);
                         ReactToHandlingResult(request, result, null);
                     }
@@ -174,8 +172,6 @@ namespace Nethermind.Synchronization.ParallelSync
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
             SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, 1000);
-            //var geths = SyncPeerPool.InitializedPeers.Where(p => p.PeerClientType == Stats.Model.NodeClientType.Geth).ToArray();
-
             return allocation;
         }
 

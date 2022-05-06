@@ -23,18 +23,10 @@ namespace Nethermind.Synchronization.SnapSync
     {
         private static object _syncCommit = new();
 
-        private static int _accCommitInProgress = 0;
-        private static int _slotCommitInProgress = 0;
-
         public static (AddRangeResult result, bool moreChildrenToRight, IList<PathWithAccount> storageRoots, IList<Keccak> codeHashes)
             AddAccountRange(StateTree tree, long blockNumber, Keccak expectedRootHash, Keccak startingHash, PathWithAccount[] accounts, byte[][] proofs = null)
         {
             // TODO: Check the accounts boundaries and sorting
-
-            //var rlps = proofs.Select(p => $"{Keccak.Compute(p).ToString(false)}:{new Rlp(p).ToString(false)}").ToArray();
-            //var res = string.Join($"{Environment.NewLine}{Environment.NewLine}", rlps);
-            //var first = proofs.Select((p) => { var n = (new TrieNode(NodeType.Unknown, p, true)); n.ResolveNode(tree.TrieStore); return n; }) ;
-
 
             Keccak lastHash = accounts.Last().Path;
 
@@ -70,29 +62,17 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
 
-            try
+            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+
+            lock (_syncCommit)
             {
-                Interlocked.Exchange(ref _accCommitInProgress, 1);
-
-                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
-
-                lock (_syncCommit)
-                {
-                    tree.Commit(blockNumber);
-                }
-
-                Interlocked.Exchange(ref _accCommitInProgress, 0);
-            }
-            catch (Exception ex)
-            {
-
-                throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
+                tree.Commit(blockNumber);
             }
 
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
-        public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash, byte[][] proofs = null)
+        public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(StorageTree tree, long blockNumber, Keccak? startingHash, PathWithStorageSlot[] slots, Keccak expectedRootHash, byte[][]? proofs = null)
         {
             // TODO: Check the slots boundaries and sorting
 
@@ -117,28 +97,17 @@ namespace Nethermind.Synchronization.SnapSync
                 return (AddRangeResult.DifferentRootHash, true);
             }
 
-            try
+            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+
+            lock (_syncCommit)
             {
-                Interlocked.Exchange(ref _slotCommitInProgress, 1);
-
-                StitchBoundaries(sortedBoundaryList, tree.TrieStore);
-
-                lock (_syncCommit)
-                {
-                    tree.Commit(blockNumber);
-                }
-
-                Interlocked.Exchange(ref _slotCommitInProgress, 0);
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"{ex.Message}, _accCommitInProgress:{_accCommitInProgress}, _slotCommitInProgress:{_slotCommitInProgress}", ex);
+                tree.Commit(blockNumber);
             }
 
             return (AddRangeResult.OK, moreChildrenToRight);
         }
 
-        private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak startingHash, Keccak endHash, Keccak expectedRootHash, byte[][] proofs = null)
+        private static (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(PatriciaTree tree, Keccak? startingHash, Keccak endHash, Keccak expectedRootHash, byte[][]? proofs = null)
         {
             if (proofs is null || proofs.Length == 0)
             {

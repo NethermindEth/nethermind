@@ -534,7 +534,7 @@ namespace Nethermind.Trie.Pruning
             stopwatch.Stop();
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
             if (_logger.IsDebug)
-                _logger.Warn(
+                _logger.Debug(
                     $"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 

@@ -46,8 +46,6 @@ namespace Nethermind.Trie
 
         public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
         {
-            _logger.Warn($"{trieVisitContext.MissingMsg}, Level:{trieVisitContext.Level}, {(trieVisitContext.IsStorage ? "Storage" : "State")}");
-
             if (trieVisitContext.IsStorage)
             {
                 Interlocked.Increment(ref Stats._missingStorage);

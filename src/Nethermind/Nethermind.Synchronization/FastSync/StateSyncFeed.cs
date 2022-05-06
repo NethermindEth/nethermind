@@ -28,8 +28,6 @@ namespace Nethermind.Synchronization.FastSync
 {
     public partial class StateSyncFeed : SyncFeed<StateSyncBatch?>, IDisposable
     {
-        public const int AlreadySavedCapacity = 1024 * 1024;
-        public const int MaxRequestSize = 384;
         private const StateSyncBatch EmptyBatch = null;
 
         private readonly Stopwatch _handleWatch = new();

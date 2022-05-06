@@ -37,8 +37,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {
-            int pc = peers.Count();
-            var snaps = peers.Where(p => p.SyncPeer.TryGetSatelliteProtocol<T>(_protocol, out _)).ToArray();
             return _strategy.Allocate(currentPeer, peers.Where(p => p.SyncPeer.TryGetSatelliteProtocol<T>(_protocol, out _)), nodeStatsManager, blockTree);
         }
     }

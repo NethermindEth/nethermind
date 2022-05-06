@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,12 +14,13 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class ProgressTracker
     {
-        long _testReqCount;
+        private const string NO_REQUEST = "NO REQUEST";
 
         private const int STORAGE_BATCH_SIZE = 1_200;
         private const int CODES_BATCH_SIZE = 1_000;
         private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
+        private long _reqCount;
         private int _activeAccountRequests;
         private int _activeStorageRequests;
         private int _activeCodeRequests;
@@ -47,23 +46,22 @@ namespace Nethermind.Synchronization.SnapSync
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
             _pivot = new Pivot(blockTree, logManager);
-
-            _logger.Info($"SNAP - batch sizes - storage:{STORAGE_BATCH_SIZE}, codes:{CODES_BATCH_SIZE}");
-
-            //TODO: maybe better to move to a init methot instead of the constructor
+            
+            //TODO: maybe better to move to a init method instead of the constructor
             GetSyncProgress();
         }
 
         public bool CanSync()
         {
-            if (_pivot.GetPivotHeader() == null || _pivot.GetPivotHeader().Number == 0)
+            BlockHeader? header = _pivot.GetPivotHeader();
+            if (header == null || header.Number == 0)
             {
                 if (_logger.IsInfo) _logger.Info($"No Best Suggested Header available. Snap Sync not started.");
 
                 return false;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Starting the SNAP data sync from the {_pivot.GetPivotHeader().ToString(BlockHeader.Format.Short)} {_pivot.GetPivotHeader().StateRoot} root");
+            if (_logger.IsInfo) _logger.Info($"Starting the SNAP data sync from the {header.ToString(BlockHeader.Format.Short)} {header.StateRoot} root");
 
             return true;
         }
@@ -75,6 +73,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         public (SnapSyncBatch request, bool finished) GetNextRequest()
         {
+            Interlocked.Increment(ref _reqCount);
+            
             var pivotHeader = _pivot.GetPivotHeader();
             var rootHash = pivotHeader.StateRoot;
             var blockNumber = pivotHeader.Number;
@@ -102,10 +102,6 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (MoreAccountsToRight && _activeAccountRequests == 0 && NextSlotRange.Count < 10 && StoragesToRetrieve.Count < 5 * STORAGE_BATCH_SIZE && CodesToRetrieve.Count < 5 * CODES_BATCH_SIZE)
             {
-                // some contract hardcoded
-                //var path = Keccak.Compute(new Address("0x4c9A3f79801A189D98D3a5A18dD5594220e4d907").Bytes);
-                // = new(_bestHeader.StateRoot, path, path, _bestHeader.Number);
-
                 AccountRange range = new(rootHash, NextAccountPath, Keccak.MaxValue, blockNumber);
 
                 LogRequest("AccountRange");
@@ -174,8 +170,6 @@ namespace Nethermind.Synchronization.SnapSync
                 return (request, false);
             }
 
-            LogRequest("NO REQUEST");
-
             bool rangePhaseFinished = IsSnapGetRangesFinished();
             if (rangePhaseFinished)
             {
@@ -183,10 +177,12 @@ namespace Nethermind.Synchronization.SnapSync
                 FinishRangePhase();
             }
 
+            LogRequest(NO_REQUEST);
+            
             return (null, IsSnapGetRangesFinished());
         }
 
-        public void EnqueueCodeHashes(ICollection<Keccak> codeHashes)
+        public void EnqueueCodeHashes(ICollection<Keccak>? codeHashes)
         {
             if (codeHashes is not null)
             {
@@ -301,21 +297,17 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void LogRequest(string reqType)
         {
-            _testReqCount++;
-
-            if (reqType != "NO REQUEST" || _testReqCount % 1000 == 0)
+            if (_reqCount % 100 == 0)
             {
-                if (_testReqCount % 100 == 0)
-                {
-                    var progress = 100 * NextAccountPath.Bytes[0] / (double)256;
+                double progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
-                    _logger.Info($"SNAP - progres of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
-                }
+                _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
+            }
 
-                if (_testReqCount % 1 == 0)
-                {
-                    _logger.Info($"SNAP - ({reqType}, diff:{_pivot.Diff}) {MoreAccountsToRight}:{NextAccountPath} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
-                }
+            if (_logger.IsTrace || reqType == NO_REQUEST && _reqCount % 1000 == 0)
+            {
+                _logger.Info(
+                    $"SNAP - ({reqType}, diff:{_pivot.Diff}) {MoreAccountsToRight}:{NextAccountPath} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
             }
         }
     }
