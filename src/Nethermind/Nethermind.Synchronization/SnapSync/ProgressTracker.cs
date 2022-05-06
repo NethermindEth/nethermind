@@ -304,7 +304,7 @@ namespace Nethermind.Synchronization.SnapSync
                 _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
             }
 
-            if (_logger.IsTrace || reqType == NO_REQUEST && _reqCount % 1000 == 0)
+            if (_logger.IsTrace || _reqCount % 1000 == 0)
             {
                 _logger.Info(
                     $"SNAP - ({reqType}, diff:{_pivot.Diff}) {MoreAccountsToRight}:{NextAccountPath} - Requests Account:{_activeAccountRequests} | Storage:{_activeStorageRequests} | Code:{_activeCodeRequests} | Refresh:{_activeAccRefreshRequests} - Queues Slots:{NextSlotRange.Count} | Storages:{StoragesToRetrieve.Count} | Codes:{CodesToRetrieve.Count} | Refresh:{AccountsToRefresh.Count}");
