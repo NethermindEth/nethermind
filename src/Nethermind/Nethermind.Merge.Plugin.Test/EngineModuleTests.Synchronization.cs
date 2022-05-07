@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -176,6 +175,7 @@ public partial class EngineModuleTests
     }
     
     [Test]
+    [Ignore("ToDo should be fixed with restarts and pointers")]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
@@ -252,7 +252,7 @@ public partial class EngineModuleTests
         // finish beacon forwards sync
         foreach (Block block in missingBlocks)
         {
-            await chain.BlockTree.SuggestBlockAsync(block);
+            await chain.BlockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock);
         }
         bestBeaconBlockRequest.TryGetBlock(out Block? bestBeaconBlock);
         SemaphoreSlim bestBlockProcessed = new(0);
@@ -261,7 +261,7 @@ public partial class EngineModuleTests
             if (e.Block.Hash == bestBeaconBlock!.Hash)
                     bestBlockProcessed.Release(1);
         };
-        await chain.BlockTree.SuggestBlockAsync(bestBeaconBlock!);
+        await chain.BlockTree.SuggestBlockAsync(bestBeaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock);
 
         await bestBlockProcessed.WaitAsync();
         

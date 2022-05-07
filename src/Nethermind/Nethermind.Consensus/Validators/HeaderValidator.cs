@@ -162,7 +162,7 @@ namespace Nethermind.Consensus.Validators
                                        || Bytes.AreEqual(header.ExtraData, DaoExtraData));
             if (!extraDataValid)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid. MaximumExtraDataSize {spec.MaximumExtraDataSize}, ExtraDataLength {header.ExtraData.Length}, DaoBlockNumber: {_daoBlockNumber}");
             }
             return extraDataValid;
         }

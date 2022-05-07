@@ -176,15 +176,19 @@
     },
     "Kiln": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Network.DiagTracerEnabled true --Merge.TerminalBlockNumber 55127"
     },
     "Kiln_FastSync": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln_fastsync.cfg  --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "--config kiln_fastsync.cfg"
     },
     "Goerli ShadowFork": {
       "commandName": "Project",
-      "commandLineArgs": "--config goerli_shadowfork.cfg --Merge.Enabled true"
+      "commandLineArgs": "--config goerli_shadowfork.cfg"
+    }, 
+    "Mainnet_ShadowFork": {
+      "commandName": "Project",
+      "commandLineArgs": "--config mainnet_shadowfork.cfg  --baseDbPath D:\\shadowfork_db"
     }
   }
 }

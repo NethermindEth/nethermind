@@ -56,7 +56,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
             // _currentBeaconPivot = _blockTree.LowestInsertedBeaconHeader; // ToDo Sarah: I think it is incorrect, but we should discuss it
-
         }
 
         public long PivotNumber => _currentBeaconPivot?.Number ?? _syncConfig.PivotNumberParsed;
@@ -68,7 +67,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public long PivotDestinationNumber => _currentBeaconPivot is null
             ? 0
-            // :  Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ?? 0) + 1; // ToDo Sarah the current code is not ready to go to BestSuggestedHeader. I see that beacon finished is trying to reach _syncConfig and we're stuck beacause of that
+            // :  Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ?? 0) + 1; // ToDo Sarah the current code is not ready to go with BestSuggestedHeader. I see that beacon finished is trying to reach _syncConfig and we're stuck because of that
             : _syncConfig.PivotNumberParsed + 1;
         public void EnsurePivot(BlockHeader? blockHeader)
         {
@@ -78,7 +77,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 _peerRefresher.RefreshPeers(blockHeader.Hash!);
                 
                 // ToDo Sarah in some cases this could be wrong
-                if (beaconPivotExists && PivotNumber > blockHeader.Number)
+                if (beaconPivotExists && (PivotNumber > blockHeader.Number || blockHeader.Hash == PivotHash))
                 {
                     return;
                 }
@@ -89,41 +88,21 @@ namespace Nethermind.Merge.Plugin.Synchronization
             }
         }
 
-        public void ResetPivot()
+        public void RemoveBeaconPivot()
         {
-            if (_logger.IsInfo) _logger.Info($"Reset beacon pivot, previous pivot: {_currentBeaconPivot}");
+            if (_logger.IsInfo) _logger.Info($"Removing beacon pivot, previous pivot: {_currentBeaconPivot}");
             _currentBeaconPivot = null;
+            // ToDo clear DB
         }
 
         public bool BeaconPivotExists() => _currentBeaconPivot != null;
-
-        public bool  IsPivotParentProcessed()
-        {
-            EnsurePivotParentProcessed();
-            return _pivotParentProcessed;
-        }
-
-        private void EnsurePivotParentProcessed()
-        {
-            if (_pivotParentProcessed || _currentBeaconPivot == null)
-                return;
-
-            _pivotParent ??= _blockTree.FindParentHeader(_currentBeaconPivot!,
-                BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-
-            if (_pivotParent != null)
-                _pivotParentProcessed = _blockTree.WasProcessed(_pivotParent.Number,
-                    _pivotParent.Hash ?? _pivotParent.CalculateHash());
-        }
     }
 
     public interface IBeaconPivot : IPivot
     {
-        bool  IsPivotParentProcessed();
-
         void  EnsurePivot(BlockHeader? blockHeader);
 
-        void ResetPivot();
+        void RemoveBeaconPivot();
 
         bool BeaconPivotExists();
     }

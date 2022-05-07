@@ -80,7 +80,7 @@ namespace Nethermind.Synchronization.ParallelSync
         BeaconFullSync = 8192,
         
         All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | 
-              FastHeaders | FastBodies | FastReceipts | BeaconControlMode | BeaconHeaders | BeaconFullSync
+              FastHeaders | FastBodies | FastReceipts | BeaconControlMode | BeaconHeaders
     }
     
     public static class SyncModeExtensions

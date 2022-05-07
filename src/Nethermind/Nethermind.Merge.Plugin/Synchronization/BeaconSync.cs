@@ -72,7 +72,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             if (!_isInBeaconModeControl)
             {
-                _beaconPivot.ResetPivot();
+                _beaconPivot.RemoveBeaconPivot();
                 _blockCacheService.BlockCache.Clear();
             }
 
@@ -92,7 +92,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
             bool beaconPivotExists =  _beaconPivot.BeaconPivotExists();
             bool notInBeaconModeControl = !_isInBeaconModeControl;
             bool notFinishedBeaconHeaderSync = !IsBeaconSyncHeadersFinished();
-
+            
+            if (_logger.IsTrace) _logger.Trace($"ShouldBeInBeaconHeaders: NotInBeaconModeControl: {notInBeaconModeControl}, BeaconPivotExists: {beaconPivotExists}, NotFinishedBeaconHeaderSync: {notFinishedBeaconHeaderSync} LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return beaconPivotExists &&
                    notInBeaconModeControl &&
                    notFinishedBeaconHeaderSync;

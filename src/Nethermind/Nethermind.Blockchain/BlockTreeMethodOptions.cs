@@ -39,7 +39,7 @@ public enum BlockTreeInsertOptions
     SkipUpdateBestPointers = 2,
     NotOnMainChain = 4,
     UpdateBeaconPointers = 8,
-    All = TotalDifficultyNotNeeded | SkipUpdateBestPointers | NotOnMainChain | UpdateBeaconPointers,
+    BeaconBlockInsert = TotalDifficultyNotNeeded | SkipUpdateBestPointers | UpdateBeaconPointers,
 }
 
 [Flags]
@@ -47,6 +47,5 @@ public enum BlockTreeSuggestOptions
 {
     None = 0,
     ShouldProcess = 1,
-    FillBlockGap = 2,
-    ProcessOnly = 4
+    TryProcessKnownBlock = 2
 }

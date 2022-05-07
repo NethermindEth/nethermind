@@ -35,12 +35,8 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
-
-    private bool _mergedChain;
-
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
-    protected override bool AllHeadersDownloaded => _mergedChain 
-        || (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <= _syncConfig.PivotNumberParsed + 1;
+    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <= _pivot.PivotDestinationNumber;
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
     public BeaconHeadersSyncFeed(
@@ -100,7 +96,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
-        if (_logger.IsInfo) _logger.Info($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+        if (_logger.IsTrace) _logger.Trace($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.UpdateBeaconPointers;
         if (_nextHeaderDiff is null)
         {
@@ -116,14 +112,20 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             // if (_blockTree.LowestInsertedHeader != null
             //     && _blockTree.LowestInsertedHeader.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
             // {
-                if (_logger.IsInfo)
-                    _logger.Info(
+                if (_logger.IsTrace)
+                    _logger.Trace(
                         " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
                         $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
                 // beacon header set to (global) lowest inserted header
-                _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
-          //  }
-            _mergedChain = true;
+             //   _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
+             if (header.Number < ( _blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+             {
+                 if (_logger.IsTrace)
+                     _logger.Trace(
+                         $"LowestInsertedBeaconHeader AlreadyKnown changed, old: { _blockTree.LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
+                 _blockTree.LowestInsertedBeaconHeader = header;
+             }
+             //}
         }
         
 
@@ -140,7 +142,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             }
         }
 
-        _logger.Info($"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
+        if (_logger.IsTrace) _logger.Trace($"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
         return insertOutcome;
     }
 }

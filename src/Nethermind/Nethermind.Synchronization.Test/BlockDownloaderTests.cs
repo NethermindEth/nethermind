@@ -58,7 +58,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 namespace Nethermind.Synchronization.Test
 {
     [TestFixture, Parallelizable(ParallelScope.All)]
-    public class BlockDownloaderTestsl
+    public partial class BlockDownloaderTests
     {
         [TestCase(1L, DownloaderOptions.Process, 0)]
         [TestCase(32L, DownloaderOptions.Process, 0)]
@@ -855,11 +855,12 @@ namespace Nethermind.Synchronization.Test
             public Dictionary<long, Keccak> TestHeaderMapping;
             public ISyncModeSelector SyncModeSelector;
 
-            public Context()
+            public Context(BlockTree? blockTree = null)
             {
                 Block genesis = Build.A.Block.Genesis.TestObject;
                 MemDb blockInfoDb = new();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
+                BlockTree = blockTree;
+                BlockTree ??= new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
                 BlockTree.SuggestBlock(genesis);
 
                 TestHeaderMapping = new Dictionary<long, Keccak>();
@@ -907,6 +908,21 @@ namespace Nethermind.Synchronization.Test
                 BuildTree(chainLength, withReceipts);
             }
 
+            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags)
+            {
+                _withReceipts = withReceipts;
+                Flags = flags;
+                BlockTree = blockTree;
+                UpdateTree();
+            }
+
+            private void UpdateTree()
+            {
+                HeadNumber = BlockTree.Head.Number;
+                HeadHash = BlockTree.HeadHash;
+                TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
+            }
+
             private void BuildTree(long chainLength, bool withReceipts)
             {
                 _receiptStorage = new InMemoryReceiptStorage();
@@ -919,9 +935,7 @@ namespace Nethermind.Synchronization.Test
                 builder = builder.OfChainLength((int) chainLength);
                 BlockTree = builder.TestObject;
 
-                HeadNumber = BlockTree.Head.Number;
-                HeadHash = BlockTree.HeadHash;
-                TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
+                UpdateTree();
             }
 
             public void ExtendTree(long newLength)

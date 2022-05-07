@@ -1189,6 +1189,106 @@ namespace Nethermind.Merge.Plugin.Test
             forkchoiceUpdatedResult3B.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         }
 
+        [Test]
+        public async Task payloadV1_latest_block_after_reorg()
+        {
+            using MergeTestBlockchain chain =
+                await CreateBlockChain(new MergeConfig() {Enabled = true, TerminalTotalDifficulty = "0"});
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+
+            Keccak prevRandao1 = TestItem.KeccakA;
+            Keccak prevRandao2 = TestItem.KeccakB;
+            Keccak prevRandao3 = TestItem.KeccakC;
+
+            {
+                ForkchoiceStateV1 forkChoiceStateGen = new(chain.BlockTree.Head!.Hash!, chain.BlockTree.Head!.Hash!,
+                    chain.BlockTree.Head!.Hash!);
+                ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResultGen =
+                    await rpc.engine_forkchoiceUpdatedV1(forkChoiceStateGen,
+                        new PayloadAttributes()
+                        {
+                            Timestamp = Timestamper.UnixTime.Seconds,
+                            PrevRandao = prevRandao1,
+                            SuggestedFeeRecipient = Address.Zero
+                        });
+                forkchoiceUpdatedResultGen.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+            }
+
+            // Add one block
+            BlockRequestResult blockRequestResult1 = CreateBlockRequest(
+                CreateParentBlockRequestOnHead(chain.BlockTree),
+                TestItem.AddressA);
+            blockRequestResult1.PrevRandao = prevRandao1;
+
+            TryCalculateHash(blockRequestResult1, out Keccak? hash1);
+            blockRequestResult1.BlockHash = hash1;
+
+            ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(blockRequestResult1);
+            newPayloadResult1.Data.Status.Should().Be(PayloadStatus.Valid);
+
+            ForkchoiceStateV1 forkChoiceState1 = new(blockRequestResult1.BlockHash,
+                blockRequestResult1.BlockHash, blockRequestResult1.BlockHash);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult1 =
+                await rpc.engine_forkchoiceUpdatedV1(forkChoiceState1,
+                    new PayloadAttributes()
+                    {
+                        Timestamp = Timestamper.UnixTime.Seconds,
+                        PrevRandao = prevRandao2,
+                        SuggestedFeeRecipient = Address.Zero
+                    });
+            forkchoiceUpdatedResult1.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+
+            {
+                BlockRequestResult blockRequestResult2 = CreateBlockRequest(
+                    blockRequestResult1,
+                    TestItem.AddressA);
+
+                blockRequestResult2.PrevRandao = prevRandao3;
+
+                TryCalculateHash(blockRequestResult2, out Keccak? hash);
+                blockRequestResult2.BlockHash = hash;
+
+                ResultWrapper<PayloadStatusV1> newPayloadResult2 = await rpc.engine_newPayloadV1(blockRequestResult2);
+                newPayloadResult2.Data.Status.Should().Be(PayloadStatus.Valid);
+
+                ForkchoiceStateV1 forkChoiceState2 = new(blockRequestResult2.BlockHash,
+                    blockRequestResult1.BlockHash, blockRequestResult1.BlockHash);
+                ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult2 =
+                    await rpc.engine_forkchoiceUpdatedV1(forkChoiceState2);
+                forkchoiceUpdatedResult2.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+                Keccak currentBlockHash = chain.BlockTree.Head!.Hash!;
+                Assert.True(currentBlockHash == blockRequestResult2.BlockHash);
+            }
+
+            // re-org
+            {
+                BlockRequestResult blockRequestResult3 = CreateBlockRequest(
+                    blockRequestResult1,
+                    TestItem.AddressA);
+
+                blockRequestResult3.PrevRandao = prevRandao2;
+
+                TryCalculateHash(blockRequestResult3, out Keccak? hash);
+                blockRequestResult3.BlockHash = hash;
+
+                ResultWrapper<PayloadStatusV1> newPayloadResult3 = await rpc.engine_newPayloadV1(blockRequestResult3);
+                newPayloadResult3.Data.Status.Should().Be(PayloadStatus.Valid);
+
+                ForkchoiceStateV1 forkChoiceState3 = new (blockRequestResult3.BlockHash,
+                    blockRequestResult1.BlockHash, blockRequestResult1.BlockHash);
+                ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult3 =
+                    await rpc.engine_forkchoiceUpdatedV1(forkChoiceState3);
+                forkchoiceUpdatedResult3.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+                Keccak currentBlockHash = chain.BlockTree.Head!.Hash!;
+                Assert.False(currentBlockHash != forkChoiceState3.HeadBlockHash ||
+                             currentBlockHash == forkChoiceState3.SafeBlockHash ||
+                             currentBlockHash == forkChoiceState3.FinalizedBlockHash);
+            }
+        }
+
         private async Task<BlockRequestResult> BuildAndGetPayloadResult(
             IEngineRpcModule rpc, MergeTestBlockchain chain, Keccak headBlockHash, Keccak finalizedBlockHash,
             Keccak safeBlockHash,

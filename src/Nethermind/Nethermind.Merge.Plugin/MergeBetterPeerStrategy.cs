@@ -90,7 +90,14 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
         
         return bestPeerInfo.Number > bestHeader;
     }
-    
+
+    public bool IsLowerThanTerminalTotalDifficulty(UInt256 totalDifficulty)
+    {
+        if (_poSSwitcher.TerminalTotalDifficulty == null) return true;
+
+        return totalDifficulty < _poSSwitcher.TerminalTotalDifficulty;
+    }
+
     private bool ShouldApplyPreMergeLogic(UInt256 totalDifficultyX, UInt256 totalDifficultyY)
     {
         return _poSSwitcher.TerminalTotalDifficulty == null || totalDifficultyX < _poSSwitcher.TerminalTotalDifficulty ||

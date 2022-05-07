@@ -92,9 +92,6 @@ namespace Nethermind.Merge.Plugin
 
             if (_terminalBlockNumber == null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
-
-            if (_terminalBlockNumber != null && _finalizedBlockHash != Keccak.Zero)
-                _blockTree.NewHeadBlock -= CheckIfTerminalBlockReached;
         }
 
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e)
@@ -176,13 +173,6 @@ namespace Nethermind.Merge.Plugin
                 // ToDo need to discuss with Sarah, this should be moved to BlockTree or FinalizationManager
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(_finalizedBlockHash).Bytes);
             }
-
-            if (_firstPoSBlockHeader == null)
-            {
-                if (_logger.IsInfo) _logger.Info($"Received the first forkchoiceUpdated at block {newHeadHash}");
-                _firstPoSBlockHeader = newHeadHash;
-                _metadataDb.Set(MetadataDbKeys.FirstPoSHash, Rlp.Encode(_firstPoSBlockHeader.Hash).Bytes);
-            }
         }
 
         public bool TransitionFinished => _finalizedBlockHash != Keccak.Zero;
@@ -196,7 +186,7 @@ namespace Nethermind.Merge.Plugin
 
             bool isTerminal = false, isPostMerge = false;
 
-            if (header.TotalDifficulty == null || header.TotalDifficulty == 0)
+            if (header.TotalDifficulty == null || (header.TotalDifficulty == 0 && header.IsGenesis == false))
             {
                 header.IsPostMerge = header.Difficulty == 0;
                 return (false, header.Difficulty == 0);
@@ -228,10 +218,7 @@ namespace Nethermind.Merge.Plugin
         public event EventHandler? TerminalBlockReached;
 
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
-        public long? TerminalBlockNumber => _terminalBlockNumber;
 
-        public Keccak? TerminalBlockHash => _terminalBlockHash;
-        
         public Keccak ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
         
         public long? ConfiguredTerminalBlockNumber => _configuredTerminalBlockNumber;

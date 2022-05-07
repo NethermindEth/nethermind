@@ -98,7 +98,7 @@ namespace Nethermind.Merge.Plugin
 
         private bool ValidateTerminalTotalDifficultyChecks(BlockHeader header, bool isTerminal)
         {
-            if (header.TotalDifficulty == null || _poSSwitcher.TerminalTotalDifficulty == null)
+            if (header.TotalDifficulty == null || header.TotalDifficulty == 0 || _poSSwitcher.TerminalTotalDifficulty == null)
                 return true;
 
             bool isValid = true;

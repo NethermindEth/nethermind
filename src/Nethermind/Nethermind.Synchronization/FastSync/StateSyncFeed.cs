@@ -441,9 +441,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if ((e.Current & SyncMode.StateNodes) == SyncMode.StateNodes)
                 {
-                    BlockHeader bestSuggested = _blockTree.BestSuggestedHeader?.Number > _blockTree.BestSuggestedBeaconHeader?.Number
-                        ? _blockTree.BestSuggestedHeader
-                        : _blockTree.BestSuggestedBeaconHeader;
+                    BlockHeader bestSuggested = _blockTree.BestSuggestedHeader;
                     if (bestSuggested == null || bestSuggested.Number == 0)
                     {
                         return;

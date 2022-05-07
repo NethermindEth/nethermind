@@ -180,7 +180,7 @@
     "eip3198Transition": "0xC5D488",
     "eip3529Transition": "0xC5D488",
     "eip3541Transition": "0xC5D488",
-    "MergeForkIdTransition": "0xdfb563"
+    "MergeForkIdTransition": "0xeef7a3"
   },
   "genesis": {
     "seal": {
