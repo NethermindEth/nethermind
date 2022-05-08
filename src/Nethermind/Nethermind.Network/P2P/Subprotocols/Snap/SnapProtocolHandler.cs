@@ -114,7 +114,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
-                    LogRequest(message.Content);
                     GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
                     ReportIn(getTrieNodesMessage);
                     Handle(getTrieNodesMessage);
@@ -125,11 +124,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(trieNodesMessage, size);
                     break;
             }
-        }
-
-        private void LogRequest(IByteBuffer buffer)
-        {
-            Logger.Info($"SNAP - GetNodeData:{Bytes.ToHexString(buffer.Array)}");
         }
 
         private void Handle(AccountRangeMessage msg, long size)

@@ -129,10 +129,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
             }
-
-            Keccak rootHash = new Keccak(root.Keccak.Bytes);
-
-            Dictionary<Keccak, TrieNode> processed = new();
+            
             Span<byte> leftBoundary = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(startingHash.Bytes, leftBoundary);
             Span<byte> rightBoundary = stackalloc byte[64];
