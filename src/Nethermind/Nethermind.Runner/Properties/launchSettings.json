@@ -90,6 +90,13 @@
     "Sepolia": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\sepolia.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Play Dev": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\play_testnet.cfg --baseDbPath C:\\nethermind_db",
+      "environmentVariables": {
+        " ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }
