@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,13 +19,15 @@ using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public static class TestItem
+    public static partial class TestItem
     {
-        private static Random _random = new();
-        
+        public static Random Random { get; } = new();
+        private static AccountDecoder _accountDecoder = new();
+
         static TestItem()
         {
             NonZeroBloom = new Bloom();
@@ -49,15 +51,15 @@ namespace Nethermind.Core.Test.Builders
 
         public static Keccak KeccakFromNumber(int i)
         {
-            UInt256 keccakNumber = (UInt256) i;
+            UInt256 keccakNumber = (UInt256)i;
             byte[] keccakBytes = new byte[32];
             keccakNumber.ToBigEndian(keccakBytes);
             return new Keccak(keccakBytes);
         }
 
-        public static byte[] RandomDataA = {1, 2, 3};
-        public static byte[] RandomDataB = {4, 5, 6, 7};
-        public static byte[] RandomDataC = {1, 2, 8, 9, 10};
+        public static byte[] RandomDataA = { 1, 2, 3 };
+        public static byte[] RandomDataB = { 4, 5, 6, 7 };
+        public static byte[] RandomDataC = { 1, 2, 8, 9, 10 };
 
         public static Keccak KeccakA = Keccak.Compute("A");
         public static Keccak KeccakB = Keccak.Compute("B");
@@ -105,19 +107,60 @@ namespace Nethermind.Core.Test.Builders
         public static IPEndPoint IPEndPointF = IPEndPoint.Parse("10.0.0.6");
 
         public static Bloom NonZeroBloom;
-        
+
         public static Address GetRandomAddress(Random? random = null)
         {
             byte[] bytes = new byte[20];
-            (random ?? _random).NextBytes(bytes);
+            (random ?? Random).NextBytes(bytes);
             return new Address(bytes);
         }
-        
+
         public static Keccak GetRandomKeccak(Random? random = null)
         {
             byte[] bytes = new byte[32];
-            (random ?? _random).NextBytes(bytes);
+            (random ?? Random).NextBytes(bytes);
             return new Keccak(bytes);
+        }
+
+        public static Account GenerateRandomAccount(Random random = null)
+        {
+            random ??= Random;
+
+            Account account = new(
+                (UInt256)random.Next(1000),
+                (UInt256)random.Next(1000),
+                Keccak.EmptyTreeHash,
+                Keccak.OfAnEmptyString);
+
+            return account;
+        }
+
+        public static byte[] GenerateRandomAccountRlp(AccountDecoder accountDecoder = null)
+        {
+            accountDecoder ??= _accountDecoder;
+            Account account = GenerateRandomAccount();
+            byte[] value = accountDecoder.Encode(account).Bytes;
+            return value;
+        }
+
+        public static Account GenerateIndexedAccount(int index)
+        {
+            Account account = new(
+                (UInt256)index,
+                (UInt256)index,
+                Keccak.EmptyTreeHash,
+                Keccak.OfAnEmptyString);
+
+            return account;
+        }
+
+        public static byte[] GenerateIndexedAccountRlp(int index, AccountDecoder accountDecoder = null)
+        {
+            accountDecoder ??= _accountDecoder;
+
+            Account account = GenerateIndexedAccount(index);
+            byte[] value = accountDecoder.Encode(account).Bytes;
+            return value;
         }
     }
 }

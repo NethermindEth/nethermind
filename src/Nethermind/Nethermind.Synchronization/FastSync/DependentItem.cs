@@ -15,12 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using System.Diagnostics;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
+namespace Nethermind.Synchronization.FastSync
 {
-    internal static class RandomExtensions
+    [DebuggerDisplay("{SyncItem.Hash} {Counter}")]
+    internal class DependentItem
     {
-        public static long NextLong(this Random random) => ((long)random.Next() << 32) | (long)random.Next();
+        public StateSyncItem SyncItem { get; }
+        public byte[] Value { get; }
+        public int Counter { get; set; }
+
+        public bool IsAccount { get; }
+
+        public DependentItem(StateSyncItem syncItem, byte[] value, int counter, bool isAccount = false)
+        {
+            SyncItem = syncItem;
+            Value = value;
+            Counter = counter;
+            IsAccount = isAccount;
+        }
     }
 }

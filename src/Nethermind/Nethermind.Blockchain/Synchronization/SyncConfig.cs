@@ -50,6 +50,7 @@ namespace Nethermind.Blockchain.Synchronization
         public string PivotNumber { get; set; }
         public string PivotHash { get; set; }
         public bool WitnessProtocolEnabled { get; set; } = false;
+        public bool SnapSync { get; set; } = false;
         public bool FixReceipts { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
     }

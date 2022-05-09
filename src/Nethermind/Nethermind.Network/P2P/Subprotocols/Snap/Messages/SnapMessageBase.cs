@@ -15,12 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
+using DotNetty.Common.Utilities;
+using Nethermind.Network.P2P.Messages;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
+namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
-    internal class Eth66MessageConstants
+    public abstract class SnapMessageBase : P2PMessage
     {
-        public static readonly Random Random = new();
+        public override string Protocol => Nethermind.Network.P2P.Protocol.Snap;
+
+        /// <summary>
+        /// Request ID to match up responses with
+        /// </summary>
+        public long RequestId { get; set; }
+
+        protected SnapMessageBase(bool generateRandomRequestId = true)
+        {
+            if (generateRandomRequestId)
+            {
+                RequestId = MessageConstants.Random.NextLong();
+            }
+        }
     }
 }

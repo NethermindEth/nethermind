@@ -31,12 +31,14 @@ namespace Nethermind.Stats
         private long _bodiesTransferSpeedEventCount;
         private long _receiptsTransferSpeedEventCount;
         private long _nodesTransferSpeedEventCount;
+        private long _snapRangesTransferSpeedEventCount;
         private long _latencyEventCount;
 
         private decimal? _averageNodesTransferSpeed;
         private decimal? _averageHeadersTransferSpeed;
         private decimal? _averageBodiesTransferSpeed;
         private decimal? _averageReceiptsTransferSpeed;
+        private decimal? _averageSnapRangesTransferSpeed;
         private decimal? _averageLatency;
 
         private int[] _statCountersArray;
@@ -163,6 +165,9 @@ namespace Nethermind.Stats
                     case TransferSpeedType.Receipts:
                         _averageReceiptsTransferSpeed = ((_receiptsTransferSpeedEventCount * (_averageReceiptsTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_receiptsTransferSpeedEventCount);
                         break;
+                    case TransferSpeedType.SnapRanges:
+                        _averageSnapRangesTransferSpeed = ((_snapRangesTransferSpeedEventCount * (_averageSnapRangesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_snapRangesTransferSpeedEventCount);
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
                 }
@@ -178,6 +183,7 @@ namespace Nethermind.Stats
                 TransferSpeedType.Headers => _averageHeadersTransferSpeed,
                 TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
                 TransferSpeedType.Receipts => _averageReceiptsTransferSpeed,
+                TransferSpeedType.SnapRanges => _averageSnapRangesTransferSpeed,
                 _ => throw new ArgumentOutOfRangeException()
             });
         }
@@ -191,6 +197,7 @@ namespace Nethermind.Stats
                 TransferSpeedType.Headers => $"{_averageHeadersTransferSpeed ?? 0,5:0}",
                 TransferSpeedType.Bodies => $"{_averageBodiesTransferSpeed ?? 0,5:0}",
                 TransferSpeedType.Receipts => $"{_averageReceiptsTransferSpeed ?? 0,5:0}",
+                TransferSpeedType.SnapRanges => $"{_averageSnapRangesTransferSpeed ?? 0,5:0}",
                 _ => throw new ArgumentOutOfRangeException()
             });
         }

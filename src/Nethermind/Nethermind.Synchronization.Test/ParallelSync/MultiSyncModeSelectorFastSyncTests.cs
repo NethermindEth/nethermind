@@ -1,27 +1,11 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
-//  This file is part of the Nethermind library.
-// 
-//  The Nethermind library is free software: you can redistribute it and/or modify
-//  it under the terms of the GNU Lesser General Public License as published by
-//  the Free Software Foundation, either version 3 of the License, or
-//  (at your option) any later version.
-// 
-//  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
-//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-//  GNU Lesser General Public License for more details.
-// 
-//  You should have received a copy of the GNU Lesser General Public License
-//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
@@ -34,33 +18,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
     [Parallelizable(ParallelScope.All)]
     [TestFixture(false)]
     [TestFixture(true)]
-    public partial class MultiSyncModeSelectorTests
+    public class MultiSyncModeSelectorFastSyncTests : MultiSyncModeSelectorTestsBase
     {
-        public enum FastBlocksState
+        public MultiSyncModeSelectorFastSyncTests(bool needToWaitForHeaders) : base(needToWaitForHeaders)
         {
-            None,
-            FinishedHeaders,
-            FinishedBodies,
-            FinishedReceipts
-        }
-
-        private readonly bool _needToWaitForHeaders;
-
-        public MultiSyncModeSelectorTests(bool needToWaitForHeaders)
-        {
-            _needToWaitForHeaders = needToWaitForHeaders;
-        }
-
-        private SyncMode GetExpectationsIfNeedToWaitForHeaders(SyncMode expectedSyncModes)
-        {
-            if (_needToWaitForHeaders && (expectedSyncModes & SyncMode.FastHeaders) == SyncMode.FastHeaders)
-            {
-                expectedSyncModes &= ~SyncMode.StateNodes;
-                expectedSyncModes &= ~SyncMode.Full;
-                expectedSyncModes &= ~SyncMode.FastSync;
-            }
-
-            return expectedSyncModes;
         }
 
         [Test]
@@ -196,7 +157,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .WhenFastSyncWithoutFastBlocksIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.None);
         }
-        
+
         [TestCase(FastBlocksState.None)]
         [TestCase(FastBlocksState.FinishedHeaders)]
         public void Finished_fast_sync_but_not_state_sync_and_lesser_peers_are_known_in_fast_blocks(FastBlocksState fastBlocksState)
@@ -214,7 +175,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeJustFinishedFastBlocksAndFastSync()
                 .AndGoodPeersAreKnown()
-                .WhenFastSyncWithoutFastBlocksIsConfigured()
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .TheSyncModeShouldBe(SyncMode.StateNodes);
         }
@@ -250,7 +210,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.Full | fastBlocksState.GetSyncMode(true));
         }
-        
+
         [TestCase(FastBlocksState.None)]
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
@@ -292,7 +252,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
-        
+
         [TestCase(FastBlocksState.None)]
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]
@@ -336,7 +296,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
-        
+
         [Test]
         public void When_recently_started_full_sync_on_empty_clique_chain()
         {
@@ -386,7 +346,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .ThenInAnyFastSyncConfiguration()
                 .TheSyncModeShouldBe(SyncMode.Full);
         }
-        
+
         [Test]
         public void Should_not_sync_when_synced_and_peer_reports_wrong_higher_total_difficulty()
         {
@@ -497,7 +457,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.Full | SyncMode.FastHeaders));
         }
-        
+
         [Test]
         public void Switch_correctly_from_full_sync_to_state_nodes_catch_up()
         {
@@ -518,16 +478,16 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncPeer.TotalDifficulty.Returns(header.TotalDifficulty ?? 0);
             syncPeer.IsInitialized.Returns(true);
             syncPeer.ClientId.Returns("nethermind");
-            
+
             syncPeers.Add(syncPeer);
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
             IEnumerable<PeerInfo> peerInfos = syncPeers.Select(p => new PeerInfo(p));
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
-            ISyncConfig syncConfig = new SyncConfig() {FastSyncCatchUpHeightDelta = 2};
+            ISyncConfig syncConfig = new SyncConfig() { FastSyncCatchUpHeightDelta = 2 };
             syncConfig.FastSync = true;
-            
+
             MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, LimboLogs.Instance);
             selector.DisableTimer();
             syncProgressResolver.FindBestProcessedBlock().Returns(Scenario.ChainHead.Number);

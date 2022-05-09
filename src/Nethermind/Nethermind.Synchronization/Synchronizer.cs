@@ -25,6 +25,7 @@ using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -33,7 +34,9 @@ using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization
 {
@@ -46,6 +49,7 @@ namespace Nethermind.Synchronization
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISyncConfig _syncConfig;
+        private readonly ISnapProvider _snapProvider;
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly INodeStatsManager _nodeStatsManager;
         private readonly ILogManager _logManager;
@@ -60,6 +64,7 @@ namespace Nethermind.Synchronization
         private readonly ISyncModeSelector _syncMode;
         private FastSyncFeed? _fastSyncFeed;
         private StateSyncFeed? _stateSyncFeed;
+        private SnapSyncFeed? _snapSyncFeed;
         private FullSyncFeed? _fullSyncFeed;
         private HeadersSyncFeed? _headersFeed;
         private BodiesSyncFeed? _bodiesFeed;
@@ -77,6 +82,7 @@ namespace Nethermind.Synchronization
             INodeStatsManager nodeStatsManager,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
+            ISnapProvider snapProvider,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -88,6 +94,7 @@ namespace Nethermind.Synchronization
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _snapProvider = snapProvider ?? throw new ArgumentNullException(nameof(snapProvider));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _logManager = logManager;
@@ -103,6 +110,7 @@ namespace Nethermind.Synchronization
             }
 
             StartFullSyncComponents();
+            
             if (_syncConfig.FastSync)
             {
                 if (_syncConfig.FastBlocks)
@@ -111,6 +119,12 @@ namespace Nethermind.Synchronization
                 }
 
                 StartFastSyncComponents();
+                
+                if (_syncConfig.SnapSync)
+                {
+                    StartSnapSyncComponents();
+                }
+                
                 StartStateSyncComponents();
             }
         }
@@ -141,7 +155,8 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            _stateSyncFeed = new StateSyncFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _syncMode, _blockTree, _logManager);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
@@ -156,6 +171,24 @@ namespace Nethermind.Synchronization
             });
         }
 
+        private void StartSnapSyncComponents()
+        {
+            _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _blockTree, _logManager);
+            SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
+            
+            Task _ = dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("State sync failed", t.Exception);
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info("State sync task completed.");
+                }
+            });
+        }
+        
         private void StartFastBlocksComponents()
         {
             FastBlocksPeerAllocationStrategyFactory fastFactory = new();

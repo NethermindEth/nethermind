@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,28 +15,24 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Diagnostics;
+using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using NUnit.Framework;
 
-namespace Nethermind.Synchronization.FastSync
+namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 {
-    public partial class StateSyncFeed
+    [TestFixture, Parallelizable(ParallelScope.All)]
+    public class TrieNodesMessageSerializerTests
     {
-        [DebuggerDisplay("{SyncItem.Hash} {Counter}")]
-        private class DependentItem
+        [Test]
+        public void Roundtrip()
         {
-            public StateSyncItem SyncItem { get; }
-            public byte[] Value { get; }
-            public int Counter { get; set; }
+            byte[][] data = {new byte[]{0xde, 0xad, 0xc0, 0xde}, new byte[]{0xfe, 0xed}};
 
-            public bool IsAccount { get; }
-
-            public DependentItem(StateSyncItem syncItem, byte[] value, int counter, bool isAccount = false)
-            {
-                SyncItem = syncItem;
-                Value = value;
-                Counter = counter;
-                IsAccount = isAccount;
-            }
+            TrieNodesMessage message = new (data);
+            
+            TrieNodesMessageSerializer serializer = new ();
+            
+            SerializerTester.TestZero(serializer, message);
         }
     }
 }
