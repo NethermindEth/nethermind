@@ -220,7 +220,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .IfThisNodeFinishedStateSyncButNotFastBlocks(fastBlocksState)
                 .WhenFastSyncWithFastBlocksIsConfigured()
                 .AndGoodPeersAreKnown()
-                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(GetExpectationsIfNeedToWaitForHeaders(SyncMode.Full | fastBlocksState.GetSyncMode(true))));
+                .TheSyncModeShouldBe(GetExpectationsIfNeedToWaitForHeaders(SyncMode.Full | fastBlocksState.GetSyncMode(true)));
         }
 
         [Test]
