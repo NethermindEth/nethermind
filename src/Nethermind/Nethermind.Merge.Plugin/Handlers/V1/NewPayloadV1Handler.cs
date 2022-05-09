@@ -379,47 +379,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return true;
         }
 
-        // TODO: beaconsync this should be moved to be part of the forward beacon sync
-        private void TryProcessChainFromStateSyncBlock(BlockHeader parentHeader, Block block)
-        {
-            long state = _state == 0 ? _syncProgressResolver.FindBestFullState() : _state;
-            if (state > 0)
-            {
-                bool shouldProcess = block.Number > state;
-                if (shouldProcess)
-                {
-                    Stack<Block> stack = new();
-                    Block? current = block;
-                    BlockHeader parent = parentHeader;
-
-                    while (current.Number > state)
-                    {
-                        if (_blockTree.WasProcessed(current.Number, current.Hash))
-                        {
-                            break;
-                        }
-
-                        if (_logger.IsInfo)
-                            _logger.Info($"TryProcessChainFromStateSyncBlock - Adding block to stack {block}");
-                        stack.Push(current);
-                        current = _blockTree.FindBlock(parent.Hash,
-                            BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        parent = _blockTree.FindHeader(current.ParentHash);
-                        current.Header.TotalDifficulty = parent.TotalDifficulty + current.Difficulty;
-                    }
-
-                    while (stack.TryPop(out Block child))
-                    {
-                        // ToDo Sarah block validaor?
-                        if (_logger.IsInfo)
-                            _logger.Info(
-                                $"TryProcessChainFromStateSyncBlock - Add block to processing queue {block} from stack");
-                        _blockTree.SuggestBlock(child);
-                    }
-                }
-            }
-        }
-
         [Flags]
         private enum ValidationResult
         {

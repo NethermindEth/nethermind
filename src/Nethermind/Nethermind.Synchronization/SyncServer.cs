@@ -248,9 +248,9 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {syncPeer} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
+                if (_logger.IsInfo) _logger.Info($"SyncServer SyncPeer {syncPeer} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
                 AddBlockResult result = _blockTree.SuggestBlock(block);
-                if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
+                if (_logger.IsInfo) _logger.Info($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
             }
             else
             {
