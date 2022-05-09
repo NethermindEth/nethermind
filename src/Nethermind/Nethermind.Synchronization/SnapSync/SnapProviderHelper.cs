@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             // TODO: Check the accounts boundaries and sorting
 
-            Keccak lastHash = accounts.Last().Path;
+            Keccak lastHash = accounts[^1].Path;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
@@ -41,8 +41,9 @@ namespace Nethermind.Synchronization.SnapSync
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
             IList<Keccak> codeHashes = new List<Keccak>();
 
-            foreach (var account in accounts)
+            for (var index = 0; index < accounts.Length; index++)
             {
+                PathWithAccount account = accounts[index];
                 if (account.Account.HasStorage)
                 {
                     accountsWithStorage.Add(account);
@@ -86,8 +87,9 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true);
             }
 
-            foreach (var slot in slots)
+            for (var index = 0; index < slots.Length; index++)
             {
+                PathWithStorageSlot slot = slots[index];
                 tree.Set(slot.Path, slot.SlotRlpValue, false);
             }
 

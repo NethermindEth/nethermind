@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.FastSync
             // prevent lot of Stream2 entries to stay in memory for a long time 
             int length = MaxStateLevel == 64 ? maxSize : Math.Max(1, (int)(maxSize * ((decimal)MaxStateLevel / 64) * ((decimal)MaxStateLevel / 64)));
 
-            List<StateSyncItem> requestItems = new();
+            List<StateSyncItem> requestItems = new(length);
             for (int i = 0; i < length; i++)
             {
                 if (TryTake(out StateSyncItem? requestItem))
@@ -187,8 +187,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public string RecalculatePriorities()
         {
-            Stopwatch stopwatch = new();
-            stopwatch.Start();
+            Stopwatch stopwatch = Stopwatch.StartNew();
 
             string reviewMessage = $"Node sync queues review ({LevelsDescription}):" + Environment.NewLine;
             reviewMessage += $"  before {Description}" + Environment.NewLine;
