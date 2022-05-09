@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
@@ -26,7 +27,7 @@ namespace Nethermind.Synchronization.FastSync
         {
             Hash = hash;
             AccountPathNibbles = accountPathNibbles;
-            PathNibbles = pathNibbles ?? new byte[0];
+            PathNibbles = pathNibbles ?? Array.Empty<byte>();
             NodeDataType = nodeType;
             Level = (byte)level;
             Rightness = rightness;

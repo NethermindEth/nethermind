@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,7 +29,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             // TODO: Check the accounts boundaries and sorting
 
-            Keccak lastHash = accounts.Last().Path;
+            Keccak lastHash = accounts[^1].Path;
 
             (AddRangeResult result, IList<TrieNode> sortedBoundaryList, bool moreChildrenToRight) = FillBoundaryTree(tree, startingHash, lastHash, expectedRootHash, proofs);
 
@@ -40,8 +41,9 @@ namespace Nethermind.Synchronization.SnapSync
             IList<PathWithAccount> accountsWithStorage = new List<PathWithAccount>();
             IList<Keccak> codeHashes = new List<Keccak>();
 
-            foreach (var account in accounts)
+            for (var index = 0; index < accounts.Length; index++)
             {
+                PathWithAccount account = accounts[index];
                 if (account.Account.HasStorage)
                 {
                     accountsWithStorage.Add(account);
@@ -89,8 +91,9 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true);
             }
 
-            foreach (var slot in slots)
+            for (var index = 0; index < slots.Length; index++)
             {
+                PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
                 tree.Set(slot.Path, slot.SlotRlpValue, false);
             }
@@ -133,10 +136,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 return (AddRangeResult.MissingRootHashInProofs, null, true);
             }
-
-            Keccak rootHash = new Keccak(root.Keccak.Bytes);
-
-            Dictionary<Keccak, TrieNode> processed = new();
+            
             Span<byte> leftBoundary = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(startingHash.Bytes, leftBoundary);
             Span<byte> rightBoundary = stackalloc byte[64];
@@ -171,7 +171,8 @@ namespace Nethermind.Synchronization.SnapSync
                         }
                         else
                         {
-                            if (Bytes.Comparer.Compare(path.ToArray(), leftBoundary[0..path.Count()].ToArray()) >= 0
+                            Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
+                            if (Bytes.Comparer.Compare(pathSpan, leftBoundary[0..path.Count]) >= 0
                                 && parent is not null
                                 && parent.IsBranch)
                             {
@@ -193,8 +194,9 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     pathIndex++;
 
-                    int left = Bytes.Comparer.Compare(path.ToArray(), leftBoundary[0..path.Count()].ToArray()) == 0 ? leftBoundary[pathIndex] : 0;
-                    int right = Bytes.Comparer.Compare(path.ToArray(), rightBoundary[0..path.Count()].ToArray()) == 0 ? rightBoundary[pathIndex] : 15;
+                    Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
+                    int left = Bytes.Comparer.Compare(pathSpan, leftBoundary[0..path.Count]) == 0 ? leftBoundary[pathIndex] : 0;
+                    int right = Bytes.Comparer.Compare(pathSpan, rightBoundary[0..path.Count]) == 0 ? rightBoundary[pathIndex] : 15;
 
                     int maxIndex = moreChildrenToRight ? right : 15;
 

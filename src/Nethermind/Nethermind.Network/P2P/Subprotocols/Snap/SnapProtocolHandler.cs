@@ -48,6 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
         private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
         private readonly MessageQueue<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
+        private static readonly byte[] _emptyBytes = { 0 };
 
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
@@ -114,7 +115,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
-                    LogRequest(message.Content);
                     GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
                     ReportIn(getTrieNodesMessage);
                     Handle(getTrieNodesMessage);
@@ -125,11 +125,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(trieNodesMessage, size);
                     break;
             }
-        }
-
-        private void LogRequest(IByteBuffer buffer)
-        {
-            Logger.Info($"SNAP - GetNodeData:{Bytes.ToHexString(buffer.Array)}");
         }
 
         private void Handle(AccountRangeMessage msg, long size)
@@ -255,21 +250,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             for (int i = 0; i < request.Paths.Length; i++)
             {
                 AccountWithStorageStartingHash path = request.Paths[i];
-                groups[i] = new PathGroup() { Group = new byte[][] { path.PathAndAccount.Path.Bytes, new byte[] { 0 } } };
+                groups[i] = new PathGroup() { Group = new[] { path.PathAndAccount.Path.Bytes, _emptyBytes } };
             }
 
             return groups;
         }
 
-        private async Task<Tout> SendRequest<Tin, Tout>(Tin msg, MessageQueue<Tin, Tout> _requestQueue, CancellationToken token)
-            where Tin : SnapMessageBase
-            where Tout : SnapMessageBase
+        private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageQueue<TIn, TOut> requestQueue, CancellationToken token)
+            where TIn : SnapMessageBase
+            where TOut : SnapMessageBase
         {
-            Request<Tin, Tout> batch = new(msg);
+            Request<TIn, TOut> batch = new(msg);
 
-            _requestQueue.Send(batch);
+            requestQueue.Send(batch);
 
-            Task<Tout> task = batch.CompletionSource.Task;
+            Task<TOut> task = batch.CompletionSource.Task;
 
             using CancellationTokenSource delayCancellation = new();
             using CancellationTokenSource compositeCancellation
@@ -293,7 +288,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             }
 
             StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.SnapRanges, 0L);
-            throw new TimeoutException($"{Session} Request timeout in {nameof(Tin)}");
+            throw new TimeoutException($"{Session} Request timeout in {nameof(TIn)}");
         }
     }
 }

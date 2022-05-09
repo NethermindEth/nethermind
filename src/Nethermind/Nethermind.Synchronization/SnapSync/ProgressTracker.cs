@@ -227,10 +227,9 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (storages is not null)
             {
-                foreach (var s in storages)
+                for (int index = 0; index < storages.Length; index++)
                 {
-                    EnqueueAccountStorage(s);
-
+                    EnqueueAccountStorage(storages[index]);
                 }
             }
 
@@ -301,7 +300,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 double progress = 100 * NextAccountPath.Bytes[0] / (double)256;
 
-                _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
+                if (_logger.IsInfo) _logger.Info($"SNAP - progress of State Ranges (Phase 1): {progress}% [{new string('*', (int)progress / 10)}{new string(' ', 10 - (int)progress / 10)}]");
             }
 
             if (_logger.IsTrace || _reqCount % 1000 == 0)

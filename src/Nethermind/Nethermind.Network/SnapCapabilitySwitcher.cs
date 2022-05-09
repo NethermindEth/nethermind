@@ -35,7 +35,10 @@ public class SnapCapabilitySwitcher
         _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
     }
 
-    public void AddSnapCapabilityIfSnapSyncIsNotFinishedAndRemoveAfterFinished()
+    /// <summary>
+    /// Add Snap capability if SnapSync is not finished and remove after finished.
+    /// </summary>
+    public void EnableSnapCapabilityUntilSynced()
     {
         if (!_progressTracker.IsSnapGetRangesFinished())
         {
