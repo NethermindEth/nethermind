@@ -51,43 +51,36 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _processor;
-        private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockCacheService _blockCacheService;
-        private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
-        private long _state = 0;
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
             IBlockTree blockTree,
             IBlockchainProcessor processor,
-            IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
             IPoSSwitcher poSSwitcher,
             IBeaconSyncStrategy beaconSyncStrategy,
             IBeaconPivot beaconPivot,
             IBlockCacheService blockCacheService,
-            ISyncProgressResolver syncProgressResolver,
             IMergeSyncController mergeSyncController,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
             _processor = processor;
-            _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
             _poSSwitcher = poSSwitcher;
             _beaconSyncStrategy = beaconSyncStrategy;
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
-            _syncProgressResolver = syncProgressResolver;
             _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
         }

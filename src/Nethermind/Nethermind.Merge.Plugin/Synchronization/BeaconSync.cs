@@ -32,23 +32,20 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
-        private readonly IDb _metadataDb;
         private readonly IBlockCacheService _blockCacheService;
-        private bool _isInBeaconModeControl = false;
+        private bool _isInBeaconModeControl;
         private readonly ILogger _logger;
 
         public BeaconSync(
             IBeaconPivot beaconPivot,
             IBlockTree blockTree,
             ISyncConfig syncConfig,
-            IDb metadataDb,
             IBlockCacheService blockCacheService,
             ILogManager logManager)
         {
             _beaconPivot = beaconPivot;
             _blockTree = blockTree;
             _syncConfig = syncConfig;
-            _metadataDb = metadataDb;
             _blockCacheService = blockCacheService;
             _logger = logManager.GetClassLogger();
         }

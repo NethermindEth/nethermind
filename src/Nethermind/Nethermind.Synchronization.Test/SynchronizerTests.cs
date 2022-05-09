@@ -381,7 +381,7 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         blockDownloaderFactory,
                         pivot,
-                        new BeaconSync(beaconPivot, BlockTree,syncConfig, dbProvider.MetadataDb, blockCacheService, LimboLogs.Instance),
+                        new BeaconSync(beaconPivot, BlockTree,syncConfig, blockCacheService, LimboLogs.Instance),
                         mergeConfig,
                         new BlockCacheService(),
                         syncProgressResolver,
