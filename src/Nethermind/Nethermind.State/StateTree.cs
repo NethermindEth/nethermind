@@ -76,11 +76,12 @@ namespace Nethermind.State
         }
         
         [DebuggerStepThrough]
-        public void Set(Keccak keccak, Account? account) 
+        public Rlp? Set(Keccak keccak, Account? account) 
         {
             Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
 
             Set(keccak.Bytes, rlp);
+            return rlp;
         }
     }
 }

@@ -141,33 +141,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private void Handle(ByteCodesMessage msg, long size)
         {
-            // TODO: increment metrics
+            Metrics.SnapByteCodesReceived++;
             _getByteCodesRequests.Handle(msg, size);
         }
 
         private void Handle(TrieNodesMessage msg, long size)
         {
-            // TODO: increment metrics
+            Metrics.SnapTrieNodesReceived++;
             _getTrieNodesRequests.Handle(msg, size);
         }
 
         private void Handle(GetAccountRangeMessage msg)
         {
+            Metrics.SnapGetAccountRangeReceived++;
             //throw new NotImplementedException();
         }
 
         private void Handle(GetStorageRangeMessage getStorageRangesMessage)
         {
+            Metrics.SnapGetStorageRangesReceived++;
             //throw new NotImplementedException();
         }
 
         private void Handle(GetByteCodesMessage getByteCodesMessage)
         {
+            Metrics.SnapGetByteCodesReceived++;
             //throw new NotImplementedException();
         }
 
         private void Handle(GetTrieNodesMessage getTrieNodesMessage)
         {
+            Metrics.SnapGetTrieNodesReceived++;
             //throw new NotImplementedException();
         }
 
@@ -186,6 +190,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
             AccountRangeMessage response = await SendRequest(request, _getAccountRangeRequests, token);
 
+            Metrics.SnapGetAccountRangeSent++;
+
             return new AccountsAndProofs() { PathAndAccounts = response.PathsWithAccounts, Proofs = response.Proofs };
         }
 
@@ -199,6 +205,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
             StorageRangeMessage response = await SendRequest(request, _getStorageRangeRequests, token);
 
+            Metrics.SnapGetStorageRangesSent++;
+
             return new SlotsAndProofs() { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
@@ -211,6 +219,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             };
 
             ByteCodesMessage response = await SendRequest(request, _getByteCodesRequests, token);
+
+            Metrics.SnapGetByteCodesSent++;
 
             return response.Codes;
         }
@@ -227,6 +237,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             };
 
             TrieNodesMessage response = await SendRequest(reqMsg, _getTrieNodesRequests, token);
+
+            Metrics.SnapGetTrieNodesSent++;
 
             return response.Nodes;
         }
