@@ -6,7 +6,7 @@ on:
       repo:
         description: 'Docker hub org and repository name'
         required: false
-        default: '0xakihiko/playmind'
+        default: 'akihikodev/playmind'
       tag:
         description: 'Tag for the docker image'
         required: false
