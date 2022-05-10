@@ -76,6 +76,8 @@ namespace Nethermind.Merge.Plugin
 
             if (_mergeConfig.Enabled && MatchChain(_api.ChainSpec!))
             {
+                _logger.Info($"Merge plugin is enabled for chain {_api.ChainSpec!.Name} with id {_api.ChainSpec.ChainId}");
+
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
