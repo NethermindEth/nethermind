@@ -33,10 +33,12 @@ namespace Nethermind.Merge.Plugin
         private const int MaxExtraDataBytes = 32;
         
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IHeaderValidator _preMergeHeaderValidator;
         private readonly IBlockTree _blockTree;
 
         public MergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
+            IHeaderValidator preMergeHeaderValidator,
             IBlockTree blockTree,
             ISpecProvider specProvider,
             ISealValidator sealValidator,
@@ -44,13 +46,24 @@ namespace Nethermind.Merge.Plugin
             : base(blockTree, sealValidator, specProvider, logManager)
         {
             _poSSwitcher = poSSwitcher;
+            _preMergeHeaderValidator = preMergeHeaderValidator;
             _blockTree = blockTree;
         }
+
+        public override bool ValidateHash(BlockHeader header)
+        {
+            if (_poSSwitcher.IsPostMerge(header) || _preMergeHeaderValidator is null)
+                return base.ValidateHash(header); // should this be base? maybe it's enough with line bellow
+            return _preMergeHeaderValidator.ValidateHash(header);
+        }
+        
         
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
             bool theMergeValid = ValidateTheMergeChecks(header, parent);
-            return base.Validate(header, parent, isUncle) && theMergeValid;
+            if (_poSSwitcher.IsPostMerge(header) || _preMergeHeaderValidator is null)
+                return theMergeValid && base.Validate(header, parent, isUncle);
+            return _preMergeHeaderValidator.Validate(header, parent, isUncle);
         }
 
         public override bool Validate(BlockHeader header, bool isUncle = false)
