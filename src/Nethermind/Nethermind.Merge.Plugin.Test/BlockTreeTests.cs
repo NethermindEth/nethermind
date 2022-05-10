@@ -101,7 +101,7 @@ public partial class BlockTreeTests
     {
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        BlockTreeInsertOptions insertOption = GetBlockTreeInsertOptions();
+        BlockTreeInsertOptions insertOption = BlockTreeInsertOptions.BeaconBlockInsert;
         AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, insertOption);
         
         Assert.AreEqual(AddBlockResult.Added, insertResult);
@@ -120,7 +120,7 @@ public partial class BlockTreeTests
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
         
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        BlockTreeInsertOptions options = GetBlockTreeInsertOptions();
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconBlockInsert;
         AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, options);
         for (int i = 13; i > 9; --i)
         {
@@ -136,7 +136,7 @@ public partial class BlockTreeTests
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
         
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        BlockTreeInsertOptions options = GetBlockTreeInsertOptions();
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconBlockInsert;
         AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, options);
         
         for (int i = 13; i > 9; --i)
@@ -200,7 +200,7 @@ public partial class BlockTreeTests
                 {
                     Block? beaconBlock = SyncedTree!.FindBlock(num, BlockTreeLookupOptions.None);
                     AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, true,
-                        BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.TotalDifficultyNotNeeded);
+                        BlockTreeInsertOptions.BeaconBlockInsert);
                     Assert.AreEqual(AddBlockResult.Added, insertResult);
                     return this;
                 }
@@ -223,8 +223,8 @@ public partial class BlockTreeTests
                     {
                         for (int i = 0; i < headers.Length; ++i)
                         {
-                            Block? beaconBlock = SyncedTree!.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
-                            AddBlockResult insertResult = NotSyncedTree!.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock, true);
+                            Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
+                            AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock, true);
                             Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
                         }
                         
@@ -236,7 +236,7 @@ public partial class BlockTreeTests
 
                 public ScenarioBuilder InsertHeaders(long low, long high)
                 {
-                    BlockTreeInsertOptions options = BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;
+                    BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconBlockInsert;
                     for (long i = high; i >= low; --i)
                     {
                         BlockHeader? beaconHeader = SyncedTree!.FindHeader(i, BlockTreeLookupOptions.None);
@@ -271,6 +271,7 @@ public partial class BlockTreeTests
                         NullBloomStorage.Instance,
                         new SyncConfig(),
                         LimboLogs.Instance);
+                    _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, new SyncConfig(), LimboLogs.Instance);
                     return this;
                 }
 
@@ -359,7 +360,7 @@ public partial class BlockTreeTests
             .InsertBeaconPivot(7)
             .InsertHeaders(4, 6)
             .Restart()
-            .AssertLowestInsertedBeaconHeader(1);
+            .AssertLowestInsertedBeaconHeader(4);
     }
     
     [Test]
@@ -373,7 +374,7 @@ public partial class BlockTreeTests
             .SuggestBlocks(4, 4)
             .Restart()
             .AssertBestSuggestedBody(4)
-            .AssertLowestInsertedBeaconHeader(1);
+            .AssertLowestInsertedBeaconHeader(4);
     }
     
     [Test]
@@ -387,11 +388,10 @@ public partial class BlockTreeTests
             .SuggestBlocks(4, 6)
             .Restart()
             .AssertBestSuggestedBody(6)
-            .AssertLowestInsertedBeaconHeader(1);
+            .AssertLowestInsertedBeaconHeader(4);
     }
     
     [Test]
-    [Ignore("Need to be fixed in LoadBestKnown (BlockTree constructor)")]
     public void Best_pointers_should_not_move_if_sync_is_not_finished()
     {
         BlockTreeTestScenario.GoesLikeThis()
@@ -409,7 +409,7 @@ public partial class BlockTreeTests
     [Test]
     public void MarkChainAsProcessed_does_not_change_main_chain()
     {
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(10);
+        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree().OfChainLength(9);
         BlockTree blockTree = new(
             blockTreeBuilder.BlocksDb,
             blockTreeBuilder.HeadersDb,
@@ -421,7 +421,10 @@ public partial class BlockTreeTests
             new SyncConfig(),
             LimboLogs.Instance);
         Block? parentBlock = blockTree.FindBlock(8, BlockTreeLookupOptions.None);
-        Block newBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parentBlock!.Header).TestObject).TestObject;
+        Block newBlock = Build.A.Block.WithParent(parentBlock!)
+                        .WithNumber(parentBlock!.Number + 1)
+                        .WithNonce(0)
+                        .WithDifficulty(0).TestObject;
         AddBlockResult addBlockResult =  blockTree.SuggestBlock(newBlock);
         Assert.AreEqual(AddBlockResult.Added,addBlockResult);
         blockTree.MarkChainAsProcessed(new []{ newBlock });
