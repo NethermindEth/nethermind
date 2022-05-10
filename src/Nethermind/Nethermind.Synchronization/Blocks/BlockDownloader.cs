@@ -350,8 +350,7 @@ namespace Nethermind.Synchronization.Blocks
                             throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
                     }
-
-                    if (_logger.IsInfo) _logger.Info($"BlockDownloader - SuggestBlock {currentBlock} ShouldProcess: {shouldProcess}");
+                    
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None)))
                     {
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
