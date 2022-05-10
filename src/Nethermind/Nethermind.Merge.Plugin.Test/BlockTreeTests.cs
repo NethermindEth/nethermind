@@ -229,7 +229,7 @@ public partial class BlockTreeTests
                         for (int i = 0; i < headers.Length; ++i)
                         {
                             Block? beaconBlock = SyncedTree!.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
-                            AddBlockResult insertResult = NotSyncedTree!.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock);
+                            AddBlockResult insertResult = NotSyncedTree!.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock, true);
                             Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
                         }
                         
@@ -241,7 +241,7 @@ public partial class BlockTreeTests
 
                 public ScenarioBuilder InsertHeaders(long low, long high)
                 {
-                    BlockTreeInsertOptions options = BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;;
+                    BlockTreeInsertOptions options = BlockTreeInsertOptions.TotalDifficultyNotNeeded | BlockTreeInsertOptions.SkipUpdateBestPointers;
                     for (long i = high; i >= low; --i)
                     {
                         BlockHeader? beaconHeader = SyncedTree!.FindHeader(i, BlockTreeLookupOptions.None);

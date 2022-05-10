@@ -315,7 +315,7 @@ namespace Nethermind.Synchronization.Test
                 MergeConfig? mergeConfig = new() {Enabled = true };
                 if (WithTTD(synchronizerType))
                 {
-                    mergeConfig.TerminalTotalDifficulty = "0";
+                    mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString();
                 }
                 
                 PoSSwitcher poSSwitcher = new(mergeConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), _logManager);
@@ -381,7 +381,7 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         blockDownloaderFactory,
                         pivot,
-                        new BeaconSync(beaconPivot, BlockTree,syncConfig, dbProvider.MetadataDb, blockCacheService, LimboLogs.Instance),
+                        new BeaconSync(beaconPivot, BlockTree,syncConfig, blockCacheService, LimboLogs.Instance),
                         mergeConfig,
                         new BlockCacheService(),
                         syncProgressResolver,

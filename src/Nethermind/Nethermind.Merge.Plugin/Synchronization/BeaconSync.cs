@@ -32,40 +32,22 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
-        private readonly IDb _metadataDb;
         private readonly IBlockCacheService _blockCacheService;
-        private bool _isInBeaconModeControl = false;
-        private bool _danglingChainMerged;
+        private bool _isInBeaconModeControl;
         private readonly ILogger _logger;
 
         public BeaconSync(
             IBeaconPivot beaconPivot,
             IBlockTree blockTree,
             ISyncConfig syncConfig,
-            IDb metadataDb,
             IBlockCacheService blockCacheService,
             ILogManager logManager)
         {
             _beaconPivot = beaconPivot;
             _blockTree = blockTree;
             _syncConfig = syncConfig;
-            _metadataDb = metadataDb;
             _blockCacheService = blockCacheService;
             _logger = logManager.GetClassLogger();
-
-            Initialize();
-        }
-
-        private void Initialize()
-        {
-            LoadDanglingChainMerged();
-        }
-
-        private void LoadDanglingChainMerged()
-        {
-            DanglingChainMerged =
-                _metadataDb.Get(MetadataDbKeys.DanglingChainMerged)?
-                    .AsRlpValueContext().DecodeBool() ?? true;
         }
 
         public void StopSyncing()
@@ -119,19 +101,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                    || (blockHeader != null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.Hash ?? blockHeader.CalculateHash()));
         }
 
-        public bool DanglingChainMerged
-        {
-            get => _danglingChainMerged;
-            set
-            {
-                _danglingChainMerged = value;
-                if (value)
-                {
-                    _metadataDb.Set(MetadataDbKeys.DanglingChainMerged, Rlp.Encode(value).Bytes);
-                }
-            }
-        }
-
         public bool FastSyncEnabled => _syncConfig.FastSync;
     }
 
@@ -140,7 +109,5 @@ namespace Nethermind.Merge.Plugin.Synchronization
         void StopSyncing();
 
         void InitSyncing(BlockHeader? blockHeader);
-        
-        bool DanglingChainMerged { get; set; }
     }
 }
