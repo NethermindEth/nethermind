@@ -39,7 +39,9 @@ public enum BlockTreeInsertOptions
     SkipUpdateBestPointers = 2,
     NotOnMainChain = 4,
     UpdateBeaconPointers = 8,
-    BeaconBlockInsert = TotalDifficultyNotNeeded | SkipUpdateBestPointers | UpdateBeaconPointers,
+    AddBeaconMetadata = 16,
+    
+    BeaconBlockInsert = TotalDifficultyNotNeeded | SkipUpdateBestPointers | UpdateBeaconPointers | AddBeaconMetadata,
 }
 
 [Flags]

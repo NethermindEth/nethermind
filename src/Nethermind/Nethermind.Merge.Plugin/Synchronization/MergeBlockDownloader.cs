@@ -114,33 +114,55 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 long upperDownloadBoundary = _blockTree.BestKnownBeaconNumber;
                 long blocksLeft = upperDownloadBoundary - currentNumber;
-                int headersToRequest = (int)Math.Min(blocksLeft + 1, _syncBatchSize.Current);
-                if (headersToRequest <= 1)
+                // after beacon pivot blocks should exist in the block tree, no need to download blocks from peers
+                long blocksLeftToDownload = _beaconPivot.PivotNumber - currentNumber;
+                int headersToProcess = (int)Math.Min(blocksLeft + 1, _syncBatchSize.Current);
+                int headersToRequest = (int)Math.Min(blocksLeftToDownload + 1, _syncBatchSize.Current);
+                if (headersToProcess <= 1)
                 {
                     break;
                 }
 
-                headersToRequest = Math.Min(headersToRequest, bestPeer.MaxHeadersPerRequest());
+                int requestSize;
+                bool downloadFinished = headersToRequest <= 1;
+                if (downloadFinished)
+                {
+                    // no more blocks to request, process beacon blocks
+                    requestSize = headersToProcess;
+                }
+                else
+                {
+                    requestSize = Math.Min(headersToRequest, bestPeer.MaxHeadersPerRequest());
 
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
+                    if (_logger.IsTrace)
+                        _logger.Trace(
+                            $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
+                }
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                Block[]? blocks = null;
-                TxReceipt[]?[]? receipts = null;
+                Block[]? blocks;
+                TxReceipt[]?[]? receipts;
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
+                        $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, RequestSize: {requestSize}");
                 
-                BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
+                BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(requestSize);
                 if (headers == null || headers.Length == 0)
                     break;
-                BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts,
-                    _receiptsRecovery);
 
+                BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts,
+                _receiptsRecovery);
+                
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                await RequestBodies(bestPeer, cancellation, context);
+                if (downloadFinished)
+                {
+                    blocks = _chainLevelHelper.GetNextBlocks(requestSize);
+                }
+                else
+                {
+                    await RequestBodies(bestPeer, cancellation, context);
+                    blocks = context.Blocks;
+                }
 
                 if (downloadReceipts)
                 {
@@ -154,15 +176,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 {
                     _syncBatchSize.Expand();
                 }
-
-                blocks = context.Blocks;
+                
                 receipts = context.ReceiptsForBlocks;
 
                 if (blocks == null || blocks.Length == 0)
                     break;
-
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
+                    
                     if (cancellation.IsCancellationRequested)
                     {
                         if (_logger.IsTrace) _logger.Trace("Peer sync cancelled");
@@ -240,7 +261,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                     currentNumber += 1;
                 }
-
+                
                 if (blocksSynced > 0)
                 {
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
