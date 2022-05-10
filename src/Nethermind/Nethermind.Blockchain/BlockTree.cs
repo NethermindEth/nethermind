@@ -1630,7 +1630,7 @@ namespace Nethermind.Blockchain
                         Array.Resize(ref blockInfos, blockInfos.Length + 1);
                     }
 
-                    int index = foundIndex ?? blockInfos.Length;
+                    int index = foundIndex ?? blockInfos.Length - 1;
 
                     if (setAsMain)
                     {
