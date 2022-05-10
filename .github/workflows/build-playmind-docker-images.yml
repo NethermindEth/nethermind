@@ -1,4 +1,4 @@
-name: '[BUILD] Docker images and publish to Docker Hub'
+name: '[BUILD] Playmind Docker images and publish to Docker Hub'
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       repo:
         description: 'Docker hub org and repository name'
         required: false
-        default: 'nethermindeth/nethermind'
+        default: '0xakihiko/playmind'
       tag:
         description: 'Tag for the docker image'
         required: false
