@@ -99,7 +99,6 @@ namespace Nethermind.AccountAbstraction.Test
                 {
                     Enabled = true, 
                     EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
-                    Create2FactoryAddress = "0xd75a3a95360e44a3874e691fb48d77855f127069",
                     UserOperationPoolSize = 200,
                     WhitelistedPaymasters = ""
                 };
@@ -178,7 +177,6 @@ namespace Nethermind.AccountAbstraction.Test
                 WhitelistedPayamsters = whitelistedPaymasters.ToArray();
                 
                 
-                Address.TryParse(_accountAbstractionConfig.Create2FactoryAddress, out Address? create2FactoryAddress);
                 BlockValidator = CreateBlockValidator();
                 BlockProcessor blockProcessor = new(
                     SpecProvider,
@@ -211,7 +209,6 @@ namespace Nethermind.AccountAbstraction.Test
                         State,
                         StateReader,
                         EntryPointContractAbi,
-                        create2FactoryAddress!,
                         entryPoint!,
                         WhitelistedPayamsters,
                         SpecProvider, 
