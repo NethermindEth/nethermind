@@ -33,5 +33,6 @@
       <Project>{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}</Project>
       <Name>Nethermind.Evm</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
   </ItemGroup>
 </Project>

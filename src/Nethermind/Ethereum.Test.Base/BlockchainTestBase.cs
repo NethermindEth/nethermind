@@ -44,6 +44,7 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -138,9 +139,15 @@ namespace Ethereum.Test.Base
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator txValidator = new TxValidator(ChainId.Mainnet);
-            IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
-            IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
+            
+            IHeaderValidator preMergeheaderValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
+            IUnclesValidator preMergeUnclesValidator = new UnclesValidator(blockTree, preMergeheaderValidator, _logManager);
+            IPoSSwitcher _poSSwitcher = new PoSSwitcher(new MergeConfig(), new MemDb(), blockTree, specProvider, _logManager);
+            IHeaderValidator headerValidator =
+                new MergeHeaderValidator(_poSSwitcher, blockTree, specProvider, Sealer, _logManager);
+            IUnclesValidator unclesValidator = new MergeUnclesValidator(_poSSwitcher, preMergeUnclesValidator);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
+            
             IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
