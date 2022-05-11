@@ -19,6 +19,8 @@ namespace Nethermind.Consensus
 {
     public interface IGossipPolicy
     {
+        public bool ShouldDiscardBlocks => false;
+        
         public bool ShouldGossipBlocks { get; }
 
         public bool ShouldDisconnectGossipingNodes { get; }

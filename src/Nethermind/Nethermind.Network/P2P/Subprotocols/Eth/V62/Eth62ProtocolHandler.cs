@@ -135,7 +135,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         Disconnect(DisconnectReason.BreachOfProtocol,
                             "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
                     }
-                    else
+                    else if (!_gossipPolicy.ShouldDiscardBlocks)
                     {
                         NewBlockHashesMessage newBlockHashesMessage =
                             Deserialize<NewBlockHashesMessage>(message.Content);
@@ -182,7 +182,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         Disconnect(DisconnectReason.BreachOfProtocol,
                             "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
                     }
-                    else
+                    else if (!_gossipPolicy.ShouldDiscardBlocks)
                     {
                         NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
                         ReportIn(newBlockMsg);

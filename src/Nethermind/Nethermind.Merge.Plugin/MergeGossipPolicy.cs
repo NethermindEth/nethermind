@@ -24,23 +24,50 @@ namespace Nethermind.Merge.Plugin
 {
     public class MergeGossipPolicy : IGossipPolicy
     {
-        private readonly IGossipPolicy _preMergeGossipPolicy;
-        private readonly IPoSSwitcher _poSSwitcher;
         private readonly IManualBlockFinalizationManager _blockFinalizationManager;
 
         public MergeGossipPolicy(
             IGossipPolicy? apiGossipPolicy, 
-            IPoSSwitcher? poSSwitcher, 
             IManualBlockFinalizationManager blockFinalizationManager)
         {
-            _preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
-            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            ShouldGossipBlocks = apiGossipPolicy?.ShouldGossipBlocks ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
             _blockFinalizationManager = blockFinalizationManager;
+            
+            _blockFinalizationManager.BlocksFinalized += OnBlockFinalized;
         }
 
-        public bool ShouldGossipBlocks => !_poSSwitcher.HasEverReachedTerminalBlock() && _preMergeGossipPolicy.ShouldGossipBlocks;
+        // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
+        // we MUST discard NewBlock/NewBlockHash messages after receiving FIRST_FINALIZED_BLOCK
+        public bool ShouldDiscardBlocks { get; private set; }
 
-        public bool ShouldDisconnectGossipingNodes => _blockFinalizationManager.LastFinalizedHash != Keccak.Zero && _preMergeGossipPolicy.ShouldDisconnectGossipingNodes;
+        // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
+        // we MUST stop gossiping peers after receiving next finalized block to FIRST_FINALIZED_BLOCK, so one block after we started discarding NewBlock/NewBlockHash messages
+        public bool ShouldGossipBlocks { get; private set; }
 
+        // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
+        // we SHOULD start disconnecting gossiping peers after receiving next finalized block to FIRST_FINALIZED_BLOCK, so one block after we started discarding NewBlock/NewBlockHash messages
+        // for now hardcoded false - in spec it is SHOULD, not MUST, so we don't want to disconnect any peers during transition. Later just change to ShouldGossipBlocks
+        public bool ShouldDisconnectGossipingNodes => false;    //=> ShouldGossipBlocks;
+
+        private Keccak _firstFinalizedBlockHash = Keccak.Zero;
+        
+        private void OnBlockFinalized(object? sender, FinalizeEventArgs e)
+        {
+            Keccak finalizedBlockHash = e.FinalizedBlocks[0]?.Hash ?? Keccak.Zero;
+            
+            if (finalizedBlockHash == Keccak.Zero)
+                return;
+
+            if (_firstFinalizedBlockHash == Keccak.Zero)
+            {
+                _firstFinalizedBlockHash = finalizedBlockHash;
+                ShouldDiscardBlocks = true;
+            }
+            else if (finalizedBlockHash != _firstFinalizedBlockHash)
+            {
+                ShouldGossipBlocks = false;
+                _blockFinalizationManager.BlocksFinalized -= OnBlockFinalized;
+            }
+        }
     }
 }
