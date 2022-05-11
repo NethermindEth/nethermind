@@ -88,12 +88,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override void FinishAndCleanUp()
     {
-        // // TODO: beaconsync backfill of TD should be moved to forward beacon sync
-        // if (_mergeConfig.FinalTotalDifficultyParsed == null)
-        // {
-        //     // set total difficulty as beacon pivot does not provide total difficulty
-        //     _blockTree.BackFillTotalDifficulty(LowestInsertedBlockHeader?.Number ?? 0, _pivotNumber);   
-        // }
         // make feed dormant as there may be more header syncs when there is a new beacon pivot
         FallAsleep();
         PostFinishCleanUp();
