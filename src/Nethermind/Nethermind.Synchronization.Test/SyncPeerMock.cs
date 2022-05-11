@@ -139,7 +139,7 @@ namespace Nethermind.Synchronization.Test
             return Task.FromResult(result);
         }
 
-        public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+        public Task<BlockHeader> GetBlockHeader(Keccak hash, CancellationToken token)
         {
             return Task.FromResult(_remoteTree.Head?.Header);
         }

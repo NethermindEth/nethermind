@@ -46,8 +46,6 @@ namespace Nethermind.Synchronization.Peers
     /// </summary>
     public class SyncPeerPool : ISyncPeerPool
     {
-        private const int InitTimeout = 3000; // the Eth.Timeout hits us at 5000 (or whatever it is configured to)
-
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue
@@ -546,10 +544,10 @@ namespace Nethermind.Synchronization.Peers
             ISyncPeer syncPeer = refreshTotalDiffTask.SyncPeer;
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {syncPeer.Node:s}");
 
-            Task<BlockHeader?> getHeadHeaderTask = syncPeer.GetHeadBlockHeader(refreshTotalDiffTask.BlockHash ?? syncPeer.HeadHash, token);
+            Task<BlockHeader?> getHeadHeaderTask = syncPeer.GetBlockHeader(refreshTotalDiffTask.BlockHash ?? syncPeer.HeadHash, token);
             CancellationTokenSource delaySource = new();
             CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(delaySource.Token, token);
-            Task delayTask = Task.Delay(InitTimeout, linkedSource.Token);
+            Task delayTask = Task.Delay(Timeouts.RefreshPeer, linkedSource.Token);
             Task firstToComplete = await Task.WhenAny(getHeadHeaderTask, delayTask);
             await firstToComplete.ContinueWith(
                 t =>

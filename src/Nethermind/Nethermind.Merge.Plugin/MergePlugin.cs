@@ -34,6 +34,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network.Config;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 
@@ -232,6 +233,7 @@ namespace Nethermind.Merge.Plugin
                     _api.NodeStatsManager!,
                     _api.SyncModeSelector!,
                     _syncConfig,
+                    _api.Config<INetworkConfig>(),
                     _api.BetterPeerStrategy!,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(

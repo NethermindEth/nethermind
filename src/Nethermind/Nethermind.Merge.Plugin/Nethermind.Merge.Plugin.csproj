@@ -11,4 +11,8 @@
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="ConcurrentHashSet" Version="1.3.0" />
+  </ItemGroup>
+
 </Project>

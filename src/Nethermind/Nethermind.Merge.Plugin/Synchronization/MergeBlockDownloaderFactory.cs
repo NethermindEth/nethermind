@@ -23,6 +23,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -46,6 +47,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
         private readonly IChainLevelHelper _chainLevelHelper;
+        private readonly int _maxPeers;
 
         public MergeBlockDownloaderFactory(
             IPoSSwitcher poSSwitcher,
@@ -59,6 +61,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             INodeStatsManager nodeStatsManager,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
+            INetworkConfig networkConfig,
             IBetterPeerStrategy betterPeerStrategy,
             ILogManager logManager)
         {
@@ -75,12 +78,27 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _chainLevelHelper = new ChainLevelHelper(_blockTree, syncConfig, _logManager);
 
             _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, beaconPivot, logManager);
+            _maxPeers = networkConfig.MaxActivePeers;
         }
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
-            return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
-                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper, _logManager);
+            MergeBlocksSyncPeerAllocationStrategyFactory mergeBlocksSyncPeerAllocationStrategyFactory = new(_poSSwitcher, _beaconPivot, _maxPeers, _logManager);
+            
+            return new MergeBlockDownloader(
+                _beaconPivot, 
+                syncFeed, 
+                _syncPeerPool, 
+                _blockTree, 
+                _blockValidator,
+                _sealValidator, 
+                _syncReport, 
+                _receiptStorage, 
+                _specProvider, 
+                mergeBlocksSyncPeerAllocationStrategyFactory, 
+                _betterPeerStrategy, 
+                _chainLevelHelper, 
+                _logManager);
         }
     }
 }

@@ -43,6 +43,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Network.Config;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -168,7 +169,7 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(result);
             }
 
-            public async Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+            public async Task<BlockHeader> GetBlockHeader(Keccak hash, CancellationToken token)
             {
                 if (_causeTimeoutOnInit)
                 {
@@ -367,6 +368,7 @@ namespace Nethermind.Synchronization.Test
                         stats,
                         syncModeSelector,
                         syncConfig,
+                        new NetworkConfig(),
                         bestPeerStrategy,
                         _logManager
                     );

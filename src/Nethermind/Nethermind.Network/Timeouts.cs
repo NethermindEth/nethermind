@@ -18,11 +18,10 @@ using System;
 
 namespace Nethermind.Network
 {
-    public static class Timeouts
+    public class Timeouts : Synchronization.Timeouts
     {
         public static readonly TimeSpan InitialConnection = TimeSpan.FromSeconds(2);
         public static readonly TimeSpan TcpClose = TimeSpan.FromSeconds(5);
-        public static readonly TimeSpan Eth = Synchronization.Timeouts.Eth;
         public static readonly TimeSpan P2PPing = TimeSpan.FromSeconds(3);
         public static readonly TimeSpan P2PHello = TimeSpan.FromSeconds(3);
         public static readonly TimeSpan Eth62Status = TimeSpan.FromSeconds(3);

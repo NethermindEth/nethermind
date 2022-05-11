@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
-            public async Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+            public async Task<BlockHeader> GetBlockHeader(Keccak hash, CancellationToken token)
             {
                 if (_shouldFail)
                 {
@@ -280,7 +280,7 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.RefreshTotalDifficulty(syncPeer, null);
             await Task.Delay(100);
 
-            await syncPeer.Received(2).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
+            await syncPeer.Received(2).GetBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
         }
 
         private void SetupSpeedStats(Context ctx, PublicKey publicKey, int transferSpeed)

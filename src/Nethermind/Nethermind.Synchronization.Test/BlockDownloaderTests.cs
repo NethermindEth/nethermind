@@ -546,7 +546,7 @@ namespace Nethermind.Synchronization.Test
                 throw new Exception();
             }
 
-            public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+            public Task<BlockHeader> GetBlockHeader(Keccak hash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -1003,7 +1003,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
 
-            public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+            public Task<BlockHeader> GetBlockHeader(Keccak hash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

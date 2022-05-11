@@ -194,7 +194,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
         }
 
-        async Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
+        async Task<BlockHeader> ISyncPeer.GetBlockHeader(Keccak hash, CancellationToken token)
         {
             GetBlockHeadersMessage msg = new();
             msg.StartBlockHash = hash ?? _remoteHeadBlockHash;

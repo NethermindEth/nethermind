@@ -18,6 +18,9 @@
 using System;
 using Nethermind.Consensus;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
+using Nethermind.Stats;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -27,13 +30,19 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 public class MergeBlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest?>
 {
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IPivot _pivot;
+    private readonly int _maxPeers;
     private readonly ILogManager _logManager;
 
     public MergeBlocksSyncPeerAllocationStrategyFactory(
         IPoSSwitcher poSSwitcher,
+        IPivot pivot,
+        int maxPeers,
         ILogManager logManager)
     {
         _poSSwitcher = poSSwitcher;
+        _pivot = pivot;
+        _maxPeers = maxPeers;
         _logManager = logManager;
     }
     
@@ -49,8 +58,8 @@ public class MergeBlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrat
         IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
         TotalDiffStrategy preMergeAllocationStrategy = new(baseStrategy);
         PostMergeBlocksSyncPeerAllocationStrategy postMergeStrategy = new(request.NumberOfLatestBlocksToBeIgnored);
-        MergePeerAllocationStrategy mergeStrategy =
-            new(preMergeAllocationStrategy, postMergeStrategy, _poSSwitcher, _logManager);
+        RefreshingPeerAllocationStrategy refreshingStrategy = new(postMergeStrategy, _pivot, _maxPeers, _logManager);
+        MergePeerAllocationStrategy mergeStrategy = new(preMergeAllocationStrategy, refreshingStrategy, _poSSwitcher, _logManager);
         
         return mergeStrategy;
     }

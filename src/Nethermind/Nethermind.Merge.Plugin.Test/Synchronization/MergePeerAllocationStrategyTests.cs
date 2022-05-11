@@ -25,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -35,7 +36,6 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization;
 
 public class MergePeerAllocationStrategyTests
 {
-
     [Test]
     public void Should_allocate_by_totalDifficulty_before_the_merge()
     {
@@ -61,7 +61,7 @@ public class MergePeerAllocationStrategyTests
         poSSwitcher.HasEverReachedTerminalBlock().Returns(false);
         poSSwitcher.TransitionFinished.Returns(false);
         IPeerAllocationStrategy mergePeerAllocationStrategy =
-            (new MergeBlocksSyncPeerAllocationStrategyFactory(poSSwitcher, Substitute.For<ILogManager>())).Create(new BlocksRequest());
+            (new MergeBlocksSyncPeerAllocationStrategyFactory(poSSwitcher, Substitute.For<IPivot>(), 10, Substitute.For<ILogManager>())).Create(new BlocksRequest());
         IBlockTree _blockTree = Substitute.For<IBlockTree>();
         PeerInfo? info = mergePeerAllocationStrategy.Allocate(null, peers, _nodeStatsManager, _blockTree);
         
@@ -93,7 +93,7 @@ public class MergePeerAllocationStrategyTests
             poSSwitcher.TerminalTotalDifficulty.Returns(new UInt256(1));
             poSSwitcher.HasEverReachedTerminalBlock().Returns(true);
             IPeerAllocationStrategy mergePeerAllocationStrategy =
-                (new MergeBlocksSyncPeerAllocationStrategyFactory(poSSwitcher, Substitute.For<ILogManager>())).Create(new BlocksRequest());
+                (new MergeBlocksSyncPeerAllocationStrategyFactory(poSSwitcher, Substitute.For<IPivot>(), 10,Substitute.For<ILogManager>())).Create(new BlocksRequest());
             IBlockTree _blockTree = Substitute.For<IBlockTree>();
             PeerInfo? info = mergePeerAllocationStrategy.Allocate(null, peers, _nodeStatsManager, _blockTree);
             

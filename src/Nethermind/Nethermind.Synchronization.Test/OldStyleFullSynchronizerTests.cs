@@ -308,10 +308,10 @@ namespace Nethermind.Synchronization.Test
             minerTree.UpdateMainChain(newBlock);
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
-            miner2.GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
+            miner2.GetBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetBlockHeader(null, CancellationToken.None));
             miner2.Node.Id.Returns(TestItem.PublicKeyB);
 
-            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()), "number as expected");
+            Assert.AreEqual(newBlock.Number, await miner2.GetBlockHeader(null, Arg.Any<CancellationToken>()), "number as expected");
 
             _pool.Start();
             _synchronizer.Start();
@@ -346,10 +346,10 @@ namespace Nethermind.Synchronization.Test
             minerTree.UpdateMainChain(newBlock);
 
             ISyncPeer miner2 = Substitute.For<ISyncPeer>();
-            miner2.GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockHeader(null, CancellationToken.None));
+            miner2.GetBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>()).Returns(miner1.GetBlockHeader(null, CancellationToken.None));
             miner2.Node.Id.Returns(TestItem.PublicKeyB);
 
-            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()), "number as expected");
+            Assert.AreEqual(newBlock.Number, await miner2.GetBlockHeader(null, Arg.Any<CancellationToken>()), "number as expected");
 
             _pool.Start();
             _synchronizer.Start();
