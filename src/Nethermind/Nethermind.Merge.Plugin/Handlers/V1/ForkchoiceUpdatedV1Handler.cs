@@ -187,7 +187,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             // In future safeBlockHash will be added to JSON-RPC
-            _blockConfirmationManager.Confirm(safeBlockHashHeader!.Hash!);
+            if (forkchoiceState.SafeBlockHash != Keccak.Zero)
+                _blockConfirmationManager.Confirm(safeBlockHashHeader!.Hash!);
+            
             if (shouldUpdateHead)
             {
                 _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header, forkchoiceState.FinalizedBlockHash);
