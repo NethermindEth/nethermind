@@ -86,6 +86,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             MergeBlocksSyncPeerAllocationStrategyFactory mergeBlocksSyncPeerAllocationStrategyFactory = new(_poSSwitcher, _beaconPivot, _maxPeers, _logManager);
             
             return new MergeBlockDownloader(
+                _poSSwitcher,
                 _beaconPivot, 
                 syncFeed, 
                 _syncPeerPool, 

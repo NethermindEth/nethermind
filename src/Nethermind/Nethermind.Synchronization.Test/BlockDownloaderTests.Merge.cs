@@ -67,7 +67,7 @@ public partial class BlockDownloaderTests
         BeaconPivot beaconPivot = new(new SyncConfig(), mergeConfig, metadataDb, notSyncedTree,
             new PeerRefresher(Substitute.For<ISyncPeerPool>()), LimboLogs.Instance);
         beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
-        MergeBlockDownloader downloader = new(beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
+        MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
             new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, beaconPivot, 100, LimboLogs.Instance),
             CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
@@ -122,6 +122,7 @@ public partial class BlockDownloaderTests
             beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
         MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
+            new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, beaconPivot, 100, LimboLogs.Instance),
             CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
             LimboLogs.Instance);
 
