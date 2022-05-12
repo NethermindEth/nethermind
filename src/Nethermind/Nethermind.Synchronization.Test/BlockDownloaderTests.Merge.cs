@@ -43,6 +43,9 @@ public partial class BlockDownloaderTests
 {
     [TestCase(32L, DownloaderOptions.Process, 32, 32)]
     [TestCase(32L, DownloaderOptions.Process, 32, 29)]
+    [TestCase(32L, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 0, 32)]
+    [TestCase(SyncBatchSize.Max * 8, DownloaderOptions.WithReceipts | DownloaderOptions.MoveToMain, 32, 32)]
+    [TestCase(SyncBatchSize.Max * 8, DownloaderOptions.Process, 32, 32)]
     public async Task Merge_Happy_path(long headNumber, int options, int threshold, long insertedBeaconBlocks)
     {
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
@@ -59,7 +62,7 @@ public partial class BlockDownloaderTests
         InMemoryReceiptStorage receiptStorage = new();
         MergeConfig mergeConfig = new() { Enabled = true };
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true }, metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, metadataDb, notSyncedTree,
             RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), mergeConfig, metadataDb, notSyncedTree,
             new PeerRefresher(Substitute.For<ISyncPeerPool>()), LimboLogs.Instance);
@@ -76,13 +79,11 @@ public partial class BlockDownloaderTests
             responseOptions |= Response.WithTransactions;
         }
 
-        SyncPeerMock syncPeer = new(syncedTree, withReceipts, responseOptions);
+        SyncPeerMock syncPeer = new(syncedTree, withReceipts, responseOptions, 16000000);
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
-        ctx.BlockTree.BestSuggestedBody.Number.Should().Be(Math.Max(0, insertedBeaconBlocks));
-        ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader.Hash).Should()
-            .Be(downloaderOptions != DownloaderOptions.Process);
+        ctx.BlockTree.BestKnownNumber.Should().Be(Math.Max(0, insertedBeaconBlocks));
 
         int receiptCount = 0;
         for (int i = (int)Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)
@@ -95,6 +96,43 @@ public partial class BlockDownloaderTests
 
         receiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
     }
+    
+    [TestCase(32L, DownloaderOptions.MoveToMain, 32, false)]
+    [TestCase(32L, DownloaderOptions.MoveToMain, 32, true)]
+    public async Task Can_reach_terminal_block(long headNumber, int options, int threshold, bool withBeaconPivot)
+    {
+        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
+            .GoesLikeThis()
+            .WithBlockTrees(4, (int)headNumber + 1)
+            .InsertBeaconPivot(16)
+            .InsertHeaders(4, 16)
+            .InsertBeaconBlocks(16, headNumber, true);
+        BlockTree notSyncedTree = blockTrees.NotSyncedTree;
+        BlockTree syncedTree = blockTrees.SyncedTree;
+        Context ctx = new(notSyncedTree);
+        DownloaderOptions downloaderOptions = (DownloaderOptions)options;
+        InMemoryReceiptStorage receiptStorage = new();
+        MergeConfig mergeConfig = new() { Enabled = true };
+        MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "10000000" }, metadataDb, notSyncedTree,
+            RopstenSpecProvider.Instance, LimboLogs.Instance);
+        BeaconPivot beaconPivot = new(new SyncConfig(), mergeConfig, metadataDb, notSyncedTree,
+            new PeerRefresher(Substitute.For<ISyncPeerPool>()), LimboLogs.Instance);
+        if (withBeaconPivot)
+            beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
+        MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
+            Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
+            CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
+            LimboLogs.Instance);
+
+        SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);
+        PeerInfo peerInfo = new(syncPeer);
+        await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
+        Assert.True(posSwitcher.HasEverReachedTerminalBlock());
+    }
+    
+    
+    
     private IBetterPeerStrategy CreateMergePeerChoiceStrategy(IPoSSwitcher poSSwitcher)
     {
         ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();

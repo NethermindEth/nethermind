@@ -150,26 +150,21 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockValidator,
                         _api.BlockTree,
                         _api.BlockchainProcessor,
-                        _api.EthSyncingInfo,
                         _api.Config<IInitConfig>(),
                         _poSSwitcher,
                         _beaconSync,
                         _beaconPivot,
                         _blockCacheService,
-                        _api.SyncProgressResolver,
                         _beaconSync,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
                         _blockFinalizationManager,
                         _poSSwitcher,
-                        _api.EthSyncingInfo,
                         _api.BlockConfirmationManager,
                         payloadPreparationService,
                         _blockCacheService,
                         _beaconSync,
-                        _beaconSync,
-                        _beaconPivot,
                         _peerRefresher,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
@@ -209,7 +204,7 @@ namespace Nethermind.Merge.Plugin
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
-                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.DbProvider.MetadataDb, _blockCacheService, _api.LogManager);
+                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.LogManager);
 
                 _api.BetterPeerStrategy =
                     new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.SyncProgressResolver, _poSSwitcher, _api.LogManager);

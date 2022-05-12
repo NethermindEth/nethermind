@@ -51,43 +51,36 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _processor;
-        private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockCacheService _blockCacheService;
-        private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
-        private long _state = 0;
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
             IBlockTree blockTree,
             IBlockchainProcessor processor,
-            IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
             IPoSSwitcher poSSwitcher,
             IBeaconSyncStrategy beaconSyncStrategy,
             IBeaconPivot beaconPivot,
             IBlockCacheService blockCacheService,
-            ISyncProgressResolver syncProgressResolver,
             IMergeSyncController mergeSyncController,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
             _processor = processor;
-            _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
             _poSSwitcher = poSSwitcher;
             _beaconSyncStrategy = beaconSyncStrategy;
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
-            _syncProgressResolver = syncProgressResolver;
             _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
         }
@@ -119,7 +112,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool parentExists = parentHeader != null;
             bool parentProcessed = parentExists && _blockTree.WasProcessed(parentHeader!.Number,
                 parentHeader!.Hash ?? parentHeader.CalculateHash());
-            bool beaconPivotExists = _beaconPivot.BeaconPivotExists();
             if (!parentExists)
             {
                 // possible that headers sync finished before this was called, so blocks in cache weren't inserted
@@ -213,12 +205,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             else
             {
-                // during the fast sync we could find the header on canonical chain which means that this header is valid
-                if (_blockTree.IsMainChain(block.Header))
-                {
-                    return (ValidationResult.Valid | ValidationResult.AlreadyKnown, validationMessage);
-                }
-
                 processedBlock = _blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None);
                 if (processedBlock != null && _blockTree.WasProcessed(processedBlock.Number, processedBlock.Hash))
                 {
@@ -273,7 +259,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private ProcessingOptions GetProcessingOptions()
         {
-            ProcessingOptions options = ProcessingOptions.None;
+            ProcessingOptions options = ProcessingOptions.EthereumMerge;
             if (_initConfig.StoreReceipts)
             {
                 options |= ProcessingOptions.StoreReceipts;
@@ -378,47 +364,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             return true;
-        }
-
-        // TODO: beaconsync this should be moved to be part of the forward beacon sync
-        private void TryProcessChainFromStateSyncBlock(BlockHeader parentHeader, Block block)
-        {
-            long state = _state == 0 ? _syncProgressResolver.FindBestFullState() : _state;
-            if (state > 0)
-            {
-                bool shouldProcess = block.Number > state;
-                if (shouldProcess)
-                {
-                    Stack<Block> stack = new();
-                    Block? current = block;
-                    BlockHeader parent = parentHeader;
-
-                    while (current.Number > state)
-                    {
-                        if (_blockTree.WasProcessed(current.Number, current.Hash))
-                        {
-                            break;
-                        }
-
-                        if (_logger.IsInfo)
-                            _logger.Info($"TryProcessChainFromStateSyncBlock - Adding block to stack {block}");
-                        stack.Push(current);
-                        current = _blockTree.FindBlock(parent.Hash,
-                            BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                        parent = _blockTree.FindHeader(current.ParentHash);
-                        current.Header.TotalDifficulty = parent.TotalDifficulty + current.Difficulty;
-                    }
-
-                    while (stack.TryPop(out Block child))
-                    {
-                        // ToDo Sarah block validaor?
-                        if (_logger.IsInfo)
-                            _logger.Info(
-                                $"TryProcessChainFromStateSyncBlock - Add block to processing queue {block} from stack");
-                        _blockTree.SuggestBlock(child);
-                    }
-                }
-            }
         }
 
         [Flags]

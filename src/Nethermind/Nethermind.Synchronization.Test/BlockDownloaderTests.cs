@@ -908,19 +908,14 @@ namespace Nethermind.Synchronization.Test
                 BuildTree(chainLength, withReceipts);
             }
 
-            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags)
+            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty)
             {
                 _withReceipts = withReceipts;
                 Flags = flags;
                 BlockTree = blockTree;
-                UpdateTree();
-            }
-
-            private void UpdateTree()
-            {
                 HeadNumber = BlockTree.Head.Number;
                 HeadHash = BlockTree.HeadHash;
-                TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
+                TotalDifficulty = peerTotalDifficulty;
             }
 
             private void BuildTree(long chainLength, bool withReceipts)
@@ -934,8 +929,10 @@ namespace Nethermind.Synchronization.Test
 
                 builder = builder.OfChainLength((int) chainLength);
                 BlockTree = builder.TestObject;
-
-                UpdateTree();
+                
+                HeadNumber = BlockTree.Head.Number;
+                HeadHash = BlockTree.HeadHash;
+                TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
             }
 
             public void ExtendTree(long newLength)
