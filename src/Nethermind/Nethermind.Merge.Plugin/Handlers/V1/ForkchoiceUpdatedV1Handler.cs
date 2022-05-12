@@ -81,6 +81,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
             if (_logger.IsInfo) { _logger.Info($"Received: {requestStr}"); }
+
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {
@@ -113,31 +114,32 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
+
             if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed");
 
 
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
-                ValidateHashForFinalization(forkchoiceState.FinalizedBlockHash);
+                ValidateBlockHash(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
             {
                 if (_logger.IsWarn)
                     _logger.Warn($"Invalid finalized block hash {finalizationErrorMsg}. Request: {requestStr}");
 
-                return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, ErrorCodes.InvalidParams);
+                return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
 
-            (BlockHeader? confirmedHeader, string? safeBlockErrorMsg) =
-                ValidateSafeBlockHash(forkchoiceState.SafeBlockHash);
+            (BlockHeader? safeBlockHashHeader, string? safeBlockErrorMsg) =
+                ValidateBlockHash(forkchoiceState.SafeBlockHash);
             if (safeBlockErrorMsg != null)
             {
                 if (_logger.IsWarn)
                     _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}");
 
-                return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, ErrorCodes.InvalidParams);
+                return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
 
             (Block[]? blocks, string? setHeadErrorMsg) =
-                EnsureNewHeadHeader(newHeadBlock);
+                EnsureNewHead(newHeadBlock);
             if (setHeadErrorMsg != null)
             {
                 if (_logger.IsWarn)
@@ -155,6 +157,45 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
 
+
+            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) &&
+                newHeadBlock.Number < (_blockTree.Head?.Number ?? 0))
+            {
+                if (_logger.IsInfo)
+                {
+                    _logger.Info(
+                        $"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}");
+                }
+
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            }
+
+            EnsureTerminalBlock(forkchoiceState, blocks);
+            
+            string? payloadId = null;
+            
+            bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
+            bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
+            if (shouldUpdateHead)
+            {
+                _blockTree.UpdateMainChain(blocks!, true, true);
+            }
+
+            if (forkchoiceState.FinalizedBlockHash != Keccak.Zero)
+            {
+                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+            }
+
+            // In future safeBlockHash will be added to JSON-RPC
+            if (forkchoiceState.SafeBlockHash != Keccak.Zero)
+                _blockConfirmationManager.Confirm(safeBlockHashHeader!.Hash!);
+            
+            if (shouldUpdateHead)
+            {
+                _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header, forkchoiceState.FinalizedBlockHash);
+                if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
+            }
+
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
                 if (_logger.IsWarn)
@@ -163,53 +204,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return ForkchoiceUpdatedV1Result.Error(
                     $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}",
-                    ErrorCodes.InvalidParams);
-            }
-
-            bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
-            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead)
-            {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info(
-                        $"VALID. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}");
-                }
-
-                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
-            }
-
-            EnsureTerminalBlock(forkchoiceState, blocks);
-
-            if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
-            {
-                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
-            }
-            else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
-
-
-            // In future safeBlockHash will be added to JSON-RPC
-            _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
-            string? payloadId = null;
-
-            bool headUpdated = false;
-            bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
-            if (shouldUpdateHead)
-            {
-                _blockTree.UpdateMainChain(blocks!, true, true);
-                headUpdated = _blockTree.Head == newHeadBlock;
-            }
-
-            if (headUpdated && shouldUpdateHead)
-            {
-                _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header, forkchoiceState.FinalizedBlockHash);
-                if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
-            }
-            else if (headUpdated == false && shouldUpdateHead)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Block {forkchoiceState.FinalizedBlockHash} was not set as head.");
+                    MergeErrorCodes.InvalidPayloadAttributes);
             }
 
             if (payloadAttributes != null)
@@ -261,20 +256,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return block;
         }
 
-        private (BlockHeader? BlockHeader, string? ErrorMsg) ValidateSafeBlockHash(Keccak confirmedBlockHash)
-        {
-            string? errorMsg = null;
-            BlockHeader? blockHeader = _blockTree.FindHeader(confirmedBlockHash, BlockTreeLookupOptions.None);
-            if (blockHeader is null)
-            {
-                errorMsg = $"Block {confirmedBlockHash} not found for confirmation.";
-                if (_logger.IsWarn) _logger.Warn(errorMsg);
-            }
-
-            return (blockHeader, errorMsg);
-        }
-
-        private (Block[]? Blocks, string? ErrorMsg) EnsureNewHeadHeader(Block newHeadBlock)
+        private (Block[]? Blocks, string? ErrorMsg) EnsureNewHead(Block newHeadBlock)
         {
             string? errorMsg = null;
             if (_blockTree.Head!.Hash == newHeadBlock!.Hash)
@@ -292,25 +274,24 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return (branchOfBlocks, errorMsg);
         }
 
-        private (BlockHeader? BlockHeader, string? ErrorMsg) ValidateHashForFinalization(Keccak finalizedBlockHash)
+        private (BlockHeader? BlockHeader, string? ErrorMsg) ValidateBlockHash(Keccak blockHash,
+            bool skipZeroHash = true)
         {
             string? errorMsg = null;
-            BlockHeader? blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
+            if (skipZeroHash && blockHash == Keccak.Zero)
+                return (null, null);
 
-            if (ShouldFinalize(finalizedBlockHash))
+            BlockHeader? blockHeader = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+            if (blockHeader is null)
             {
-                blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
-                if (blockHeader is null)
-                {
-                    errorMsg = $"Block {finalizedBlockHash} not found for finalization.";
-                    if (_logger.IsWarn) _logger.Warn(errorMsg);
-                }
+                errorMsg = $"Block {blockHash} not found.";
+                if (_logger.IsWarn) _logger.Warn(errorMsg);
             }
+
 
             return (blockHeader, errorMsg);
         }
 
-        private bool ShouldFinalize(Keccak finalizedBlockHash) => finalizedBlockHash != Keccak.Zero;
 
         private bool TryGetBranch(Block newHeadBlock, out Block[] blocks)
         {
