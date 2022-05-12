@@ -90,6 +90,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
             if (_logger.IsInfo) { _logger.Info($"Received: {requestStr}"); }
+
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {
@@ -122,6 +123,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
+
             if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
             _mergeSyncController.StopSyncing();
 
@@ -134,7 +136,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
 
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
-                ValidateHashForFinalization(forkchoiceState.FinalizedBlockHash);
+                ValidateBlockHash(forkchoiceState.FinalizedBlockHash);
             if (finalizationErrorMsg != null)
             {
                 if (_logger.IsWarn)
@@ -143,8 +145,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
 
-            (BlockHeader? confirmedHeader, string? safeBlockErrorMsg) =
-                ValidateSafeBlockHash(forkchoiceState.SafeBlockHash);
+            (BlockHeader? safeBlockHashHeader, string? safeBlockErrorMsg) =
+                ValidateBlockHash(forkchoiceState.SafeBlockHash);
             if (safeBlockErrorMsg != null)
             {
                 if (_logger.IsWarn)
@@ -173,7 +175,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
-            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead && newHeadBlock.Number <_blockTree.Head.Number)
+            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead &&
+                newHeadBlock.Number < _blockTree.Head.Number)
             {
                 if (_logger.IsInfo)
                 {
@@ -186,7 +189,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             EnsureTerminalBlock(forkchoiceState, blocks);
 
-            if (ShouldFinalize(forkchoiceState.FinalizedBlockHash))
+            if (forkchoiceState.FinalizedBlockHash != Keccak.Zero)
             {
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
             }
@@ -197,7 +200,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
 
             // In future safeBlockHash will be added to JSON-RPC
-            _blockConfirmationManager.Confirm(confirmedHeader!.Hash!);
+            _blockConfirmationManager.Confirm(safeBlockHashHeader!.Hash!);
             string? payloadId = null;
 
             bool headUpdated = false;
@@ -217,7 +220,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (_logger.IsWarn) _logger.Warn($"Block {forkchoiceState.FinalizedBlockHash} was not set as head.");
             }
-            
+
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
             {
                 if (_logger.IsWarn)
@@ -278,19 +281,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return block;
         }
 
-        private (BlockHeader? BlockHeader, string? ErrorMsg) ValidateSafeBlockHash(Keccak confirmedBlockHash)
-        {
-            string? errorMsg = null;
-            BlockHeader? blockHeader = _blockTree.FindHeader(confirmedBlockHash, BlockTreeLookupOptions.None);
-            if (blockHeader is null)
-            {
-                errorMsg = $"Block {confirmedBlockHash} not found for confirmation.";
-                if (_logger.IsWarn) _logger.Warn(errorMsg);
-            }
-
-            return (blockHeader, errorMsg);
-        }
-
         private (Block[]? Blocks, string? ErrorMsg) EnsureNewHeadHeader(Block newHeadBlock)
         {
             string? errorMsg = null;
@@ -309,25 +299,24 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return (branchOfBlocks, errorMsg);
         }
 
-        private (BlockHeader? BlockHeader, string? ErrorMsg) ValidateHashForFinalization(Keccak finalizedBlockHash)
+        private (BlockHeader? BlockHeader, string? ErrorMsg) ValidateBlockHash(Keccak blockHash,
+            bool skipZeroHash = true)
         {
             string? errorMsg = null;
-            BlockHeader? blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
+            if (skipZeroHash && blockHash == Keccak.Zero)
+                return (null, null);
 
-            if (ShouldFinalize(finalizedBlockHash))
+            BlockHeader? blockHeader = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+            if (blockHeader is null)
             {
-                blockHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.None);
-                if (blockHeader is null)
-                {
-                    errorMsg = $"Block {finalizedBlockHash} not found for finalization.";
-                    if (_logger.IsWarn) _logger.Warn(errorMsg);
-                }
+                errorMsg = $"Block {blockHash} not found.";
+                if (_logger.IsWarn) _logger.Warn(errorMsg);
             }
+
 
             return (blockHeader, errorMsg);
         }
 
-        private bool ShouldFinalize(Keccak finalizedBlockHash) => finalizedBlockHash != Keccak.Zero;
 
         private bool TryGetBranch(Block newHeadBlock, out Block[] blocks)
         {
