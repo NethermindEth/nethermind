@@ -139,7 +139,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             (Block[]? blocks, string? setHeadErrorMsg) =
-                EnsureNewHeadHeader(newHeadBlock);
+                EnsureNewHead(newHeadBlock);
             if (setHeadErrorMsg != null)
             {
                 if (_logger.IsWarn)
@@ -171,38 +171,27 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             EnsureTerminalBlock(forkchoiceState, blocks);
-
-            if (forkchoiceState.FinalizedBlockHash != Keccak.Zero)
-            {
-                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
-            }
-            else if (_manualBlockFinalizationManager.LastFinalizedHash != Keccak.Zero)
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"Cannot finalize block. The current finalized block is: {_manualBlockFinalizationManager.LastFinalizedHash}, the requested hash: {forkchoiceState.FinalizedBlockHash}");
-
-
-            // In future safeBlockHash will be added to JSON-RPC
-            _blockConfirmationManager.Confirm(safeBlockHashHeader!.Hash!);
+            
             string? payloadId = null;
-
-            bool headUpdated = false;
+            
             bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
             bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
             if (shouldUpdateHead)
             {
                 _blockTree.UpdateMainChain(blocks!, true, true);
-                headUpdated = _blockTree.Head == newHeadBlock;
             }
 
-            if (headUpdated && shouldUpdateHead)
+            if (forkchoiceState.FinalizedBlockHash != Keccak.Zero)
+            {
+                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+            }
+
+            // In future safeBlockHash will be added to JSON-RPC
+            _blockConfirmationManager.Confirm(safeBlockHashHeader!.Hash!);
+            if (shouldUpdateHead)
             {
                 _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header, forkchoiceState.FinalizedBlockHash);
                 if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
-            }
-            else if (headUpdated == false && shouldUpdateHead)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Block {forkchoiceState.FinalizedBlockHash} was not set as head.");
             }
 
             if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
@@ -265,7 +254,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return block;
         }
 
-        private (Block[]? Blocks, string? ErrorMsg) EnsureNewHeadHeader(Block newHeadBlock)
+        private (Block[]? Blocks, string? ErrorMsg) EnsureNewHead(Block newHeadBlock)
         {
             string? errorMsg = null;
             if (_blockTree.Head!.Hash == newHeadBlock!.Hash)
