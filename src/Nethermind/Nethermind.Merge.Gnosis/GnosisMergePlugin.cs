@@ -21,9 +21,9 @@ namespace Nethermind.Merge.Gnosis
 {
     public class GnosisMergePlugin : MergePlugin
     {
-        protected override bool MatchChain(ChainSpec chainSpec)
+        protected override bool MatchVariant(string? variant)
         {
-            return chainSpec.ChainId == ChainId.xDai;
+            return variant != null && variant == "AuRa";
         }
 
         protected override void InitRewardCalculatorSource() { }

@@ -29,6 +29,11 @@ namespace Nethermind.Merge.Plugin
             DefaultValue = "false")]
         bool Enabled { get; set; }
         
+        [ConfigItem(
+            Description = "Variant of MergePlugin to enable, ex. AuRa.",
+            DefaultValue = "null")]
+        string? Variant { get; set; }
+
         [ConfigItem(Description = "Account to be used by the block author. If it is not specified the address zero will be used.", DefaultValue = "null")]
         public string? FeeRecipient { get; set; }
 

@@ -59,7 +59,7 @@ namespace Nethermind.Merge.Plugin
         public string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
 
-        protected virtual bool MatchChain(ChainSpec chainSpec) => true;
+        protected virtual bool MatchVariant(string? variant) => variant == null || variant == "Mainnet";
 
         protected virtual void InitRewardCalculatorSource()
         {
@@ -74,9 +74,9 @@ namespace Nethermind.Merge.Plugin
             _syncConfig = nethermindApi.Config<ISyncConfig>();
             _logger = _api.LogManager.GetClassLogger();
 
-            if (_mergeConfig.Enabled && MatchChain(_api.ChainSpec!))
+            if (_mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant))
             {
-                _logger.Info($"Merge plugin is enabled for chain {_api.ChainSpec!.Name} with id {_api.ChainSpec.ChainId}");
+                _logger.Info($"Merge plugin is enabled [Variant: {_mergeConfig.Variant}] [PluginClass: {this.GetType().FullName}]");
 
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
@@ -102,7 +102,7 @@ namespace Nethermind.Merge.Plugin
 
         public Task InitNetworkProtocol()
         {
-            if (_mergeConfig.Enabled && MatchChain(_api.ChainSpec!))
+            if (_mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant))
             {
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
@@ -127,7 +127,7 @@ namespace Nethermind.Merge.Plugin
 
         public Task InitRpcModules()
         {
-            if (_mergeConfig.Enabled && MatchChain(_api.ChainSpec!))
+            if (_mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant))
             {
                 if (_api.RpcModuleProvider is null) throw new ArgumentNullException(nameof(_api.RpcModuleProvider));
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
@@ -196,7 +196,7 @@ namespace Nethermind.Merge.Plugin
 
         public Task InitSynchronization()
         {
-            if (_mergeConfig.Enabled && MatchChain(_api.ChainSpec!))
+            if (_mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant))
             {
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.SyncPeerPool is null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
