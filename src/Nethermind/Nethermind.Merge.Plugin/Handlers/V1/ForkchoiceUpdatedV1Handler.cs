@@ -44,13 +44,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockTree _blockTree;
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly IBlockCacheService _blockCacheService;
-        private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IMergeSyncController _mergeSyncController;
-        private readonly IBeaconPivot _beaconPivot;
         private readonly ILogger _logger;
         private readonly IPeerRefresher _peerRefresher;
         private int i = 0;
@@ -59,13 +56,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockTree blockTree,
             IManualBlockFinalizationManager manualBlockFinalizationManager,
             IPoSSwitcher poSSwitcher,
-            IEthSyncingInfo ethSyncingInfo,
             IBlockConfirmationManager blockConfirmationManager,
             IPayloadPreparationService payloadPreparationService,
             IBlockCacheService blockCacheService,
-            IBeaconSyncStrategy beaconSyncStrategy,
             IMergeSyncController mergeSyncController,
-            IBeaconPivot beaconPivot,
             IPeerRefresher peerRefresher,
             ILogManager logManager)
         {
@@ -73,14 +67,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _manualBlockFinalizationManager = manualBlockFinalizationManager ??
                                               throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             _blockConfirmationManager = blockConfirmationManager ??
                                         throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadPreparationService = payloadPreparationService;
             _blockCacheService = blockCacheService;
-            _beaconSyncStrategy = beaconSyncStrategy;
             _mergeSyncController = mergeSyncController;
-            _beaconPivot = beaconPivot;
             _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
         }
@@ -112,7 +103,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (!_beaconSyncStrategy.IsBeaconSyncFinished(newHeadBlock.Header))
+            if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.Hash ?? newHeadBlock.CalculateHash()))
             {
                 // ToDO of course we shouldn't refresh the peers in this way. This need to be optimized and we need to rethink refreshing
                 if (i % 10 == 0)
@@ -124,15 +115,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Block {newHeadBlock} was processed");
-            _mergeSyncController.StopSyncing();
-
-            // TODO: beaconsync investigate why this would occur
-            if (newHeadBlock.Header.TotalDifficulty == 0)
-            {
-                newHeadBlock.Header.TotalDifficulty =
-                    _blockTree.BackFillTotalDifficulty(_beaconPivot.PivotNumber, newHeadBlock.Number);
-            }
+            if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed");
 
 
             (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
@@ -174,9 +157,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
             }
 
-            bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
-            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) && !newHeadTheSameAsCurrentHead &&
-                newHeadBlock.Number < _blockTree.Head.Number)
+
+            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) &&
+                newHeadBlock.Number < (_blockTree.Head?.Number ?? 0))
             {
                 if (_logger.IsInfo)
                 {
@@ -204,6 +187,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             string? payloadId = null;
 
             bool headUpdated = false;
+            bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
             bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
             if (shouldUpdateHead)
             {
@@ -275,7 +259,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.None);
             if (block is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Syncing... Block {headBlockHash} not found.");
+                if (_logger.IsInfo) _logger.Info($"Syncing... Block {headBlockHash} not found.");
             }
 
             return block;
