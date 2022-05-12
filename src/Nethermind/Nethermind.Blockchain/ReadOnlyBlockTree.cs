@@ -70,7 +70,6 @@ namespace Nethermind.Blockchain
         public void MarkChainAsProcessed(Block[] blocks) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
         public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null) => throw new InvalidOperationException();
         public UInt256? UpdateTotalDifficulty(Block block, UInt256 totalDifficulty) => throw new InvalidOperationException();
-        public void UpdateBlockMetadata(Block block, BlockMetadata metadata)  => throw new InvalidOperationException();
         public bool CanAcceptNewBlocks { get; } = false;
 
         public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
