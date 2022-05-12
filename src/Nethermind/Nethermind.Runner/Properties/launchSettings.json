@@ -176,7 +176,7 @@
     },
     "Kiln": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Network.DiagTracerEnabled true --Merge.TerminalBlockNumber 55127"
+      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Network.DiagTracerEnabled true --Merge.TerminalBlockNumber null"
     },
     "Kiln_FastSync": {
       "commandName": "Project",
