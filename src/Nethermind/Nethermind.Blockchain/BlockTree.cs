@@ -1715,23 +1715,7 @@ namespace Nethermind.Blockchain
         {
             return _chainLevelInfoRepository.LoadLevel(number);
         }
-
-        public void UpdateBlockMetadata(Block block, BlockMetadata metadata)
-        {
-            (BlockInfo? blockInfo, ChainLevelInfo? level) = LoadInfo(block.Number, block.Hash ?? block.CalculateHash(), true);
-            if (level is null || blockInfo is null)
-            {
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"Attempted to update metadata for block {block.ToString(Block.Format.FullHashAndNumber)}" +
-                        "where chain level or block info does not exist");
-                return;
-            }
-
-            blockInfo.Metadata = metadata;
-            _chainLevelInfoRepository.PersistLevel(block.Number, level);
-        }
-
+        
         public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize = 3000,
             UInt256? startingTotalDifficulty = null)
         {
