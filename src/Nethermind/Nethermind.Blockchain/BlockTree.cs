@@ -726,17 +726,19 @@ namespace Nethermind.Blockchain
                 Rlp newRlp = _blockDecoder.Encode(block);
                 _blockDb.Set(block.Hash, newRlp.Bytes);
             }
-
+            _logger.Info($"BlockTree: isKnown: {isKnown}");
             if (!isKnown)
             {
                 Rlp newRlp = _headerDecoder.Encode(header);
                 _headerDb.Set(header.Hash, newRlp.Bytes);
 
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+                _logger.Info($"BlockTree: header number {header.Number} {header.Hash} {header.TotalDifficulty}");
                 UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
             
+            _logger.Info($"Block Tree: {BestSuggestedImprovementRequirementsSatisfied(header)}");
             if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
             {
                 if (header.IsGenesis)
@@ -745,6 +747,7 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
+                _logger.Info($"Block Tree: {block.ToString(Block.Format.FullHashAndNumber)}, IsPostMerge: {block.IsPostMerge}, shouldProcess: {shouldProcess}");
                 if (block is not null && block.IsPostMerge)
                     BestSuggestedBody = block;
 
@@ -1436,6 +1439,9 @@ namespace Nethermind.Blockchain
             bool postMergeRequirementSatisfied = ttdRequirementSatisfied &&
                                                  BestSuggestedBody?.Number <= header.Number &&
                                                  (header.IsPostMerge || header.Difficulty == 0);
+            _logger.Info($"BlockTree: header TD: {header.TotalDifficulty} bestHeader TD: {BestSuggestedHeader?.TotalDifficulty ?? 0}"+
+                         $"header post merge: {header.IsPostMerge} header diff: {header.Difficulty} spec TTD: {_specProvider.TerminalTotalDifficulty}" + 
+                         $"best body number: {BestSuggestedBody?.Number} header number: {header.Number}");
             return preMergeRequirementSatisfied || postMergeRequirementSatisfied;
         }
 
@@ -1532,6 +1538,7 @@ namespace Nethermind.Blockchain
         {
             if (number > BestKnownNumber)
             {
+                _logger.Info($"IsKnownBlock: {BestKnownNumber}");
                 return false;
             }
 
@@ -1539,11 +1546,13 @@ namespace Nethermind.Blockchain
             // and these are very likely to be all at the head of the chain
             if (blockHash == Head?.Hash)
             {
+                _logger.Info($"HeadHash: {blockHash} {Head.Hash}");
                 return true;
             }
 
             if (_headerCache.Get(blockHash) is not null)
             {
+                _logger.Info($"Block header in cache");
                 return true;
             }
 
@@ -1878,10 +1887,10 @@ namespace Nethermind.Blockchain
                 this.FindParentHeader(current, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                 ?? throw new InvalidOperationException($"An orphaned block on the chain {current}");
 
-            void SetTotalDifficultyDeep(BlockHeader current)
+            UInt256? SetTotalDifficultyDeep(BlockHeader current)
             {
                 Stack<BlockHeader> stack = new();
-                while (current.TotalDifficulty is null)
+                while (current.TotalDifficulty is null || current.TotalDifficulty == 0)
                 {
                     (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(current.Number, current.Hash, true);
                     if (level is null || blockInfo is null || blockInfo.TotalDifficulty == 0)
@@ -1907,6 +1916,8 @@ namespace Nethermind.Blockchain
                         _logger.Trace($"Calculated total difficulty for {child} is {child.TotalDifficulty}");
                     current = child;
                 }
+
+                return current.TotalDifficulty;
             }
 
             if (header.TotalDifficulty is not null)
@@ -1920,12 +1931,15 @@ namespace Nethermind.Blockchain
             if (header.IsGenesis)
             {
                 header.TotalDifficulty = header.Difficulty;
+            } else if (header.TotalDifficulty == 0)
+            {
+                header.TotalDifficulty = SetTotalDifficultyDeep(header);
             }
             else
             {
                 BlockHeader parentHeader = GetParentHeader(header);
 
-                if (parentHeader.TotalDifficulty is null)
+                if (parentHeader.TotalDifficulty is null || parentHeader.TotalDifficulty == 0)
                 {
                     SetTotalDifficultyDeep(parentHeader);
                 }
