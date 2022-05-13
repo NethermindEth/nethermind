@@ -50,6 +50,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -109,6 +110,7 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; }
 
             public bool IsInitialized { get; set; }
+            public bool IsPriority { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {
@@ -320,14 +322,18 @@ namespace Nethermind.Synchronization.Test
                 
                 PoSSwitcher poSSwitcher = new(mergeConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), _logManager);
 
+                ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
+                SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
                     new TrieStore(stateDb, LimboLogs.Instance),
+                    progressTracker,
                     syncConfig,
                     _logManager);
-
+                
                 if (IsMerge(synchronizerType))
                     SyncPeerPool = new SyncPeerPool(BlockTree, stats,
                         new MergeBetterPeerStrategy(
@@ -414,6 +420,7 @@ namespace Nethermind.Synchronization.Test
                         stats,
                         syncModeSelector,
                         syncConfig,
+                        snapProvider,
                         blockDownloaderFactory,
                         pivot,
                         _logManager);

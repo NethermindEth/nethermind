@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.ParallelSync
     public abstract class SyncFeed<T> : ISyncFeed<T>
     {
         public abstract Task<T> PrepareRequest();
-        public abstract SyncResponseHandlingResult HandleResponse(T response);
+        public abstract SyncResponseHandlingResult HandleResponse(T response, PeerInfo peer = null);
 
         public abstract bool IsMultiFeed { get; }
         public abstract AllocationContexts Contexts { get; }
@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ChangeState(SyncFeedState.Active);
         }
 
-        protected void Finish()
+        protected virtual void Finish()
         {
             if (CurrentState == SyncFeedState.Finished)
             {

@@ -39,6 +39,9 @@ namespace Nethermind.Network.Config
 
         [ConfigItem(Description = "[OBSOLETE](Use MaxActivePeers instead) Max number of connected peers.", DefaultValue = "50")]
         int ActivePeersMaxCount { get; set; }
+        
+        [ConfigItem(Description = "Max number of priority peers. Can be overwritten by value from plugin config.", DefaultValue = "0")]
+        int PriorityPeersMaxCount { get; set; }
 
         [ConfigItem(Description = "Same as ActivePeersMaxCount.", DefaultValue = "50")]
         int MaxActivePeers => ActivePeersMaxCount;

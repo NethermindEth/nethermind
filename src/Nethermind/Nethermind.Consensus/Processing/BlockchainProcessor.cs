@@ -60,6 +60,7 @@ namespace Nethermind.Consensus.Processing
 
         private int _currentRecoveryQueueSize;
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
+        private Stopwatch _stopwatch = new();
 
         /// <summary>
         /// 
@@ -237,7 +238,6 @@ namespace Nethermind.Consensus.Processing
 
         private void RunProcessingLoop()
         {
-            _stats.Start();
             if (_logger.IsDebug)
                 _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
@@ -253,6 +253,7 @@ namespace Nethermind.Consensus.Processing
                 Block block = blockRef.Block;
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
+                _stats.Start();
 
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
                 if (processedBlock == null)
@@ -313,9 +314,8 @@ namespace Nethermind.Consensus.Processing
             ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            _stopwatch.Restart();
             Block[]? processedBlocks = ProcessBranch(processingBranch, suggestedBlock, options, tracer);
-            stopwatch.Stop();
             if (processedBlocks == null)
             {
                 return null;
@@ -455,7 +455,7 @@ namespace Nethermind.Consensus.Processing
 
             finally
             {
-                if (invalidBlockHash is not null)
+                if (invalidBlockHash is not null && (options & ProcessingOptions.ReadOnlyChain) == 0)
                 {
                     DeleteInvalidBlocks(invalidBlockHash);
                 }
