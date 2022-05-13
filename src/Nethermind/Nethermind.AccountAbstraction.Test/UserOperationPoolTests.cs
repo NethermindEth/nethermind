@@ -406,10 +406,8 @@ namespace Nethermind.AccountAbstraction.Test
 
             _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 
-            if (paymasterThrottler is null)
-            {
-                paymasterThrottler = Substitute.For<IPaymasterThrottler>();
-            }
+            paymasterThrottler ??= Substitute.For<IPaymasterThrottler>();
+            
             IUserOperationBroadcaster userOperationBroadcaster = Substitute.For<IUserOperationBroadcaster>();
 
             return new UserOperationPool(

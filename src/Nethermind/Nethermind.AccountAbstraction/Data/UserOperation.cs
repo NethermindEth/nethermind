@@ -45,7 +45,6 @@ namespace Nethermind.AccountAbstraction.Data
 
             AccessList = UserOperationAccessList.Empty;
             AddressesToCodeHashes = ImmutableDictionary<Address, Keccak>.Empty;
-            PassedBaseFee = false;
         }
 
         private Keccak CalculateHash()

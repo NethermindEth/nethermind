@@ -27,15 +27,5 @@ namespace Nethermind.AccountAbstraction.Test
         {
             base.UpdateUserOperationMaps(source, args);
         }
-
-        public new uint GetOpsSeen(Address paymaster)
-        {
-            return base.GetOpsSeen(paymaster);
-        }
-        
-        public new uint GetOpsIncluded(Address paymaster)
-        {
-            return base.GetOpsIncluded(paymaster);
-        }
     }
 }
