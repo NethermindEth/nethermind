@@ -86,7 +86,7 @@ public class BeaconHeadersSyncTests
             _mergeConfig = mergeConfig ?? new MergeConfig();
             _metadataDb = metadataDb ?? new MemDb();
 
-            ProgressTracker progressTracker = new(blockTree, stateDb, LimboLogs.Instance);
+            ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
 
             SyncProgressResolver syncProgressResolver = new(
                 BlockTree,

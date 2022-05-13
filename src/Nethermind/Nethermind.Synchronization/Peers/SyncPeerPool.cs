@@ -83,7 +83,7 @@ namespace Nethermind.Synchronization.Peers
             IBetterPeerStrategy betterPeerStrategy,
             int peersMaxCount,
             ILogManager logManager)
-            : this(blockTree, nodeStatsManager, betterPeerStrategy, peersMaxCount, 1000, logManager)
+            : this(blockTree, nodeStatsManager, betterPeerStrategy, peersMaxCount, DefaultUpgradeIntervalInMs, logManager)
         {
         }
         

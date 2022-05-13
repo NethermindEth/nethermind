@@ -177,13 +177,18 @@ namespace Nethermind.Synchronization.ParallelSync
                                 best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
                                 best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
                                 best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
+                                bool canBeInSnapRangesPhase = CanBeInSnapRangesPhase(best);
+
                                 newModes = SyncMode.None;
                                 CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
                                 CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
                                 CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
                                 CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
                                 CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
-                                CheckAddFlag(best.IsInStateSync, SyncMode.StateNodes, ref newModes);
+                                CheckAddFlag(best.IsInStateSync && !canBeInSnapRangesPhase, SyncMode.StateNodes,
+                                    ref newModes);
+                                CheckAddFlag(best.IsInStateSync && canBeInSnapRangesPhase, SyncMode.SnapSync,
+                                    ref newModes);
                                 CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                                 CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
                                 if (IsTheModeSwitchWorthMentioning(newModes))
