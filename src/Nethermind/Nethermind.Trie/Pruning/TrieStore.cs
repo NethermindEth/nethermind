@@ -219,7 +219,7 @@ namespace Nethermind.Trie.Pruning
             EnsureCommitSetExistsForBlock(blockNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
-            if (!nodeCommitInfo.IsEmptyBlockMarker)
+            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
             {
                 TrieNode node = nodeCommitInfo.Node!;
 
@@ -344,6 +344,20 @@ namespace Nethermind.Trie.Pruning
         }
 
         public byte[] LoadRlp(Keccak keccak) => LoadRlp(keccak, null);
+
+        public bool IsPersisted(Keccak keccak)
+        {
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+
+            if (rlp is null)
+            {
+                return false;
+            }
+
+            Metrics.LoadedFromDbNodesCount++;
+
+            return true;
+        }
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
         {

@@ -93,6 +93,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
+            public void SetPeerPriority(PublicKey id)
+            {
+            }
+
             public void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash)
             {
             }
@@ -172,7 +176,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             private ConcurrentQueue<TestBatch> _returned = new();
 
-            public override SyncResponseHandlingResult HandleResponse(TestBatch response)
+            public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo peer = null)
             {
                 if (response.Result == null)
                 {

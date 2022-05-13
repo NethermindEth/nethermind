@@ -56,7 +56,7 @@ namespace Nethermind.State
 
             return _decoder.Decode(bytes.AsRlpStream());
         }
-        
+
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
@@ -76,9 +76,12 @@ namespace Nethermind.State
         }
         
         [DebuggerStepThrough]
-        internal void Set(Keccak keccak, Account? account) // for testing
+        public Rlp? Set(Keccak keccak, Account? account) 
         {
-            Set(keccak.Bytes, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+
+            Set(keccak.Bytes, rlp);
+            return rlp;
         }
     }
 }

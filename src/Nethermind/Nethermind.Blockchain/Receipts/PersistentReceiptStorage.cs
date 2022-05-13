@@ -107,68 +107,14 @@ namespace Nethermind.Blockchain.Receipts
                 return Array.Empty<TxReceipt>();
             }
 
-            if (_receiptsCache.TryGet(block.Hash, out var receipts))
-            {
-                return receipts;
-            }
-            
-            var receiptsData = _blocksDb.GetSpan(block.Hash);
-            try
-            {
-                bool shouldCache = true;
-                
-                if (!receiptsData.IsNullOrEmpty())
-                {
-                    receipts = DecodeArray(receiptsData);
-                }
-                else
-                {
-                    // didn't bring performance uplift that was expected
-                    // var data = _database.MultiGet(block.Transactions.Select(t => t.Hash));
-                    // return data.Select(kvp => DeserializeObsolete(new Keccak(kvp.Key), kvp.Value)).ToArray();
-
-                    receipts = new TxReceipt[block.Transactions.Length];
-                    for (int i = 0; i < block.Transactions.Length; i++)
-                    {
-                        receipts[i] = FindReceiptObsolete(block.Transactions[i].Hash);
-                        shouldCache &= receipts[i] != null;
-                    }
-                }
-
-                shouldCache &= receipts.Length > 0;
-                
-                if (shouldCache)
-                {
-                    _receiptsCache.Set(block.Hash, receipts);
-                }
-
-                return receipts;
-            }
-            finally
-            {
-                _blocksDb.DangerousReleaseMemory(receiptsData);
-            }
+            return Get(block.Hash);
         }
-
-        private static TxReceipt[] DecodeArray(in Span<byte> receiptsData)
-        {
-            var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
-            try
-            {
-                return StorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
-            }
-            catch (RlpException)
-            {
-                decoderContext.Position = 0;
-                return StorageDecoder.DecodeArray(ref decoderContext);
-            }
-        }
-
+        
         public TxReceipt[] Get(Keccak blockHash)
         {
             if (_receiptsCache.TryGet(blockHash, out var receipts))
             {
-                return receipts;
+                return receipts ?? Array.Empty<TxReceipt>();
             }
             
             var receiptsData = _blocksDb.GetSpan(blockHash);
@@ -188,6 +134,20 @@ namespace Nethermind.Blockchain.Receipts
             finally
             {
                 _blocksDb.DangerousReleaseMemory(receiptsData);
+            }
+        }
+
+        private static TxReceipt[] DecodeArray(in Span<byte> receiptsData)
+        {
+            var decoderContext = new Rlp.ValueDecoderContext(receiptsData);
+            try
+            {
+                return StorageDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+            }
+            catch (RlpException)
+            {
+                decoderContext.Position = 0;
+                return StorageDecoder.DecodeArray(ref decoderContext);
             }
         }
 
@@ -219,14 +179,15 @@ namespace Nethermind.Blockchain.Receipts
                     $"of transactions {block.Transactions.Length} and receipts {txReceipts.Length}.");
             }
 
-            _receiptsRecovery.TryRecover(block, txReceipts);
+            _receiptsRecovery.TryRecover(block, txReceipts, false);
             
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
             _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
 
-            if (txReceiptsLength > 0 && !txReceipts[0].Removed)
+            bool wasRemoved = txReceiptsLength > 0 && txReceipts[0].Removed;
+            if (!wasRemoved)
             {
                 for (int i = 0; i < txReceiptsLength; i++)
                 {
@@ -241,7 +202,8 @@ namespace Nethermind.Blockchain.Receipts
             }
             
             _receiptsCache.Set(block.Hash, txReceipts);
-            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
+
+            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts, wasRemoved));
         }
 
         public long? LowestInsertedReceiptBlockNumber
