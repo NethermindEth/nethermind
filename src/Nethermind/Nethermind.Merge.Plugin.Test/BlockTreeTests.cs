@@ -217,6 +217,7 @@ public partial class BlockTreeTests
                         for (int i = 0; i < headers.Length; ++i)
                         {
                             Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
+                            beaconBlock.Header.TotalDifficulty = null;
                             AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock, true);
                             Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
                         }
@@ -227,25 +228,41 @@ public partial class BlockTreeTests
                     return this;
                 }
 
-                public ScenarioBuilder InsertHeaders(long low, long high)
+                public enum TotalDifficultyMode
+                {
+                    Null,
+                    Zero,
+                    TheSameAsSyncedTree
+                }
+
+                public ScenarioBuilder InsertHeaders(long low, long high, TotalDifficultyMode tdMode = TotalDifficultyMode.TheSameAsSyncedTree)
                 {
                     BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconBlockInsert;
                     for (long i = high; i >= low; --i)
                     {
                         BlockHeader? beaconHeader = SyncedTree!.FindHeader(i, BlockTreeLookupOptions.None);
+                        
+                        if (tdMode == TotalDifficultyMode.Null)
+                            beaconHeader!.TotalDifficulty = null;
+                        else if (tdMode == TotalDifficultyMode.Zero)
+                            beaconHeader.TotalDifficulty = 0;
                         AddBlockResult insertResult = NotSyncedTree!.Insert(beaconHeader!, options);
                         Assert.AreEqual(AddBlockResult.Added, insertResult);
                     }
                     return this;
                 }
                 
-                public ScenarioBuilder InsertBeaconBlocks(long low, long high, bool nullableTd = false)
+                public ScenarioBuilder InsertBeaconBlocks(long low, long high, TotalDifficultyMode tdMode = TotalDifficultyMode.TheSameAsSyncedTree)
                 {
                     BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
                     for (long i = high; i >= low; --i)
                     {
                         Block? beaconBlock = SyncedTree!.FindBlock(i, BlockTreeLookupOptions.None);
-                        if (nullableTd) beaconBlock!.Header.TotalDifficulty = null;
+                        if (tdMode == TotalDifficultyMode.Null)
+                            beaconBlock!.Header.TotalDifficulty = null;
+                        else if (tdMode == TotalDifficultyMode.Zero)
+                            beaconBlock!.Header.TotalDifficulty = 0;
+                        
                         AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, true, insertOptions);
                         Assert.AreEqual(AddBlockResult.Added, insertResult);
                     }
@@ -292,6 +309,22 @@ public partial class BlockTreeTests
                     Assert.IsNotNull(NotSyncedTree!.LowestInsertedBeaconHeader);
                     Assert.AreEqual(expected,NotSyncedTree!.LowestInsertedBeaconHeader!.Number);
                     Console.WriteLine("LowestInsertedBeaconHeader:"+NotSyncedTree!.LowestInsertedBeaconHeader!.Number);
+                    return this;
+                }
+
+                public ScenarioBuilder AssertChainLevel(int startNumber, int finalNumber)
+                {
+                    for (int i = startNumber; i < finalNumber; ++i)
+                    {
+                        ChainLevelInfo? level = NotSyncedTree.FindLevel(i);
+                        foreach (BlockInfo blockInfo in level.BlockInfos)
+                        {
+                            Assert.True(blockInfo.TotalDifficulty != null && blockInfo.TotalDifficulty != 0);
+                        }
+                        
+                        Assert.AreEqual(level.BlockInfos.Length, 1);
+                    }
+
                     return this;
                 }
 

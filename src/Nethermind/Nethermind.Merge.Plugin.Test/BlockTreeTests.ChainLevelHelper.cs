@@ -50,4 +50,49 @@ public partial class BlockTreeTests
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9);
     }
+    
+    [Test]
+    public void Correct_levels_after_chain_level_sync()
+    {
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .InsertBeaconBlocks(7, 9)
+            .SuggestBlocksUsingChainLevels()
+            .AssertBestKnownNumber(9)
+            .AssertBestSuggestedHeader(9)
+            .AssertBestSuggestedBody(9)
+            .AssertChainLevel(0, 9);
+    }
+    
+    [Test]
+    public void Correct_levels_after_chain_level_sync_with_nullable_td()
+    {
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null)
+            .InsertBeaconBlocks(7, 9, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null)
+            .SuggestBlocksUsingChainLevels()
+            .AssertBestKnownNumber(9)
+            .AssertBestSuggestedHeader(9)
+            .AssertBestSuggestedBody(9)
+            .AssertChainLevel(0, 9);
+    }
+    
+    [Test]
+    public void Correct_levels_after_chain_level_sync_with_zero_td()
+    {
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Zero)
+            .InsertBeaconBlocks(7, 9, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Zero)
+            .SuggestBlocksUsingChainLevels()
+            .AssertBestKnownNumber(9)
+            .AssertBestSuggestedHeader(9)
+            .AssertBestSuggestedBody(9)
+            .AssertChainLevel(0, 9);
+    }
 }
