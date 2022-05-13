@@ -673,6 +673,10 @@ namespace Nethermind.Blockchain
         {
             bool shouldProcess = (options & BlockTreeSuggestOptions.ShouldProcess) != 0;
             bool tryProcessKnownBlock = (options & BlockTreeSuggestOptions.TryProcessKnownBlock) != 0;
+            if (shouldProcess && tryProcessKnownBlock == false)
+                if (_logger.IsInfo) _logger.Info($"StackTrace:" + new System.Diagnostics.StackTrace());
+                
+                
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {tryProcessKnownBlock}");
