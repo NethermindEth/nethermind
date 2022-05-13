@@ -113,12 +113,6 @@ namespace Nethermind.Init.Steps
                 _networkConfig.NettyArenaOrder.ToString());
 
             CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
-            
-
-            int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-            int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
-            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
-            _api.DisposeStack.Push(_api.SyncPeerPool);
 
             ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager);
             _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
@@ -134,6 +128,11 @@ namespace Nethermind.Init.Steps
             
             _api.SyncProgressResolver = syncProgressResolver;
             _api.BetterPeerStrategy = new TotalDifficultyBasedBetterPeerStrategy(_api.SyncProgressResolver, _api.LogManager);
+            
+            int maxPeersCount = _networkConfig.ActivePeersMaxCount;
+            int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
+            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
+            _api.DisposeStack.Push(_api.SyncPeerPool);
 
             IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
             foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
