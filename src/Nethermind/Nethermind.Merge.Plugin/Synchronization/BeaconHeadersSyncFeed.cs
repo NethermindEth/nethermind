@@ -36,9 +36,13 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
-    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <= _pivot.PivotDestinationNumber;
+
+    protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
+                                                    _pivot.PivotDestinationNumber;
+
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
+
     public BeaconHeadersSyncFeed(
         ISyncModeSelector syncModeSelector,
         IBlockTree? blockTree,
@@ -47,24 +51,26 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         ISyncReport? syncReport,
         IPivot? pivot,
         IMergeConfig? mergeConfig,
-        ILogManager logManager) 
-        : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager, true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
+        ILogManager logManager)
+        : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager,
+            true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
         _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
         _logger = logManager.GetClassLogger();
     }
-    
+
     protected override SyncMode ActivationSyncModes { get; }
         = SyncMode.BeaconHeaders;
-    
+
     public override bool IsMultiFeed => true;
-    
+
     public override AllocationContexts Contexts => AllocationContexts.Headers;
+
     public override void InitializeFeed()
     {
         _pivotNumber = _pivot.PivotNumber;
-        
+
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
         Keccak? startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash;
@@ -73,7 +79,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         _nextHeaderHash = startHeaderHash;
         _nextHeaderDiff = startTotalDifficulty;
-        
+
         _lowestRequestedHeaderNumber = startNumber + 1;
 
         _logger.Info($"Initialized beacon headers sync. lowestRequestedHeaderNumber: {_lowestRequestedHeaderNumber}," +
@@ -82,12 +88,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override void FinishAndCleanUp()
     {
-        // TODO: beaconsync backfill of TD should be moved to forward beacon sync
-        if (_mergeConfig.FinalTotalDifficultyParsed == null)
-        {
-            // set total difficulty as beacon pivot does not provide total difficulty
-            _blockTree.BackFillTotalDifficulty(LowestInsertedBlockHeader?.Number ?? 0, _pivotNumber);   
-        }
         // make feed dormant as there may be more header syncs when there is a new beacon pivot
         FallAsleep();
         PostFinishCleanUp();
@@ -95,8 +95,12 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
-        if (_logger.IsTrace) _logger.Trace($"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers | BlockTreeInsertOptions.UpdateBeaconPointers;
+        if (_logger.IsTrace)
+            _logger.Trace(
+                $"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers |
+                                         BlockTreeInsertOptions.UpdateBeaconPointers |
+                                         BlockTreeInsertOptions.AddBeaconMetadata;
         if (_nextHeaderDiff is null)
         {
             options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
@@ -111,22 +115,22 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             // if (_blockTree.LowestInsertedHeader != null
             //     && _blockTree.LowestInsertedHeader.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
             // {
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
+                    $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
+            // beacon header set to (global) lowest inserted header
+            //   _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
+            if (header.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
+            {
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
-                        $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
-                // beacon header set to (global) lowest inserted header
-             //   _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
-             if (header.Number < ( _blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
-             {
-                 if (_logger.IsTrace)
-                     _logger.Trace(
-                         $"LowestInsertedBeaconHeader AlreadyKnown changed, old: { _blockTree.LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
-                 _blockTree.LowestInsertedBeaconHeader = header;
-             }
-             //}
+                        $"LowestInsertedBeaconHeader AlreadyKnown changed, old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
+                _blockTree.LowestInsertedBeaconHeader = header;
+            }
+            //}
         }
-        
+
 
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
         {
@@ -137,11 +141,15 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             }
             else
             {
-                _nextHeaderDiff = header.TotalDifficulty != null && header.TotalDifficulty >= header.Difficulty ? header.TotalDifficulty - header.Difficulty : null;
+                _nextHeaderDiff = header.TotalDifficulty != null && header.TotalDifficulty >= header.Difficulty
+                    ? header.TotalDifficulty - header.Difficulty
+                    : null;
             }
         }
 
-        if (_logger.IsTrace) _logger.Trace($"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
+        if (_logger.IsTrace)
+            _logger.Trace(
+                $"New header {header.ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
         return insertOutcome;
     }
 }

@@ -37,7 +37,6 @@ public partial class BlockTreeTests
     }
     
     [Test]
-    [Ignore("Need to be fixed in LoadBestKnown (BlockTree constructor)")]
     public void Can_sync_using_chain_levels_with_restart()
     {
         BlockTreeTestScenario.GoesLikeThis()

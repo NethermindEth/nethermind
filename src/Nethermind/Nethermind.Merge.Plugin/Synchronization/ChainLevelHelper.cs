@@ -59,16 +59,23 @@ public class ChainLevelHelper : IChainLevelHelper
         while (i < maxCount)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
+            _logger.Info($"ChainLevelHelper level: {level?.BlockInfos.Length}");
             if (level == null || level.MainChainBlock == null)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"ChainLevelHelper.GetNextHeaders - level {startingPoint} not found");
                 break;
             }
+            
+            foreach (var bi in level.BlockInfos)
+            {
+                _logger.Info($"ChainLevelHelper {bi.BlockHash}, {bi.BlockNumber} {bi.TotalDifficulty}");
+            }
 
             BlockInfo blockInfo = level.MainChainBlock;
+            _logger.Info($"ChainLevelHelper main chain block: {level.MainChainBlock.BlockHash}, {level.MainChainBlock.BlockNumber}");
             BlockHeader? newHeader =
-                _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
 
             if (newHeader == null)
             {
