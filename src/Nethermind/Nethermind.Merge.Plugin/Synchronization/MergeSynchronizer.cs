@@ -32,6 +32,7 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -53,6 +54,7 @@ public class MergeSynchronizer : Synchronizer
         INodeStatsManager nodeStatsManager,
         ISyncModeSelector syncModeSelector,
         ISyncConfig syncConfig,
+        ISnapProvider snapProvider,
         IBlockDownloaderFactory blockDownloaderFactory,
         IPivot pivot,
         IMergeSyncController mergeSync,
@@ -62,7 +64,7 @@ public class MergeSynchronizer : Synchronizer
         IBlockValidator blockValidator,
         IBlockProcessingQueue blockProcessingQueue,
         ILogManager logManager) : base(dbProvider, specProvider, blockTree, receiptStorage, peerPool, nodeStatsManager,
-        syncModeSelector, syncConfig, blockDownloaderFactory, pivot, logManager)
+        syncModeSelector, syncConfig, snapProvider, blockDownloaderFactory, pivot, logManager)
     {
         _mergeSync = mergeSync;
         _mergeConfig = mergeConfig;

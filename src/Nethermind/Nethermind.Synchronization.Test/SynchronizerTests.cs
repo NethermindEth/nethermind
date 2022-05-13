@@ -373,7 +373,6 @@ namespace Nethermind.Synchronization.Test
                         stats,
                         syncModeSelector,
                         syncConfig,
-                        snapProvider,
                         bestPeerStrategy,
                         _logManager
                     );
@@ -422,6 +421,7 @@ namespace Nethermind.Synchronization.Test
                         stats,
                         syncModeSelector,
                         syncConfig,
+                        snapProvider,
                         blockDownloaderFactory,
                         pivot,
                         _logManager);

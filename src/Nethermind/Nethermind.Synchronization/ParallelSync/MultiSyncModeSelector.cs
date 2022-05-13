@@ -170,7 +170,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             try
                             {
                                 best.IsInFastSync = ShouldBeInFastSyncMode(best);
-                                best.IsInStateSync = ShouldBeInStateNodesMode(best);
+                                best.IsInStateSync = ShouldBeInStateSyncMode(best);
                                 best.IsInFullSync = ShouldBeInFullSyncMode(best);
                                 best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
                                 best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
