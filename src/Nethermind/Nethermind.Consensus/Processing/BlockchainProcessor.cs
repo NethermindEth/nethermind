@@ -343,7 +343,7 @@ namespace Nethermind.Consensus.Processing
                         $"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
 
-                Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
+                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
 
             if ((options & ProcessingOptions.MarkAsProcessed) != 0)
@@ -353,7 +353,7 @@ namespace Nethermind.Consensus.Processing
                         $"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
 
-                Metrics.LastBlockProcessingTimeInMs = stopwatch.ElapsedMilliseconds;
+                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
 
             if ((options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.None)

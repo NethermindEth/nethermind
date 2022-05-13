@@ -385,6 +385,7 @@ namespace Nethermind.Synchronization.Test
                         stats,
                         syncModeSelector,
                         syncConfig,
+                        snapProvider,
                         blockDownloaderFactory,
                         pivot,
                         new BeaconSync(beaconPivot, BlockTree,syncConfig, blockCacheService, LimboLogs.Instance),

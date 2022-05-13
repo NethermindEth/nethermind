@@ -11,7 +11,7 @@ using Nethermind.AccountAbstraction.Source;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Contracts.Json;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -27,7 +27,6 @@ using Nethermind.Mev;
 using Nethermind.AccountAbstraction.Bundler;
 using Nethermind.AccountAbstraction.Subscribe;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Network.Config;
 
 

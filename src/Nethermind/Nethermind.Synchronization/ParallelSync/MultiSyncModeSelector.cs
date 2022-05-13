@@ -165,45 +165,45 @@ namespace Nethermind.Synchronization.ParallelSync
                             newModes = anyPeers ? SyncMode.Full : SyncMode.Disconnected;
                             reason = "No Useful Peers";
                         }
-                    }
-                    else
-                    {
-                        try
+                        else
                         {
-                            best.IsInFastSync = ShouldBeInFastSyncMode(best);
-                            best.IsInStateSync = ShouldBeInStateSyncMode(best);
-                            best.IsInFullSync = ShouldBeInFullSyncMode(best);
-                            best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
-                            best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
-                            best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
-                            best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
-                            best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
-                            bool canBeInSnapRangesPhase = CanBeInSnapRangesPhase(best);
-
-                            newModes = SyncMode.None;
-                            CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
-                            CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
-                            CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
-                            CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
-                            CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
-                            CheckAddFlag(best.IsInStateSync && !canBeInSnapRangesPhase, SyncMode.StateNodes, ref newModes);
-                            CheckAddFlag(best.IsInStateSync && canBeInSnapRangesPhase, SyncMode.SnapSync, ref newModes);
-                            CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
-                            CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
-                            if (IsTheModeSwitchWorthMentioning(newModes))
+                            try
                             {
-                                string stateString = BuildStateString(best);
-                                if (_logger.IsInfo)
-                                    _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
-                            }
+                                best.IsInFastSync = ShouldBeInFastSyncMode(best);
+                                best.IsInStateSync = ShouldBeInStateSyncMode(best);
+                                best.IsInFullSync = ShouldBeInFullSyncMode(best);
+                                best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
+                                best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
+                                best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
+                                best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
+                                best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
+                                bool canBeInSnapRangesPhase = CanBeInSnapRangesPhase(best);
 
+                                newModes = SyncMode.None;
+                                CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
+                                CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
+                                CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
+                                CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
+                                CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
+                                CheckAddFlag(best.IsInStateSync && !canBeInSnapRangesPhase, SyncMode.StateNodes,
+                                    ref newModes);
+                                CheckAddFlag(best.IsInStateSync && canBeInSnapRangesPhase, SyncMode.SnapSync,
+                                    ref newModes);
+                                CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
+                                CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
+                                if (IsTheModeSwitchWorthMentioning(newModes))
+                                {
+                                    string stateString = BuildStateString(best);
+                                    if (_logger.IsInfo)
+                                        _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
+                                }
+                            }
+                            catch (InvalidAsynchronousStateException)
+                            {
+                                newModes = SyncMode.Disconnected;
+                                reason = "Snapshot Misalignment";
+                            }
                         }
-                        catch (InvalidAsynchronousStateException)
-                        {
-                            newModes = SyncMode.Disconnected;
-                            reason = "Snapshot Misalignment";
-                        }
-                    }
 
 
                         if ((newModes & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None
@@ -370,7 +370,7 @@ namespace Nethermind.Synchronization.ParallelSync
                           postPivotPeerAvailable &&
                           hasFastSyncBeenActive &&
                           notInFastSync &&
-                          notInStateSync&&
+                          notInStateSync &&
                           notNeedToWaitForHeaders;
 
             if (_logger.IsTrace)
