@@ -45,6 +45,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -99,6 +100,7 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; }
 
             public bool IsInitialized { get; set; }
+            public bool IsPriority { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {
@@ -293,15 +295,19 @@ namespace Nethermind.Synchronization.Test
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
                 NodeStatsManager stats = new(timerFactory, _logManager);
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, 25, _logManager);
-
+                ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
+                
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
                     new TrieStore(stateDb, LimboLogs.Instance),
+                    progressTracker,
                     syncConfig,
                     _logManager);
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool, syncConfig, _logManager);
+
+                SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
                 Synchronizer = new Synchronizer(
                     dbProvider,
                     MainnetSpecProvider.Instance,
@@ -313,6 +319,7 @@ namespace Nethermind.Synchronization.Test
                     stats,
                     syncModeSelector,
                     syncConfig,
+                    snapProvider,
                     _logManager);
 
                 SyncServer = new SyncServer(

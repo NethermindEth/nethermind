@@ -89,6 +89,7 @@ namespace Nethermind.Init.Steps
             LogFinder logFinder = new(
                 blockTree,
                 receiptFinder,
+                receiptStorage,
                 bloomStorage,
                 _get.LogManager,
                 new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider), 

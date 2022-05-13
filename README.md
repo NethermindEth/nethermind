@@ -1,40 +1,47 @@
 <img src="Nethermind.png" width="200">
 
 # .NET Core Ethereum client
-|           |         |               |
-| :-------- | :------ | :------------ |
-| Documentation | | https://docs.nethermind.io |
-| Gitter | [![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind) | https://gitter.im/nethermindeth/nethermind |
-| Discord | [![Discord](https://img.shields.io/discord/629004402170134531)](https://discord.gg/GXJFaYk) |
-| Medium | | https://medium.com/nethermind-eth |
-| Twitter | | https://twitter.com/nethermindeth |
-| Releases | [![GitHub release](https://img.shields.io/github/release/NethermindEth/nethermind.svg)](https://github.com/NethermindEth/nethermind/releases) | https://github.com/NethermindEth/nethermind/releases |
-| Website | | https://nethermind.io/ |
-|Docker||https://hub.docker.com/r/nethermind/nethermind|
-|Codecov.io| [![codecov](https://codecov.io/gh/NethermindEth/nethermind/branch/master/graph/badge.svg)](https://codecov.io/gh/NethermindEth/nethermind) | https://codecov.io/gh/NethermindEth/nethermind |
-| Fund | with Gitcoin | https://gitcoin.co/grants/142/nethermind |
-| Github Actions | [![[RUN] Consensus Legacy Tests](https://github.com/NethermindEth/nethermind/actions/workflows/run-consesus-legacy-tests.yml/badge.svg)](https://github.com/NethermindEth/nethermind/actions/workflows/run-consesus-legacy-tests.yml) [![[RUN] Nethermind/Ethereum Tests with Code Coverage](https://github.com/NethermindEth/nethermind/actions/workflows/run-nethermind-tests-with-code-coverage.yml/badge.svg)](https://github.com/NethermindEth/nethermind/actions/workflows/run-nethermind-tests-with-code-coverage.yml) [![[UPDATE] GitBook Docs](https://github.com/NethermindEth/nethermind/actions/workflows/update-gitbook-docs.yml/badge.svg)](https://github.com/NethermindEth/nethermind/actions/workflows/update-gitbook-docs.yml) | https://github.com/NethermindEth/nethermind/actions |
 
-## Download and run:
+Nethermind is a is a high-performance, highly configurable full Ethereum protocol client built on .NET Core that runs on Linux, Windows and MacOS, and supports Clique, AuRa, Ethash and Proof of Stake consensus algorithms. Nethermind offers very fast sync speeds and support for external plug-ins. Enjoy reliable access to rich on-chain data thanks to high performance JSON-RPC based on Kestrel web server. Healthy node monitoring is secured with a Grafana dashboard and Seq enterprise logging.
 
-[Windows](http://downloads.nethermind.io)<br/>
-[Linux x64/arm64](http://downloads.nethermind.io)<br/>
-[MacOS](http://downloads.nethermind.io)<br/>
+[![Documentation](https://img.shields.io/badge/GitBook-docs-7B36ED?style=for-the-badge&logo=gitbook&logoColor=white)](https://docs.nethermind.io)
+[![Releases](https://img.shields.io/github/release/NethermindEth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/nethermind/nethermind?style=for-the-badge&logo=docker&logoColor=white)](https://hub.docker.com/r/nethermind/nethermind)
+[![Codecov](https://img.shields.io/codecov/c/github/nethermindeth/nethermind?style=for-the-badge&logo=codecov&logoColor=white)](https://codecov.io/gh/NethermindEth/nethermind)
+[![Website](https://img.shields.io/website?down_color=lightgrey&down_message=offline&style=for-the-badge&up_color=brightgreen&up_message=online&url=https%3A%2F%2Fnethermind.io)](https://nethermind.io)
 
-It syncs fully on:
-* `Mainnet`
-* `Goerli`
-* `Rinkeby`
-* `Ropsten`
-* `Sepolia`
-* `xDai`
-* `Poacore`
-* `Sokol`
-* `Energyweb`
-* `Volta`
-* `Kovan` (only fast sync and may fail if pWASM transactions appear)
+### :speaking_head:	Chats
+[![Discord](https://img.shields.io/discord/629004402170134531?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/GXJFaYk)
+[![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg?style=for-the-badge&logo=gitter&logoColor=white)](https://gitter.im/nethermindeth/nethermind)
 
-**PPA**
+### :loudspeaker:	Social
+[![Twitter Follow](https://img.shields.io/twitter/follow/nethermindeth?style=for-the-badge&logo=twitter&logoColor=white)](https://twitter.com/nethermindeth)
+[![LinkedIn Follow](https://img.shields.io/badge/LinkedIn-follow-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/company/nethermind)
+[![Medium Follow](https://img.shields.io/badge/Medium-articles-12100E?style=for-the-badge&logo=medium&logoColor=white)](https://medium.com/nethermind-eth)
+
+## Download and run
+
+[![Windows](https://img.shields.io/badge/Windows-AMD64-0078D6?style=for-the-badge&logo=windows&logoColor=white)](http://downloads.nethermind.io)
+[![Linux](https://img.shields.io/badge/Linux-AMD64/ARM64-FCC624?style=for-the-badge&logo=linux&logoColor=black)](http://downloads.nethermind.io)
+[![MacOS](https://img.shields.io/badge/MacOS-AMD64/ARM64-000000?style=for-the-badge&logo=apple&logoColor=white)](http://downloads.nethermind.io)
+
+### :chains: Currently supported list of networks
+
+| `Network  name`  | 
+| :------------    |
+| Mainnet          |
+| Goerli           |
+| Rinkeby          |
+| Ropsten          |
+| Sepolia          |
+| xDai (Gnosis)    |
+| Poacore          |
+| Sokol            |
+| EnergyWeb        |
+| Volta            |
+| Kovan            |
+
+#### Using PPA
 (Tested on Ubuntu Series: `Focal`, `Bionic`, `Xenial` and `Trusty`)
 1. `sudo add-apt-repository ppa:nethermindeth/nethermind`
 1. `sudo apt install nethermind`
@@ -43,7 +50,7 @@ It syncs fully on:
 1. To execute the runner
 ``nethermind --config mainnet_pruned``
 
-**Homebrew**
+#### Using Homebrew
 1. `brew tap nethermindeth/nethermind`
 1. `brew install nethermind`
 1. To execute the launcher
@@ -53,9 +60,10 @@ It syncs fully on:
 
 # Build from Source
 
-## Prerequisites :construction:
+## :construction: Prerequisites 
 
-**.NET 6.0** SDK
+[![.NET SDK](https://img.shields.io/badge/SDK-6.0-512BD4?style=for-the-badge&logo=dotnet&logoColor=white
+)](https://dotnet.microsoft.com/en-us/download)
 
 ### Windows
 
@@ -122,7 +130,7 @@ brew install rocksdb gmp snappy lz4 zstd
 sudo ln -s `find /opt/homebrew/Cellar/snappy -name "libsnappy.dylib"` /usr/local/lib/libsnappy.dylib
 ```
 
-## Build and Run
+## :building_construction: Build and Run
 
 ```sh
 git clone https://github.com/NethermindEth/nethermind --recursive
@@ -132,7 +140,7 @@ cd Nethermind.Runner
 dotnet run -c Release --no-build --config mainnet
 ```
 
-## Docker Image
+## :whale: Docker Image
 
 Official Nethermind docker images are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind).
 
@@ -146,7 +154,7 @@ docker inspect --format='{{index .RepoDigests 0}}' <image_name>
 
 The output must show the image digest, and then you can copy that output in the `FROM` tag inside the Dockerfile
 
-## Test
+## :test_tube: Test
 
 If you want to run the Nethermind or Ethereum Foundation tests, then:
 ```sh
@@ -157,20 +165,15 @@ dotnet build EthereumTests.sln -c Debug
 dotnet test EthereumTests.sln
 ```
 
-## IDE
+## :bricks:	IDE
 
-* [JetBrains Rider](https://www.jetbrains.com/rider)
-* [Visual Studio Code](https://code.visualstudio.com/docs/other/dotnet)
+[![JetBrains Rider](https://img.shields.io/badge/Rider-000000?style=for-the-badge&logo=Rider&logoColor=white)](https://www.jetbrains.com/rider)
+[![Visual Studio Code](https://img.shields.io/badge/Visual_Studio_Code-0078D4?style=for-the-badge&logo=visual%20studio%20code&logoColor=white)](https://code.visualstudio.com/docs/other/dotnet)
+[![Visual Studio](https://img.shields.io/badge/Visual_Studio-5C2D91?style=for-the-badge&logo=visual%20studio&logoColor=white)](https://visualstudio.microsoft.com/downloads)
 
+## :footprints:	Contributors welcome
+[![GitHub Issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/issues)
+[![GitHub Contributors](https://img.shields.io/github/contributors/nethermindeth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/graphs/contributors)
 
-## Contributors welcome
-[![GitHub Issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/issues)
-[![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind)
-[![GitHub Contributors](https://img.shields.io/github/contributors/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/graphs/contributors)
-
-At Nethermind we are building an open source multiplatform Ethereum client implementation in .NET Core (running seamlessly on Linux, Windows and MacOS). Simultaneously our team works on Nethermind Data Marketplace and on-chain data extraction tools and client customizations.
-
-Nethermind client can be used in your projects, when setting up private Ethereum networks or dApps. The latest prod version of Nethermind can be found at downloads.nethermind.io.
-
-# License
+## License
 [![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE)

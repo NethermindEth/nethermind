@@ -52,6 +52,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IBlockTree _blockTree = null!;
         private ITxPool _txPool = null!;
         private IReceiptStorage _receiptStorage = null!;
+        private IReceiptFinder _receiptFinder = null!;
         private IFilterStore _filterStore = null!;
         private ISubscriptionManager _subscriptionManager = null!;
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
@@ -69,6 +70,7 @@ namespace Nethermind.AccountAbstraction.Test
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
+            _receiptFinder = Substitute.For<IReceiptFinder>();
             _specProvider = Substitute.For<ISpecProvider>();
             _userOperationPools[_testPoolAddress] = Substitute.For<IUserOperationPool>();
             _filterStore = new FilterStore();
@@ -83,6 +85,7 @@ namespace Nethermind.AccountAbstraction.Test
                 _blockTree,
                 _txPool,
                 _receiptStorage,
+                _receiptFinder,
                 _filterStore,
                 new EthSyncingInfo(_blockTree),
                 _specProvider,

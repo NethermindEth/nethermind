@@ -48,6 +48,7 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -534,6 +535,7 @@ namespace Nethermind.Synchronization.Test
             public long HeadNumber { get; set; }
             public UInt256 TotalDifficulty { get; set; } = UInt256.MaxValue;
             public bool IsInitialized { get; set; }
+            public bool IsPriority { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {
@@ -873,11 +875,13 @@ namespace Nethermind.Synchronization.Test
                 MemDb stateDb = new();
                 
                 SyncConfig syncConfig = new();
+                ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
                     new TrieStore(stateDb, LimboLogs.Instance),
+                    progressTracker,
                     syncConfig,
                     LimboLogs.Instance);
                 SyncModeSelector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, syncConfig, LimboLogs.Instance);
@@ -935,6 +939,7 @@ namespace Nethermind.Synchronization.Test
             public long HeadNumber { get; set; }
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
+            public bool IsPriority { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {

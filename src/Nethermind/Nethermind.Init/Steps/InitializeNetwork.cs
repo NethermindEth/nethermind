@@ -43,11 +43,13 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
+using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Init.Steps
 {
@@ -111,14 +113,19 @@ namespace Nethermind.Init.Steps
             CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, _api.LogManager);
+            int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
+            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
+
+            ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager);
+            _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
             SyncProgressResolver syncProgressResolver = new(
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.DbProvider.StateDb,
                 _api.ReadOnlyTrieStore!,
+                progressTracker,
                 _syncConfig,
                 _api.LogManager);
             
@@ -137,6 +144,7 @@ namespace Nethermind.Init.Steps
                 _api.NodeStatsManager!,
                 _api.SyncModeSelector,
                 _syncConfig,
+                _api.SnapProvider,
                 _api.LogManager);
             _api.DisposeStack.Push(_api.Synchronizer);
 
@@ -171,6 +179,12 @@ namespace Nethermind.Init.Steps
                     _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
+
+            if (_syncConfig.SnapSync)
+            {
+                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
+                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            }
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -499,7 +513,6 @@ namespace Nethermind.Init.Steps
                 if (t.IsFaulted)
                 {
                     _logger.Error($"ENR discovery failed: {t.Exception}");
-                    
                 }
             });
             

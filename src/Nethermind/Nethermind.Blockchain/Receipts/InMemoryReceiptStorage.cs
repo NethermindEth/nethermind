@@ -75,7 +75,9 @@ namespace Nethermind.Blockchain.Receipts
                 txReceipt.BlockHash = block.Hash;
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
-            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts));
+
+            bool wasRemoved = txReceipts.Length > 0 && txReceipts[0].Removed;
+            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts, wasRemoved));
         }
 
         public long? LowestInsertedReceiptBlockNumber { get; set; }
