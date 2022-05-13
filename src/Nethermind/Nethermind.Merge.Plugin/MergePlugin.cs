@@ -153,7 +153,8 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher,
                         _beaconSync,
                         _beaconPivot,
-                        _blockCacheService,
+                        _blockCacheService,         
+                        _api.BlockProcessingQueue,
                         _beaconSync,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
