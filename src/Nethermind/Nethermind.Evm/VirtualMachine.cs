@@ -92,7 +92,7 @@ namespace Nethermind.Evm
             InitializePrecompiledContracts();
         }
 
-        public TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
         {
             _txTracer = txTracer;
 
