@@ -798,10 +798,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             foreach (AccountProof accountProof in callResultWithProof.Accounts)
             {
-                ProofVerifier.Verify(accountProof.Proof, block.StateRoot);
+                ProofVerifier.VerifyOneProof(accountProof.Proof, block.StateRoot);
                 foreach (StorageProof storageProof in accountProof.StorageProofs)
                 {
-                    ProofVerifier.Verify(storageProof.Proof, accountProof.StorageRoot);
+                    ProofVerifier.VerifyOneProof(storageProof.Proof, accountProof.StorageRoot);
                 }
             }
 
@@ -870,7 +870,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 Account account;
                 try
                 {
-                    account = new AccountDecoder().Decode(new RlpStream(ProofVerifier.Verify(accountProof.Proof, block.StateRoot)));
+                    account = new AccountDecoder().Decode(new RlpStream(ProofVerifier.VerifyOneProof(accountProof.Proof, block.StateRoot)));
                 }
                 catch (Exception)
                 {
@@ -880,7 +880,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 foreach (StorageProof storageProof in accountProof.StorageProofs)
                 {
                     // we read the values here just to allow easier debugging so you can confirm that the value is same as the one in the proof and in the trie
-                    byte[] value = ProofVerifier.Verify(storageProof.Proof, accountProof.StorageRoot);
+                    byte[] value = ProofVerifier.VerifyOneProof(storageProof.Proof, accountProof.StorageRoot);
                 }
             }
 

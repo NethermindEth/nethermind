@@ -207,6 +207,7 @@ namespace Nethermind.Init.Steps
                 _api.BlockTree,
                 _api.TxPool,
                 _api.ReceiptStorage,
+                _api.ReceiptFinder,
                 _api.FilterStore,
                 _api.EthSyncingInfo!,
                 _api.SpecProvider,

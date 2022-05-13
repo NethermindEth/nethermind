@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain.Test.Receipts
                 .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 
-            var emptyReceipts = new TxReceipt[] {null};
+            var emptyReceipts = Array.Empty<TxReceipt>();
             _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);
             // can be from cache:
             _storage.Get(block).Should().BeEquivalentTo(emptyReceipts);

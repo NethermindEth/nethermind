@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
@@ -24,15 +26,17 @@ namespace Nethermind.State.Proofs
 {
     public static class ProofVerifier
     {
-        public static byte[]? Verify(byte[][] proof, Keccak root)
+        /// <summary>
+        /// Verifies one proof - address path from the bottom to the root.
+        /// </summary>
+        /// <returns>The Value of the bottom most proof node. For example an Account.</returns>
+        public static byte[]? VerifyOneProof(byte[][] proof, Keccak root)
         {
             if (proof.Length == 0)
             {
                 return null;
             }
 
-            TrieNode trieNode = new(NodeType.Unknown, proof.Last());
-            trieNode.ResolveNode(null);
             for (int i = proof.Length; i > 0; i--)
             {
                 Keccak proofHash = Keccak.Compute(proof[i - 1]);
@@ -51,6 +55,9 @@ namespace Nethermind.State.Proofs
                     }
                 }
             }
+
+            TrieNode trieNode = new(NodeType.Unknown, proof.Last());
+            trieNode.ResolveNode(null);
 
             return trieNode.Value;
         }
