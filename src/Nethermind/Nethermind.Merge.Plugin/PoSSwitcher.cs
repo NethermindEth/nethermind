@@ -54,7 +54,6 @@ namespace Nethermind.Merge.Plugin
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private Keccak? _terminalBlockHash;
-        private BlockHeader? _firstPoSBlockHeader;
 
         private long? _configuredTerminalBlockNumber;
         private long? _terminalBlockNumber;
@@ -86,13 +85,15 @@ namespace Nethermind.Merge.Plugin
 
             if (_terminalBlockNumber != null)
                 _hasEverReachedTerminalDifficulty = true;
-            
+
             _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
 
             if (_terminalBlockNumber == null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
-            
-            if (_logger.IsInfo) _logger.Info($"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {_hasEverReachedTerminalDifficulty}, Terminal Block Number {_terminalBlockNumber}");
+
+            if (_logger.IsInfo)
+                _logger.Info(
+                    $"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {_hasEverReachedTerminalDifficulty}, Terminal Block Number {_terminalBlockNumber}");
         }
 
         private void CheckIfTerminalBlockReached(object? sender, BlockEventArgs e)
@@ -113,7 +114,7 @@ namespace Nethermind.Merge.Plugin
             bool ttdRequirement = header.TotalDifficulty >= TerminalTotalDifficulty;
             if (ttdRequirement && header.IsGenesis)
                 return true;
-            
+
             if (ttdRequirement && header.IsPostMerge == false)
             {
                 if (parent == null)
@@ -129,7 +130,7 @@ namespace Nethermind.Merge.Plugin
 
             return isTerminalBlock;
         }
-        
+
         public bool TryUpdateTerminalBlock(BlockHeader header, BlockHeader? parent = null)
         {
             if (_terminalBlockExplicitSpecified || TransitionFinished || IsTerminalBlock(header, parent) == false)
@@ -179,8 +180,10 @@ namespace Nethermind.Merge.Plugin
         public bool TransitionFinished => _finalizedBlockHash != Keccak.Zero;
 
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, BlockHeader? parent = null)
-        { 
-            if (_logger.IsTrace) _logger.Trace($"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
+        {
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
             if (header.IsPostMerge)
                 return (false, true);
             if (_specProvider.TerminalTotalDifficulty == null)
@@ -193,7 +196,7 @@ namespace Nethermind.Merge.Plugin
                 header.IsPostMerge = header.Difficulty == 0;
                 return (false, header.Difficulty == 0);
             }
-            
+
             if (header.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
                 return (false, false);
 
@@ -222,7 +225,7 @@ namespace Nethermind.Merge.Plugin
         public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public Keccak ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
-        
+
         public long? ConfiguredTerminalBlockNumber => _configuredTerminalBlockNumber;
 
         private void LoadTerminalBlock()
