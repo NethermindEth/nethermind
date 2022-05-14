@@ -26,7 +26,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -179,8 +178,9 @@ namespace Nethermind.Merge.Plugin
 
         public bool TransitionFinished => _finalizedBlockHash != Keccak.Zero;
 
-        public (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent = null)
-        {
+        public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, BlockHeader? parent = null)
+        { 
+            if (_logger.IsTrace) _logger.Trace($"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
             if (header.IsPostMerge)
                 return (false, true);
             if (_specProvider.TerminalTotalDifficulty == null)
@@ -213,7 +213,7 @@ namespace Nethermind.Merge.Plugin
         }
 
         public bool IsPostMerge(BlockHeader header, BlockHeader? parent = null) =>
-            GetBlockSwitchInfo(header, parent).IsPostMerge;
+            GetBlockConsensusInfo(header, parent).IsPostMerge;
 
         public bool HasEverReachedTerminalBlock() => _hasEverReachedTerminalDifficulty;
 

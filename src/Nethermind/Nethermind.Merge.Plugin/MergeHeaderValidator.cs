@@ -66,7 +66,7 @@ namespace Nethermind.Merge.Plugin
         private bool ValidateTheMergeChecks(BlockHeader header, BlockHeader? parent)
         {
             bool validDifficulty = true, validNonce = true, validUncles = true;
-            (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockSwitchInfo(header, parent);
+            (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockConsensusInfo(header, parent);
             bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, switchInfo.IsTerminal);
             if (switchInfo.IsPostMerge)
             {

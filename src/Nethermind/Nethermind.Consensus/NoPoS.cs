@@ -49,7 +49,7 @@ public class NoPoS : IPoSSwitcher
         throw new NotImplementedException();
     }
 
-    public (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent = null) =>
+    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, BlockHeader? parent = null) =>
         (false, false);
 
     public bool IsPostMerge(BlockHeader header, BlockHeader? parent = null) => false;

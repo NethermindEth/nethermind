@@ -140,10 +140,10 @@ namespace Nethermind.Merge.Plugin.Test
             BlockHeader? block5 = blockTree.FindHeader(5, BlockTreeLookupOptions.All);
             Block blockWithPostMergeFlag = Build.A.Block.WithNumber(4).WithDifficulty(0).WithPostMergeFlag(true)
                 .WithParent(block3!).TestObject; 
-            Assert.AreEqual((false, false), poSSwitcher.GetBlockSwitchInfo(block3!)); // PoWBlock
-            Assert.AreEqual((true, false), poSSwitcher.GetBlockSwitchInfo(block4!)); // terminal block
-            Assert.AreEqual((false, true), poSSwitcher.GetBlockSwitchInfo(block5!)); // incorrect PoW, TTD > TD and it is not terminal, so we should process it in the same way like post merge blocks
-            Assert.AreEqual((false, true), poSSwitcher.GetBlockSwitchInfo(blockWithPostMergeFlag.Header)); // block with post merge flag
+            Assert.AreEqual((false, false), poSSwitcher.GetBlockConsensusInfo(block3!)); // PoWBlock
+            Assert.AreEqual((true, false), poSSwitcher.GetBlockConsensusInfo(block4!)); // terminal block
+            Assert.AreEqual((false, true), poSSwitcher.GetBlockConsensusInfo(block5!)); // incorrect PoW, TTD > TD and it is not terminal, so we should process it in the same way like post merge blocks
+            Assert.AreEqual((false, true), poSSwitcher.GetBlockConsensusInfo(blockWithPostMergeFlag.Header)); // block with post merge flag
         }
 
         [Test]
