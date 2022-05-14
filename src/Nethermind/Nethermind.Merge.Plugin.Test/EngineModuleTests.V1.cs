@@ -403,10 +403,9 @@ namespace Nethermind.Merge.Plugin.Test
                 yield return GetNewBlockRequestBadDataTestCase(r => r.GasUsed, 1);
             }
         }
-
-        // ToDo wait for final PostMerge sync
+        
         [Test]
-        public async Task executePayloadV1_unknown_parentHash_return_syncing()
+        public async Task executePayloadV1_unknown_parentHash_return_accepted()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
