@@ -248,14 +248,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool notFinalizedPoS = _manualBlockFinalizationManager.LastFinalizedHash == Keccak.Zero;
             if (notFinalizingPoS && notFinalizedPoS && blocks != null)
             {
-                BlockHeader? parent = null;
                 for (int i = 0; i < blocks.Length; ++i)
                 {
-                    if (blocks[i].TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
-                        parent = blocks[i].Header;
-                    else
+                    if (blocks[i].Header.Difficulty != 0 && blocks[i].TotalDifficulty >= _poSSwitcher.TerminalTotalDifficulty)
                     {
-                        if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header, parent))
+                        if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header))
                         {
                             if (_logger.IsInfo)
                                 _logger.Info($"Terminal block {blocks[i].Header} updated during the forkchoice");

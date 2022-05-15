@@ -49,7 +49,7 @@ namespace Nethermind.Merge.Plugin
         
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
-            bool theMergeValid = ValidateTheMergeChecks(header, parent);
+            bool theMergeValid = ValidateTheMergeChecks(header);
             return base.Validate(header, parent, isUncle) && theMergeValid;
         }
 
@@ -61,12 +61,12 @@ namespace Nethermind.Merge.Plugin
 
         protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
         {
-            return _poSSwitcher.IsPostMerge(header, parent) || base.ValidateTotalDifficulty(parent, header);
+            return _poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(parent, header);
         }
-        private bool ValidateTheMergeChecks(BlockHeader header, BlockHeader? parent)
+        private bool ValidateTheMergeChecks(BlockHeader header)
         {
             bool validDifficulty = true, validNonce = true, validUncles = true;
-            (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockConsensusInfo(header, parent);
+            (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockConsensusInfo(header);
             bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, switchInfo.IsTerminal);
             if (switchInfo.IsPostMerge)
             {
@@ -85,7 +85,7 @@ namespace Nethermind.Merge.Plugin
         
         protected override bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
         {
-            if (_poSSwitcher.IsPostMerge(header, parent))
+            if (_poSSwitcher.IsPostMerge(header))
             {
                 if (header.ExtraData.Length <= MaxExtraDataBytes) return true;
                 if (_logger.IsWarn)

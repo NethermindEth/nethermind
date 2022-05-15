@@ -44,13 +44,13 @@ public class NoPoS : IPoSSwitcher
     public Keccak ConfiguredTerminalBlockHash => Keccak.Zero;
     public long? ConfiguredTerminalBlockNumber => null;
 
-    public bool TryUpdateTerminalBlock(BlockHeader header, BlockHeader? parent = null)
+    public bool TryUpdateTerminalBlock(BlockHeader header)
     {
         throw new NotImplementedException();
     }
 
-    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, BlockHeader? parent = null) =>
+    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header) =>
         (false, false);
 
-    public bool IsPostMerge(BlockHeader header, BlockHeader? parent = null) => false;
+    public bool IsPostMerge(BlockHeader header) => false;
 }
