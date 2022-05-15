@@ -62,7 +62,7 @@ public partial class BlockTreeTests
             .SuggestBlocksUsingChainLevels()
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
-            .AssertBestSuggestedBody(9)
+            .AssertBestSuggestedBody(9, 10000000)
             .AssertChainLevel(0, 9);
     }
     
@@ -77,7 +77,7 @@ public partial class BlockTreeTests
             .SuggestBlocksUsingChainLevels()
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
-            .AssertBestSuggestedBody(9)
+            .AssertBestSuggestedBody(9, 10000000)
             .AssertChainLevel(0, 9);
     }
     
@@ -92,7 +92,7 @@ public partial class BlockTreeTests
             .SuggestBlocksUsingChainLevels()
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
-            .AssertBestSuggestedBody(9)
+            .AssertBestSuggestedBody(9, 10000000)
             .AssertChainLevel(0, 9);
     }
 }

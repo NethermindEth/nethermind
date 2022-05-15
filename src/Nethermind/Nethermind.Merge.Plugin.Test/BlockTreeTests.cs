@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Blooms;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
@@ -68,7 +69,7 @@ public partial class BlockTreeTests
 
         return (notSyncedTree, syncedTree);
     }
-    
+
     [Test]
     public void Can_build_correct_block_tree()
     {
@@ -186,7 +187,13 @@ public partial class BlockTreeTests
                     }
 
                     _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, new SyncConfig(), LimboLogs.Instance);
+                    NotSyncedTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
                     return this;
+                }
+                
+                private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e)
+                {
+                    NotSyncedTree.UpdateMainChain(new[] { e.Block! }, true);
                 }
 
                 public ScenarioBuilder InsertBeaconPivot(long num)
@@ -297,9 +304,11 @@ public partial class BlockTreeTests
                     return this;
                 }
 
-                public ScenarioBuilder AssertBestSuggestedBody(long expected)
+                public ScenarioBuilder AssertBestSuggestedBody(long expected, UInt256? expectedTotalDifficulty = null)
                 {
                     Assert.AreEqual(expected,NotSyncedTree!.BestSuggestedBody!.Number);
+                    if (expectedTotalDifficulty != null)
+                        Assert.AreEqual(expectedTotalDifficulty, NotSyncedTree.BestSuggestedBody.TotalDifficulty);
                     return this;
                 }
 

@@ -675,7 +675,7 @@ namespace Nethermind.Blockchain
             bool tryProcessKnownBlock = (options & BlockTreeSuggestOptions.TryProcessKnownBlock) != 0;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {tryProcessKnownBlock}");
+                    $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {tryProcessKnownBlock}");
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
             if (header.StateRoot is null && !header.IsGenesis)
@@ -1426,7 +1426,7 @@ namespace Nethermind.Blockchain
                 ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                 : null;
 
-            if (_logger.IsTrace) _logger.Trace($"Block added to main {block}");
+            if (_logger.IsTrace) _logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
             if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
@@ -1447,7 +1447,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
+            if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
         }
 
         private bool HeadImprovementRequirementsSatisfied(BlockHeader header)
