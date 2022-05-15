@@ -1343,6 +1343,34 @@ namespace Nethermind.Blockchain
                 MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
             }
         }
+        
+        public bool IsBetterThanHead(BlockHeader? header)
+        {
+            bool result = false;
+            if (header is not null)
+            {
+                if (header.IsGenesis && Genesis is null)
+                {
+                    result = true;
+                }
+                else
+                {
+                    result = header.TotalDifficulty > (Head?.TotalDifficulty ?? 0)
+                             // so above is better and more correct but creates an impression of the node staying behind on stats page
+                             // so we are okay to process slightly more
+                             // and below is less correct but potentially reporting well
+                             // || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? 0)
+                             // below are some new conditions under test
+                             || (header.TotalDifficulty == Head?.TotalDifficulty &&
+                                 ((Head?.Hash ?? Keccak.Zero).CompareTo(header.Hash) > 0))
+                             || (header.TotalDifficulty == Head?.TotalDifficulty &&
+                                 ((Head?.Number ?? 0L).CompareTo(header.Number) > 0))
+                             || (header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty);
+                }
+            }
+            
+            return result;
+        }
 
 
         /// <summary>
