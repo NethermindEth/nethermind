@@ -736,6 +736,12 @@ namespace Nethermind.Blockchain
                 UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
+
+            if (isKnown && tryProcessKnownBlock)
+            {
+                BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+                UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
+            }
             
             if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
             {

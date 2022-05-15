@@ -95,7 +95,7 @@ public partial class BlockDownloaderTests
 
         receiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
     }
-    
+
     [TestCase(32L, DownloaderOptions.MoveToMain, 32, false)]
     [TestCase(32L, DownloaderOptions.MoveToMain, 32, true)]
     public async Task Can_reach_terminal_block(long headNumber, int options, int threshold, bool withBeaconPivot)
