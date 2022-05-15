@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -71,6 +71,11 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
+
+            if (_pruningConfig.ShutdownAfterFullPrune)
+            {
+                _fullPruningDb.PruningFinished += HandlePruningFinished;
+            }
         }
 
         /// <summary>
@@ -165,6 +170,12 @@ namespace Nethermind.Blockchain.FullPruning
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
+
+        private void HandlePruningFinished(object? sender, PruningEventArgs e)
+        {
+            if (_logger.IsInfo) _logger.Info("Full Pruning completed, shutting down as requested in the configuration.");
+            Environment.Exit(0);
+        }
 
         protected virtual void RunPruning(IPruningContext pruning, Keccak statRoot)
         {
