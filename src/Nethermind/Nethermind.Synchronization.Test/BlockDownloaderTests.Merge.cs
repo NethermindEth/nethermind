@@ -53,7 +53,7 @@ public partial class BlockDownloaderTests
             .WithBlockTrees(4, (int)headNumber + 1)
             .InsertBeaconPivot(16)
             .InsertHeaders(4, 16)
-            .InsertBeaconBlocks(16, insertedBeaconBlocks, true);
+            .InsertBeaconBlocks(16, insertedBeaconBlocks, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree notSyncedTree = blockTrees.NotSyncedTree;
         BlockTree syncedTree = blockTrees.SyncedTree;
         Context ctx = new(notSyncedTree);
@@ -95,7 +95,7 @@ public partial class BlockDownloaderTests
 
         receiptStorage.Count.Should().Be(withReceipts ? receiptCount : 0);
     }
-    
+
     [TestCase(32L, DownloaderOptions.MoveToMain, 32, false)]
     [TestCase(32L, DownloaderOptions.MoveToMain, 32, true)]
     public async Task Can_reach_terminal_block(long headNumber, int options, int threshold, bool withBeaconPivot)
@@ -105,7 +105,7 @@ public partial class BlockDownloaderTests
             .WithBlockTrees(4, (int)headNumber + 1)
             .InsertBeaconPivot(16)
             .InsertHeaders(4, 16)
-            .InsertBeaconBlocks(16, headNumber, true);
+            .InsertBeaconBlocks(16, headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
         BlockTree notSyncedTree = blockTrees.NotSyncedTree;
         BlockTree syncedTree = blockTrees.SyncedTree;
         Context ctx = new(notSyncedTree);

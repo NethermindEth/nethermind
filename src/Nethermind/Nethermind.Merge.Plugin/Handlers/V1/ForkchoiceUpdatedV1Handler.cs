@@ -181,13 +181,35 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _blockTree.UpdateMainChain(blocks!, true, true);
             }
 
-            if (forkchoiceState.FinalizedBlockHash != Keccak.Zero)
+            bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
+            bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
+            bool finalizedBlockHashInconsistent = nonZeroFinalizedBlockHash && !_blockTree.IsMainChain(finalizedHeader!);
+            if (finalizedBlockHashInconsistent)
+            {
+                string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
+                if (_logger.IsWarn)
+                    _logger.Warn(errorMsg);
+
+                return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            }
+            
+            bool safeBlockHashInconsistent = nonZeroSafeBlockHash && !_blockTree.IsMainChain(safeBlockHashHeader!);
+            if (safeBlockHashInconsistent)
+            {
+                string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
+                if (_logger.IsWarn)
+                    _logger.Warn(errorMsg);
+
+                return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            }
+
+            if (nonZeroFinalizedBlockHash)
             {
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
             }
-
+            
             // In future safeBlockHash will be added to JSON-RPC
-            if (forkchoiceState.SafeBlockHash != Keccak.Zero)
+            if (nonZeroSafeBlockHash)
                 _blockConfirmationManager.Confirm(safeBlockHashHeader!.Hash!);
             
             if (shouldUpdateHead)
@@ -226,14 +248,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool notFinalizedPoS = _manualBlockFinalizationManager.LastFinalizedHash == Keccak.Zero;
             if (notFinalizingPoS && notFinalizedPoS && blocks != null)
             {
-                BlockHeader? parent = null;
                 for (int i = 0; i < blocks.Length; ++i)
                 {
-                    if (blocks[i].TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
-                        parent = blocks[i].Header;
-                    else
+                    if (blocks[i].Header.Difficulty != 0 && blocks[i].TotalDifficulty >= _poSSwitcher.TerminalTotalDifficulty)
                     {
-                        if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header, parent))
+                        if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header))
                         {
                             if (_logger.IsInfo)
                                 _logger.Info($"Terminal block {blocks[i].Header} updated during the forkchoice");

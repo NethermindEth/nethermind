@@ -26,8 +26,10 @@ namespace Nethermind.Core
         None = 0x0,
         Finalized = 0x1,
         Invalid = 0x2,
+        BeaconHeader = 0x4,
+        BeaconBody = 0x8
     }
-
+    
     public class BlockInfo
     {
         public BlockInfo(Keccak blockHash, in UInt256 totalDifficulty)
