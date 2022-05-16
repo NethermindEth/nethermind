@@ -32,6 +32,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -65,7 +66,7 @@ namespace Nethermind.Network
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
-        private readonly IList<Capability> _capabilities = new List<Capability>();
+        private readonly HashSet<Capability> _capabilities = new();
         public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
 
         public ProtocolsManager(
@@ -207,6 +208,17 @@ namespace Nethermind.Network
                     InitSyncPeerProtocol(session, ethHandler);
                     return ethHandler;
                 },
+                [Protocol.Snap] = (session, version) =>
+                {
+                    var handler = version switch
+                    {
+                        1 => new SnapProtocolHandler(session, _stats, _serializer, _logManager),
+                        _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
+                    };
+                    InitSatelliteProtocol(session, handler);
+
+                    return handler;
+                },
                 [Protocol.Wit] = (session, version) =>
                 {
                     var handler = version switch
@@ -249,6 +261,7 @@ namespace Nethermind.Network
                     if (peer != null)
                     {
                         peer.SyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
+                        if (handler.IsPriority) _syncPool.SetPeerPriority(session.Node.Id);
                         if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
                     }
                     else
@@ -332,7 +345,8 @@ namespace Nethermind.Network
                             foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
                             {
                                 handler.RegisterSatelliteProtocol(registration.Value);
-                                if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}.");
+                                if (registration.Value.IsPriority) handler.IsPriority = true;
+                                if (_logger.IsDebug) _logger.Debug($"{handler.ProtocolCode} satellite protocol registered for sync peer {session}. Sync peer has priority: {handler.IsPriority}");
                             }
                         }
                         
@@ -393,12 +407,15 @@ namespace Nethermind.Network
 
         public void AddSupportedCapability(Capability capability)
         {
-            if (_capabilities.Contains(capability))
-            {
-                return;
-            }
-
             _capabilities.Add(capability);
+        }
+        
+        public void RemoveSupportedCapability(Capability capability)
+        {
+            if (_capabilities.Remove(capability))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Removed supported capability: {capability}");
+            }
         }
 
         public void SendNewCapability(Capability capability)

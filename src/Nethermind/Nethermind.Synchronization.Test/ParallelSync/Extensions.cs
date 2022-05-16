@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
-using static Nethermind.Synchronization.Test.ParallelSync.MultiSyncModeSelectorTests;
+using static Nethermind.Synchronization.Test.ParallelSync.MultiSyncModeSelectorTestsBase;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
 {

@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
@@ -22,15 +23,21 @@ namespace Nethermind.Synchronization.FastSync
     [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
     public class StateSyncItem
     {
-        public StateSyncItem(Keccak hash, NodeDataType nodeType, int level = 0, uint rightness = 0)
+        public StateSyncItem(Keccak hash, byte[] accountPathNibbles, byte[] pathNibbles, NodeDataType nodeType, int level = 0, uint rightness = 0)
         {
             Hash = hash;
+            AccountPathNibbles = accountPathNibbles;
+            PathNibbles = pathNibbles ?? Array.Empty<byte>();
             NodeDataType = nodeType;
             Level = (byte)level;
             Rightness = rightness;
         }
 
         public Keccak Hash { get; }
+
+        public byte[] AccountPathNibbles { get; }
+
+        public byte[] PathNibbles { get; }
 
         public NodeDataType NodeDataType { get; }
 

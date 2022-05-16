@@ -265,7 +265,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch)
+        public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, PeerInfo peer = null)
         {
             if (batch == null)
             {

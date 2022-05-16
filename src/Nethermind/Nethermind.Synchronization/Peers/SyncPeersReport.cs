@@ -110,6 +110,7 @@ namespace Nethermind.Synchronization.Peers
             _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.Bodies));
             _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.Receipts));
             _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.NodeData));
+            _stringBuilder.Append('|').Append(stats.GetPaddedAverageTransferSpeed(TransferSpeedType.SnapRanges));
             _stringBuilder.Append(']');
             _stringBuilder.Append('[').Append(peerInfo.SyncPeer.ClientId).Append(']');
         }

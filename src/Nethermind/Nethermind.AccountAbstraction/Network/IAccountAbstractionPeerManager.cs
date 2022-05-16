@@ -22,6 +22,7 @@ namespace Nethermind.AccountAbstraction.Network
 {
     public interface IAccountAbstractionPeerManager
     {
+        int NumberOfPriorityAaPeers { get; set; }
         void AddPeer(IUserOperationPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
     }

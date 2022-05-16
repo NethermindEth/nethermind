@@ -91,6 +91,11 @@ namespace Nethermind.Core.Crypto
         /// </returns>
         public static Keccak Zero { get; } = new(new byte[Size]);
 
+        /// <summary>
+        ///     <string>0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff</string>
+        /// </summary>
+        public static Keccak MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
+
         public byte[] Bytes { get; }
 
         public Keccak(string hexString)
@@ -204,6 +209,26 @@ namespace Nethermind.Core.Crypto
         public static bool operator !=(Keccak? a, Keccak? b)
         {
             return !(a == b);
+        }
+
+        public static bool operator >(Keccak? k1, Keccak? k2)
+        {
+            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) > 0;
+        }
+
+        public static bool operator <(Keccak? k1, Keccak? k2)
+        {
+            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) < 0;
+        }
+
+        public static bool operator >=(Keccak? k1, Keccak? k2)
+        {
+            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) >= 0;
+        }
+
+        public static bool operator <=(Keccak? k1, Keccak? k2)
+        {
+            return Extensions.Bytes.Comparer.Compare(k1?.Bytes, k2?.Bytes) <= 0;
         }
 
         public KeccakStructRef ToStructRef() => new(Bytes);
