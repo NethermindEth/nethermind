@@ -82,13 +82,10 @@ public class ChainLevelHelper : IChainLevelHelper
                 {
                     _logger.Trace($"ChainLevelHelper {bi.BlockHash}, {bi.BlockNumber} {bi.TotalDifficulty} {bi.Metadata}");
                 }
-                
-                if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper BestSuggestedBody {_blockTree.BestSuggestedBody}, TD {_blockTree.BestSuggestedBody.TotalDifficulty}");
             }
 
             if ((blockInfo.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0)
                 newHeader.TotalDifficulty = blockInfo.TotalDifficulty == 0 ? null : blockInfo.TotalDifficulty;
-            if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - difficulty changed? BestSuggestedBody {_blockTree.BestSuggestedBody}, TD {_blockTree.BestSuggestedBody.TotalDifficulty}");
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}, header TD {newHeader.TotalDifficulty}");
