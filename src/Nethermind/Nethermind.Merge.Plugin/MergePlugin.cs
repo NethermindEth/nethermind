@@ -239,6 +239,7 @@ namespace Nethermind.Merge.Plugin
                     _api.NodeStatsManager!,
                     _api.SyncModeSelector,
                     _syncConfig,
+                    _api.SnapProvider,
                     _api.BlockDownloaderFactory,
                     _api.Pivot,
                     _beaconSync,

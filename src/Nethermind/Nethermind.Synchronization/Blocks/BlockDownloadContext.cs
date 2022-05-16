@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.Blocks
             block = Blocks[_indexMapping[index]];
             receipts ??= Array.Empty<TxReceipt>();
 
-            bool result = _receiptsRecovery.TryRecover(block, receipts); 
+            bool result = _receiptsRecovery.TryRecover(block, receipts, false) != ReceiptsRecoveryResult.Fail;
             if (result)
             {
                 ValidateReceipts(block, receipts);

@@ -52,6 +52,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -353,8 +354,11 @@ namespace Nethermind.Synchronization.Test
                 new MiningConfig(),
                 logManager);
 
+            ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+
             SyncProgressResolver resolver = new(
-                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, syncConfig, logManager);
+                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, logManager);
             TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(resolver, LimboLogs.Instance);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
             Pivot pivot = new(syncConfig);
@@ -379,6 +383,7 @@ namespace Nethermind.Synchronization.Test
                 nodeStatsManager,
                 StaticSelector.Full,
                 syncConfig,
+                snapProvider,
                 blockDownloaderFactory,
                 pivot,
                 logManager);

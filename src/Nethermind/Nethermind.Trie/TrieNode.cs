@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -38,6 +38,7 @@ namespace Nethermind.Trie
 
         public int Id = Interlocked.Increment(ref _idCounter);
 #endif
+        public bool IsBoundaryProofNode { get; set; }
 
         private TrieNode? _storageRoot;
         private static object _nullNode = new();
@@ -65,7 +66,7 @@ namespace Nethermind.Trie
 
         public Keccak? Keccak { get; internal set; }
 
-        public byte[]? FullRlp { get; private set; }
+        public byte[]? FullRlp { get; internal set; }
 
         public NodeType NodeType { get; private set; }
 
@@ -194,10 +195,11 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieNode(NodeType nodeType, byte[] rlp)
+        public TrieNode(NodeType nodeType, byte[] rlp, bool isDirty = false)
         {
             NodeType = nodeType;
             FullRlp = rlp;
+            IsDirty = isDirty;
 
             _rlpStream = rlp.AsRlpStream();
         }
@@ -290,6 +292,7 @@ namespace Nethermind.Trie
 
                     // a hack to set internally and still verify attempts from the outside
                     // after the code is ready we should just add proper access control for methods from the outside and inside
+                    bool isDirtyActual = IsDirty;
                     IsDirty = true;
 
                     if (isExtension)
@@ -304,7 +307,7 @@ namespace Nethermind.Trie
                         Value = _rlpStream.DecodeByteArray();
                     }
 
-                    IsDirty = false;
+                    IsDirty = isDirtyActual;
                 }
                 else
                 {
@@ -342,6 +345,29 @@ namespace Nethermind.Trie
             }
         }
 
+        public bool TryResolveStorageRootHash(ITrieNodeResolver resolver, out Keccak? storageRootHash)
+        {
+            storageRootHash = null;
+
+            if (IsLeaf)
+            {
+                try
+                {
+                    storageRootHash = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    if (storageRootHash is not null && storageRootHash != Keccak.EmptyTreeHash)
+                    {
+                        return true;
+                    }
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            return false;
+        }
+
         internal byte[] RlpEncode(ITrieNodeResolver tree)
         {
             byte[] rlp = _nodeDecoder.Encode(tree, this);
@@ -353,6 +379,16 @@ namespace Nethermind.Trie
             // }
 
             return rlp;
+        }
+
+        public object GetData(int index)
+        {
+            if(index > _data.Length - 1)
+            {
+                return null;
+            }
+
+            return _data[index];
         }
 
         public Keccak? GetChildHash(int i)
