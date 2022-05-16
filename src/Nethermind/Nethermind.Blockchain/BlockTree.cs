@@ -672,7 +672,7 @@ namespace Nethermind.Blockchain
             bool? setAsMain = null)
         {
             bool shouldProcess = (options & BlockTreeSuggestOptions.ShouldProcess) != 0;
-            bool fillBeaconBlock = (options & BlockTreeSuggestOptions.TryProcessKnownBlock) != 0;
+            bool fillBeaconBlock = (options & BlockTreeSuggestOptions.FillBeaconBlock) != 0;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}");

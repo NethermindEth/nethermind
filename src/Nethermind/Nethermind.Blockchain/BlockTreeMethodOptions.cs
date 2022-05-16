@@ -49,5 +49,5 @@ public enum BlockTreeSuggestOptions
 {
     None = 0,
     ShouldProcess = 1,
-    TryProcessKnownBlock = 2
+    FillBeaconBlock = 2
 }

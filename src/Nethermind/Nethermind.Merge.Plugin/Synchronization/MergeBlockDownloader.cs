@@ -202,7 +202,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (blockExists == false && isKnownBlock)
                         _blockTree.Insert(currentBlock);
                     if (isKnownBlock && shouldProcess)
-                        suggestOptions |= BlockTreeSuggestOptions.TryProcessKnownBlock;
+                        suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
                     
                     if (_logger.IsTrace)
                         _logger.Trace(

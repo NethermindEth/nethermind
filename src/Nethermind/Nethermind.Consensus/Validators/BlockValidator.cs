@@ -127,7 +127,6 @@ namespace Nethermind.Consensus.Validators
         public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
         {
             bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
-            _logger.Info($"Processed Block {processedBlock.ToString(Block.Format.Full)} suggestedBlock {suggestedBlock.ToString(Block.Format.Full)}");
             if (!isValid)
             {
                 if (_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.Short)} is not valid");

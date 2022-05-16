@@ -225,7 +225,7 @@ public partial class BlockTreeTests
                         {
                             Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
                             beaconBlock.Header.TotalDifficulty = null;
-                            AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock, true);
+                            AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock, true);
                             Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
                         }
                         
