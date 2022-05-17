@@ -21,6 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Producers
@@ -32,6 +33,8 @@ namespace Nethermind.Blockchain.Producers
         private readonly IBlockProcessingQueue _blockProcessingQueue;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
+        private readonly object _locker = new();
+        private CancellationTokenSource? _cancellationTokenSource;
         private int _canProduce;
 
         public BuildBlocksOnlyWhenNotProcessing(
@@ -50,6 +53,16 @@ namespace Nethermind.Blockchain.Producers
             _blockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
             _blockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             _blockProductionTrigger.TriggerBlockProduction += OnTriggerBlockProduction;
+        }
+        
+        private void TryCancelBlockProduction()
+        {
+            CancellationTokenSource? tokenSource = Interlocked.Exchange(ref _cancellationTokenSource, null);
+            if (tokenSource is not null)
+            {
+                tokenSource.Cancel();
+                tokenSource.Dispose();
+            }
         }
 
         private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
@@ -70,6 +83,10 @@ namespace Nethermind.Blockchain.Producers
                     _logger.Trace(
                         $"Can produce blocks, a block new best suggested {_blockTree.BestSuggestedHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}" +
                         $"{Environment.NewLine}{new StackTrace()} is already processed.");
+                lock (_locker)
+                {
+                    TryCancelBlockProduction();
+                }
             }
         }
 
@@ -80,7 +97,8 @@ namespace Nethermind.Blockchain.Producers
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Can produce blocks, current best suggested {_blockTree.BestSuggestedHeader}" +
-                    $"{Environment.NewLine}current head {_blockTree.Head}{Environment.NewLine}{new StackTrace()}");        
+                    $"{Environment.NewLine}current head {_blockTree.Head}{Environment.NewLine}{new StackTrace()}");
+            BuildBlock();
 
         }
 
@@ -103,6 +121,21 @@ namespace Nethermind.Blockchain.Producers
 
         private bool CanTriggerBlockProduction => _canProduce == 1 && _blockProcessingQueue.IsEmpty;
         
+        public Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? cancellationToken = null, 
+            IBlockTracer? blockTracer = null)
+        {
+            lock (_locker)
+            {
+                TryCancelBlockProduction();
+                _cancellationTokenSource = cancellationToken is not null 
+                    ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken.Value) 
+                    : new CancellationTokenSource();
+                
+                BlockProductionEventArgs eventArgs = new(parentHeader, _cancellationTokenSource.Token);
+                TriggerBlockProduction?.Invoke(this, eventArgs);
+                return eventArgs.BlockProductionTask;
+            }
+        }
 
         private async Task<Block?> InvokeTriggerBlockProductionDelayed(BlockProductionEventArgs e)
         {
