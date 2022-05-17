@@ -69,7 +69,9 @@ namespace Nethermind.Consensus.Ethash
             
             BlockProducerEnv producerEnv = _nethermindApi.BlockProducerEnvFactory.Create(additionalTxSource);
             
-            DefaultBlockProductionTrigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(20000))
+            DefaultBlockProductionTrigger = new BuildBlocksOnlyWhenNotProcessing(
+                getFromApi.ManualBlockProductionTrigger, getFromApi.BlockProcessingQueue, getFromApi.BlockTree,
+                getFromApi.LogManager)
                 .Or(getFromApi.ManualBlockProductionTrigger);
             
             IBlockProducer minedBlockProducer = new MinedBlockProducer(
@@ -82,7 +84,8 @@ namespace Nethermind.Consensus.Ethash
                 new TargetAdjustedGasLimitCalculator(_nethermindApi.SpecProvider, getFromApi.Config<IMiningConfig>()),
                 _nethermindApi.Timestamper,
                 _nethermindApi.SpecProvider,
-                _nethermindApi.LogManager);
+                _nethermindApi.LogManager,
+                getFromApi.ManualBlockProductionTrigger);
             _nethermindApi.BlockProducer = minedBlockProducer;
             return Task.FromResult(minedBlockProducer);
         }
