@@ -259,7 +259,8 @@ namespace Nethermind.Runner.Test
 
         [TestCase("baseline", true)]
         [TestCase("spaceneth", true)]
-        [TestCase("^spaceneth ^baseline", false)]
+        [TestCase("ropsten", true)]
+        [TestCase("^spaceneth ^baseline ^ropsten", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
