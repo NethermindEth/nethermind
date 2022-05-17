@@ -68,10 +68,11 @@ namespace Nethermind.Consensus.Ethash
             var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
             
             BlockProducerEnv producerEnv = _nethermindApi.BlockProducerEnvFactory.Create(additionalTxSource);
-            
-            DefaultBlockProductionTrigger = new BuildBlocksOnlyWhenNotProcessing(
-                getFromApi.ManualBlockProductionTrigger, getFromApi.BlockProcessingQueue, getFromApi.BlockTree,
-                getFromApi.LogManager)
+
+            IManualBlockProductionTrigger startTrigger = new BuildBlocksWhenProcessingFinished(
+                getFromApi.BlockProcessingQueue, getFromApi.BlockTree,
+                getFromApi.LogManager);
+            DefaultBlockProductionTrigger = startTrigger
                 .Or(getFromApi.ManualBlockProductionTrigger);
             
             IBlockProducer minedBlockProducer = new MinedBlockProducer(
@@ -85,7 +86,7 @@ namespace Nethermind.Consensus.Ethash
                 _nethermindApi.Timestamper,
                 _nethermindApi.SpecProvider,
                 _nethermindApi.LogManager,
-                getFromApi.ManualBlockProductionTrigger);
+                startTrigger);
             _nethermindApi.BlockProducer = minedBlockProducer;
             return Task.FromResult(minedBlockProducer);
         }
