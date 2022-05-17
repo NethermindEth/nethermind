@@ -15,12 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Nethermind.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Validators
 {
     public interface IHeaderValidator
     {
-        bool ValidateHash(BlockHeader header);
         bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false);
         bool Validate(BlockHeader header, bool isUncle = false);
     }

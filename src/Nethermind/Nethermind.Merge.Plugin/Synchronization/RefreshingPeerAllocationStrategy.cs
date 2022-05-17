@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -55,7 +56,7 @@ public class RefreshingPeerAllocationStrategy : IPeerAllocationStrategy
     private Keccak? _lastPivotHash;
 
     public RefreshingPeerAllocationStrategy(
-        IPeerAllocationStrategy innerStrategy, 
+        IPeerAllocationStrategy innerStrategy,
         IPivot pivot, 
         int maxPeers,
         ILogManager logManager)
@@ -71,7 +72,12 @@ public class RefreshingPeerAllocationStrategy : IPeerAllocationStrategy
             maxPeers,
             "pivotPeerCache");
         _logger = logManager.GetClassLogger();
-        // pivot.Changed += (o, e) => _pivotPeerCache.Clear();
+        pivot.Changed += OnPivotChanged;
+    }
+
+    private void OnPivotChanged(object? sender, EventArgs e)
+    {
+        _pivotPeerCache.Clear();
     }
 
     public bool CanBeReplaced => true;
@@ -118,33 +124,6 @@ public class RefreshingPeerAllocationStrategy : IPeerAllocationStrategy
             {
                 ArrayPool<PeerInfo>.Shared.Return(goodPeers);
             }
-            // List<PeerInfo> goodPeers = new List<PeerInfo>(_maxPeers);
-            // try
-            // {
-                // foreach (PeerInfo peer in peers)
-                // {
-                //     if (PeerHasPivot(peer))
-                //     {
-                //         goodPeers.Add(peer);
-                //     }
-                //     else
-                //     {
-                //         _peerRefreshQueue.TryAdd(peer);
-                //     }
-                // }
-                //
-                // if (_peerRefreshQueue.Count > 0)
-                // {
-                //     TryStart();
-                // }
-                //
-                // PeerInfo? allocatedPeer = _innerStrategy.Allocate(currentPeer, goodPeers, nodeStatsManager, blockTree);
-                //
-                // if (_logger.IsTrace) _logger.Trace($"Managed to allocate peer {(allocatedPeer?.ToString() ?? "None")} from {goodPeers.Count} candidates with same pivot");
-                //
-                // return allocatedPeer;
-                
-            // }
         }
         else
         {
@@ -252,6 +231,12 @@ public class RefreshingPeerAllocationStrategy : IPeerAllocationStrategy
                                 if (_logger.IsTrace) _logger.Trace($"Refresh allocation failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                                 _stats?.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
                                 syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - null response");
+                                return;
+                            }
+                            else if (!HeaderValidator.ValidateHash(header))
+                            {
+                                _stats?.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
+                                syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - invalid header");
                                 return;
                             }
 

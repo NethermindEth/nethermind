@@ -43,4 +43,5 @@ public class Pivot : IPivot
     public UInt256? PivotTotalDifficulty { get; }
         
     public long PivotDestinationNumber { get; }
+    public event EventHandler? Changed { add { } remove { } }
 }

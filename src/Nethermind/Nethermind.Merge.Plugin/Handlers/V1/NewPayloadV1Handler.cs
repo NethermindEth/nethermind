@@ -99,7 +99,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
             }
 
-            if (_blockValidator.ValidateHash(block.Header) == false)
+            if (!HeaderValidator.ValidateHash(block.Header))
             {
                 if (_logger.IsWarn)
                     _logger.Warn($"InvalidBlockHash. Result of {requestStr}");

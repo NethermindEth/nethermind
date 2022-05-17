@@ -49,7 +49,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockCacheService _blockCacheService;
         private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
-        private readonly IPeerRefresher _peerRefresher;
         private int i = 0;
 
         public ForkchoiceUpdatedV1Handler(
@@ -60,7 +59,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IPayloadPreparationService payloadPreparationService,
             IBlockCacheService blockCacheService,
             IMergeSyncController mergeSyncController,
-            IPeerRefresher peerRefresher,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -72,7 +70,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _payloadPreparationService = payloadPreparationService;
             _blockCacheService = blockCacheService;
             _mergeSyncController = mergeSyncController;
-            _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
         }
 
@@ -105,9 +102,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.Hash ?? newHeadBlock.CalculateHash()))
             {
-                // ToDO of course we shouldn't refresh the peers in this way. This need to be optimized and we need to rethink refreshing
-                if (i % 10 == 0)
-                    _peerRefresher.RefreshPeers(newHeadBlock.Hash!);
                 ++i;
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                 if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}"); }
