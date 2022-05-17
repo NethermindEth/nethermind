@@ -74,6 +74,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _gossipPolicy.CanGossipBlocks.Returns(true);
+            _gossipPolicy.ShouldGossipBlock(Arg.Any<BlockHeader>()).Returns(true);
             _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(false);
             _handler = new Eth62ProtocolHandler(
                 _session,
