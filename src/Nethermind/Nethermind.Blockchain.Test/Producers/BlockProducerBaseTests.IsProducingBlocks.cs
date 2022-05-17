@@ -95,7 +95,8 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                Substitute.For<IManualBlockProductionTrigger>());
             await AssertIsProducingBlocks(blockProducer);
         }
         
