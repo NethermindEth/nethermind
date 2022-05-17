@@ -737,11 +737,11 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if (isKnown && fillBeaconBlock)
-            {
-                BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-                UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
-            }
+            // if (isKnown && fillBeaconBlock)
+            // {
+            //     BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+            //     UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
+            // }
             
             if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
             {
@@ -1418,6 +1418,7 @@ namespace Nethermind.Blockchain
 
             BlockInfo info = level.BlockInfos[index.Value];
             info.WasProcessed = wasProcessed;
+          //  ToDo remove beacon metadata here?
             if (index.Value != 0)
             {
                 (level.BlockInfos[index.Value], level.BlockInfos[0]) =

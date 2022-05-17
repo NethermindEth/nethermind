@@ -157,7 +157,7 @@ public partial class BlockTreeTests
                 private BlockTreeBuilder? _syncedTreeBuilder;
                 private IChainLevelHelper? _chainLevelHelper;
 
-                public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1)
+                public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1, bool moveBlocksToMainChain = true)
                 {
                     NotSyncedTreeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize);
                     NotSyncedTree = new(
@@ -187,7 +187,8 @@ public partial class BlockTreeTests
                     }
 
                     _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, new SyncConfig(), LimboLogs.Instance);
-                    NotSyncedTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
+                    if (moveBlocksToMainChain)
+                        NotSyncedTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
                     return this;
                 }
                 
@@ -309,6 +310,17 @@ public partial class BlockTreeTests
                     Assert.AreEqual(expected,NotSyncedTree!.BestSuggestedBody!.Number);
                     if (expectedTotalDifficulty != null)
                         Assert.AreEqual(expectedTotalDifficulty, NotSyncedTree.BestSuggestedBody.TotalDifficulty);
+                    return this;
+                }
+                
+                public ScenarioBuilder AssertMetadata(int startNumber, int finalNumber, BlockMetadata? metadata)
+                {
+                    for (int i = startNumber; i < finalNumber; ++i)
+                    {
+                        ChainLevelInfo? level = NotSyncedTree.FindLevel(i);
+                        Assert.AreEqual(metadata, level?.MainChainBlock?.Metadata ?? BlockMetadata.None);
+                    }
+
                     return this;
                 }
 

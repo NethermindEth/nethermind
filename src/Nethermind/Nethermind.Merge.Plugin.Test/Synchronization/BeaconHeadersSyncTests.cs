@@ -111,7 +111,7 @@ public class BeaconHeadersSyncTests
         BlockTree blockTree = new(memDbProvider, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb),
             MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
         ISyncConfig syncConfig = new SyncConfig
-        {
+        { 
             FastSync = true,
             FastBlocks = true,
             PivotNumber = "1000",
