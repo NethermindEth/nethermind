@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization
 
         public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
-            if (!_gossipPolicy.ShouldGossipBlocks) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
             
             if (block.TotalDifficulty == null)
             {
@@ -313,7 +313,7 @@ namespace Nethermind.Synchronization
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
         {
-            if (!_gossipPolicy.ShouldGossipBlocks) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
             
             if (number > syncPeer.HeadNumber)
             {
@@ -492,7 +492,7 @@ namespace Nethermind.Synchronization
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
         {
-            if (!_gossipPolicy.ShouldGossipBlocks) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
             
             try
             {

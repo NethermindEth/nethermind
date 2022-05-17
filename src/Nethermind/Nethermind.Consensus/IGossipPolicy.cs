@@ -15,13 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Core;
+
 namespace Nethermind.Consensus
 {
     public interface IGossipPolicy
     {
         public bool ShouldDiscardBlocks => false;
         
-        public bool ShouldGossipBlocks { get; }
+        public bool CanGossipBlocks { get; }
+
+        public bool ShouldGossipBlock(BlockHeader header) => CanGossipBlocks;
 
         public bool ShouldDisconnectGossipingNodes { get; }
     }
@@ -32,7 +36,7 @@ namespace Nethermind.Consensus
 
         public static ShouldNotGossip Instance { get; } = new ();
         
-        public bool ShouldGossipBlocks => false;
+        public bool CanGossipBlocks => false;
         public bool ShouldDisconnectGossipingNodes => true;
     }
     
@@ -42,7 +46,7 @@ namespace Nethermind.Consensus
 
         public static IGossipPolicy Instance { get; } = new ShouldGossip();
         
-        public bool ShouldGossipBlocks => true;
+        public bool CanGossipBlocks => true;
         public bool ShouldDisconnectGossipingNodes => false;
     }
     
