@@ -165,7 +165,8 @@ namespace Nethermind.Consensus.Ethash
             if (dataSet is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
-                dataSet = BuildCache(epoch);
+                _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
+                dataSet = _hintBasedCache.Get(epoch);
             }
 
             ulong fullSize = GetDataSize(epoch);

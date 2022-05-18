@@ -33,6 +33,8 @@ namespace Nethermind.Consensus.Ethash
 {
     public class MinedBlockProducer : BlockProducerBase
     {
+        private IManualBlockProductionTrigger _startTrigger;
+        
         public MinedBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
@@ -42,7 +44,9 @@ namespace Nethermind.Consensus.Ethash
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            IManualBlockProductionTrigger startTrigger
+            )
             : base(
                 txSource,
                 processor,
@@ -56,6 +60,13 @@ namespace Nethermind.Consensus.Ethash
                 logManager, 
                 new EthashDifficultyCalculator(specProvider))
         {
+            _startTrigger = startTrigger;
+        }
+        
+        public override void Start()
+        {
+            base.Start();
+            _startTrigger.BuildBlock();
         }
     }
 }

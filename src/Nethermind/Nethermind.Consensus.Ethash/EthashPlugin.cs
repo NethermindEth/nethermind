@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -36,6 +38,7 @@ namespace Nethermind.Consensus.Ethash
         public string Description => "Ethash Consensus";
 
         public string Author => "Nethermind"; 
+        
         
         public Task Init(INethermindApi nethermindApi)
         {
@@ -62,7 +65,30 @@ namespace Nethermind.Consensus.Ethash
         
         public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
-            return Task.FromResult((IBlockProducer)null);
+            var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
+            
+            BlockProducerEnv producerEnv = _nethermindApi.BlockProducerEnvFactory.Create(additionalTxSource);
+
+            IManualBlockProductionTrigger startTrigger = new BuildBlocksWhenProcessingFinished(
+                getFromApi.BlockProcessingQueue, getFromApi.BlockTree,
+                getFromApi.LogManager);
+            DefaultBlockProductionTrigger = startTrigger
+                .Or(getFromApi.ManualBlockProductionTrigger);
+            
+            IBlockProducer minedBlockProducer = new MinedBlockProducer(
+                producerEnv.TxSource,
+                producerEnv.ChainProcessor, 
+                _nethermindApi.Sealer,
+                _nethermindApi.BlockTree,
+                blockProductionTrigger ?? DefaultBlockProductionTrigger,
+                producerEnv.ReadOnlyStateProvider,
+                new TargetAdjustedGasLimitCalculator(_nethermindApi.SpecProvider, getFromApi.Config<IMiningConfig>()),
+                _nethermindApi.Timestamper,
+                _nethermindApi.SpecProvider,
+                _nethermindApi.LogManager,
+                startTrigger);
+            _nethermindApi.BlockProducer = minedBlockProducer;
+            return Task.FromResult(minedBlockProducer);
         }
 
         public Task InitNetworkProtocol()
@@ -77,6 +103,6 @@ namespace Nethermind.Consensus.Ethash
         
         public string SealEngineType => Nethermind.Core.SealEngineType.Ethash;
 
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi.ManualBlockProductionTrigger;
+        public IBlockProductionTrigger DefaultBlockProductionTrigger { get; private set; }
     }
 }
