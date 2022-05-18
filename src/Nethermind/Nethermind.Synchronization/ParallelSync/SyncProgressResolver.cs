@@ -23,6 +23,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Snap;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -39,6 +41,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IReceiptStorage _receiptStorage;
         private readonly IDb _stateDb;
         private readonly ITrieNodeResolver _trieNodeResolver;
+        private readonly ProgressTracker _progressTracker;
         private readonly ISyncConfig _syncConfig;
 
         // ReSharper disable once NotAccessedField.Local
@@ -51,6 +54,7 @@ namespace Nethermind.Synchronization.ParallelSync
             IReceiptStorage receiptStorage,
             IDb stateDb,
             ITrieNodeResolver trieNodeResolver,
+            ProgressTracker progressTracker,
             ISyncConfig syncConfig,
             ILogManager logManager)
         {
@@ -59,6 +63,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _trieNodeResolver = trieNodeResolver ?? throw new ArgumentNullException(nameof(trieNodeResolver));
+            _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
 
             _bodiesBarrier = _syncConfig.AncientBodiesBarrierCalc;
@@ -139,6 +144,7 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
+        public long FindBestBeaconHeader() => _blockTree.BestSuggestedBeaconHeader?.Number ?? 0;
 
         public long FindBestFullBlock() =>
             Math.Min(FindBestHeader(),
@@ -170,7 +176,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
             }
 
-            return _blockTree.FindHeader(blockHash)?.TotalDifficulty;
+            return _blockTree.FindHeader(blockHash)?.TotalDifficulty == 0 ? null : _blockTree.FindHeader(blockHash)?.TotalDifficulty;
         }
 
         public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (!_syncConfig.DownloadHeadersInFastSync ||
@@ -185,6 +191,8 @@ namespace Nethermind.Synchronization.ParallelSync
                                                                           (_receiptStorage
                                                                                .LowestInsertedReceiptBlockNumber ??
                                                                            long.MaxValue) <= _receiptsBarrier);
+
+        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
 
         private bool IsFastBlocks()
         {

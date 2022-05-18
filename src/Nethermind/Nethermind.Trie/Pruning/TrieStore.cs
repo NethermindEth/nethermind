@@ -48,8 +48,8 @@ namespace Nethermind.Trie.Pruning
                 Debug.Assert(node.Keccak is not null, "Cannot store in cache nodes without resolved key.");
                 if (_objectsCache.TryAdd(node.Keccak!, node))
                 {
+                    Metrics.CachedNodesCount = Interlocked.Increment(ref _count);
                     _trieStore.MemoryUsedByDirtyCache += node.GetMemorySize(false);
-                    Metrics.CachedNodesCount = _objectsCache.Count;
                 }
             }
 
@@ -103,11 +103,16 @@ namespace Nethermind.Trie.Pruning
 
             private readonly ConcurrentDictionary<Keccak, TrieNode> _objectsCache = new();
 
-            public int Count => _objectsCache.Count;
+            private int _count = 0;
+
+            public int Count => _count;
 
             public void Remove(Keccak hash)
             {
-                _objectsCache.Remove(hash, out _);
+                if (_objectsCache.Remove(hash, out _))
+                {
+                    Metrics.CachedNodesCount = Interlocked.Decrement(ref _count);
+                }
             }
 
             public void Dump()
@@ -125,6 +130,8 @@ namespace Nethermind.Trie.Pruning
             public void Clear()
             {
                 _objectsCache.Clear();
+                Interlocked.Exchange(ref _count, 0);
+                Metrics.CachedNodesCount = 0;
                 _trieStore.MemoryUsedByDirtyCache = 0;
             }
         }
@@ -212,7 +219,7 @@ namespace Nethermind.Trie.Pruning
             EnsureCommitSetExistsForBlock(blockNumber);
 
             if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
-            if (!nodeCommitInfo.IsEmptyBlockMarker)
+            if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
             {
                 TrieNode node = nodeCommitInfo.Node!;
 
@@ -337,6 +344,20 @@ namespace Nethermind.Trie.Pruning
         }
 
         public byte[] LoadRlp(Keccak keccak) => LoadRlp(keccak, null);
+
+        public bool IsPersisted(Keccak keccak)
+        {
+            byte[]? rlp = _currentBatch?[keccak.Bytes] ?? _keyValueStore[keccak.Bytes];
+
+            if (rlp is null)
+            {
+                return false;
+            }
+
+            Metrics.LoadedFromDbNodesCount++;
+
+            return true;
+        }
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
         {

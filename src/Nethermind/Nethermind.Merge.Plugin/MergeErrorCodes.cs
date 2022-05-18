@@ -23,5 +23,9 @@ namespace Nethermind.Merge.Plugin
         public const int None = 0;
 
         public const int UnavailablePayloadV1 = -32001;
+        
+        public const int InvalidForkchoiceState = -38002;
+
+        public const int InvalidPayloadAttributes = -38003;
     }
 }

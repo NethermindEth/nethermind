@@ -15,7 +15,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
 {
-    public partial class MultiSyncModeSelectorTests
+    public partial class MultiSyncModeSelectorTestsBase
     {
         public static class Scenario
         {
@@ -671,6 +671,32 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder WhenSnapSyncWithFastBlocksIsConfigured()
+                {
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.SnapSync = true;
+                        SyncConfig.FastBlocks = true;
+                        return "snap sync with fast blocks";
+                    });
+
+                    return this;
+                }
+
+                public ScenarioBuilder WhenSnapSyncWithoutFastBlocksIsConfigured()
+                {
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.SnapSync = true;
+                        SyncConfig.FastBlocks = false;
+                        return "snap sync without fast blocks";
+                    });
+
+                    return this;
+                }
+
                 public ScenarioBuilder WhenFullArchiveSyncIsConfigured()
                 {
                     _configActions.Add(() =>
@@ -691,8 +717,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             overwrite.Invoke();
                         }
-
-                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, LimboLogs.Instance, _needToWaitForHeaders);
+                        
+                        TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(SyncProgressResolver, LimboLogs.Instance);
+                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance, _needToWaitForHeaders);
                         selector.DisableTimer();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);

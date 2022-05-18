@@ -17,6 +17,7 @@
 
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin
@@ -30,6 +31,12 @@ namespace Nethermind.Merge.Plugin
         
         [ConfigItem(Description = "Account to be used by the block author. If it is not specified the address zero will be used.", DefaultValue = "null")]
         public string? FeeRecipient { get; set; }
+
+        [ConfigItem(Description = "Final total difficulty for the terminal PoW block.", DefaultValue = "null")]
+        public string? FinalTotalDifficulty { get; set; }
+        
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "null")]
+        UInt256? FinalTotalDifficultyParsed => string.IsNullOrWhiteSpace(FinalTotalDifficulty) ? null : UInt256.Parse(FinalTotalDifficulty);
         
         [ConfigItem(Description = "Terminal total difficulty used for transition process.", DefaultValue = "null")]
         public string? TerminalTotalDifficulty { get; set; }
@@ -37,13 +44,16 @@ namespace Nethermind.Merge.Plugin
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "null")]
         UInt256? TerminalTotalDifficultyParsed => string.IsNullOrWhiteSpace(TerminalTotalDifficulty) ? null : UInt256.Parse(TerminalTotalDifficulty);
         
-        [ConfigItem(Description = "Terminal PoW block hash used for transition process.", DefaultValue = "0x0000000000000000000000000000000000000000000000000000000000000000")]
-        public Keccak TerminalBlockHash { get; set; }
+        [ConfigItem(Description = "Terminal PoW block hash used for transition process.", DefaultValue = "null")]
+        public string? TerminalBlockHash { get; set; }
         
         [ConfigItem(Description = "Terminal PoW block number used for transition process.")]
         public long? TerminalBlockNumber { get; set; }
 
         [ConfigItem(Description = "Seconds per slot.", DefaultValue = "12")]
         public ulong SecondsPerSlot { get; set; }
+        
+        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
+        Keccak TerminalBlockHashParsed => string.IsNullOrWhiteSpace(TerminalBlockHash) ? Keccak.Zero : new Keccak(Bytes.FromHexString(TerminalBlockHash));
     }
 }

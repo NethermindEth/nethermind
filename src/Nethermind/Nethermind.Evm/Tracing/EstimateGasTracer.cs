@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Tracing
             StatusCode = Evm.StatusCode.Failure;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             throw new NotSupportedException();
         }
@@ -120,6 +120,11 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
         {
             throw new NotSupportedException();
         }

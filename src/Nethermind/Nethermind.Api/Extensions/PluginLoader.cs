@@ -105,10 +105,46 @@ namespace Nethermind.Api.Extensions
                     logger.Error($"Failed to load plugin {pluginAssembly}", e);
                 }
             }
-            
-            // consensus plugins at front
-            _pluginTypes.Sort((p1, p2) => 
-                typeof(IConsensusPlugin).IsAssignableFrom(p2).CompareTo(typeof(IConsensusPlugin).IsAssignableFrom(p1)));
+        }
+
+        public void OrderPlugins(IPluginConfig pluginConfig)
+        {
+            List<string> order = pluginConfig.PluginOrder.Select(s => s.ToLower() + "plugin").ToList();
+            _pluginTypes.Sort((f, s) =>
+            {
+                bool fIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(f);
+                bool sIsConsensus = typeof(IConsensusPlugin).IsAssignableFrom(s);
+
+                // Consensus plugins always at front
+                if (fIsConsensus && !sIsConsensus)
+                {
+                    return -1;
+                }
+
+                if (sIsConsensus && !fIsConsensus)
+                {
+                    return 1;
+                }
+
+                int fPos = order.IndexOf(f.Name.ToLower());
+                int sPos = order.IndexOf(s.Name.ToLower());
+                if (fPos == -1)
+                {
+                    if (sPos == -1)
+                    {
+                        return f.Name.CompareTo(s.Name);
+                    }
+
+                    return 1;
+                }
+
+                if (sPos == -1)
+                {
+                    return -1;
+                }
+
+                return fPos.CompareTo(sPos);
+            });
         }
     }
 }

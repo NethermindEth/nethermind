@@ -40,16 +40,17 @@ public class NoPoS : IPoSSwitcher
 #pragma warning restore 67
     
     public UInt256? TerminalTotalDifficulty => null;
-    public long? TerminalBlockNumber => null;
-    public Keccak? TerminalBlockHash => null;
+    public bool TransitionFinished => false;
+    public Keccak ConfiguredTerminalBlockHash => Keccak.Zero;
+    public long? ConfiguredTerminalBlockNumber => null;
 
-    public bool TryUpdateTerminalBlock(BlockHeader header, BlockHeader? parent = null)
+    public bool TryUpdateTerminalBlock(BlockHeader header)
     {
         throw new NotImplementedException();
     }
 
-    public (bool IsTerminal, bool IsPostMerge) GetBlockSwitchInfo(BlockHeader header, BlockHeader? parent = null) =>
+    public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header) =>
         (false, false);
 
-    public bool IsPostMerge(BlockHeader header, BlockHeader? parent = null) => false;
+    public bool IsPostMerge(BlockHeader header) => false;
 }

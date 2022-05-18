@@ -31,12 +31,14 @@ namespace Nethermind.Stats
         private long _bodiesTransferSpeedEventCount;
         private long _receiptsTransferSpeedEventCount;
         private long _nodesTransferSpeedEventCount;
+        private long _snapRangesTransferSpeedEventCount;
         private long _latencyEventCount;
-        
+
         private decimal? _averageNodesTransferSpeed;
         private decimal? _averageHeadersTransferSpeed;
         private decimal? _averageBodiesTransferSpeed;
         private decimal? _averageReceiptsTransferSpeed;
+        private decimal? _averageSnapRangesTransferSpeed;
         private decimal? _averageLatency;
 
         private int[] _statCountersArray;
@@ -50,14 +52,14 @@ namespace Nethermind.Stats
         private static readonly Random Random = new Random();
 
         private static int _statsLength = Enum.GetValues(typeof(NodeStatsEventType)).Length;
-        
+
         public NodeStatsLight(Node node)
         {
             _statCountersArray = new int[_statsLength];
             _statsParameters = StatsParameters.Instance;
             Node = node;
         }
-        
+
         public long CurrentNodeReputation => CalculateCurrentReputation();
 
         public long CurrentPersistedNodeReputation { get; set; }
@@ -81,7 +83,7 @@ namespace Nethermind.Stats
                 _statCountersArray[(int)nodeStatsEventType]++;
             }
         }
-        
+
         public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
         {
             if (nodeStatsEventType == NodeStatsEventType.ConnectionFailed)
@@ -108,7 +110,7 @@ namespace Nethermind.Stats
             {
                 _lastRemoteDisconnect = disconnectReason;
             }
-            
+
             Increment(NodeStatsEventType.Disconnect);
         }
 
@@ -138,7 +140,7 @@ namespace Nethermind.Stats
         {
             lock (_statCountersArray)
             {
-                return _statCountersArray[(int) nodeStatsEventType] > 0;
+                return _statCountersArray[(int)nodeStatsEventType] > 0;
             }
         }
 
@@ -163,6 +165,9 @@ namespace Nethermind.Stats
                     case TransferSpeedType.Receipts:
                         _averageReceiptsTransferSpeed = ((_receiptsTransferSpeedEventCount * (_averageReceiptsTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_receiptsTransferSpeedEventCount);
                         break;
+                    case TransferSpeedType.SnapRanges:
+                        _averageSnapRangesTransferSpeed = ((_snapRangesTransferSpeedEventCount * (_averageSnapRangesTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_snapRangesTransferSpeedEventCount);
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
                 }
@@ -178,6 +183,21 @@ namespace Nethermind.Stats
                 TransferSpeedType.Headers => _averageHeadersTransferSpeed,
                 TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
                 TransferSpeedType.Receipts => _averageReceiptsTransferSpeed,
+                TransferSpeedType.SnapRanges => _averageSnapRangesTransferSpeed,
+                _ => throw new ArgumentOutOfRangeException()
+            });
+        }
+
+        public string GetPaddedAverageTransferSpeed(TransferSpeedType transferSpeedType)
+        {
+            return (transferSpeedType switch
+            {
+                TransferSpeedType.Latency => $"{_averageLatency ?? 0,5:0}",
+                TransferSpeedType.NodeData => $"{_averageNodesTransferSpeed ?? 0,5:0}",
+                TransferSpeedType.Headers => $"{_averageHeadersTransferSpeed ?? 0,5:0}",
+                TransferSpeedType.Bodies => $"{_averageBodiesTransferSpeed ?? 0,5:0}",
+                TransferSpeedType.Receipts => $"{_averageReceiptsTransferSpeed ?? 0,5:0}",
+                TransferSpeedType.SnapRanges => $"{_averageSnapRangesTransferSpeed ?? 0,5:0}",
                 _ => throw new ArgumentOutOfRangeException()
             });
         }
@@ -193,7 +213,7 @@ namespace Nethermind.Stats
             {
                 return (true, NodeStatsEventType.ConnectionFailed);
             }
-            
+
             return (false, null);
         }
 
@@ -215,8 +235,8 @@ namespace Nethermind.Stats
                     disconnectDelay = randomizedDelay < 10 ? randomizedDelay + 10 : randomizedDelay;
                 }
             }
-            
-            
+
+
             bool result = timePassed < disconnectDelay;
             return result;
         }
@@ -234,15 +254,15 @@ namespace Nethermind.Stats
 
             return result;
         }
-        
+
         private int GetFailedConnectionDelay()
         {
             int failedConnectionFailed;
             lock (_statCountersArray)
             {
-                failedConnectionFailed = _statCountersArray[(int)NodeStatsEventType.ConnectionFailed];    
+                failedConnectionFailed = _statCountersArray[(int)NodeStatsEventType.ConnectionFailed];
             }
-            
+
             if (failedConnectionFailed == 0)
             {
                 return 100;
@@ -255,7 +275,7 @@ namespace Nethermind.Stats
 
             return _statsParameters.FailedConnectionDelays[failedConnectionFailed - 1];
         }
-        
+
         private int GetDisconnectDelay()
         {
             int disconnectDelay;
@@ -281,31 +301,30 @@ namespace Nethermind.Stats
             return disconnectDelay;
         }
 
-
         private long CalculateCurrentReputation()
         {
             return IsReputationPenalized() ? -100 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation();
         }
 
         private bool HasDisconnectedOnce => _lastLocalDisconnect.HasValue || _lastRemoteDisconnect.HasValue;
-        
+
         private long CalculateSessionReputation()
         {
             long discoveryReputation = 0;
             long rlpxReputation = 0;
             lock (_statCountersArray)
             {
-                
+
                 discoveryReputation += Math.Min(_statCountersArray[(int)NodeStatsEventType.DiscoveryPingIn], 10) * (_statCountersArray[(int)NodeStatsEventType.DiscoveryPingIn] == _statCountersArray[(int)NodeStatsEventType.DiscoveryPingOut] ? 2 : 1);
                 discoveryReputation += Math.Min(_statCountersArray[(int)NodeStatsEventType.DiscoveryNeighboursIn], 10) * 2;
 
-                
+
                 rlpxReputation += Math.Min(_statCountersArray[(int)NodeStatsEventType.P2PPingIn], 10) * (_statCountersArray[(int)NodeStatsEventType.P2PPingIn] == _statCountersArray[(int)NodeStatsEventType.P2PPingOut] ? 2 : 1);
                 rlpxReputation += _statCountersArray[(int)NodeStatsEventType.HandshakeCompleted] > 0 ? 10 : 0;
                 rlpxReputation += _statCountersArray[(int)NodeStatsEventType.P2PInitialized] > 0 ? 10 : 0;
                 rlpxReputation += _statCountersArray[(int)NodeStatsEventType.Eth62Initialized] > 0 ? 20 : 0;
                 rlpxReputation += _statCountersArray[(int)NodeStatsEventType.SyncStarted] > 0 ? 1000 : 0;
-                rlpxReputation +=  (rlpxReputation != 0 && !HasDisconnectedOnce) ? 1 : 0;
+                rlpxReputation += (rlpxReputation != 0 && !HasDisconnectedOnce) ? 1 : 0;
             }
 
             if (HasDisconnectedOnce)
@@ -314,22 +333,22 @@ namespace Nethermind.Stats
                 {
                     rlpxReputation = (long)(rlpxReputation * 0.3);
                 }
-                else if(_lastLocalDisconnect != DisconnectReason.DisconnectRequested)
+                else if (_lastLocalDisconnect != DisconnectReason.DisconnectRequested)
                 {
                     if (_lastRemoteDisconnect == DisconnectReason.TooManyPeers)
                     {
-                        rlpxReputation = (long) (rlpxReputation * 0.3);
+                        rlpxReputation = (long)(rlpxReputation * 0.3);
                     }
                     else if (_lastRemoteDisconnect != DisconnectReason.DisconnectRequested)
                     {
-                        rlpxReputation = (long) (rlpxReputation * 0.2);
+                        rlpxReputation = (long)(rlpxReputation * 0.2);
                     }
                 }
             }
 
             if (DidEventHappen(NodeStatsEventType.ConnectionFailed))
             {
-                rlpxReputation = (long) (rlpxReputation * 0.2);
+                rlpxReputation = (long)(rlpxReputation * 0.2);
             }
 
             if (DidEventHappen(NodeStatsEventType.SyncInitFailed))
@@ -354,7 +373,7 @@ namespace Nethermind.Stats
 
 
             if (_lastLocalDisconnect.HasValue)
-            {               
+            {
                 if (_statsParameters.PenalizedReputationLocalDisconnectReasons.Contains(_lastLocalDisconnect.Value))
                 {
                     return true;

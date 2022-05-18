@@ -36,9 +36,9 @@ namespace Nethermind.Synchronization.Blocks
         private static DownloaderOptions BuildOptions() => DownloaderOptions.WithBodies | DownloaderOptions.Process;
 
         // ReSharper disable once RedundantTypeArgumentsOfMethod
-        public override Task<BlocksRequest?> PrepareRequest() => Task.FromResult<BlocksRequest?>(ShouldBeActive() ? _blocksRequest : null);
+        public override Task<BlocksRequest?> PrepareRequest() => Task.FromResult<BlocksRequest?>(_blocksRequest);
 
-        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response)
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest? response, PeerInfo peer = null)
         {
             FallAsleep();
             return SyncResponseHandlingResult.OK;

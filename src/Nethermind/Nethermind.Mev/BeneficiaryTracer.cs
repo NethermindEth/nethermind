@@ -67,7 +67,7 @@ namespace Nethermind.Mev
         public void ReportStorageRead(StorageCell storageCell) { }
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) { }
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null) { }
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc) { }
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) { }
         public void ReportOperationError(EvmExceptionType error) { }
         public void ReportOperationRemainingGas(long gas) { }
         public void SetOperationStack(List<string> stackTrace) { }
@@ -77,6 +77,7 @@ namespace Nethermind.Mev
         public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data) { }
         public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) { }
         public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) { }
         public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }

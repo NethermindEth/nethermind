@@ -273,7 +273,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             ParityVmOperationTrace operationTrace = new();
             _gasAlreadySetForCurrentOp = false;
@@ -340,6 +340,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new NotSupportedException();
 
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) => throw new NotSupportedException();
+        
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             if (_trace.StateChanges is null)

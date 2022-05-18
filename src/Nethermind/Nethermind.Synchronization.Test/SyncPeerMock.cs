@@ -80,6 +80,7 @@ namespace Nethermind.Synchronization.Test
         public long HeadNumber { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
+        public bool IsPriority { get; set; }
 
         public void Disconnect(DisconnectReason reason, string details)
         {
@@ -166,7 +167,7 @@ namespace Nethermind.Synchronization.Test
 
         public PublicKey Id => Node.Id;
         
-        public void SendNewTransactions(IEnumerable<Transaction> txs) { }
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
         public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {

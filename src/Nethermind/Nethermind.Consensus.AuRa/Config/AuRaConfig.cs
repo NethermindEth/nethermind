@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.AuRa.Config
 {
     public class AuRaConfig : IAuraConfig
     {
-        public bool ForceSealing { get; set; }
+        public bool ForceSealing { get; set; } = true;
         
         public bool AllowAuRaPrivateChains { get; set; }
         

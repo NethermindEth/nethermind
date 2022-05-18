@@ -61,12 +61,12 @@ namespace Nethermind.Evm.Tracing.GethStyle
             _trace.ReturnValue = output ?? Array.Empty<byte>();
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge)
         {
             GethTxTraceEntry previousTraceEntry = _traceEntry;
             _traceEntry = new GethTxTraceEntry();
             _traceEntry.Pc = pc;
-            _traceEntry.Operation = Enum.GetName(typeof(Instruction), opcode);
+            _traceEntry.Operation = opcode.GetName(isPostMerge);
             _traceEntry.Gas = gas;
             _traceEntry.Depth = depth;
             _trace.Entries.Add(_traceEntry);
@@ -142,6 +142,11 @@ namespace Nethermind.Evm.Tracing.GethStyle
             byte[] bigEndian = new byte[32];
             storageIndex.ToBigEndian(bigEndian);
             _traceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left).ToArray().ToHexString(false);
+        }
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+            
         }
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)

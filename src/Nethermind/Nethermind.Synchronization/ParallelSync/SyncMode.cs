@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         FastBlocks = 4,
         /// <summary>
-        /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the picot for fast blocks is 0 so the fast blocks finish immediately. 
+        /// A standard fast sync mode before the peers head - 32 (threshold). It happens after the fast blocks finishes to download from pivot downwards. By default the pivot for fast blocks is 0 so the fast blocks finish immediately. 
         /// </summary>
         FastSync = 8,
         /// <summary>
@@ -63,8 +63,28 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Stage of fast sync that downloads headers in parallel.
         /// </summary>
         FastReceipts = FastBlocks | 1024,
+        /// <summary>
+        /// Stage of snap sync that state is being downloaded (accounts, storages, code, proofs)
+        /// </summary>
+        SnapSync = 2048,
         
-        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | FastHeaders | FastBodies | FastReceipts
+        /// <summary>
+        /// Everything is in a beacon node control. There is no need to do any sync action
+        /// </summary>
+        BeaconControlMode = 2048,
+        
+        /// <summary>
+        /// Reverse download of headers from beacon pivot to genesis
+        /// </summary> 
+        BeaconHeaders = 4096,
+        
+        /// <summary>
+        /// Forward processing of blocks received during beacon sync
+        /// </summary>
+        BeaconFullSync = 8192,
+        
+        All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | 
+              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconControlMode | BeaconHeaders
     }
     
     public static class SyncModeExtensions

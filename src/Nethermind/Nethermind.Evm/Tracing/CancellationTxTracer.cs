@@ -194,12 +194,12 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingInstructions)
             {
-                _innerTracer.StartOperation(depth, gas, opcode, pc);
+                _innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
             }
         }
 
@@ -317,6 +317,15 @@ namespace Nethermind.Evm.Tracing
             if (_innerTracer.IsTracingOpLevelStorage)
             {
                 _innerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
+            }
+        }
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+            _token.ThrowIfCancellationRequested();
+            if (_innerTracer.IsTracingOpLevelStorage)
+            {
+                _innerTracer.LoadOperationStorage(address, storageIndex, value);
             }
         }
 

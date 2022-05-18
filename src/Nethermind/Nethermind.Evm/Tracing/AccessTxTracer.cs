@@ -90,7 +90,7 @@ namespace Nethermind.Evm.Tracing
             GasSpent += gasSpent;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             throw new NotImplementedException();
         }
@@ -136,6 +136,11 @@ namespace Nethermind.Evm.Tracing
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
         {
             throw new NotImplementedException();
         }

@@ -18,7 +18,7 @@ using System;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public interface ISyncModeSelector
+    public interface ISyncModeSelector : IDisposable
     {
         SyncMode Current { get; }
         

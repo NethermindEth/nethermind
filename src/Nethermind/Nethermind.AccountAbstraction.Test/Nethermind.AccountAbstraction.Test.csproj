@@ -29,10 +29,12 @@
     </ItemGroup>
 
     <ItemGroup>
+      <None Remove="TestContracts\EntryPoint_2.json" />
       <None Remove="TestContracts\SimpleWallet.json" />
       <None Remove="TestContracts\SingletonFactory.json" />
       <None Remove="TestContracts\TestCounter.json" />
       <None Remove="TestContracts\TokenPaymaster.json" />
+      <EmbeddedResource Include="TestContracts\EntryPoint_2.json" />
       <EmbeddedResource Include="TestContracts\SimpleWallet.json" />
       <EmbeddedResource Include="TestContracts\SingletonFactory.json" />
       <EmbeddedResource Include="TestContracts\TestCounter.json" />

@@ -161,14 +161,14 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             for (int index = 0; index < _txTracers.Count; index++)
             {
                 ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
-                    innerTracer.StartOperation(depth, gas, opcode, pc);
+                    innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
                 }
             }
         }
@@ -325,6 +325,18 @@ namespace Nethermind.Evm.Tracing
                 if (innerTracer.IsTracingOpLevelStorage)
                 {
                     innerTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
+                }
+            }
+        }
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+            for (int index = 0; index < _txTracers.Count; index++)
+            {
+                ITxTracer innerTracer = _txTracers[index];
+                if (innerTracer.IsTracingOpLevelStorage)
+                {
+                    innerTracer.LoadOperationStorage(address, storageIndex, value);
                 }
             }
         }

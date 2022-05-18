@@ -106,8 +106,8 @@ namespace Nethermind.Evm.Tracing
             return txReceipt;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc) =>
-            _currentTxTracer.StartOperation(depth, gas, opcode, pc);
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) =>
+            _currentTxTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
 
         public void ReportOperationError(EvmExceptionType error) =>
             _currentTxTracer.ReportOperationError(error);
@@ -128,6 +128,9 @@ namespace Nethermind.Evm.Tracing
         
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) =>
             _currentTxTracer.SetOperationStorage(address, storageIndex, newValue, currentValue);
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) =>
+            _currentTxTracer.LoadOperationStorage(address, storageIndex, value);
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
             _currentTxTracer.ReportSelfDestruct(address, balance, refundAddress);

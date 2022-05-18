@@ -22,6 +22,22 @@ namespace Nethermind.AccountAbstraction.Data
 {
     public struct UserOperationRpc
     {
+        public UserOperationRpc(UserOperation userOperation)
+        {
+            Sender = userOperation.Sender;
+            Nonce = userOperation.Nonce;
+            CallData = userOperation.CallData;
+            InitCode = userOperation.InitCode;
+            CallGas = userOperation.CallGas;
+            VerificationGas = userOperation.VerificationGas;
+            PreVerificationGas = userOperation.PreVerificationGas;
+            MaxFeePerGas = userOperation.MaxFeePerGas;
+            MaxPriorityFeePerGas = userOperation.MaxPriorityFeePerGas;
+            Paymaster = userOperation.Paymaster;
+            Signature = userOperation.Signature;
+            PaymasterData = userOperation.PaymasterData;
+        }
+        
         public Address Sender { get; set; }
         public UInt256 Nonce { get; set; }
         public byte[] CallData { get; set; }

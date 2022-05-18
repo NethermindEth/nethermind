@@ -44,6 +44,7 @@ using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
@@ -51,6 +52,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -319,7 +321,7 @@ namespace Nethermind.Synchronization.Test
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
-            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, 25, logManager);
+            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, logManager);
 
             StateProvider devState = new(trieStore, codeDb, logManager);
             StorageProvider devStorage = new(trieStore, devState, logManager);
@@ -352,12 +354,15 @@ namespace Nethermind.Synchronization.Test
                 new MiningConfig(),
                 logManager);
 
+            ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+
             SyncProgressResolver resolver = new(
-                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, syncConfig, logManager);
-            MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, logManager);
-            Synchronizer synchronizer = new(
-                dbProvider,
-                MainnetSpecProvider.Instance,
+                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, logManager);
+            TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(resolver, LimboLogs.Instance);
+            MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
+            Pivot pivot = new(syncConfig);
+            BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(MainnetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
                 blockValidator,
@@ -366,6 +371,21 @@ namespace Nethermind.Synchronization.Test
                 nodeStatsManager,
                 StaticSelector.Full,
                 syncConfig,
+                pivot,
+                new TotalDifficultyBasedBetterPeerStrategy(resolver, LimboLogs.Instance),
+                logManager);
+            Synchronizer synchronizer = new(
+                dbProvider,
+                MainnetSpecProvider.Instance,
+                tree,
+                NullReceiptStorage.Instance,
+                syncPeerPool,
+                nodeStatsManager,
+                StaticSelector.Full,
+                syncConfig,
+                snapProvider,
+                blockDownloaderFactory,
+                pivot,
                 logManager);
             SyncServer syncServer = new(
                 stateDb,

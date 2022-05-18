@@ -26,7 +26,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    internal class BlockDownloadContext
+    public class BlockDownloadContext
     {
         private readonly Dictionary<int, int> _indexMapping;
         private readonly ISpecProvider _specProvider;
@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization.Blocks
             block = Blocks[_indexMapping[index]];
             receipts ??= Array.Empty<TxReceipt>();
 
-            bool result = _receiptsRecovery.TryRecover(block, receipts); 
+            bool result = _receiptsRecovery.TryRecover(block, receipts, false) != ReceiptsRecoveryResult.Fail;
             if (result)
             {
                 ValidateReceipts(block, receipts);

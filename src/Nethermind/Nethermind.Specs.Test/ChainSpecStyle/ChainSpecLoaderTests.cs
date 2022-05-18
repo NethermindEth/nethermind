@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using FluentAssertions;
@@ -391,6 +392,25 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             ChainSpec chainSpec = LoadChainSpec(path);
             chainSpec.Parameters.Eip152Transition.Should().Be(15);
             chainSpec.Parameters.Eip1108Transition.Should().Be(10);
+        }
+
+        [Test]
+        public void Can_load_posdao_with_rewriteBytecode()
+        {
+            // TODO: modexp 2565
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
+            ChainSpec chainSpec = LoadChainSpec(path);
+            IDictionary<long, IDictionary<Address, byte[]>> expected = new Dictionary<long, IDictionary<Address, byte[]>>
+            {
+                {
+                    21300000, new Dictionary<Address, byte[]>()
+                    {
+                        {new Address("0x1234000000000000000000000000000000000001"), Bytes.FromHexString("0x111")},
+                        {new Address("0x1234000000000000000000000000000000000002"), Bytes.FromHexString("0x222")},
+                    }
+                }
+            };
+            chainSpec.AuRa.RewriteBytecode.Should().BeEquivalentTo(expected);
         }
     }
 }

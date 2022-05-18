@@ -41,7 +41,7 @@ namespace Nethermind.Db
         // LES (ignore)
         public IDb ChtDb => GetDb<IDb>(DbNames.CHT);
         
-        IDb WitnessDb => GetDb<IDb>(DbNames.Witness);
+        public IDb WitnessDb => GetDb<IDb>(DbNames.Witness);
         
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 

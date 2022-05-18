@@ -110,7 +110,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
             }
 
-            _handler.SendNewTransactions(txs);
+            _handler.SendNewTransactions(txs, false);
             
             _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage>(m => m.Hashes.Count == txCount));
         }
@@ -129,7 +129,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 txs[i] = Build.A.Transaction.SignedAndResolved().TestObject;
             }
 
-            _handler.SendNewTransactions(txs);
+            _handler.SendNewTransactions(txs, false);
             
             _session.Received(messagesCount).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage>(m => m.Hashes.Count == NewPooledTransactionHashesMessage.MaxCount || m.Hashes.Count == nonFullMsgTxsCount));
         }

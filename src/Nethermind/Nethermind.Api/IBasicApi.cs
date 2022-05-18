@@ -31,6 +31,7 @@ using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Api
@@ -56,6 +57,8 @@ namespace Nethermind.Api
         string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
         ISyncModeSelector? SyncModeSelector { get; set; }
+        ISyncProgressResolver? SyncProgressResolver { get; set; }
+        IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
 
@@ -66,5 +69,8 @@ namespace Nethermind.Api
 
         public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
             Plugins.OfType<IConsensusWrapperPlugin>().Where(p => p.Enabled);
+        
+        public IEnumerable<ISynchronizationPlugin> GetSynchronizationPlugins() =>
+            Plugins.OfType<ISynchronizationPlugin>();
     }
 }

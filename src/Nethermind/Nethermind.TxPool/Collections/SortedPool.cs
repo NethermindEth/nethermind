@@ -137,24 +137,19 @@ namespace Nethermind.TxPool.Collections
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryTakeFirst(out TValue first)
         {
-            SortedSet<TValue> sortedValues = new(_sortedComparer);
-            foreach (KeyValuePair<TGroupKey, SortedSet<TValue>> bucket in _buckets)
-            {
-                sortedValues.Add(bucket.Value.Min!);
-            }
-            return TryRemove(GetKey(sortedValues.Min), out first);
+            return TryRemove(GetKey(GetFirsts().Min), out first);
         }
         
         /// <summary>
         /// Returns best element of each bucket in supplied comparer order.
         /// </summary>
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public IEnumerable<TValue> GetFirsts()
+        public SortedSet<TValue> GetFirsts()
         {
             SortedSet<TValue> sortedValues = new(_sortedComparer);
             foreach (KeyValuePair<TGroupKey, SortedSet<TValue>> bucket in _buckets)
             {
-                sortedValues.Add(bucket.Value.Max!);
+                sortedValues.Add(bucket.Value.Min!);
             }
 
             return sortedValues;

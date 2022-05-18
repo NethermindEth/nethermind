@@ -27,6 +27,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         long FindBestHeader();
         
+        long FindBestBeaconHeader();
+        
         long FindBestFullBlock();
         
         bool IsFastBlocksHeadersFinished();
@@ -38,7 +40,10 @@ namespace Nethermind.Synchronization.ParallelSync
         bool IsLoadingBlocksFromDb();
         
         long FindBestProcessedBlock();
-        
+
+        bool IsSnapGetRangesFinished();
+
+
         UInt256 ChainDifficulty { get; }
 
         UInt256? GetTotalDifficulty(Keccak blockHash);

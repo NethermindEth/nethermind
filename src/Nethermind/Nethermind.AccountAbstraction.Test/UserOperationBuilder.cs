@@ -108,20 +108,21 @@ namespace Nethermind.AccountAbstraction.Test
             return this;
         }
         
-        public UserOperationBuilder SignedAndResolved(PrivateKey? privateKey = null)
+        public UserOperationBuilder WithPreVerificationGas(UInt256 preVerificationGas)
         {
-            privateKey ??= TestItem.IgnoredPrivateKey;
-            AccountAbstractionRpcModuleTests.SignUserOperation(TestObjectInternal, privateKey);
+            TestObjectInternal.PreVerificationGas = preVerificationGas;
             return this;
         }
-
-        protected override void BeforeReturn()
+        
+        public UserOperationBuilder SignedAndResolved(PrivateKey? privateKey = null!, Address? entryPointAddress = null!, ulong? chainId = null!)
         {
-            base.BeforeReturn();
-            if (TestObjectInternal.Hash == null)
-            {
-                TestObjectInternal.Hash = UserOperation.CalculateHash(TestObjectInternal);
-            }
+            privateKey ??= TestItem.IgnoredPrivateKey;
+            entryPointAddress ??= Address.Zero;
+            chainId ??= 1;
+            
+            //Build the hash before attempting to construct the RequestID and signing it.
+            AccountAbstractionRpcModuleTests.SignUserOperation(TestObjectInternal, privateKey, entryPointAddress, chainId.Value);
+            return this;
         }
     }
 }

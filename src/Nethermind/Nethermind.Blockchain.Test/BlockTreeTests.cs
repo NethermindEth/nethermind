@@ -879,7 +879,7 @@ namespace Nethermind.Blockchain.Test
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             BlockTree blockTree = BuildBlockTree();
-            blockTree.SuggestBlock(block0, false);
+            blockTree.SuggestBlock(block0, BlockTreeSuggestOptions.None);
             blockTree.IsMainChain(block0.Hash).Should().BeTrue();
         }
 
@@ -888,7 +888,7 @@ namespace Nethermind.Blockchain.Test
         {
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             BlockTree blockTree = BuildBlockTree();
-            blockTree.SuggestBlock(block0, false);
+            blockTree.SuggestBlock(block0, BlockTreeSuggestOptions.None);
         }
 
         [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched")]
@@ -1220,7 +1220,7 @@ namespace Nethermind.Blockchain.Test
                 blocksDb,
                 headersDb,
                 blockInfosDb,
-                metadataDb, 
+                metadataDb,
                 new ChainLevelInfoRepository(blockInfosDb),
                 MainnetSpecProvider.Instance,
                 NullBloomStorage.Instance,
@@ -1349,7 +1349,7 @@ namespace Nethermind.Blockchain.Test
             SyncConfig syncConfig = new();
             syncConfig.PivotNumber = pivotNumber.ToString();
 
-            var bloomStorage = Substitute.For<IBloomStorage>();
+            IBloomStorage bloomStorage = Substitute.For<IBloomStorage>();
             IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
             BlockTree tree = new(blocksDb, headersDb, blockInfosDb, metadataDb, chainLevelInfoRepository, MainnetSpecProvider.Instance, bloomStorage, syncConfig, LimboLogs.Instance);
             tree.SuggestBlock(Build.A.Block.Genesis.TestObject);

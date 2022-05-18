@@ -16,7 +16,7 @@
 // 
 
 using System.Linq;
-using Microsoft.VisualBasic;
+using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Core;
@@ -28,7 +28,7 @@ namespace Nethermind.AccountAbstraction
 {
     public class AccountAbstractionRpcModule : IAccountAbstractionRpcModule
     {
-        private readonly IUserOperationPool _userOperationPool;
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPool;
         private readonly Address[] _supportedEntryPoints;
 
         static AccountAbstractionRpcModule()
@@ -36,7 +36,7 @@ namespace Nethermind.AccountAbstraction
             Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly);
         }
         
-        public AccountAbstractionRpcModule(IUserOperationPool userOperationPool, Address[] supportedEntryPoints)
+        public AccountAbstractionRpcModule(IDictionary<Address, IUserOperationPool> userOperationPool, Address[] supportedEntryPoints)
         {
             _userOperationPool = userOperationPool;
             _supportedEntryPoints = supportedEntryPoints;
@@ -48,7 +48,19 @@ namespace Nethermind.AccountAbstraction
             {
                 return ResultWrapper<Keccak>.Fail($"entryPoint {entryPointAddress} not supported, supported entryPoints: {string.Join(", ", _supportedEntryPoints.ToList())}");
             }
-            return _userOperationPool.AddUserOperation(new UserOperation(userOperationRpc));
+            
+            // check if any entrypoint has both the sender and same nonce, if they do then the fee must increase 
+            bool allow = _supportedEntryPoints
+                .Select(ep => _userOperationPool[ep])
+                .Where(pool => pool.IncludesUserOperationWithSenderAndNonce(userOperationRpc.Sender, userOperationRpc.Nonce))
+                .All(pool => pool.CanInsert(new UserOperation(userOperationRpc)));
+
+            if (!allow)
+            {
+                return ResultWrapper<Keccak>.Fail("op with same nonce and sender already present in a pool but op fee increase is not large enough to replace it");
+            }
+
+            return _userOperationPool[entryPointAddress].AddUserOperation(new UserOperation(userOperationRpc));
         }
 
         public ResultWrapper<Address[]> eth_supportedEntryPoints()

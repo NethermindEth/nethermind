@@ -92,7 +92,7 @@ namespace Nethermind.Evm
             InitializePrecompiledContracts();
         }
 
-        public TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
         {
             _txTracer = txTracer;
 
@@ -592,6 +592,7 @@ namespace Nethermind.Evm
             }
         }
 
+        [SkipLocalsInit]
         private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;
@@ -637,7 +638,7 @@ namespace Nethermind.Evm
 
             void StartInstructionTrace(Instruction instruction, EvmStack stackValue)
             {
-                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter);
+                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter, txCtx.Header.IsPostMerge);
                 if (_txTracer.IsTracingMemory)
                 {
                     _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new List<string>());
@@ -1629,7 +1630,7 @@ namespace Nethermind.Evm
                         stack.PushBytes(txCtx.Header.GasBeneficiary.Bytes);
                         break;
                     }
-                    case Instruction.DIFFICULTY:
+                    case Instruction.PREVRANDAO:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
@@ -1824,6 +1825,12 @@ namespace Nethermind.Evm
                         
                         byte[] value = _storage.Get(storageCell);
                         stack.PushBytes(value);
+                        
+                        if (_txTracer.IsTracingOpLevelStorage)
+                        {
+                            _txTracer.LoadOperationStorage(storageCell.Address, storageIndex, value);
+                        }
+                        
                         break;
                     }
                     case Instruction.SSTORE:
@@ -2547,7 +2554,7 @@ namespace Nethermind.Evm
                             outputOffset = 0;
                         }
 
-                        ExecutionType executionType = GetCallExecutionType(instruction);
+                        ExecutionType executionType = GetCallExecutionType(instruction,txCtx.Header.IsPostMerge);
                         EvmState callState = new(
                             gasLimitUl,
                             callEnv,
@@ -2865,7 +2872,7 @@ namespace Nethermind.Evm
             return CallResult.Empty;
         }
 
-        private static ExecutionType GetCallExecutionType(Instruction instruction)
+        private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
         {
             ExecutionType executionType;
             if (instruction == Instruction.CALL)
@@ -2886,7 +2893,7 @@ namespace Nethermind.Evm
             }
             else
             {
-                throw new NotSupportedException($"Execution type is undefined for {Enum.GetName(typeof(Instruction), instruction)}");
+                throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}");
             }
 
             return executionType;

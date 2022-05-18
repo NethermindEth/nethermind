@@ -26,9 +26,11 @@ namespace Nethermind.Merge.Plugin
 
         public string? FeeRecipient { get; set; }
 
+        public string? FinalTotalDifficulty { get; set; }
+
         public string? TerminalTotalDifficulty { get; set; }
         
-        public Keccak TerminalBlockHash { get; set; } = Keccak.Zero;
+        public string? TerminalBlockHash { get; set; }
         
         public long? TerminalBlockNumber { get; set; }
         

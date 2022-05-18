@@ -154,7 +154,7 @@
       "commandName": "Project",
       "commandLineArgs": "--config configs\\sepolia.cfg --Init.DiagnosticMode MemDb"
     },
-    "Kinstugi_devnet": {
+    "Kiln_devnet": {
       "commandName": "Project",
       "commandLineArgs": "--config kiln_devnet.cfg  --Init.DiagnosticMode MemDb"
     },
@@ -174,13 +174,32 @@
       "commandName": "Project",
       "commandLineArgs": "--config xdai_themerge.cfg  --Init.DiagnosticMode MemDb"
     },
-    "Kinstugi": {
+    "Kiln": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Merge.FeeRecipient 0x0000000000000000000000000000000000000000"
+      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Network.DiagTracerEnabled true --Merge.TerminalBlockNumber null"
+    },
+    "Kiln_FastSync": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kiln_fastsync.cfg"
     },
     "Goerli ShadowFork": {
       "commandName": "Project",
-      "commandLineArgs": "--config goerli_shadowfork.cfg  --Init.DiagnosticMode MemDb --Merge.Enabled true"
+      "commandLineArgs": "--config goerli_shadowfork.cfg"
+    }, 
+    "Mainnet_ShadowFork": {
+      "commandName": "Project",
+      "commandLineArgs": "--config mainnet_shadowfork.cfg  --baseDbPath D:\\shadowfork_db"
+    },
+    "Hive": {
+      "commandName": "Project",
+      "commandLineArgs": "--config hive.cfg"
+    },
+    "Ropsten Archive": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\ropsten_archive.cfg --baseDbPath C:\\nethermind_db",
+      "environmentVariables": {
+        " ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }

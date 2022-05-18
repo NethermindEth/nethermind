@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
             StatusCode = Evm.StatusCode.Failure;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
         }
 
@@ -103,6 +103,10 @@ namespace Nethermind.Evm.Test
         }
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        {
+        }
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
         {
         }
 

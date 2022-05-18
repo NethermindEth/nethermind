@@ -17,24 +17,27 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Threading;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -48,134 +51,146 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _processor;
-        private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IInitConfig _initConfig;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly ISynchronizer _synchronizer;
-        private readonly ISyncConfig _syncConfig;
+        private readonly IBeaconSyncStrategy _beaconSyncStrategy;
+        private readonly IBeaconPivot _beaconPivot;
+        private readonly IBlockCacheService _blockCacheService;
+        private readonly IBlockProcessingQueue _processingQueue;
+        private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
-        private bool synced = false;
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
             IBlockTree blockTree,
             IBlockchainProcessor processor,
-            IEthSyncingInfo ethSyncingInfo,
             IInitConfig initConfig,
             IPoSSwitcher poSSwitcher,
-            ISynchronizer synchronizer,
-            ISyncConfig syncConfig,
+            IBeaconSyncStrategy beaconSyncStrategy,
+            IBeaconPivot beaconPivot,
+            IBlockCacheService blockCacheService,
+            IBlockProcessingQueue processingQueue,
+            IMergeSyncController mergeSyncController,
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
             _processor = processor;
-            _ethSyncingInfo = ethSyncingInfo;
             _initConfig = initConfig;
             _poSSwitcher = poSSwitcher;
-            _synchronizer = synchronizer;
-            _syncConfig = syncConfig;
+            _beaconSyncStrategy = beaconSyncStrategy;
+            _beaconPivot = beaconPivot;
+            _blockCacheService = blockCacheService;
+            _processingQueue = processingQueue;
+            _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(BlockRequestResult request)
         {
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Received payload {request}");
-            }
+            string requestStr = $"a new payload: {request}";
+            if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
+
             request.TryGetBlock(out Block? block);
             if (block == null)
-            { 
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of payload: Invalid block");
-                }
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"Invalid block. Result of {requestStr}");
+
                 return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
             }
 
             if (_blockValidator.ValidateHash(block.Header) == false)
-            { 
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of payload: Invalid block hash {block.Header}");
-                }
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn($"InvalidBlockHash. Result of {requestStr}");
+
                 return NewPayloadV1Result.InvalidBlockHash;
             }
 
-            // ToDo wait for final PostMerge sync
-            if (_syncConfig.FastSync && _blockTree.LowestInsertedBodyNumber != 0)
-            { 
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of payload: Syncing {block}");
-                }
-                return NewPayloadV1Result.Syncing;
-            }
 
-            Block? parent = _blockTree.FindBlock(request.ParentHash, BlockTreeLookupOptions.None);
-            if (parent == null)
-            { 
-                if (_logger.IsInfo)
+            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
+            bool parentExists = parentHeader != null;
+            bool parentProcessed = parentExists && _blockTree.WasProcessed(parentHeader!.Number,
+                parentHeader!.Hash ?? parentHeader.CalculateHash());
+            if (!parentExists)
+            {
+                // possible that headers sync finished before this was called, so blocks in cache weren't inserted
+                if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
                 {
-                    _logger.Info($"Result of payload: Accepted {block}");
+                    bool inserted = TryInsertDanglingBlock(block);
+                    if (_logger.IsInfo)
+                    {
+                        if (inserted)
+                            _logger.Info(
+                                $"BeaconSync not finished - block {block} inserted");
+                        else
+                            _logger.Info(
+                                $"BeaconSync not finished - block {block} accepted");
+                    }
+
+                    return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
                 }
-                // ToDo wait for final PostMerge sync
+
+                _logger.Info($"Insert block into cache without parent {block}");
+                _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
                 return NewPayloadV1Result.Accepted;
             }
 
-            await _synchronizer.StopAsync();
-            BlockHeader? parentHeader = parent.Header;
-            // if (_ethSyncingInfo.IsSyncing() && synced == false)
-            // {
-            //      return NewPayloadV1Result.Syncing;
-            // }
-            // else if (synced == false)
-            // {
-            //     await _synchronizer.StopAsync();
-            //     synced = true;
-            // }
-            //
+            if (!parentProcessed)
+            {
+                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+                _blockTree.Insert(block, true, insertOptions);
+                if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
+                return NewPayloadV1Result.Syncing;
+            }
+
             if (_poSSwitcher.TerminalTotalDifficulty == null ||
-                parentHeader.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
-            { 
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of payload: Invalid Terminal Block {block}");
-                }
+                parentHeader!.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader!.TotalDifficulty}. Request: {requestStr}");
+
                 return NewPayloadV1Result.InvalidTerminalBlock;
             }
 
+            _mergeSyncController.StopSyncing();
             (ValidationResult ValidationResult, string? Message) result =
                 ValidateBlockAndProcess(block, out Block? processedBlock, parentHeader);
             if ((result.ValidationResult & ValidationResult.AlreadyKnown) != 0 ||
                 result.ValidationResult == ValidationResult.Invalid)
             {
-                bool isValid = (result.ValidationResult & ValidationResult.Valid) != 0; 
+                bool isValid = (result.ValidationResult & ValidationResult.Valid) != 0;
                 if (_logger.IsInfo)
                 {
-                    _logger.Info($"Result of payload: Success {block}");
+                    string resultStr = isValid ? "Valid" : "Invalid";
+                    if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}");
                 }
+
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, isValid, parentHeader,
                     result.Message));
             }
 
+            if (result.ValidationResult == ValidationResult.Syncing)
+            {
+                if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}");
+                return NewPayloadV1Result.Syncing;
+            }
+
             if (processedBlock == null)
-            { 
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Result of payload: Success {block}");
-                }
+            {
+                if (_logger.IsInfo) { _logger.Info($"Invalid block processed. Result of {requestStr}"); }
+
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, false, parentHeader,
                     $"Processed block is null, request {request}"));
             }
-             
+
             if (_logger.IsInfo)
-            {
-                _logger.Info($"Result of payload: Valid {block}");
-            }
+                _logger.Info($"Valid. Result of {requestStr}");
+
             return NewPayloadV1Result.Valid(request.BlockHash);
         }
 
@@ -191,7 +206,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (isValid == false && _logger.IsWarn)
                 {
                     validationMessage = $"Invalid block {block} sent from latestBlock cache";
-                    _logger.Warn(validationMessage);
+                    if (_logger.IsWarn) _logger.Warn(validationMessage);
                 }
 
                 return (ValidationResult.AlreadyKnown |
@@ -199,62 +214,66 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             else
             {
-                // during the fast sync we could find the header on canonical chain which means that this header is valid
-                if (_blockTree.IsMainChain(block.Header))
-                {
-                    return (ValidationResult.Valid | ValidationResult.AlreadyKnown, validationMessage);
-                }
-
                 processedBlock = _blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None);
-                if (processedBlock != null)
+                if (processedBlock != null && _blockTree.WasProcessed(processedBlock.Number, processedBlock.Hash))
                 {
                     return (ValidationResult.Valid | ValidationResult.AlreadyKnown, validationMessage);
                 }
 
-                bool validAndProcessed = ValidateAndProcess(block, parent!, out processedBlock);
+                bool validAndProcessed = ValidateWithBlockValidator(block, parent, out processedBlock);
+                if (validAndProcessed)
+                {
+                    if (_processingQueue.IsEmpty)
+                    {
+                        // processingQueue is empty so we can process the block in synchronous way
+                        _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
+                        processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
+                    }
+                    else
+                    {
+                        // this is needed for restarts. We have blocks in queue so we should add it to queue and return SYNCING
+                        _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.ShouldProcess);
+                        return (ValidationResult.Syncing, null);
+                    }
+            
+                    if (processedBlock == null)
+                    {
+                        if (_logger.IsWarn)
+                        {
+                            _logger.Warn(
+                                $"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
+                        }
+
+                        validAndProcessed = false;
+                    }
+                }
 
                 _latestBlocks.Set(block.Hash!, validAndProcessed);
                 return (validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid, validationMessage);
             }
         }
 
-        private bool ValidateAndProcess(Block block, BlockHeader parent, out Block? processedBlock)
+        private bool ValidateWithBlockValidator(Block block, BlockHeader parent, out Block? processedBlock)
         {
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             processedBlock = null;
             block.Header.IsPostMerge = true;
-            if (_blockValidator.ValidateSuggestedBlock(block) == false)
+            bool isValid = _blockValidator.ValidateSuggestedBlock(block);
+            if (!isValid)
             {
                 if (_logger.IsWarn)
                 {
                     _logger.Warn(
                         $"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}");
                 }
-
-                return false;
-            }
-            
-            var addResult = _blockTree.SuggestBlock(block, false, false);
-            _logger.Info($"{processedBlock} add result {addResult}");
-            
-            processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
-            if (processedBlock == null)
-            {
-                if (_logger.IsWarn)
-                {
-                    _logger.Warn(
-                        $"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
-                }
-
-                return false;
             }
 
-            return true;
+            return isValid;
         }
 
         private ProcessingOptions GetProcessingOptions()
         {
-            ProcessingOptions options = ProcessingOptions.None;
+            ProcessingOptions options = ProcessingOptions.EthereumMerge;
             if (_initConfig.StoreReceipts)
             {
                 options |= ProcessingOptions.StoreReceipts;
@@ -302,12 +321,60 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return payloadStatus;
         }
 
+        private bool TryInsertDanglingBlock(Block block)
+        {
+            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+
+            if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
+            {
+                // last block inserted is parent of current block, part of the same chain
+                if (block.ParentHash == _blockCacheService.ProcessDestination)
+                {
+                    _blockTree.Insert(block, true, insertOptions);
+                }
+                else
+                {
+                    Block? current = block;
+                    Stack<Block> stack = new();
+                    while (current != null)
+                    {
+                        stack.Push(current);
+                        if (current.Hash == _beaconPivot.PivotHash ||
+                            _blockTree.IsKnownBeaconBlock(current.Number, current.Hash))
+                        {
+                            break;
+                        }
+
+                        _blockCacheService.BlockCache.TryGetValue(current.ParentHash, out Block? parentBlock);
+                        current = parentBlock;
+                    }
+
+                    if (current == null)
+                    {
+                        // block not part of beacon pivot chain, save in cache
+                        _blockCacheService.BlockCache.TryAdd(block.Hash, block);
+                        return false;
+                    }
+
+                    while (stack.TryPop(out Block? child))
+                    {
+                        _blockTree.Insert(child, true, insertOptions);
+                    }
+                }
+
+                _blockCacheService.ProcessDestination = block.Hash;
+            }
+
+            return true;
+        }
+
         [Flags]
         private enum ValidationResult
         {
             Invalid = 0,
             Valid = 1,
-            AlreadyKnown = 2
+            AlreadyKnown = 2,
+            Syncing = 3
         }
     }
 }

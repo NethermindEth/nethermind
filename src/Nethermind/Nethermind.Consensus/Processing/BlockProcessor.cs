@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Processing
     {
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
+        protected readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IWitnessCollector _witnessCollector;
         private readonly IBlockValidator _blockValidator;
@@ -187,7 +187,7 @@ namespace Nethermind.Consensus.Processing
         // TODO: move to block processing pipeline
         private void PreCommitBlock(Keccak newBranchStateRoot, long blockNumber)
         {
-            if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot} | {_stateProvider.StateRoot}");
+            if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
             _storageProvider.CommitTrees(blockNumber);
             _stateProvider.CommitTree(blockNumber);
         }
@@ -232,6 +232,7 @@ namespace Nethermind.Consensus.Processing
             if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
+                if (_logger.IsError) _logger.Error($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
                 throw new InvalidBlockException(suggestedBlock.Hash);
             }
         }

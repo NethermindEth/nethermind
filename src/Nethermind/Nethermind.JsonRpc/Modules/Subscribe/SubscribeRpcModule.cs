@@ -16,7 +16,7 @@
 // 
 
 using System;
-using Nethermind.JsonRpc.Modules.Eth;
+using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -29,13 +29,21 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _subscriptionManager = subscriptionManager ?? throw new ArgumentNullException(nameof(subscriptionManager));
         }
 
-        public ResultWrapper<string> eth_subscribe(string subscriptionName, Filter arguments = null)
+        public ResultWrapper<string> eth_subscribe(string subscriptionName, string? args = null)
         {
-            if (Enum.TryParse(typeof(SubscriptionType), subscriptionName, true, out var subscriptionType))
+            try
             {
-                return ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, (SubscriptionType)subscriptionType, arguments));
+                ResultWrapper<string> successfulResult = ResultWrapper<string>.Success(_subscriptionManager.AddSubscription(Context.DuplexClient, subscriptionName, args));
+                return successfulResult;
             }
-            return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+            catch (KeyNotFoundException)
+            {
+                return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+            }
+            catch (ArgumentException e)
+            {
+                return ResultWrapper<string>.Fail($"Invalid params", ErrorCodes.InvalidParams, e.Message);
+            }
         }
 
         public ResultWrapper<bool> eth_unsubscribe(string subscriptionId)
@@ -47,5 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         }
 
         public JsonRpcContext Context { get; set; }
+        
+        
     }
 }

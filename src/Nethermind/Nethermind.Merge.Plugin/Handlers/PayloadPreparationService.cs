@@ -47,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Handlers
         
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
         private const int SlotsPerOldPayloadCleanup = 6;
-        private const int CleanupOldPayloadDelay = 12000;
+        private readonly  ulong _cleanupOldPayloadDelay;
         private readonly TimeSpan _timeout;
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
@@ -68,6 +68,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _sealer = sealer;
             _timeout = TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot);
 
+            _cleanupOldPayloadDelay = 2 * mergeConfig.SecondsPerSlot * 1000; // 2 * slots time * 1000 (converting seconds to miliseconds)
             ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * _timeout);
             timer.Elapsed += CleanupOldPayloads;
             timer.AutoReset = false;
@@ -126,8 +127,11 @@ namespace Nethermind.Merge.Plugin.Handlers
             foreach (KeyValuePair<string, BlockImprovementContext> payload in _payloadStorage)
             {
                 if (payload.Value?.CurrentBestBlock != null &&
-                    payload.Value.CurrentBestBlock.Timestamp + CleanupOldPayloadDelay <= utcNow.Seconds)
+                    payload.Value.CurrentBestBlock.Timestamp + _cleanupOldPayloadDelay <= utcNow.Seconds)
+                {
+                    if (_logger.IsInfo) _logger.Info($"A new payload to remove: {payload.Key}, Current time {utcNow}, Payload timestamp: {payload.Value.CurrentBestBlock.Timestamp}");
                     _payloadsToRemove.Add(payload.Key);
+                }
             }
 
             foreach (string payloadToRemove in _payloadsToRemove)

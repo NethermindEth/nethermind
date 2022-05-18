@@ -42,14 +42,21 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             if (ShouldBeActive(e.Current))
             {
+                InitializeFeed();
                 Activate();
+            }
+
+            if (ShouldBeDormant(e.Current))
+            {
+                FallAsleep();
             }
         }
 
-        protected bool ShouldBeActive() => ShouldBeActive(_syncModeSelector.Current);
-
         private bool ShouldBeActive(SyncMode current)
-            => CurrentState != SyncFeedState.Finished && (current & ActivationSyncModes) != SyncMode.None;
+            => CurrentState == SyncFeedState.Dormant && (current & ActivationSyncModes) != SyncMode.None;
+
+        private bool ShouldBeDormant(SyncMode current)
+            => CurrentState == SyncFeedState.Active && (current & ActivationSyncModes) == SyncMode.None;
 
         protected abstract SyncMode ActivationSyncModes { get; }
 
@@ -58,5 +65,7 @@ namespace Nethermind.Synchronization.ParallelSync
             _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
             StateChanged -= OnStateChanged;
         }
+
+        public virtual void InitializeFeed() { }
     }
 }

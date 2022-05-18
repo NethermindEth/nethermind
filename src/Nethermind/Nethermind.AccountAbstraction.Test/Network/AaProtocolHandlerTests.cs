@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
@@ -22,6 +23,7 @@ using FluentAssertions;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -41,7 +43,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
     {
         private ISession? _session;
         private IMessageSerializationService? _svc;
-        private IUserOperationPool? _userOperationPool;
+        private IDictionary<Address, IUserOperationPool>? _userOperationPools;
         private AaProtocolHandler? _handler;
 
         [SetUp]
@@ -55,16 +57,23 @@ namespace Nethermind.AccountAbstraction.Test.Network
             _session = Substitute.For<ISession>();
             Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
             _session.Node.Returns(node);
-            _userOperationPool = Substitute.For<IUserOperationPool>();
+            _userOperationPools = new Dictionary<Address, IUserOperationPool>();
+            UserOperationBroadcaster _broadcaster = new UserOperationBroadcaster(NullLogger.Instance);
+            AccountAbstractionPeerManager _peerManager = new AccountAbstractionPeerManager(_userOperationPools, _broadcaster, NullLogger.Instance);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+
             _handler = new AaProtocolHandler(
                 _session,
                 _svc,
                 new NodeStatsManager(timerFactory, LimboLogs.Instance),
-                _userOperationPool,
+                _userOperationPools,
+                _peerManager,
                 LimboLogs.Instance);
             _handler.Init();
-            //AccountAbstractionRpcModule aaRpcModule = new(_userOperationPool);
+            
+            AccountAbstractionRpcModule aaRpcModule = new(_userOperationPools, new Address[] {});
+            
+
         }
 
         [TearDown]
@@ -85,7 +94,14 @@ namespace Nethermind.AccountAbstraction.Test.Network
         [Test]
         public void Can_handle_user_operations_message()
         {
-            UserOperationsMessage msg = new(new List<UserOperation>(Build.A.UserOperation.SignedAndResolved().TestObjectNTimes(3)));
+            bool parsed = Address.TryParse("0xdb8b5f6080a8e466b64a8d7458326cb650b3353f", out Address? _ep1);
+            parsed = Address.TryParse("0x90f3e1105e63c877bf9587de5388c23cdb702c6b", out Address? _ep2);
+            Address ep1 = _ep1 ?? throw new ArgumentNullException(nameof(_ep1));
+            Address ep2 = _ep2 ?? throw new ArgumentNullException(nameof(_ep2));
+            IList<UserOperationWithEntryPoint> uOps = new List<UserOperationWithEntryPoint>();
+            uOps.Add(new UserOperationWithEntryPoint(Build.A.UserOperation.SignedAndResolved().TestObject, ep1));
+            uOps.Add(new UserOperationWithEntryPoint(Build.A.UserOperation.SignedAndResolved().TestObject, ep2));
+            UserOperationsMessage msg = new UserOperationsMessage(uOps);
             HandleZeroMessage(msg, AaMessageCode.UserOperations);
         }
         

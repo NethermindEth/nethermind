@@ -57,6 +57,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Specs;
+using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 
 namespace Nethermind.Runner.Test.Ethereum
@@ -106,6 +107,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 RlpxPeer = Substitute.For<IRlpxHost>(),
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
+                SnapProvider = Substitute.For<ISnapProvider>(),
                 StateProvider = Substitute.For<IStateProvider>(),
                 StateReader = Substitute.For<IStateReader>(),
                 StorageProvider = Substitute.For<IStorageProvider>(),
@@ -130,7 +132,9 @@ namespace Nethermind.Runner.Test.Ethereum
                 HealthHintService = Substitute.For<IHealthHintService>(),
                 TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId),
                 UnclesValidator = Substitute.For<IUnclesValidator>(),
-                BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>()
+                BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
+                SyncProgressResolver = Substitute.For<ISyncProgressResolver>(),
+                BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>()
             };
     }
 }

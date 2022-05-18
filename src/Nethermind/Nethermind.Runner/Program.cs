@@ -135,7 +135,9 @@ namespace Nethermind.Runner
                 IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
+                IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
 
+                pluginLoader.OrderPlugins(pluginConfig);
                 Console.Title = initConfig.LogFileName;
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 

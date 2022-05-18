@@ -26,29 +26,29 @@ namespace Nethermind.Synchronization.Test.FastSync
     [TestFixture]
     public class PendingSyncItemsTests
     {
-        private StateSyncFeed.IPendingSyncItems Init()
+        private IPendingSyncItems Init()
         {
-            return new StateSyncFeed.PendingSyncItems();
+            return new PendingSyncItems();
         }
         
         [Test]
         public void At_start_count_is_zero()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.Count.Should().Be(0);
         }
 
         [Test]
         public void Description_does_not_throw_at_start()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.Description.Should().NotBeNullOrWhiteSpace();
         }
 
         [Test]
         public void Max_levels_should_be_zero_at_start()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.MaxStateLevel.Should().Be(0);
             items.MaxStorageLevel.Should().Be(0);
         }
@@ -56,29 +56,29 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Can_recalculate_priorities_at_start()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.RecalculatePriorities().Should().NotBeNullOrWhiteSpace();
         }
 
         [Test]
         public void Peek_state_is_null_at_start()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.PeekState().Should().Be(null);
         }
 
         [Test]
         public void Can_clear_at_start()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.Clear();
         }
 
         [Test]
         public void Can_peek_root()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new(Keccak.Zero, NodeDataType.State, 0, 0);
+            IPendingSyncItems items = Init();
+            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State, 0, 0);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.PeekState().Should().Be(stateSyncItem);
         }
@@ -86,8 +86,8 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Can_recalculate_and_clear_with_root_only()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new(Keccak.Zero, NodeDataType.State, 0, 0);
+            IPendingSyncItems items = Init();
+            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State, 0, 0);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.RecalculatePriorities();
             items.Clear();
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Prioritizes_depth()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.MaxStateLevel = 64;
 
             PushState(items, 0, 0);
@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Prioritizes_code_over_storage_over_state()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.MaxStateLevel = 64;
 
             PushState(items, 64, 0);
@@ -133,7 +133,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Prefers_left()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.MaxStateLevel = 64;
 
             PushState(items, 1, 10000); // something far-right
@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         [Test]
         public void Prefers_left_single_branch()
         {
-            StateSyncFeed.IPendingSyncItems items = Init();
+            IPendingSyncItems items = Init();
             items.MaxStateLevel = 64;
 
             PushState(items, 1, 15); // branch child 16
@@ -164,24 +164,24 @@ namespace Nethermind.Synchronization.Test.FastSync
             batch[2].Rightness.Should().Be(15);
         }
 
-        private static StateSyncItem PushCode(StateSyncFeed.IPendingSyncItems items, int progress = 0)
+        private static StateSyncItem PushCode(IPendingSyncItems items, int progress = 0)
         {
             return PushItem(items, NodeDataType.Code, 0, 0, progress);
         }
 
-        private static StateSyncItem PushStorage(StateSyncFeed.IPendingSyncItems items, int level, uint rightness, int progress = 0)
+        private static StateSyncItem PushStorage(IPendingSyncItems items, int level, uint rightness, int progress = 0)
         {
             return PushItem(items, NodeDataType.Storage, level, rightness, progress);
         }
 
-        private static StateSyncItem PushState(StateSyncFeed.IPendingSyncItems items, int level, uint rightness, int progress = 0)
+        private static StateSyncItem PushState(IPendingSyncItems items, int level, uint rightness, int progress = 0)
         {
             return PushItem(items, NodeDataType.State, level, rightness, progress);
         }
 
-        private static StateSyncItem PushItem(StateSyncFeed.IPendingSyncItems items, NodeDataType nodeDataType, int level, uint rightness, int progress = 0)
+        private static StateSyncItem PushItem(IPendingSyncItems items, NodeDataType nodeDataType, int level, uint rightness, int progress = 0)
         {
-            StateSyncItem stateSyncItem1 = new(Keccak.Zero, nodeDataType, level, rightness);
+            StateSyncItem stateSyncItem1 = new (Keccak.Zero, null, null, nodeDataType, level, rightness);
             items.PushToSelectedStream(stateSyncItem1, progress);
             return stateSyncItem1;
         }

@@ -275,6 +275,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                     BlockGasLimitContractTransitions = chainSpecJson.Engine.AuthorityRound.BlockGasLimitContractTransitions,
                     TwoThirdsMajorityTransition = chainSpecJson.Engine.AuthorityRound.TwoThirdsMajorityTransition ?? AuRaParameters.TransitionDisabled,
                     PosdaoTransition = chainSpecJson.Engine.AuthorityRound.PosdaoTransition ?? AuRaParameters.TransitionDisabled,
+                    RewriteBytecode = chainSpecJson.Engine.AuthorityRound.RewriteBytecode,
                 };
             }
             else if (chainSpecJson.Engine?.Clique != null)
@@ -338,11 +339,11 @@ namespace Nethermind.Specs.ChainSpecStyle
                 return;
             }
 
-            UInt256 nonce = chainSpecJson.Genesis.Seal.Ethereum?.Nonce ?? 0;
-            Keccak mixHash = chainSpecJson.Genesis.Seal.Ethereum?.MixHash ?? Keccak.Zero;
+            UInt256 nonce = chainSpecJson.Genesis.Seal?.Ethereum?.Nonce ?? 0;
+            Keccak mixHash = chainSpecJson.Genesis.Seal?.Ethereum?.MixHash ?? Keccak.Zero;
 
-            byte[] auRaSignature = chainSpecJson.Genesis.Seal.AuthorityRound?.Signature;
-            long? step = chainSpecJson.Genesis.Seal.AuthorityRound?.Step;
+            byte[] auRaSignature = chainSpecJson.Genesis.Seal?.AuthorityRound?.Signature;
+            long? step = chainSpecJson.Genesis.Seal?.AuthorityRound?.Step;
 
             Keccak parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
             UInt256 timestamp = chainSpecJson.Genesis.Timestamp;
