@@ -73,10 +73,10 @@ namespace Nethermind.Merge.Plugin
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 
-                _poSSwitcher = new PoSSwitcher(_mergeConfig,
-                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
-                _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _blockCacheService = new BlockCacheService();
+                _poSSwitcher = new PoSSwitcher(_mergeConfig,
+                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _blockCacheService, _api.LogManager);
+                _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
                    _api.RewardCalculatorSource ?? NoBlockRewards.Instance,  _poSSwitcher);
