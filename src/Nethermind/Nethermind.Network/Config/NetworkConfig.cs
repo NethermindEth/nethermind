@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Network.Config
 {
     public class NetworkConfig : INetworkConfig
@@ -23,7 +25,10 @@ namespace Nethermind.Network.Config
         public string? StaticPeers { get; set; }
         public bool OnlyStaticPeers { get; set; }
         public bool IsPeersPersistenceOn { get; set; } = true;
-        public int ActivePeersMaxCount { get; set; } = 50;
+        
+        [Obsolete]
+        public int ActivePeersMaxCount { get => MaxActivePeers; set => MaxActivePeers = value; }
+        public int MaxActivePeers { get; set; } = 50;
         public int PriorityPeersMaxCount { get; set; } = 0;
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
         public int PeersUpdateInterval { get; set; } = 250;

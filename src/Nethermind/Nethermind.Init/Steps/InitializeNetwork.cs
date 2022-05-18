@@ -112,7 +112,7 @@ namespace Nethermind.Init.Steps
 
             CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-            int maxPeersCount = _networkConfig.ActivePeersMaxCount;
+            int maxPeersCount = _networkConfig.MaxActivePeers;
             int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
