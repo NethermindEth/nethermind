@@ -19,10 +19,10 @@ namespace Nethermind.Blockchain.Find
     public enum BlockParameterType
     {
         Earliest,
-        Latest,
-        Pending,
         Finalized,
         Safe,
+        Latest,
+        Pending,
         BlockNumber,
         BlockHash
     }

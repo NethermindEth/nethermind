@@ -77,8 +77,15 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             return block == null && !allowNulls
-                ? new SearchResult<Block>($"Block {blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found", ErrorCodes.ResourceNotFound)
-                : new SearchResult<Block>(block);
+                ? new SearchResult<Block>(
+                    $"Block {blockParameter.BlockHash?.ToString() ?? blockParameter.BlockNumber?.ToString() ?? blockParameter.Type.ToString()} could not be found",
+                    ErrorCodes.ResourceNotFound)
+                : (
+                    block.IsPostMerge && (blockParameter.Equals(BlockParameter.Finalized) ||
+                                          blockParameter.Equals(BlockParameter.Safe))
+                        ? new SearchResult<Block>("Unknown block error", ErrorCodes.UnknownBlockError)
+                        : new SearchResult<Block>(block)
+                );
         }
 
         public static IEnumerable<SearchResult<Block>> SearchForBlocksOnMainChain(this IBlockFinder blockFinder, BlockParameter fromBlock, BlockParameter toBlock)

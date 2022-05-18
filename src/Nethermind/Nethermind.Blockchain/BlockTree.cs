@@ -2105,6 +2105,7 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, FinalizedHash!.Bytes);  
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, SafeHash!.Bytes);  
             }
+            SetHeadBlock(HeadBlockHash);
         }
     }
 }
