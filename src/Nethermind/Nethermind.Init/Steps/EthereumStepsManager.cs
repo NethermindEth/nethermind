@@ -135,40 +135,16 @@ namespace Nethermind.Init.Steps
 
                 if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
 
-                Stopwatch stopwatch = Stopwatch.StartNew();
                 stepInfo.Stage = StepInitializationStage.Executing;
-                Task task = step.Execute(cancellationToken);
+
                 startedThisRound++;
-                Task continuationTask = task.ContinueWith(t =>
-                {
-                    stopwatch.Stop();
-
-                    if (t.IsFaulted && step.MustInitialize)
-                    {
-                        if (_logger.IsError) _logger.Error(
-                            $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
-                            t.Exception);
-                    }
-                    else if(t.IsFaulted)
-                    {
-                        if (_logger.IsWarn) _logger.Warn(
-                            $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms");
-                    }
-                    else
-                    {
-                        if (_logger.IsDebug) _logger.Debug(
-                            $"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
-                    }
-                    
-                    stepInfo.Stage = StepInitializationStage.Complete;
-                    _autoResetEvent.Set();
-
-                    if (_logger.IsDebug) _logger.Debug($"{step.GetType().Name.PadRight(24)} complete");
-                });
+                Task task = RunPluginBeforeStep(step)
+                    .ContinueWith(_ => RunStep(step, stepInfo, cancellationToken))
+                    .ContinueWith(_ => RunPluginAfterStep(step));
 
                 if (step.MustInitialize)
                 {
-                    _allPending.Enqueue(continuationTask);
+                    _allPending.Enqueue(task);
                 }
                 else
                 {
@@ -199,6 +175,75 @@ namespace Nethermind.Init.Steps
             }
 
             return step;
+        }
+
+        private Task RunPluginBeforeStep(IStep step)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            return Task.WhenAll(_api.Plugins.Select(p => p.BeforeStep(step.Name).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error($"Plugin {p.Name} failed to execute BeforeStep('{step.Name}')", t.Exception);
+                }
+                else if (_logger.IsDebug) _logger.Debug($"Plugin {p.Name} executed BeforeStep('{step.Name}')");
+            })))
+            .ContinueWith(t =>
+            {
+                stopwatch.Stop();
+                if (_logger.IsInfo) _logger.Info($"Plugins executed BeforeStep('{step.Name}') in {stopwatch.ElapsedMilliseconds}ms");
+            });
+        }
+
+        private Task RunPluginAfterStep(IStep step)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            return Task.WhenAll(_api.Plugins.Select(p => p.AfterStep(step.Name).ContinueWith(t =>
+            {
+                stopwatch.Stop();
+
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error($"Plugin {p.Name} failed to execute AfterStep('{step.Name}')", t.Exception);
+                }
+                else if (_logger.IsDebug) _logger.Debug($"Plugin {p.Name} executed AfterStep('{step.Name}')");
+            })))
+            .ContinueWith(t =>
+            {
+                stopwatch.Stop();
+                if (_logger.IsInfo) _logger.Info($"Plugins executed AfterStep('{step.Name}') in {stopwatch.ElapsedMilliseconds}ms");
+            });
+        }
+
+        private Task RunStep(IStep step, StepInfo stepInfo, CancellationToken cancellationToken)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            return step.Execute(cancellationToken).ContinueWith(t =>
+            {
+                stopwatch.Stop();
+
+                if (t.IsFaulted && step.MustInitialize)
+                {
+                    if (_logger.IsError) _logger.Error(
+                        $"Step {step.Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
+                        t.Exception);
+                }
+                else if (t.IsFaulted)
+                {
+                    if (_logger.IsWarn) _logger.Warn(
+                        $"Step {step.Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms");
+                }
+                else
+                {
+                    if (_logger.IsDebug) _logger.Debug(
+                        $"Step {step.Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
+                }
+
+                stepInfo.Stage = StepInitializationStage.Complete;
+                _autoResetEvent.Set();
+
+                if (_logger.IsInfo) _logger.Info($"{step.Name.PadRight(24)} complete");
+            });
         }
 
         private int _foreverLoop;

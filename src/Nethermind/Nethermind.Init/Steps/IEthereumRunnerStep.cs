@@ -23,6 +23,8 @@ namespace Nethermind.Init.Steps
     {
         Task Execute(CancellationToken cancellationToken);
 
-        public bool MustInitialize => true;
+        bool MustInitialize => true;
+
+        string Name => GetType().Name;
     }
 }
