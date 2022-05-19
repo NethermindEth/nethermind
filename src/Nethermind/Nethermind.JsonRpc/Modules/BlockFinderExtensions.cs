@@ -76,10 +76,9 @@ namespace Nethermind.JsonRpc.Modules
                 block = blockFinder.FindBlock(blockParameter);
             }
 
-            if (block != null)
+            if (block == null)
             {
-                if (!block.IsPostMerge && (blockParameter.Equals(BlockParameter.Finalized) ||
-                                           blockParameter.Equals(BlockParameter.Safe)))
+                if (blockParameter.Equals(BlockParameter.Finalized) || blockParameter.Equals(BlockParameter.Safe))
                 {
                     return new SearchResult<Block>("Unknown block error", ErrorCodes.UnknownBlockError);
                 }
