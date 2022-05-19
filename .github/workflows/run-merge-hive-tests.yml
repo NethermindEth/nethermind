@@ -21,12 +21,6 @@ jobs:
           file: ./Dockerfile
           tags: nethermind:kiln_shadowfork
           outputs: type=docker,dest=/tmp/image.tar
-      - name: Upload Docker Image as Artifact
-        uses: actions/upload-artifact@v2
-        with:
-          name: image
-          path: /tmp/image.tar
-          retention-days: 1
       - name: Installing Linux packages
         run: |
          sudo apt-get update
@@ -41,11 +35,6 @@ jobs:
           repository: 'ethereum/hive'
       - name: Build Hive
         run: go build .
-      - name: Download Docker Image
-        uses: actions/download-artifact@v2
-        with:
-          name: image
-          path: /tmp
       - name: Load Docker Image
         run: docker load --input /tmp/image.tar
       - name: Run Merge Hive
