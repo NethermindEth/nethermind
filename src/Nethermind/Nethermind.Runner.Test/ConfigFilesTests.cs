@@ -239,7 +239,7 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, int>(configWildcard, c => c.P2PPort, 30303);
             Test<INetworkConfig, string>(configWildcard, c => c.ExternalIp, (string) null);
             Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string) null);
-            Test<INetworkConfig, int>(configWildcard, c => c.ActivePeersMaxCount, activePeers);
+            Test<INetworkConfig, int>(configWildcard, c => c.MaxActivePeers, activePeers);
         }
 
         [TestCase("*")]
