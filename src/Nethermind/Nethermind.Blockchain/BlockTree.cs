@@ -2096,7 +2096,7 @@ namespace Nethermind.Blockchain
             }
         }
         
-        public void ForkChoiceUpdated(Keccak? HeadBlockHash, Keccak? finalizedBlockHash, Keccak? safeBlockHash)
+        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockHash)
         {
             FinalizedHash = finalizedBlockHash;
             SafeHash = safeBlockHash;
@@ -2105,7 +2105,6 @@ namespace Nethermind.Blockchain
                 _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, FinalizedHash!.Bytes);  
                 _metadataDb.Set(MetadataDbKeys.SafeBlockHash, SafeHash!.Bytes);  
             }
-            SetHeadBlock(HeadBlockHash);
         }
     }
 }

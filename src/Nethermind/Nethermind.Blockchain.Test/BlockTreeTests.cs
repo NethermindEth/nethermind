@@ -734,10 +734,9 @@ namespace Nethermind.Blockchain.Test
         public void ForkChoiceUpdated_update_hashes()
         {
             BlockTree blockTree = BuildBlockTree();
-            Keccak headBlockHash = TestItem.KeccakA;
             Keccak finalizedBlockHash = TestItem.KeccakB;
             Keccak safeBlockHash = TestItem.KeccakC;
-            blockTree.ForkChoiceUpdated(headBlockHash,finalizedBlockHash,safeBlockHash);
+            blockTree.ForkChoiceUpdated(finalizedBlockHash,safeBlockHash);
             Assert.AreEqual(finalizedBlockHash, blockTree.FinalizedHash);
             Assert.AreEqual(safeBlockHash, blockTree.SafeHash);
         }
