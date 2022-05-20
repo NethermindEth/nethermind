@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -27,6 +28,8 @@ namespace Nethermind.Consensus.Ethash
 {
     internal class MinedBlockProducer : BlockProducerBase
     {
+        private IManualBlockProductionTrigger _startTrigger;
+        
         public MinedBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
@@ -36,7 +39,9 @@ namespace Nethermind.Consensus.Ethash
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            IManualBlockProductionTrigger startTrigger
+            )
             : base(
                 txSource,
                 processor,
@@ -50,6 +55,13 @@ namespace Nethermind.Consensus.Ethash
                 logManager, 
                 new EthashDifficultyCalculator(specProvider))
         {
+            _startTrigger = startTrigger;
+        }
+        
+        public override async Task Start()
+        {
+            await base.Start();
+            await _startTrigger.BuildBlock();
         }
     }
 }

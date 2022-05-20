@@ -31,14 +31,15 @@ namespace Nethermind.Consensus.Ethash
         // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
         public const int InitialDifficultyBombBlock = 200000;
         private readonly ISpecProvider _specProvider;
+        private readonly UInt256 _minimumDifficulty;
+        private const long OfGenesisBlock = 131_072;
 
-        internal EthashDifficultyCalculator(ISpecProvider specProvider)
+        public EthashDifficultyCalculator(ISpecProvider specProvider, UInt256? minimumDifficulty = null)
         {
             _specProvider = specProvider;
+            _minimumDifficulty = minimumDifficulty ?? OfGenesisBlock;
         }
 
-        private const long OfGenesisBlock = 131_072;
-        
         public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
             Calculate(parent.Difficulty, 
                 parent.Timestamp, 
@@ -63,7 +64,7 @@ namespace Nethermind.Consensus.Ethash
             BigInteger timeAdjustment = TimeAdjustment(spec, (BigInteger)parentTimestamp, (BigInteger)currentTimestamp, parentHasUncles);
             BigInteger timeBomb = TimeBomb(spec, blockNumber);
             return (UInt256)BigInteger.Max(
-                OfGenesisBlock,
+                (BigInteger)_minimumDifficulty,
                 (BigInteger)parentDifficulty +
                 timeAdjustment * baseIncrease +
                 timeBomb);
