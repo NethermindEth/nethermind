@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private bool _pivotParentProcessed;
         private BlockHeader? _currentBeaconPivot;
 
-        public BlockHeader? CurrentBeaconPivot
+        private BlockHeader? CurrentBeaconPivot
         {
             get => _currentBeaconPivot;
             set
