@@ -34,6 +34,7 @@ namespace Nethermind.Blockchain.Find
         private static int ParallelLock = 0;
         
         private readonly IReceiptFinder _receiptFinder;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly IBloomStorage _bloomStorage;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly int _maxBlockDepth;
@@ -41,16 +42,17 @@ namespace Nethermind.Blockchain.Find
         private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
         
-        public LogFinder(
-            IBlockFinder? blockFinder, 
-            IReceiptFinder? receiptFinder, 
-            IBloomStorage? bloomStorage, 
-            ILogManager? logManager, 
-            IReceiptsRecovery? receiptsRecovery, 
+        public LogFinder(IBlockFinder? blockFinder,
+            IReceiptFinder? receiptFinder,
+            IReceiptStorage? receiptStorage,
+            IBloomStorage? bloomStorage,
+            ILogManager? logManager,
+            IReceiptsRecovery? receiptsRecovery,
             int maxBlockDepth = 1000)
         {
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));;
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -291,7 +293,10 @@ namespace Nethermind.Blockchain.Find
                     var block = _blockFinder.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                     if (block != null)
                     {
-                        _receiptsRecovery.TryRecover(block, receipts);
+                        if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.Success)
+                        {
+                            _receiptStorage.Insert(block, receipts);
+                        }
                     }
                 }
             }

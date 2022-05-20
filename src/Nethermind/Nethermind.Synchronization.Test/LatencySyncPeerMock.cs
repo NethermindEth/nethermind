@@ -66,6 +66,7 @@ namespace Nethermind.Synchronization.Test
         public Keccak HeadHash { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; } = true;
+        public bool IsPriority { get; set; }
 
         public void Disconnect(DisconnectReason reason, string details)
         {

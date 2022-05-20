@@ -92,7 +92,7 @@ namespace Nethermind.Evm
             InitializePrecompiledContracts();
         }
 
-        public TransactionSubstate Run(EvmState state, IWorldState worldState, IReleaseSpec releaseSpec, ITxTracer txTracer)
+        public TransactionSubstate Run(EvmState state, IWorldState worldState, ITxTracer txTracer)
         {
             _txTracer = txTracer;
 
@@ -592,6 +592,7 @@ namespace Nethermind.Evm
             }
         }
 
+        [SkipLocalsInit]
         private CallResult ExecuteCall(EvmState vmState, byte[]? previousCallResult, ZeroPaddedSpan previousCallOutput, in UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             bool isTrace = _logger.IsTrace;

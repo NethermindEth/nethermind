@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -35,6 +36,7 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -85,11 +87,14 @@ public class BeaconHeadersSyncTests
             _mergeConfig = mergeConfig ?? new MergeConfig();
             _metadataDb = metadataDb ?? new MemDb();
 
+            ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
+
             SyncProgressResolver syncProgressResolver = new(
                 BlockTree,
                 NullReceiptStorage.Instance,
                 stateDb,
                 new TrieStore(stateDb, LimboLogs.Instance),
+                progressTracker,
                 _syncConfig,
                 LimboLogs.Instance);
             TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new (syncProgressResolver, LimboLogs.Instance);
@@ -129,7 +134,6 @@ public class BeaconHeadersSyncTests
     }
 
     [Test]
-    [Ignore("Fixed on merge_sync_wip")]
     public async Task Finishes_when_all_downloaded()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -157,7 +161,7 @@ public class BeaconHeadersSyncTests
         HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
         feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        measuredProgress.CurrentValue.Should().Be(0);
+        measuredProgress.CurrentValue.Should().Be(2000);
     }
 
     [Test]
@@ -186,6 +190,7 @@ public class BeaconHeadersSyncTests
         blockTree.Insert(highestBlock, true);
         
         pivot.EnsurePivot(syncedBlockTree.FindHeader(999, BlockTreeLookupOptions.None));
+        // TODO: beaconsync lowest inserted beacon header should be known header + 1
         BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 501);
     }
 
@@ -205,16 +210,18 @@ public class BeaconHeadersSyncTests
         blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None));
         long lowestHeaderNumber = pivot.PivotNumber + 1;
         
-        for (int i = 0; i < 2; i++)
+        while (lowestHeaderNumber > endLowestBeaconHeader)
         {
             HeadersSyncBatch batch = await ctx.Feed.PrepareRequest();
             batch.Should().NotBeNull();
             BuildHeadersSyncBatchResponse(batch, syncedBlockTree);
             ctx.Feed.HandleResponse(batch);
-            lowestHeaderNumber = lowestHeaderNumber - batch.RequestSize < bestPointer
+            lowestHeaderNumber = lowestHeaderNumber - batch.RequestSize < endLowestBeaconHeader
                 ? endLowestBeaconHeader
                 : lowestHeaderNumber - batch.RequestSize;
-            blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None));
+            
+            BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
+            blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(lowestHeader?.Hash);
         }
 
         HeadersSyncBatch result = await ctx.Feed.PrepareRequest();

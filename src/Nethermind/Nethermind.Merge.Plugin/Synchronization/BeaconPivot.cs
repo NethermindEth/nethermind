@@ -17,7 +17,6 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,6 +24,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Synchronization
@@ -37,22 +37,31 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
+        private BlockHeader? _pivotParent;
+        private bool _pivotParentProcessed;
+        private BlockHeader? _currentBeaconPivot;
+
         public BlockHeader? CurrentBeaconPivot
         {
             get => _currentBeaconPivot;
-            private set
+            set
             {
                 if (_currentBeaconPivot != value)
                 {
                     _currentBeaconPivot = value;
+                    if (value != null)
+                    {
+                        _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotHash, Rlp.Encode(value.Hash ?? value.CalculateHash()).Bytes);
+                        _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(value.Number).Bytes);
+                    }
+                    else
+                    {
+                        _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotHash);
+                    }
                     Changed?.Invoke(this, EventArgs.Empty);
                 }
             }
         }
-
-        private BlockHeader? _pivotParent;
-        private bool _pivotParentProcessed;
-        private BlockHeader? _currentBeaconPivot;
 
         public BeaconPivot(
             ISyncConfig syncConfig,
@@ -66,7 +75,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
-            // _currentBeaconPivot = _blockTree.LowestInsertedBeaconHeader; // ToDo Sarah: I think it is incorrect, but we should discuss it
+            LoadBeaconPivot();
         }
 
         public long PivotNumber => CurrentBeaconPivot?.Number ?? _syncConfig.PivotNumberParsed;
@@ -78,7 +87,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public long PivotDestinationNumber => CurrentBeaconPivot is null
             ? 0
-            // :  Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ?? 0) + 1; // ToDo Sarah the current code is not ready to go with BestSuggestedHeader. I see that beacon finished is trying to reach _syncConfig and we're stuck because of that
+            // :  Math.Max(_syncConfig.PivotNumberParsed, _blockTree.BestSuggestedHeader?.Number ?? 0) + 1; // TODO: start sync on stable best header
             : _syncConfig.PivotNumberParsed + 1;
 
         public event EventHandler? Changed;
@@ -102,12 +111,27 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public void RemoveBeaconPivot()
         {
-            if (_logger.IsInfo) _logger.Info($"Removing beacon pivot, previous pivot: {CurrentBeaconPivot}");
+            if (_logger.IsInfo) _logger.Info($"Removing beacon pivot, previous pivot: {_currentBeaconPivot}");
             CurrentBeaconPivot = null;
-            // ToDo clear DB
         }
-
+        
         public bool BeaconPivotExists() => CurrentBeaconPivot != null;
+
+        private void LoadBeaconPivot()
+        {
+            if (_metadataDb.KeyExists(MetadataDbKeys.BeaconSyncPivotHash))
+            {
+                Keccak? pivotHash = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotHash)?
+                    .AsRlpStream().DecodeKeccak();
+                if (pivotHash != null)
+                {
+                    _currentBeaconPivot =
+                        _blockTree.FindHeader(pivotHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                }
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Loaded Beacon Pivot: {CurrentBeaconPivot}");
+        }
     }
 
     public interface IBeaconPivot : IPivot

@@ -56,6 +56,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBeaconPivot _beaconPivot;
         private readonly IBlockCacheService _blockCacheService;
+        private readonly IBlockProcessingQueue _processingQueue;
         private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
@@ -70,6 +71,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBeaconSyncStrategy beaconSyncStrategy,
             IBeaconPivot beaconPivot,
             IBlockCacheService blockCacheService,
+            IBlockProcessingQueue processingQueue,
             IMergeSyncController mergeSyncController,
             ILogManager logManager)
         {
@@ -81,6 +83,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _beaconSyncStrategy = beaconSyncStrategy;
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
+            _processingQueue = processingQueue;
             _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
         }
@@ -164,11 +167,17 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsInfo)
                 {
                     string resultStr = isValid ? "Valid" : "Invalid";
-                    _logger.Info($"{resultStr}. Result of {requestStr}");
+                    if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}");
                 }
 
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, isValid, parentHeader,
                     result.Message));
+            }
+
+            if (result.ValidationResult == ValidationResult.Syncing)
+            {
+                if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}");
+                return NewPayloadV1Result.Syncing;
             }
 
             if (processedBlock == null)
@@ -197,7 +206,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (isValid == false && _logger.IsWarn)
                 {
                     validationMessage = $"Invalid block {block} sent from latestBlock cache";
-                    _logger.Warn(validationMessage);
+                    if (_logger.IsWarn) _logger.Warn(validationMessage);
                 }
 
                 return (ValidationResult.AlreadyKnown |
@@ -211,35 +220,40 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return (ValidationResult.Valid | ValidationResult.AlreadyKnown, validationMessage);
                 }
 
-                bool validAndProcessed = ValidateAndProcess(block, parent!, out processedBlock);
+                bool validAndProcessed = ValidateWithBlockValidator(block, parent, out processedBlock);
+                if (validAndProcessed)
+                {
+                    if (_processingQueue.IsEmpty)
+                    {
+                        // processingQueue is empty so we can process the block in synchronous way
+                        _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
+                        processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
+                    }
+                    else
+                    {
+                        // this is needed for restarts. We have blocks in queue so we should add it to queue and return SYNCING
+                        _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.ShouldProcess);
+                        return (ValidationResult.Syncing, null);
+                    }
+            
+                    if (processedBlock == null)
+                    {
+                        if (_logger.IsWarn)
+                        {
+                            _logger.Warn(
+                                $"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
+                        }
+
+                        validAndProcessed = false;
+                    }
+                }
 
                 _latestBlocks.Set(block.Hash!, validAndProcessed);
                 return (validAndProcessed ? ValidationResult.Valid : ValidationResult.Invalid, validationMessage);
             }
         }
 
-        private bool ValidateAndProcess(Block block, BlockHeader parent, out Block? processedBlock)
-        {
-            bool valid = ValidateBlock(block, parent, out processedBlock);
-            if (!valid) return false;
-
-            _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
-            processedBlock = _processor.Process(block, GetProcessingOptions(), NullBlockTracer.Instance);
-            if (processedBlock == null)
-            {
-                if (_logger.IsWarn)
-                {
-                    _logger.Warn(
-                        $"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
-                }
-
-                return false;
-            }
-
-            return true;
-        }
-
-        private bool ValidateBlock(Block block, BlockHeader parent, out Block? processedBlock)
+        private bool ValidateWithBlockValidator(Block block, BlockHeader parent, out Block? processedBlock)
         {
             block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             processedBlock = null;
@@ -307,18 +321,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return payloadStatus;
         }
 
-        private bool IsParentProcessed(BlockHeader blockHeader)
-        {
-            BlockHeader? parent =
-                _blockTree.FindParentHeader(blockHeader, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (parent != null)
-            {
-                return _blockTree.WasProcessed(parent.Number, parent.Hash ?? parent.CalculateHash());
-            }
-
-            return false;
-        }
-
         private bool TryInsertDanglingBlock(Block block)
         {
             BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
@@ -371,7 +373,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             Invalid = 0,
             Valid = 1,
-            AlreadyKnown = 2
+            AlreadyKnown = 2,
+            Syncing = 3
         }
     }
 }

@@ -33,7 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ISyncConfig _syncConfig;
         private readonly IBlockCacheService _blockCacheService;
-        private bool _isInBeaconModeControl;
+        private bool _isInBeaconModeControl = false;
         private readonly ILogger _logger;
 
         public BeaconSync(
@@ -85,8 +85,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
         
         public bool IsBeaconSyncHeadersFinished()
         {
+            long lowestedBeaconHeaderNumber = _blockTree.LowestInsertedBeaconHeader?.Number ?? 0;
             bool finished = _blockTree.LowestInsertedBeaconHeader == null
-                            || _blockTree.LowestInsertedBeaconHeader?.Number <= _syncConfig.PivotNumberParsed + 1;
+                            || lowestedBeaconHeaderNumber <= _beaconPivot.PivotDestinationNumber
+                            || lowestedBeaconHeaderNumber <= (_blockTree.BestSuggestedHeader?.Number ?? long.MaxValue);
             
             if (_logger.IsTrace) _logger.Trace($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;

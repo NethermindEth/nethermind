@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -45,7 +45,13 @@ namespace Nethermind.State
                 Cache[index] = Keccak.Compute(buffer).Bytes;
             }
         }
-        
+
+        public StorageTree(ITrieStore? trieStore, ILogManager? logManager)
+            : base(trieStore, Keccak.EmptyTreeHash, false, true, logManager)
+        {
+            TrieType = TrieType.Storage;
+        }
+
         public StorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager)
             : base(trieStore, rootHash, false, true, logManager)
         {
@@ -81,13 +87,25 @@ namespace Nethermind.State
 
         public void Set(in UInt256 index, byte[] value)
         {
+            var key = GetKey(index);
+            SetInternal(key, value);
+        }
+
+        public void Set(Keccak key, byte[] value, bool rlpEncode = true)
+        {
+            SetInternal(key.Bytes, value, rlpEncode);
+        }
+
+        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
+        {
             if (value.IsZero())
             {
-                Set(GetKey(index), Array.Empty<byte>());
+                Set(rawKey, Array.Empty<byte>());
             }
             else
             {
-                Set(GetKey(index), Rlp.Encode(value));
+                Rlp rlpEncoded = rlpEncode ? Rlp.Encode(value) : new Rlp(value);
+                Set(rawKey, rlpEncoded);
             }
         }
     }

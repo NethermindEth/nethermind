@@ -68,18 +68,27 @@ public class ChainLevelHelper : IChainLevelHelper
 
             BlockInfo blockInfo = level.MainChainBlock;
             BlockHeader? newHeader =
-                _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
 
             if (newHeader == null)
             {
                 if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - header {startingPoint} not found");
                 continue;
             }
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"ChainLevelHelper - MainChainBlock: {level.MainChainBlock} TD: {level.MainChainBlock?.TotalDifficulty}");
+                foreach (BlockInfo bi in level.BlockInfos)
+                {
+                    _logger.Trace($"ChainLevelHelper {bi.BlockHash}, {bi.BlockNumber} {bi.TotalDifficulty} {bi.Metadata}");
+                }
+            }
 
-            newHeader.TotalDifficulty = blockInfo.TotalDifficulty == 0 ? null : blockInfo.TotalDifficulty;
+            if ((blockInfo.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0)
+                newHeader.TotalDifficulty = blockInfo.TotalDifficulty == 0 ? null : blockInfo.TotalDifficulty;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
+                    $"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}, header TD {newHeader.TotalDifficulty}");
             headers.Add(newHeader);
             ++i;
             if (i >= maxCount)

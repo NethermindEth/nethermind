@@ -40,7 +40,7 @@ using CancellationToken = System.Threading.CancellationToken;
 
 namespace Nethermind.Network.P2P.Subprotocols.Les
 {
-    public class LesProtocolHandler : SyncPeerProtocolHandlerBase, IZeroProtocolHandler, ISyncPeer
+    public class LesProtocolHandler : SyncPeerProtocolHandlerBase, ISyncPeer
     {
         public override string Name => "les3";
         public override bool IncludeInTxPool => false;

@@ -14,11 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
+    [Flags]
+    public enum BlockMetadata
+    {
+        None = 0x0,
+        Finalized = 0x1,
+        Invalid = 0x2,
+        BeaconHeader = 0x4,
+        BeaconBody = 0x8
+    }
+    
     public class BlockInfo
     {
         public BlockInfo(Keccak blockHash, in UInt256 totalDifficulty)
@@ -30,11 +41,27 @@ namespace Nethermind.Core
         public UInt256 TotalDifficulty { get; set; }
         
         public bool WasProcessed { get; set; }
-        
+
         public Keccak BlockHash { get; }
-        
-        public bool IsFinalized { get; set; }
-        
+
+        public bool IsFinalized
+        {
+            get => (Metadata & BlockMetadata.Finalized) == BlockMetadata.Finalized;
+            set
+            {
+                if (value)
+                {
+                    Metadata |= BlockMetadata.Finalized;
+                }
+                else
+                {
+                    Metadata &= ~BlockMetadata.Finalized;
+                }
+            }
+        }
+
+        public BlockMetadata Metadata { get; set; }
+
         /// <summary>
         /// This property is not serialized
         /// </summary>

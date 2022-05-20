@@ -28,6 +28,11 @@ namespace Nethermind.AccountAbstraction
             Description = "Defines whether UserOperations are allowed.",
             DefaultValue = "false")]
         bool Enabled { get; set; }
+        
+        [ConfigItem(
+            Description = "Max number of priority AccountAbstraction peers.",
+            DefaultValue = "20")]
+        int AaPriorityPeersMaxCount { get; set; }
 
         [ConfigItem(
             Description = "Defines the maximum number of UserOperations that can be kept in memory by clients",

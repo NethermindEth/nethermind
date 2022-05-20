@@ -80,6 +80,7 @@ namespace Nethermind.Synchronization.Test
         public long HeadNumber { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
+        public bool IsPriority { get; set; }
 
         public void Disconnect(DisconnectReason reason, string details)
         {

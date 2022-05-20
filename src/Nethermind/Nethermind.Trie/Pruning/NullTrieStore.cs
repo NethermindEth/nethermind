@@ -52,7 +52,9 @@ namespace Nethermind.Trie.Pruning
         {
             return Array.Empty<byte>();
         }
-        
+
+        public bool IsPersisted(Keccak keccak) => true;
+
         public void Dispose() { }
     }
 }
