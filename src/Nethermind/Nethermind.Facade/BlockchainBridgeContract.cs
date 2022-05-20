@@ -50,7 +50,7 @@ namespace Nethermind.Facade
             public override object[] Call(CallInfo callInfo)
             {
                 var transaction = GenerateTransaction(callInfo);
-                var result = _blockchainBridge.Call(callInfo.ParentHeader, transaction, CancellationToken.None);
+                var result = _blockchainBridge.Call(callInfo.ParentHeader, transaction, CancellationToken.None, false);
                 if (!string.IsNullOrEmpty(result.Error))
                 {
                     throw new AbiException(result.Error);

@@ -51,7 +51,7 @@ namespace Nethermind.Evm.Tracing.Proofs
         public bool IsTracingStack => false;
         public bool IsTracingState => true;
         public bool IsTracingStorage => true;
-
+        
         public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
             throw new NotSupportedException();

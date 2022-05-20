@@ -49,5 +49,8 @@ namespace Nethermind.JsonRpc
         public string CallsFilterFilePath { get; set; } = "Data/jsonrpc.filter";
         public long? MaxRequestBodySize { get; set; } = 30000000;
         public int? EthModuleConcurrentInstances { get; set; } = null;
+        public bool NoBaseFee { get; set; } = false;
+        public JsonRpcConfig Clone() => (JsonRpcConfig)MemberwiseClone();
+
     }
 }

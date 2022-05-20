@@ -36,6 +36,11 @@ namespace Nethermind.JsonRpc
             Description = "JSON RPC' timeout value given in milliseconds.",
             DefaultValue = "20000")] 
         int Timeout { get; set; }
+        
+        [ConfigItem(
+            Description = "Defines whether the eth_call should be executed without taking base fee into consideration (in case when maxPriorityFeePerGas and maxFeePerGas are equal to zero).",
+            DefaultValue = "false")] 
+        bool NoBaseFee { get; set; }
 
         [ConfigItem(
             Description = "Base file path for diagnostic JSON RPC recorder.",
@@ -108,5 +113,7 @@ namespace Nethermind.JsonRpc
                           "If this limit is exceeded on Http calls 503 Service Unavailable will be returned along with Json RPC error. " +
                           "Defaults to number of logical processes.")]
         int? EthModuleConcurrentInstances { get; set; }
+
+        JsonRpcConfig Clone();
     }
 }
