@@ -208,7 +208,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         _logger.Trace(
                             $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBlock} ShouldProcess: {shouldProcess}");
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0,
-                            _blockTree.SuggestBlock(currentBlock, suggestOptions, true)))
+                            _blockTree.SuggestBlock(currentBlock, suggestOptions)))
                     {
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
 

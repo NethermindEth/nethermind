@@ -318,7 +318,7 @@ public partial class BlockTreeTests
                     for (int i = startNumber; i < finalNumber; ++i)
                     {
                         ChainLevelInfo? level = NotSyncedTree.FindLevel(i);
-                        Assert.AreEqual(metadata, level?.MainChainBlock?.Metadata ?? BlockMetadata.None);
+                        Assert.AreEqual(metadata, level?.BeaconMainChainBlock?.Metadata ?? BlockMetadata.None, $"Block number {i}");
                     }
 
                     return this;

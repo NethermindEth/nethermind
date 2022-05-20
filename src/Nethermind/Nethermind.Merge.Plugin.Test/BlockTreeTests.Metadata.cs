@@ -31,8 +31,8 @@ public partial class BlockTreeTests
             .InsertHeaders(4, 6)
             .InsertBeaconBlocks(7, 9)
             .AssertMetadata(0, 4, BlockMetadata.None)
-            .AssertMetadata(5, 6, BlockMetadata.BeaconHeader)
-            .AssertMetadata(7, 9, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+            .AssertMetadata(5, 6, BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain)
+            .AssertMetadata(7, 9, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
     }
     
     [Test]
@@ -41,35 +41,43 @@ public partial class BlockTreeTests
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
-            .InsertHeaders(4, 6)
+            .InsertHeaders(3, 6)
             .InsertBeaconBlocks(7, 9)
             .SuggestBlocksUsingChainLevels()
             .AssertMetadata(0, 9, BlockMetadata.None);
     }
     
     [Test]
-    public void Should_not_change_beacon_metadata_when_not_moved_to_main_chain()
+    public void Should_fill_beacon_block_metadata_when_not_moved_to_main_chain()
     {
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10, false)
             .InsertBeaconPivot(7)
-            .InsertHeaders(4, 6)
+            .InsertHeaders(3, 6)
             .InsertBeaconBlocks(7, 9)
             .SuggestBlocksUsingChainLevels()
-            .AssertMetadata(0, 4, BlockMetadata.None)
-            .AssertMetadata(5, 6, BlockMetadata.BeaconHeader)
-            .AssertMetadata(7, 9, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+            .AssertMetadata(0, 3, BlockMetadata.None)
+            .AssertMetadata(4, 6, BlockMetadata.None)
+            .AssertMetadata(7, 9, BlockMetadata.None);
     }
     
     [Test]
-    public void xor_metadata()
+    public void Removing_beacon_metadata()
     {
         BlockMetadata metadata = BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader;
-        metadata = metadata ^ (BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+        metadata = metadata & ~(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
         Assert.AreEqual(BlockMetadata.None, metadata);
         
         BlockMetadata metadata2 = BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.Finalized | BlockMetadata.Invalid;
-        metadata2 = metadata2 ^ (BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+        metadata2 = metadata2 & ~(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
         Assert.AreEqual(BlockMetadata.Finalized | BlockMetadata.Invalid, metadata2);
+        
+        BlockMetadata metadata3 = BlockMetadata.None;
+        metadata3 &= ~(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+        Assert.AreEqual(BlockMetadata.None, metadata3);
+        
+        BlockMetadata metadata4 = BlockMetadata.BeaconHeader;
+        metadata4 |= BlockMetadata.BeaconMainChain;
+        Assert.AreEqual(BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain, metadata4);
     }
 }

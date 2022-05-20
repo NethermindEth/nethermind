@@ -591,7 +591,12 @@ namespace Nethermind.Blockchain
             bool addBeaconMetadata = (options & BlockTreeInsertOptions.AddBeaconMetadata) != 0;
             if (addBeaconMetadata)
             {
-                blockInfo.Metadata |= BlockMetadata.BeaconHeader;
+                blockInfo.Metadata = blockInfo.Metadata | BlockMetadata.BeaconHeader;
+            }
+            bool moveToBeaconMainChain = (options & BlockTreeInsertOptions.MoveToBeaconMainChain) != 0;
+            if (moveToBeaconMainChain)
+            {
+                blockInfo.Metadata = blockInfo.Metadata | BlockMetadata.BeaconMainChain;
             }
             
             ChainLevelInfo chainLevel = new(isOnMainChain, blockInfo);
@@ -629,18 +634,31 @@ namespace Nethermind.Blockchain
             }
             
             bool addBeaconMetadata = (options & BlockTreeInsertOptions.AddBeaconMetadata) != 0;
+            bool moveToBeaconMainChain = (options & BlockTreeInsertOptions.MoveToBeaconMainChain) != 0;
             if (addBeaconMetadata)
             {
+                // we're manipulating level when we're inserting header and
                 ChainLevelInfo chainLevelInfo = LoadLevel(block.Number);
                 if (chainLevelInfo is not null)
                 {
-                    int index = Array.FindIndex(chainLevelInfo.BlockInfos, b => b.BlockHash == block.Hash);
-                    if (index >= 0)
+                    for (int i = 0; i < chainLevelInfo.BlockInfos.Length; ++i)
                     {
-                        BlockInfo? blockInfo = chainLevelInfo.BlockInfos[index];
-                        blockInfo.Metadata |= BlockMetadata.BeaconBody;
-                        _chainLevelInfoRepository.PersistLevel(block.Number, chainLevelInfo);
+                        var blockInfo = chainLevelInfo.BlockInfos[i];
+                        if (blockInfo.BlockHash == block.Hash)
+                        {
+                            blockInfo.Metadata |= BlockMetadata.BeaconBody;
+                            if (moveToBeaconMainChain)
+                                blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+                        }
+                        else
+                        {
+                            // we're removing other blocks from main chain
+                            if (moveToBeaconMainChain)
+                                blockInfo.Metadata &= ~BlockMetadata.BeaconMainChain;
+                        }
                     }
+                    
+                    _chainLevelInfoRepository.PersistLevel(block.Number, chainLevelInfo);
                 }
             }
 
@@ -731,17 +749,15 @@ namespace Nethermind.Blockchain
             {
                 Rlp newRlp = _headerDecoder.Encode(header);
                 _headerDb.Set(header.Hash, newRlp.Bytes);
+            }
 
+            if (!isKnown || fillBeaconBlock)
+            {
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
+
                 UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
-
-            // if (isKnown && fillBeaconBlock)
-            // {
-            //     BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-            //     UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
-            // }
             
             if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
             {
@@ -1418,7 +1434,6 @@ namespace Nethermind.Blockchain
 
             BlockInfo info = level.BlockInfos[index.Value];
             info.WasProcessed = wasProcessed;
-          //  ToDo remove beacon metadata here?
             if (index.Value != 0)
             {
                 (level.BlockInfos[index.Value], level.BlockInfos[0]) =
