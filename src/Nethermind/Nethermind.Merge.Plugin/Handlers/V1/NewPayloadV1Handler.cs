@@ -139,8 +139,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Accepted;
             }
 
-            // var newPayloadInCanonicalChain = _blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
-            // if (block)
+            if (block.Number < (_blockTree.Head?.Number ?? 0))
+            {
+                bool canIgnoreNewPayload = _blockTree.IsMainChain(block.Header);
+                if (canIgnoreNewPayload)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.FullHashAndNumber)} found in main chain.");
+                    return NewPayloadV1Result.Valid(block.ParentHash);
+                }
+            }
 
             if (!parentProcessed)
             {
@@ -159,7 +166,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
                 // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
-                return NewPayloadV1Result.Invalid(Keccak.Zero, null);
+                return NewPayloadV1Result.Invalid(Keccak.Zero);
             }
 
             _mergeSyncController.StopSyncing();

@@ -28,7 +28,7 @@ public static class NewPayloadV1Result
     
     public static ResultWrapper<PayloadStatusV1> Accepted = ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Accepted);
 
-    public static ResultWrapper<PayloadStatusV1> Invalid(Keccak? latestValidHash, string validationError)
+    public static ResultWrapper<PayloadStatusV1> Invalid(Keccak? latestValidHash, string? validationError = null)
     {
         return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1() { Status = PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError});
     }

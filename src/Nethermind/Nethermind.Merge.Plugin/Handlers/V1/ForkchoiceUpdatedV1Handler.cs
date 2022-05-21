@@ -157,7 +157,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 
                 // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
                 // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
-                return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero, null);
+                return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
             }
 
 
