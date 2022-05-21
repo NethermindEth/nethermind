@@ -16,9 +16,8 @@
 // 
 
 using System;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
-using Nethermind.Core.Crypto;
+using Nethermind.Core;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -26,21 +25,33 @@ namespace Nethermind.Merge.Plugin
     {
         private readonly IGossipPolicy _preMergeGossipPolicy;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IManualBlockFinalizationManager _blockFinalizationManager;
+        private readonly IMergeConfig _mergeConfig;
 
         public MergeGossipPolicy(
-            IGossipPolicy? apiGossipPolicy, 
-            IPoSSwitcher? poSSwitcher, 
-            IManualBlockFinalizationManager blockFinalizationManager)
+            IGossipPolicy? apiGossipPolicy,
+            IPoSSwitcher? poSSwitcher,
+            IMergeConfig? mergeConfig)
         {
             _preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _blockFinalizationManager = blockFinalizationManager;
+            _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
         }
 
-        public bool ShouldGossipBlocks => !_poSSwitcher.HasEverReachedTerminalBlock() && _preMergeGossipPolicy.ShouldGossipBlocks;
+        // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
+        // We SHOULD NOT advertise the descendant of any terminal PoW block.
+        // In our approach we CAN gossip blocks if we didn't received FIRST_FINALIZED_BLOCK yet...
+        public bool CanGossipBlocks => !_poSSwitcher.TransitionFinished && _preMergeGossipPolicy.CanGossipBlocks;
 
-        public bool ShouldDisconnectGossipingNodes => _blockFinalizationManager.LastFinalizedHash != Keccak.Zero && _preMergeGossipPolicy.ShouldDisconnectGossipingNodes;
+        //  ...and gossipping policy will be decided according to the header difficulty.
+        public bool ShouldGossipBlock(BlockHeader header) => !_poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge;
+        
+        // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
+        // We MUST discard NewBlock/NewBlockHash messages after receiving FIRST_FINALIZED_BLOCK.
+        public bool ShouldDiscardBlocks => _poSSwitcher.TransitionFinished;
 
+        // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
+        // We SHOULD start disconnecting gossiping peers after receiving next finalized block to FIRST_FINALIZED_BLOCK, so one block after we started discarding NewBlock/NewBlockHash messages.
+        // In our approach we will start disconnecting peers when FinalTotalDifficulty will be set in config, so after first post-merge release.
+        public bool ShouldDisconnectGossipingNodes => _mergeConfig.FinalTotalDifficulty != null;
     }
 }

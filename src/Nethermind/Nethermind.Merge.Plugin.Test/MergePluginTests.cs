@@ -97,7 +97,7 @@ namespace Nethermind.Merge.Plugin.Test
             await _plugin.InitNetworkProtocol();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
             Assert.IsTrue(syncConfig.NetworkingEnabled);
-            Assert.IsTrue(_context.GossipPolicy.ShouldGossipBlocks);
+            Assert.IsTrue(_context.GossipPolicy.CanGossipBlocks);
             await _plugin.InitBlockProducer(_consensusPlugin);
             Assert.IsInstanceOf<MergeBlockProducer>(_context.BlockProducer);
             await _plugin.InitRpcModules();

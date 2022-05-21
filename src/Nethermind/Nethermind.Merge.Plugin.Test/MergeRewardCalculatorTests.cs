@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -168,7 +169,8 @@ namespace Nethermind.Merge.Plugin.Test
             TestSpecProvider specProvider = new (London.Instance);
             specProvider.TerminalTotalDifficulty = 2;
             MergeConfig? mergeConfig = new() {Enabled = true };
-            return new PoSSwitcher(mergeConfig, db, blockTree, specProvider, LimboLogs.Instance);
+            IBlockCacheService blockCacheService = new BlockCacheService();
+            return new PoSSwitcher(mergeConfig, db, blockTree, specProvider, blockCacheService, LimboLogs.Instance);
         }
         
     }
