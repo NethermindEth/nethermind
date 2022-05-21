@@ -134,11 +134,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
                 }
 
-                _logger.Info($"Insert block into cache without parent {block}");
+                if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
                 _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
                 return NewPayloadV1Result.Accepted;
             }
 
+            // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
             if (block.Number < (_blockTree.Head?.Number ?? 0))
             {
                 bool canIgnoreNewPayload = _blockTree.IsMainChain(block.Header);
@@ -226,12 +227,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             else
             {
-                processedBlock = _blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None);
-                if (processedBlock != null && _blockTree.WasProcessed(processedBlock.Number, processedBlock.Hash))
-                {
-                    return (ValidationResult.Valid | ValidationResult.AlreadyKnown, validationMessage);
-                }
-
                 bool validAndProcessed = ValidateWithBlockValidator(block, parent, out processedBlock);
                 if (validAndProcessed)
                 {

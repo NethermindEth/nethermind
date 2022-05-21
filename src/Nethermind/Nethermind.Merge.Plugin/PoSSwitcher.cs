@@ -54,8 +54,7 @@ namespace Nethermind.Merge.Plugin
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private Keccak? _terminalBlockHash;
-
-        private long? _configuredTerminalBlockNumber;
+        
         private long? _terminalBlockNumber;
         private long? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
@@ -231,23 +230,22 @@ namespace Nethermind.Merge.Plugin
 
         public Keccak ConfiguredTerminalBlockHash => _mergeConfig.TerminalBlockHashParsed;
 
-        public long? ConfiguredTerminalBlockNumber => _configuredTerminalBlockNumber;
+        public long? ConfiguredTerminalBlockNumber => _mergeConfig.TerminalBlockNumber;
 
         private void LoadTerminalBlock()
         {
-            _configuredTerminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
-                                             _specProvider.MergeBlockNumber - 1;
-            _terminalBlockNumber = ConfiguredTerminalBlockNumber;
+            long? terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
+                                         _specProvider.MergeBlockNumber - 1;
 
-            _terminalBlockExplicitSpecified = _terminalBlockNumber != null;
-            _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
+            _terminalBlockExplicitSpecified = terminalBlockNumber != null;
+            terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
 
             _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
                 ? _mergeConfig.TerminalBlockHashParsed
                 : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
-            if (_terminalBlockNumber != null)
-                _firstPoSBlockNumber = _terminalBlockNumber + 1;
+            if (terminalBlockNumber != null)
+                _firstPoSBlockNumber = terminalBlockNumber + 1;
         }
 
         private long? LoadTerminalBlockNumberFromDb()
