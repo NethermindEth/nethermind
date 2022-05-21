@@ -24,8 +24,6 @@ namespace Nethermind.Merge.Plugin.Data.V1
     {
         public static PayloadStatusV1 InvalidBlockHash = new() { Status = PayloadStatus.InvalidBlockHash };
 
-        public static PayloadStatusV1 InvalidTerminalBlock = new() { Status = PayloadStatus.InvalidTerminalBlock };
-
         public static PayloadStatusV1 Syncing = new() { Status = PayloadStatus.Syncing };
         
         public static PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };

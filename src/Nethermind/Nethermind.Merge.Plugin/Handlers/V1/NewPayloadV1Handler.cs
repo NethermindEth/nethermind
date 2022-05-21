@@ -139,6 +139,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Accepted;
             }
 
+            // var newPayloadInCanonicalChain = _blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
+            // if (block)
+
             if (!parentProcessed)
             {
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
@@ -154,7 +157,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _logger.Warn(
                         $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader!.TotalDifficulty}. Request: {requestStr}");
 
-                return NewPayloadV1Result.InvalidTerminalBlock;
+                // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
+                // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
+                return NewPayloadV1Result.Invalid(Keccak.Zero, null);
             }
 
             _mergeSyncController.StopSyncing();

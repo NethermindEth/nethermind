@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using DotNetty.Transport.Channels;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;

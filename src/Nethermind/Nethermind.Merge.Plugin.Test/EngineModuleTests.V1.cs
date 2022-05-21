@@ -645,7 +645,8 @@ namespace Nethermind.Merge.Plugin.Test
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressD);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(blockRequestResult);
-            resultWrapper.Data.Status.Should().Be(PayloadStatus.InvalidTerminalBlock);
+            resultWrapper.Data.Status.Should().Be(PayloadStatus.Invalid);
+            resultWrapper.Data.LatestValidHash.Should().Be(Keccak.Zero);
         }
 
         [TestCase(null)]
@@ -661,7 +662,8 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak blockHash = chain.BlockTree.HeadHash;
             ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper =
                 await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blockHash, blockHash, blockHash), null);
-            resultWrapper.Data.PayloadStatus.Status.Should().Be(PayloadStatus.InvalidTerminalBlock);
+            resultWrapper.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Invalid);
+            resultWrapper.Data.PayloadStatus.LatestValidHash.Should().Be(Keccak.Zero);
         }
 
         [Test]
