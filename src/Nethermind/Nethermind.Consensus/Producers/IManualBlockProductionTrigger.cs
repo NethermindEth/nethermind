@@ -30,6 +30,6 @@ namespace Nethermind.Consensus.Producers
             BlockHeader? parentHeader = null,
             CancellationToken? cancellationToken = null,
             IBlockTracer? blockTracer = null,
-            PayloadAttributes payloadAttributes = null);
+            PayloadAttributes? payloadAttributes = null);
     }
 }

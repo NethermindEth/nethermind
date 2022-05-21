@@ -1,0 +1,62 @@
+name: '[RUN] Merge Hive Tests'
+on: 
+  push:
+    branches: [ kiln ]
+  workflow_dispatch:
+jobs:
+  build-dockers:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checking out Nethermind
+        uses: actions/checkout@v2
+      - name: Unshallow fetching
+        run: git fetch --unshallow
+      - name: Setting up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Setting up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Building Nethermind Image
+        uses: docker/build-push-action@v2
+        with: 
+          context: .
+          file: ./Dockerfile
+          tags: nethermind:kiln_shadowfork
+          outputs: type=docker,dest=/tmp/image.tar
+      - name: Installing Linux packages
+        run: |
+         sudo apt-get update
+         sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
+      - name: Setup Go environment
+        uses: actions/setup-go@v3.0.0
+        with:
+         go-version: '>=1.17.0'
+      - name: Check out Hive
+        uses: actions/checkout@v2
+        with:
+          repository: 'ethereum/hive'
+      - name: Build Hive
+        run: go build .
+      - name: Load Docker Image
+        run: docker load --input /tmp/image.tar
+      - name: Run Merge Hive
+        run: |
+         ./hive --client merge-nethermind,merge-nethermind --sim ethereum/engine
+      - name: Upload Hive Results
+        uses: actions/upload-artifact@v2
+        with:
+          name: results
+          path: workspace/logs/*.json
+          retention-days: 7
+      - name: Checkout Printer
+        uses: actions/checkout@v2
+        with: 
+          repository: DockBoss/hiveResults
+      - name: Set Up Python
+        uses: actions/setup-python@v3
+      - name: Download Results
+        uses: actions/download-artifact@v2
+        with:
+          name: results
+      - name: Print Results
+        run: |
+         python res.py

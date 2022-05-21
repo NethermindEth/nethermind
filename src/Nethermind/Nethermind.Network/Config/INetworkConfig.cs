@@ -44,8 +44,8 @@ namespace Nethermind.Network.Config
         int PriorityPeersMaxCount { get; set; }
 
         [ConfigItem(Description = "Same as ActivePeersMaxCount.", DefaultValue = "50")]
-        int MaxActivePeers => ActivePeersMaxCount;
-
+        int MaxActivePeers { get; set; }
+    
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "5000")]
         int PeersPersistenceInterval { get; set; }
         
