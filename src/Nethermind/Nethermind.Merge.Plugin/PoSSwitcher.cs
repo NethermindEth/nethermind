@@ -258,18 +258,18 @@ namespace Nethermind.Merge.Plugin
 
         private void LoadTerminalBlock()
         {
-            long? terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
+            _terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
                                          _specProvider.MergeBlockNumber - 1;
 
-            _terminalBlockExplicitSpecified = terminalBlockNumber != null;
-            terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
+            _terminalBlockExplicitSpecified = _terminalBlockNumber != null;
+            _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
 
             _terminalBlockHash = _mergeConfig.TerminalBlockHashParsed != Keccak.Zero
                 ? _mergeConfig.TerminalBlockHashParsed
                 : LoadHashFromDb(MetadataDbKeys.TerminalPoWHash);
 
-            if (terminalBlockNumber != null)
-                _firstPoSBlockNumber = terminalBlockNumber + 1;
+            if (_terminalBlockNumber != null)
+                _firstPoSBlockNumber = _terminalBlockNumber + 1;
         }
 
         private long? LoadTerminalBlockNumberFromDb()
