@@ -27,6 +27,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
@@ -62,8 +63,9 @@ public partial class BlockDownloaderTests
         InMemoryReceiptStorage receiptStorage = new();
         MergeConfig mergeConfig = new() { Enabled = true };
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
+        IBlockCacheService blockCacheService = new BlockCacheService();
         PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, metadataDb, notSyncedTree,
-            RopstenSpecProvider.Instance, LimboLogs.Instance);
+            RopstenSpecProvider.Instance, blockCacheService, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), mergeConfig, metadataDb, notSyncedTree,
             new PeerRefresher(Substitute.For<ISyncPeerPool>()), LimboLogs.Instance);
         beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
@@ -113,8 +115,9 @@ public partial class BlockDownloaderTests
         InMemoryReceiptStorage receiptStorage = new();
         MergeConfig mergeConfig = new() { Enabled = true };
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
+        IBlockCacheService blockCacheService = new BlockCacheService();
         PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "10000000" }, metadataDb, notSyncedTree,
-            RopstenSpecProvider.Instance, LimboLogs.Instance);
+            RopstenSpecProvider.Instance, blockCacheService, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), mergeConfig, metadataDb, notSyncedTree,
             new PeerRefresher(Substitute.For<ISyncPeerPool>()), LimboLogs.Instance);
         if (withBeaconPivot)
