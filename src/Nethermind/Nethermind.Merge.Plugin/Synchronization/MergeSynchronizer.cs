@@ -18,6 +18,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
@@ -36,12 +37,8 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class MergeSynchronizer : Synchronizer
 {
-    private readonly IMergeSyncController _mergeSync;
+    private readonly IPoSSwitcher _poSSwitcher;
     private readonly IMergeConfig _mergeConfig;
-    private readonly IBlockCacheService _blockCacheService;
-    private readonly ISyncProgressResolver _syncProgressResolver;
-    private readonly IBlockValidator _blockValidator;
-    private readonly IBlockProcessingQueue _blockProcessingQueue;
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -55,21 +52,13 @@ public class MergeSynchronizer : Synchronizer
         ISnapProvider snapProvider,
         IBlockDownloaderFactory blockDownloaderFactory,
         IPivot pivot,
-        IMergeSyncController mergeSync,
+        IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
-        IBlockCacheService blockCacheService,
-        ISyncProgressResolver syncProgressResolver,
-        IBlockValidator blockValidator,
-        IBlockProcessingQueue blockProcessingQueue,
         ILogManager logManager) : base(dbProvider, specProvider, blockTree, receiptStorage, peerPool, nodeStatsManager,
         syncModeSelector, syncConfig, snapProvider, blockDownloaderFactory, pivot, logManager)
     {
-        _mergeSync = mergeSync;
+        _poSSwitcher = poSSwitcher;
         _mergeConfig = mergeConfig;
-        _blockCacheService = blockCacheService;
-        _syncProgressResolver = syncProgressResolver;
-        _blockValidator = blockValidator;
-        _blockProcessingQueue = blockProcessingQueue;
     }
 
     public override void Start()
@@ -87,7 +76,7 @@ public class MergeSynchronizer : Synchronizer
     {
         FastBlocksPeerAllocationStrategyFactory fastFactory = new();
         BeaconHeadersSyncFeed beaconHeadersFeed =
-            new(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _logManager);
+            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _logManager);
         BeaconHeadersSyncDispatcher beaconHeadersDispatcher =
             new(beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
         beaconHeadersDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>

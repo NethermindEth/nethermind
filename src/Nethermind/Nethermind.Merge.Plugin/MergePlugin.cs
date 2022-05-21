@@ -74,7 +74,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 
                 _blockCacheService = new BlockCacheService();
-                _poSSwitcher = new PoSSwitcher(_mergeConfig,
+                _poSSwitcher = new PoSSwitcher(_mergeConfig, new SyncConfig(),
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _blockCacheService, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
@@ -82,7 +82,7 @@ namespace Nethermind.Merge.Plugin
                    _api.RewardCalculatorSource ?? NoBlockRewards.Instance,  _poSSwitcher);
                 _api.SealValidator = new MergeSealValidator(_poSSwitcher, _api.SealValidator);
 
-                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _mergeConfig);
+                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
                 
                 _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
             }
@@ -242,12 +242,8 @@ namespace Nethermind.Merge.Plugin
                     _api.SnapProvider,
                     _api.BlockDownloaderFactory,
                     _api.Pivot,
-                    _beaconSync,
+                    _poSSwitcher,
                     _mergeConfig,
-                    _blockCacheService,
-                    _api.SyncProgressResolver,
-                    _api.BlockValidator,
-                    _api.BlockProcessingQueue,
                     _api.LogManager);
             }
 

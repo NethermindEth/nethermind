@@ -64,7 +64,7 @@ public partial class BlockDownloaderTests
         MergeConfig mergeConfig = new() { Enabled = true };
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
         IBlockCacheService blockCacheService = new BlockCacheService();
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, notSyncedTree,
             RopstenSpecProvider.Instance, blockCacheService, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), mergeConfig, metadataDb, notSyncedTree,
             new PeerRefresher(Substitute.For<ISyncPeerPool>()), LimboLogs.Instance);
@@ -116,7 +116,7 @@ public partial class BlockDownloaderTests
         MergeConfig mergeConfig = new() { Enabled = true };
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
         IBlockCacheService blockCacheService = new BlockCacheService();
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "10000000" }, metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "10000000" }, new SyncConfig(), metadataDb, notSyncedTree,
             RopstenSpecProvider.Instance, blockCacheService, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), mergeConfig, metadataDb, notSyncedTree,
             new PeerRefresher(Substitute.For<ISyncPeerPool>()), LimboLogs.Instance);

@@ -110,7 +110,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidBlockHash;
             }
 
-
+            
+            block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             bool parentExists = parentHeader != null;
             bool parentProcessed = parentExists && _blockTree.WasProcessed(parentHeader!.Number,

@@ -16,6 +16,7 @@
 // 
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -170,7 +171,7 @@ namespace Nethermind.Merge.Plugin.Test
             specProvider.TerminalTotalDifficulty = 2;
             MergeConfig? mergeConfig = new() {Enabled = true };
             IBlockCacheService blockCacheService = new BlockCacheService();
-            return new PoSSwitcher(mergeConfig, db, blockTree, specProvider, blockCacheService, LimboLogs.Instance);
+            return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider, blockCacheService, LimboLogs.Instance);
         }
         
     }

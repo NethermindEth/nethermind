@@ -32,6 +32,12 @@ namespace Nethermind.Consensus
 
         UInt256? TerminalTotalDifficulty { get; }
         
+        // Final total difficulty is total difficulty of the last PoW block. FinalTotalDifficulty >= TerminalTotalDifficulty.
+        // TerminalTotalDifficulty is trigger for transition process. However, the last PoW block will be bigger than TTD.
+        // Thanks to this variable, we can simplify many things in our code. For example, we can insert newPayload with FinalTotalDifficulty
+        // This value will be known after the merge transition, and we can configure it in the first release after the merge.
+        UInt256? FinalTotalDifficulty { get; }
+        
         bool TransitionFinished { get; }
         
         public Keccak ConfiguredTerminalBlockHash { get; }

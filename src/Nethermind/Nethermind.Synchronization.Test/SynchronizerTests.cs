@@ -320,7 +320,7 @@ namespace Nethermind.Synchronization.Test
                     mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString();
                 }
                 IBlockCacheService blockCacheService = new BlockCacheService();
-                PoSSwitcher poSSwitcher = new(mergeConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), blockCacheService, _logManager);
+                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), blockCacheService, _logManager);
 
                 ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
                 SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
@@ -387,12 +387,8 @@ namespace Nethermind.Synchronization.Test
                         snapProvider,
                         blockDownloaderFactory,
                         pivot,
-                        new BeaconSync(beaconPivot, BlockTree,syncConfig, blockCacheService, LimboLogs.Instance),
+                        poSSwitcher,
                         mergeConfig,
-                        new BlockCacheService(),
-                        syncProgressResolver,
-                        new TestBlockValidator(),
-                        Substitute.For<IBlockProcessingQueue>(),
                         _logManager);
                 }
                 else
