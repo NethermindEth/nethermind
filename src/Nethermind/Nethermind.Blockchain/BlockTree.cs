@@ -348,32 +348,28 @@ namespace Nethermind.Blockchain
             return false;
         }
 
-        private void LoadBestKnown(bool findBeacon = false)
+        private void LoadBestKnown()
         {
-            long lowestInserted =
-                findBeacon ? (LowestInsertedBeaconHeader?.Number ?? 0) : (LowestInsertedHeader?.Number ?? 0);
             long left = (Head?.Number ?? 0) == 0
-                ? Math.Max(_syncConfig.PivotNumberParsed, lowestInserted) - 1
+                ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
                 : Head.Number;
             
             long right = Math.Max(0, left) + BestKnownSearchLimit;
 
             long bestKnownNumberFound =
-                BinarySearchBlockNumber(1, left, LevelExists, findBeacon: findBeacon) ?? 0;
+                BinarySearchBlockNumber(1, left, LevelExists) ?? 0;
             long bestKnownNumberAlternative =
-                BinarySearchBlockNumber(left, right, LevelExists, findBeacon: findBeacon) ?? 0;
+                BinarySearchBlockNumber(left, right, LevelExists) ?? 0;
 
             long bestSuggestedHeaderNumber =
-                BinarySearchBlockNumber(1, left, HeaderExists, findBeacon: findBeacon) ?? 0;
+                BinarySearchBlockNumber(1, left, HeaderExists) ?? 0;
             long bestSuggestedHeaderNumberAlternative
-                = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: findBeacon) ?? 0;
+                = BinarySearchBlockNumber(left, right, HeaderExists) ?? 0;
 
-            long? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeLong();
-            long leftForBody = (findBeacon && beaconPivotNumber.HasValue) ? beaconPivotNumber.Value : left; 
             long bestSuggestedBodyNumber
-                = BinarySearchBlockNumber(1, leftForBody, BodyExists, findBeacon: findBeacon) ?? 0;
+                = BinarySearchBlockNumber(1, left, BodyExists) ?? 0;
             long bestSuggestedBodyNumberAlternative
-                = BinarySearchBlockNumber(leftForBody, right, BodyExists, findBeacon: findBeacon) ?? 0;
+                = BinarySearchBlockNumber(left, right, BodyExists) ?? 0;
 
             if (_logger.IsInfo)
                 _logger.Info("Numbers resolved, " +
@@ -406,32 +402,61 @@ namespace Nethermind.Blockchain
                                                    $"best body: {bestSuggestedBodyNumber}|");
                 }
             }
-
-            if (findBeacon)
-            {
-                BestKnownBeaconNumber = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
-                BestSuggestedBeaconHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                BestSuggestedBeaconBody = bestSuggestedBodyHeader is null
-                    ? null
-                    : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-            else
-            {
-                BestKnownNumber = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
-                BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
-                BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
-                BestSuggestedBody = bestSuggestedBodyHeader is null
-                    ? null
-                    : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
-            }
+            
+            BestKnownNumber = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
+            BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
+            BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
+            BestSuggestedBody = bestSuggestedBodyHeader is null
+                ? null
+                : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
         }
 
         private void LoadBeaconBestKnown()
         {
+            long left = Math.Max(Head?.Number ?? 0, (LowestInsertedBeaconHeader?.Number ?? 0) - 1);
+            long right = Math.Max(0, left) + BestKnownSearchLimit;
+            
+            long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
+            long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
+            
+            long? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeLong();
+            long bestBeaconBodyNumber = BinarySearchBlockNumber(
+                beaconPivotNumber.HasValue ? beaconPivotNumber.Value : left, right, BodyExists, findBeacon: true) ?? 0;
+            
             if (_logger.IsInfo)
-                _logger.Info("Finding beacon block best pointers");
-            LoadBestKnown(true);
+                _logger.Info("Beacon Numbers resolved, " +
+                             $"level = {bestKnownNumberFound}, " +
+                             $"header = {bestBeaconHeaderNumber}, " +
+                             $"body = {bestBeaconBodyNumber}");
+            
+            if (bestKnownNumberFound < 0 ||
+                bestBeaconHeaderNumber < 0 ||
+                bestBeaconBodyNumber < 0 ||
+                bestBeaconHeaderNumber < bestBeaconBodyNumber)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Detected corrupted block tree data ({bestBeaconHeaderNumber} < {bestBeaconBodyNumber}) (possibly due to an unexpected shutdown). Attempting to fix by moving head backwards. This may fail and you may need to resync the node.");
+                if (bestBeaconHeaderNumber < bestBeaconBodyNumber)
+                {
+                    bestBeaconBodyNumber = bestBeaconHeaderNumber;
+                    _tryToRecoverFromHeaderBelowBodyCorruption = true;
+                }
+                else
+                {
+                    throw new InvalidDataException("Invalid initial block tree state loaded - " +
+                                                   $"best known: {bestKnownNumberFound}|" +
+                                                   $"best header: {bestBeaconHeaderNumber}|" +
+                                                   $"best body: {bestBeaconBodyNumber}|");
+                }
+            }
+            
+            BestKnownBeaconNumber = bestKnownNumberFound;
+            BestSuggestedBeaconHeader = FindHeader(bestBeaconHeaderNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BlockHeader? bestBeaconBodyHeader = FindHeader(bestBeaconBodyNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BestSuggestedBeaconBody = bestBeaconBodyHeader is null
+                ? null
+                : FindBlock(bestBeaconBodyHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
         private enum BinarySearchDirection
