@@ -28,9 +28,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class Eip1014Tests : VirtualMachineTestsBase
     {
+        public Eip1014Tests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
+
         protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
 
         private void AssertEip1014(Address address, byte[] code)
@@ -128,8 +133,11 @@ namespace Nethermind.Evm.Test
             TestState.CommitTree(0);
             
             Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
-            storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
-
+            if (TestState is StateProvider)
+            {
+                storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
+            }
+            
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
             Keccak createCodeHash = TestState.UpdateCode(createCode);

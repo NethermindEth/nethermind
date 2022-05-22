@@ -16,11 +16,12 @@
 // 
 
 using Nethermind.Blockchain.Processing;
+using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Producers
 {
     public interface IBlockTransactionsExecutorFactory
     {
-        IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv);
+        IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessorSource readOnlyTxProcessingEnv);
     }
 }

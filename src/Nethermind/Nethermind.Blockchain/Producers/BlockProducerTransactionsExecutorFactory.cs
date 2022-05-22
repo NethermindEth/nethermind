@@ -17,6 +17,7 @@
 
 using Nethermind.Blockchain.Processing;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Producers
@@ -32,7 +33,7 @@ namespace Nethermind.Blockchain.Producers
             _logManager = logManager;
         }
         
-        public IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv) => 
+        public IBlockProcessor.IBlockTransactionsExecutor Create(IReadOnlyTxProcessorSource readOnlyTxProcessingEnv) => 
             new BlockProcessor.BlockProductionTransactionsExecutor(readOnlyTxProcessingEnv, _specProvider, _logManager);
     }
 }

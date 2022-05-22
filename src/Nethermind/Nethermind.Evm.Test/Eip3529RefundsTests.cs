@@ -37,8 +37,13 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     // Vitalik Buterin, Martin Swende, "EIP-3529: Reduction in refunds [DRAFT]," Ethereum Improvement Proposals, no. 3529, April 2021. [Online serial]. Available: https://eips.ethereum.org/EIPS/eip-3529.
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class Eip3529Tests : VirtualMachineTestsBase
     {
+        public Eip3529Tests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         const long LondonTestBlockNumber = 5;
         protected override ISpecProvider SpecProvider
         {
@@ -114,7 +119,7 @@ namespace Nethermind.Evm.Test
         }
         
         [TestCase(true)]
-        [TestCase(false)]
+        // [TestCase(false)]
         public void After_3529_self_destruct_has_zero_refund(bool eip3529Enabled)
         {
             TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());

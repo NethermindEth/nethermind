@@ -19,8 +19,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class GtTests : VirtualMachineTestsBase
     {
+        public GtTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         [TestCase(0, 0, 0)]
         [TestCase(int.MaxValue, int.MaxValue, 0)]
         [TestCase(1, 0, 1)]

@@ -6,9 +6,13 @@ using NUnit.Framework;
 
 namespace Nethermind.State.Test.Runner.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class StateTestTxTracerTest : VirtualMachineTestsBase
     {
+        public StateTestTxTracerTest(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         private StateTestTxTracer tracer;
 
         [SetUp]

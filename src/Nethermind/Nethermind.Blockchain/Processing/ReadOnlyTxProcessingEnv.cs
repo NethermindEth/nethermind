@@ -36,7 +36,6 @@ namespace Nethermind.Blockchain.Processing
         public IStorageProvider StorageProvider { get; }
         public ITransactionProcessor TransactionProcessor { get; set; }
         public IBlockTree BlockTree { get; }
-        public IReadOnlyDbProvider DbProvider { get; }
         public IBlockhashProvider BlockhashProvider { get; }
         public IVirtualMachine Machine { get; }
 
@@ -59,7 +58,6 @@ namespace Nethermind.Blockchain.Processing
         {
             if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
             
-            DbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
 
             StateReader = new StateReader(readOnlyTrieStore, _codeDb, logManager);

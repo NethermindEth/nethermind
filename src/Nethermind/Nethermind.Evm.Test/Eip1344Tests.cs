@@ -22,9 +22,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class Eip1344Tests : VirtualMachineTestsBase
     {
+        public Eip1344Tests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         private void Test(ulong chainId)
         {
             byte[] code = Prepare.EvmCode
@@ -49,6 +53,10 @@ namespace Nethermind.Evm.Test
             {
                 Test(SpecProvider.ChainId);
             }
+
+            public Custom0(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+            {
+            }
         }
         
         private class Custom32000 : Eip1344Tests
@@ -60,6 +68,10 @@ namespace Nethermind.Evm.Test
             public void given_custom_custom_32000_network_chain_id_opcode_puts_expected_value_onto_the_stack()
             {
                 Test(SpecProvider.ChainId);
+            }
+
+            public Custom32000(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+            {
             }
         }
         
@@ -73,6 +85,10 @@ namespace Nethermind.Evm.Test
             {
                 Test(SpecProvider.ChainId);
             }
+
+            public Goerli(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+            {
+            }
         }
         
         private class Mainnet : Eip1344Tests
@@ -84,6 +100,10 @@ namespace Nethermind.Evm.Test
             public void given_mainnet_network_chain_id_opcode_puts_expected_value_onto_the_stack()
             {
                 Test(SpecProvider.ChainId);
+            }
+
+            public Mainnet(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+            {
             }
         }
 
@@ -97,6 +117,10 @@ namespace Nethermind.Evm.Test
             {
                 Test(SpecProvider.ChainId);
             }
+
+            public Rinkeby(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+            {
+            }
         }
         
         private class Ropsten : Eip1344Tests
@@ -108,6 +132,10 @@ namespace Nethermind.Evm.Test
             public void given_ropsten_network_chain_id_opcode_puts_expected_value_onto_the_stack()
             {
                 Test(SpecProvider.ChainId);
+            }
+
+            public Ropsten(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+            {
             }
         }
     }

@@ -21,10 +21,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     [Parallelizable(ParallelScope.All)]
     public class Sha3Tests : VirtualMachineTestsBase
     {
+        public Sha3Tests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         protected override long BlockNumber => RinkebySpecProvider.ConstantinopleFixBlockNumber;
 
         private bool _setAuthor;

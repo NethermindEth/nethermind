@@ -40,7 +40,7 @@ namespace Nethermind.Mev
         private readonly IWorldState _worldState;
         
         public MevBlockProductionTransactionsExecutor(
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
+            IReadOnlyTxProcessorSource readOnlyTxProcessingEnv,
             ISpecProvider specProvider,
             ILogManager logManager) : 
             this(

@@ -23,9 +23,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class Eip2028Tests : VirtualMachineTestsBase
     {
+        public Eip2028Tests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         private class AfterIstanbul : Eip2028Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
@@ -45,6 +49,10 @@ namespace Nethermind.Evm.Test
                 Transaction transaction = new Transaction {Data = new byte[] {0}, To = Address.Zero};
                 long cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
+            }
+
+            public AfterIstanbul(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+            {
             }
         }
 
@@ -67,6 +75,10 @@ namespace Nethermind.Evm.Test
                 Transaction transaction = new Transaction {Data = new byte[] {0}, To = Address.Zero};
                 long cost = IntrinsicGasCalculator.Calculate(transaction, Spec);
                 cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
+            }
+
+            public BeforeIstanbul(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+            {
             }
         }
     }

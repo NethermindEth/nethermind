@@ -21,8 +21,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class Eip152Tests : VirtualMachineTestsBase
     {
+        public Eip152Tests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         private const int InputLength = 213;
         protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber + _blockNumberAdjustment;
 

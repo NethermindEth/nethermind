@@ -45,6 +45,9 @@
     <Content Include="Specs\empty_accounts_and_codes.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Specs\verkle_genesis.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Specs\empty_accounts_and_storages.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -54,8 +57,5 @@
     <Content Include="Specs\hive_zero_balance_test.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Specs" />
   </ItemGroup>
 </Project>

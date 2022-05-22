@@ -2,6 +2,7 @@
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Nullable>annotations</Nullable>
         <Deterministic>true</Deterministic>
         <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
@@ -14,7 +15,29 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
       <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="runtimes\linux-arm64\native\librust_verkle.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes\linux-arm\native\librust_verkle.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes\linux-x64\native\librust_verkle.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes\osx-x64\native\librust_verkle.dylib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes\osx-arm64\native\librust_verkle.dylib">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="runtimes\win-x64\native\rust_verkle.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 
 </Project>

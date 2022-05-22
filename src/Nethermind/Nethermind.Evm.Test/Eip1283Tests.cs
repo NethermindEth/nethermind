@@ -24,12 +24,17 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class Eip1283Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
         
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
+        
+        public Eip1283Tests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
 
         [TestCase("0x60006000556000600055", 412, 0, 0)]
         [TestCase("0x60006000556001600055", 20212, 0, 0)]

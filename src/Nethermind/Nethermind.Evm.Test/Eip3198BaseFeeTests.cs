@@ -29,8 +29,13 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class Eip3198BaseFeeTests : VirtualMachineTestsBase
     {
+        public Eip3198BaseFeeTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
+        }
         const long LondonTestBlockNumber = 5;
         protected override ISpecProvider SpecProvider
         {

@@ -29,7 +29,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
 {
-    [TestFixture]
+    [TestFixture(VirtualMachineTestsStateProvider.MerkleTrie)]
+    [TestFixture(VirtualMachineTestsStateProvider.VerkleTrie)]
     public class AccessTxTracerTests : VirtualMachineTestsBase
     {
         [Test]
@@ -81,6 +82,10 @@ namespace Nethermind.Evm.Test.Tracing
             AccessTxTracer tracer = new();
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer, block, transaction);
+        }
+
+        public AccessTxTracerTests(VirtualMachineTestsStateProvider stateProvider) : base(stateProvider)
+        {
         }
     }
 }
