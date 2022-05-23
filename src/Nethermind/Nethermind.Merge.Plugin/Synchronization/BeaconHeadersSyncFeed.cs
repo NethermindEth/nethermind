@@ -18,6 +18,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -32,6 +33,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 {
+    private readonly IPoSSwitcher _poSSwitcher;
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
@@ -44,6 +46,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
 
     public BeaconHeadersSyncFeed(
+        IPoSSwitcher poSSwitcher,
         ISyncModeSelector syncModeSelector,
         IBlockTree? blockTree,
         ISyncPeerPool? syncPeerPool,
@@ -55,6 +58,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         : base(syncModeSelector, blockTree, syncPeerPool, syncConfig, syncReport, logManager,
             true) // alwaysStartHeaderSync = true => for the merge we're forcing header sync start. It doesn't matter if it is archive sync or fast sync
     {
+        _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
         _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
         _logger = logManager.GetClassLogger();
@@ -75,7 +79,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
         Keccak? startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash;
         UInt256? startTotalDifficulty =
-            lowestInserted?.TotalDifficulty ?? _mergeConfig.FinalTotalDifficultyParsed ?? null;
+            lowestInserted?.TotalDifficulty ?? _poSSwitcher.FinalTotalDifficulty ?? null;
 
         _nextHeaderHash = startHeaderHash;
         _nextHeaderDiff = startTotalDifficulty;
@@ -100,7 +104,9 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
                 $"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
         BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers |
                                          BlockTreeInsertOptions.UpdateBeaconPointers |
-                                         BlockTreeInsertOptions.AddBeaconMetadata;
+                                         BlockTreeInsertOptions.AddBeaconMetadata |
+                                         BlockTreeInsertOptions.MoveToBeaconMainChain |
+                                         BlockTreeInsertOptions.NotOnMainChain;
         if (_nextHeaderDiff is null)
         {
             options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;

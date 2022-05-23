@@ -59,16 +59,16 @@ public class ChainLevelHelper : IChainLevelHelper
         while (i < maxCount)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
-            if (level == null || level.MainChainBlock == null)
+            BlockInfo? beaconMainChainBlock = level.BeaconMainChainBlock;
+            if (level == null || beaconMainChainBlock == null)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"ChainLevelHelper.GetNextHeaders - level {startingPoint} not found");
                 break;
             }
-
-            BlockInfo blockInfo = level.MainChainBlock;
+            
             BlockHeader? newHeader =
-                _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+                _blockTree.FindHeader(beaconMainChainBlock.BlockHash, BlockTreeLookupOptions.None);
 
             if (newHeader == null)
             {
@@ -84,8 +84,8 @@ public class ChainLevelHelper : IChainLevelHelper
                 }
             }
 
-            if ((blockInfo.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0)
-                newHeader.TotalDifficulty = blockInfo.TotalDifficulty == 0 ? null : blockInfo.TotalDifficulty;
+            if ((beaconMainChainBlock.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0)
+                newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"ChainLevelHelper - A new block header {newHeader.ToString(BlockHeader.Format.FullHashAndNumber)}, header TD {newHeader.TotalDifficulty}");
@@ -149,7 +149,7 @@ public class ChainLevelHelper : IChainLevelHelper
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
         {
-            BlockHeader? header = _blockTree.FindHeader(startingPoint, BlockTreeLookupOptions.All);
+            BlockHeader? header = _blockTree.FindHeader(startingPoint, BlockTreeLookupOptions.None);
             if (header == null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Header for number {startingPoint} was not found");

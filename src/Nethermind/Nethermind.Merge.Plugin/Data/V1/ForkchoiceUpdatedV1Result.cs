@@ -23,18 +23,10 @@ namespace Nethermind.Merge.Plugin.Data.V1
 {
     public class ForkchoiceUpdatedV1Result
     {
-        private static readonly ForkchoiceUpdatedV1Result _invalidTerminalBlock = new()
-        {
-            PayloadId = null, PayloadStatus = PayloadStatusV1.InvalidTerminalBlock
-        };
-
         private static readonly ForkchoiceUpdatedV1Result _syncing = new()
         {
             PayloadId = null, PayloadStatus = PayloadStatusV1.Syncing
         };
-
-        public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> InvalidTerminalBlock =
-            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(_invalidTerminalBlock);
 
         public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> Syncing =
             ResultWrapper<ForkchoiceUpdatedV1Result>.Success(_syncing);
@@ -51,7 +43,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
             });
         }
         
-        public static ResultWrapper<ForkchoiceUpdatedV1Result> Invalid(Keccak? latestValidHash, string? validationError)
+        public static ResultWrapper<ForkchoiceUpdatedV1Result> Invalid(Keccak? latestValidHash, string? validationError = null)
         {
             return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result()
             {

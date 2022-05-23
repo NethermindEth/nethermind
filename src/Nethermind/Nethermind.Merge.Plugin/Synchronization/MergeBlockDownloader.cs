@@ -103,7 +103,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
             bool HasMoreToSync()
-                => _beaconPivot.BeaconPivotExists() && currentNumber < _blockTree.BestKnownBeaconNumber &&
+                => currentNumber < _blockTree.BestKnownBeaconNumber &&
                    bestPeer.HeadNumber > _blockTree.BestKnownNumber;
 
             while (HasMoreToSync())
@@ -208,7 +208,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         _logger.Trace(
                             $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBlock} ShouldProcess: {shouldProcess}");
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0,
-                            _blockTree.SuggestBlock(currentBlock, suggestOptions, true)))
+                            _blockTree.SuggestBlock(currentBlock, suggestOptions)))
                     {
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
 

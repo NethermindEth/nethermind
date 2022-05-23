@@ -25,7 +25,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockProducer), typeof(ReviewBlockTree))]
+    [RunnerStepDependencies(typeof(InitializeBlockProducer), typeof(ReviewBlockTree))]  // Unfortunately EngineRPC API need review blockTree
     public class StartBlockProducer : IStep
     {
         protected IApiWithBlockchain _api;

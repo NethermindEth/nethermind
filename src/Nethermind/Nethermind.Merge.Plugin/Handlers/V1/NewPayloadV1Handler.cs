@@ -110,7 +110,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidBlockHash;
             }
 
-
+            
+            block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             bool parentExists = parentHeader != null;
             bool parentProcessed = parentExists && _blockTree.WasProcessed(parentHeader!.Number,
@@ -134,9 +135,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
                 }
 
-                _logger.Info($"Insert block into cache without parent {block}");
+                if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
                 _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
                 return NewPayloadV1Result.Accepted;
+            }
+
+            // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
+            if (block.Number <= (_blockTree.Head?.Number ?? 0))
+            {
+                bool canIgnoreNewPayload = _blockTree.IsMainChain(block.Header);
+                if (canIgnoreNewPayload)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.FullHashAndNumber)} found in main chain.");
+                    return NewPayloadV1Result.Valid(block.Hash);
+                }
             }
 
             if (!parentProcessed)
@@ -154,7 +166,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _logger.Warn(
                         $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader!.TotalDifficulty}. Request: {requestStr}");
 
-                return NewPayloadV1Result.InvalidTerminalBlock;
+                // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
+                // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
+                return NewPayloadV1Result.Invalid(Keccak.Zero);
             }
 
             _mergeSyncController.StopSyncing();
@@ -214,12 +228,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             else
             {
-                processedBlock = _blockTree.FindBlock(block.Hash!, BlockTreeLookupOptions.None);
-                if (processedBlock != null && _blockTree.WasProcessed(processedBlock.Number, processedBlock.Hash))
-                {
-                    return (ValidationResult.Valid | ValidationResult.AlreadyKnown, validationMessage);
-                }
-
                 bool validAndProcessed = ValidateWithBlockValidator(block, parent, out processedBlock);
                 if (validAndProcessed)
                 {

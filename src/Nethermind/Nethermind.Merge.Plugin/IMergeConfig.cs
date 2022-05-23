@@ -32,7 +32,7 @@ namespace Nethermind.Merge.Plugin
         [ConfigItem(Description = "Account to be used by the block author. If it is not specified the address zero will be used.", DefaultValue = "null")]
         public string? FeeRecipient { get; set; }
 
-        [ConfigItem(Description = "Final total difficulty for the terminal PoW block.", DefaultValue = "null")]
+        [ConfigItem(Description = "Final total difficulty is total difficulty of the last PoW block. FinalTotalDifficulty >= TerminalTotalDifficulty.", DefaultValue = "null")]
         public string? FinalTotalDifficulty { get; set; }
         
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "null")]

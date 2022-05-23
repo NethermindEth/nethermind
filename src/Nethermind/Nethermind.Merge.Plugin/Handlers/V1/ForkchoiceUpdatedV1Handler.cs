@@ -81,7 +81,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
             if (_logger.IsInfo) { _logger.Info($"Received: {requestStr}"); }
-
+            
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {
@@ -156,7 +156,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsWarn)
                     _logger.Warn(
                         $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}");
-                return ForkchoiceUpdatedV1Result.InvalidTerminalBlock;
+                
+                // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
+                // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
+                return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
             }
 
 
@@ -169,8 +172,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         $"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}");
                 }
                 
-                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash,forkchoiceState.SafeBlockHash);
-
                 return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
 
@@ -323,7 +324,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             List<Block> blocksList = new() { newHeadBlock };
             Block? predecessor = newHeadBlock;
 
-            while (!_blockTree.IsMainChain(predecessor.Header))
+            while (true)
             {
                 predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.None);
                 if (predecessor == null)
@@ -331,7 +332,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     blocks = Array.Empty<Block>();
                     return false;
                 }
-
+                if(_blockTree.IsMainChain(predecessor.Header)) break;
                 blocksList.Add(predecessor);
             }
 

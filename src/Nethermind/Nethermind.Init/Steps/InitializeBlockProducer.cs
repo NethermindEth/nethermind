@@ -25,7 +25,7 @@ using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork), typeof(ReviewBlockTree))] // Unfortunately EngineRPC API need review blockTree
+    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
     public class InitializeBlockProducer : IStep
     {
         protected IApiWithBlockchain _api;
