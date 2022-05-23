@@ -169,8 +169,6 @@ namespace Nethermind.Merge.Plugin
                 }
 
                 _finalizedBlockHash = finalizedHash;
-                // ToDo need to discuss with Sarah, this should be moved to BlockTree or FinalizationManager
-                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(_finalizedBlockHash).Bytes);
             }
         }
 

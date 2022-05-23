@@ -169,8 +169,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                         $"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}");
                 }
                 
-                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash,forkchoiceState.SafeBlockHash);
-
                 return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
 
