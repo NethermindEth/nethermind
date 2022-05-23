@@ -1229,6 +1229,7 @@ namespace Nethermind.Merge.Plugin.Test
             
             ResultWrapper<PayloadStatusV1> newPayloadResult2 = await rpc.engine_newPayloadV1(blockRequestResult1);
             newPayloadResult2.Data.Status.Should().Be(PayloadStatus.Valid);
+            newPayloadResult2.Data.LatestValidHash.Should().Be(blockRequestResult1.BlockHash);
         }
 
         [Test]
