@@ -1873,7 +1873,8 @@ namespace Nethermind.Blockchain
         public Keccak? HeadHash => Head?.Hash;
         public Keccak? GenesisHash => Genesis?.Hash;
         public Keccak? PendingHash => Head?.Hash;
-
+        public Keccak? FinalizedHash { get; private set; }
+        public Keccak? SafeHash { get; private set; }
         public Block? FindBlock(Keccak? blockHash, BlockTreeLookupOptions options)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
@@ -2117,6 +2118,17 @@ namespace Nethermind.Blockchain
                 {
                     _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
                 }
+            }
+        }
+        
+        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockHash)
+        {
+            FinalizedHash = finalizedBlockHash;
+            SafeHash = safeBlockHash;
+            using (_metadataDb.StartBatch())
+            {
+                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, FinalizedHash!.Bytes);  
+                _metadataDb.Set(MetadataDbKeys.SafeBlockHash, SafeHash!.Bytes);  
             }
         }
     }

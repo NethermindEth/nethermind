@@ -27,6 +27,10 @@ namespace Nethermind.Blockchain.Find
         Keccak GenesisHash { get; }
 
         Keccak? PendingHash { get; }
+        
+        Keccak? FinalizedHash { get; }
+        
+        Keccak? SafeHash { get; }
 
         Block? Head { get; }
 
@@ -68,6 +72,12 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindPendingBlock() =>
             PendingHash == null ? null : FindBlock(PendingHash, BlockTreeLookupOptions.None);
+        
+        public Block? FindFinalizedBlock() =>
+            FinalizedHash == null ? null : FindBlock(FinalizedHash, BlockTreeLookupOptions.None);
+        
+        public Block? FindSafeBlock() =>
+            SafeHash == null ? null : FindBlock(SafeHash, BlockTreeLookupOptions.None);
 
         public BlockHeader? FindHeader(Keccak blockHash) => FindHeader(blockHash, BlockTreeLookupOptions.None);
 
@@ -85,6 +95,12 @@ namespace Nethermind.Blockchain.Find
         public BlockHeader? FindPendingHeader() =>
             PendingHash == null ? null : FindHeader(PendingHash, BlockTreeLookupOptions.None);
 
+        public BlockHeader? FindFinalizedHeader() =>
+            FinalizedHash == null ? null : FindHeader(FinalizedHash, BlockTreeLookupOptions.None);
+
+        public BlockHeader? FindSafeHeader() =>
+            SafeHash == null ? null : FindHeader(SafeHash, BlockTreeLookupOptions.None);
+
         BlockHeader FindBestSuggestedHeader();
 
         public Block? FindBlock(BlockParameter? blockParameter, bool headLimit = false)
@@ -99,6 +115,8 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Pending => FindPendingBlock(),
                 BlockParameterType.Latest => FindLatestBlock(),
                 BlockParameterType.Earliest => FindEarliestBlock(),
+                BlockParameterType.Finalized => FindFinalizedBlock(),
+                BlockParameterType.Safe => FindSafeBlock(),
                 BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= Head.Number
                     ? FindLatestBlock()
                     : FindBlock(blockParameter.BlockNumber!.Value,
@@ -125,6 +143,8 @@ namespace Nethermind.Blockchain.Find
                 BlockParameterType.Pending => FindPendingHeader(),
                 BlockParameterType.Latest => FindLatestHeader(),
                 BlockParameterType.Earliest => FindEarliestHeader(),
+                BlockParameterType.Finalized => FindFinalizedHeader(),
+                BlockParameterType.Safe => FindSafeHeader(),
                 BlockParameterType.BlockNumber => headLimit && blockParameter.BlockNumber!.Value >= Head.Number
                     ? FindLatestHeader()
                     : FindHeader(blockParameter.BlockNumber!.Value,
