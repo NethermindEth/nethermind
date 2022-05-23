@@ -2,7 +2,6 @@ name: '[RUN] Merge Hive Tests'
 on: 
   push:
     branches: [ kiln ]
-  workflow_dispatch:
 jobs:
   build-dockers:
     runs-on: ubuntu-latest
@@ -45,8 +44,8 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: results
-          path: workspace
-          retention-days: 3
+          path: workspace/logs/*.json
+          retention-days: 7
       - name: Checkout Printer
         uses: actions/checkout@v2
         with: 
