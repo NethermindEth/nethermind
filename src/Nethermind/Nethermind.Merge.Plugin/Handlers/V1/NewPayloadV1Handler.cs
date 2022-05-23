@@ -147,7 +147,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (canIgnoreNewPayload)
                 {
                     if (_logger.IsInfo) _logger.Info($"Valid... A new payload ignored. Block {block.ToString(Block.Format.FullHashAndNumber)} found in main chain.");
-                    return NewPayloadV1Result.Valid(block.ParentHash);
+                    return NewPayloadV1Result.Valid(block.Hash);
                 }
             }
 
