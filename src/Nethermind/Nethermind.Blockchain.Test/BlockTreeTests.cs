@@ -729,6 +729,17 @@ namespace Nethermind.Blockchain.Test
 
             Assert.AreEqual(block0.Hash, blockTree.Genesis.CalculateHash());
         }
+        
+        [Test]
+        public void ForkChoiceUpdated_update_hashes()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Keccak finalizedBlockHash = TestItem.KeccakB;
+            Keccak safeBlockHash = TestItem.KeccakC;
+            blockTree.ForkChoiceUpdated(finalizedBlockHash,safeBlockHash);
+            Assert.AreEqual(finalizedBlockHash, blockTree.FinalizedHash);
+            Assert.AreEqual(safeBlockHash, blockTree.SafeHash);
+        }
 
         [Test]
         public void Stores_multiple_blocks_per_level()

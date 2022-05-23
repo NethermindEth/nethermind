@@ -171,6 +171,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _logger.Info(
                         $"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}");
                 }
+                
+                _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash,forkchoiceState.SafeBlockHash);
 
                 return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
@@ -240,6 +242,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             if (_logger.IsInfo) { _logger.Info($"Valid. Request: {requestStr}"); }
+            
+            _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash,forkchoiceState.SafeBlockHash);
 
             return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
         }

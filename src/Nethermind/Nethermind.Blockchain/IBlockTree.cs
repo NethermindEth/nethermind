@@ -168,6 +168,8 @@ namespace Nethermind.Blockchain
 
         void DeleteInvalidBlock(Block invalidBlock);
 
+        void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash);
+
         void LoadLowestInsertedBeaconHeader();
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;

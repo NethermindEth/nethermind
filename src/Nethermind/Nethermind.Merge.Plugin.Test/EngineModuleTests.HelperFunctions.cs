@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -31,6 +32,9 @@ using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.State;
@@ -168,6 +172,15 @@ namespace Nethermind.Merge.Plugin.Test
                 hash = Keccak.Zero;
                 return false;
             }
+        }
+        
+        private async Task<TestRpcBlockchain> CreateTestRpc(MergeTestBlockchain chain)
+        {
+            SingleReleaseSpecProvider spec = new(London.Instance, 1);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                .WithBlockFinder(chain.BlockFinder)
+                .Build(spec);
+            return testRpc;
         }
     }
 }      
