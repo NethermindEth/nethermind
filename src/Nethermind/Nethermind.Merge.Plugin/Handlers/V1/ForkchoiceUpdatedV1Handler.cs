@@ -335,6 +335,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 blocksList.Add(predecessor);
             }
 
+            blocksList.RemoveAt(blocksList.Count-1);
             blocksList.Reverse();
             blocks = blocksList.ToArray();
             return true;
