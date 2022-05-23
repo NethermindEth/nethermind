@@ -141,7 +141,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
-            if (block.Number < (_blockTree.Head?.Number ?? 0))
+            if (block.Number <= (_blockTree.Head?.Number ?? 0))
             {
                 bool canIgnoreNewPayload = _blockTree.IsMainChain(block.Header);
                 if (canIgnoreNewPayload)
