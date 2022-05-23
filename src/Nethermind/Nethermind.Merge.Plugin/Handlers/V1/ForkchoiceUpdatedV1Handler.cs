@@ -324,7 +324,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             List<Block> blocksList = new() { newHeadBlock };
             Block? predecessor = newHeadBlock;
 
-            while (!_blockTree.IsMainChain(predecessor.Header))
+            while (true)
             {
                 predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.None);
                 if (predecessor == null)
@@ -332,7 +332,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     blocks = Array.Empty<Block>();
                     return false;
                 }
-
+                if(_blockTree.IsMainChain(predecessor.Header)) break;
                 blocksList.Add(predecessor);
             }
 
