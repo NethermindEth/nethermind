@@ -177,42 +177,40 @@ namespace Nethermind.Init.Steps
             return step;
         }
 
-        private Task RunPluginBeforeStep(IStep step)
+        private async Task RunPluginBeforeStep(IStep step)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            return Task.WhenAll(_api.Plugins.Select(p => p.BeforeStep(step.Name).ContinueWith(t =>
+            foreach (var plugin in _api.Plugins)
             {
-                if (t.IsFaulted)
+                try
                 {
-                    if (_logger.IsError) _logger.Error($"Plugin {p.Name} failed to execute BeforeStep('{step.Name}')", t.Exception);
+                    await plugin.OnBeforeStep(step.Name);
+                    if (_logger.IsDebug)
+                        _logger.Debug($"Plugin {plugin.Name} executed BeforeStep('{step.Name}')");
                 }
-                else if (_logger.IsDebug) _logger.Debug($"Plugin {p.Name} executed BeforeStep('{step.Name}')");
-            })))
-            .ContinueWith(t =>
-            {
-                stopwatch.Stop();
-                if (_logger.IsInfo) _logger.Info($"Plugins executed BeforeStep('{step.Name}') in {stopwatch.ElapsedMilliseconds}ms");
-            });
+                catch (Exception e)
+                {
+                    if (_logger.IsError)
+                        _logger.Error($"Plugin {plugin.Name} failed to execute BeforeStep('{step.Name}')", e);
+                }
+            }
         }
 
-        private Task RunPluginAfterStep(IStep step)
+        private async Task RunPluginAfterStep(IStep step)
         {
-            Stopwatch stopwatch = Stopwatch.StartNew();
-            return Task.WhenAll(_api.Plugins.Select(p => p.AfterStep(step.Name).ContinueWith(t =>
+            foreach (var plugin in _api.Plugins)
             {
-                stopwatch.Stop();
-
-                if (t.IsFaulted)
+                try
                 {
-                    if (_logger.IsError) _logger.Error($"Plugin {p.Name} failed to execute AfterStep('{step.Name}')", t.Exception);
+                    await plugin.OnAfterStep(step.Name);
+                    if (_logger.IsDebug)
+                        _logger.Debug($"Plugin {plugin.Name} executed AfterStep('{step.Name}')");
                 }
-                else if (_logger.IsDebug) _logger.Debug($"Plugin {p.Name} executed AfterStep('{step.Name}')");
-            })))
-            .ContinueWith(t =>
-            {
-                stopwatch.Stop();
-                if (_logger.IsInfo) _logger.Info($"Plugins executed AfterStep('{step.Name}') in {stopwatch.ElapsedMilliseconds}ms");
-            });
+                catch (Exception e)
+                {
+                    if (_logger.IsError)
+                        _logger.Error($"Plugin {plugin.Name} failed to execute AfterStep('{step.Name}')", e);
+                }
+            }
         }
 
         private Task RunStep(IStep step, StepInfo stepInfo, CancellationToken cancellationToken)

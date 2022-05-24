@@ -34,8 +34,8 @@ namespace Nethermind.Api.Extensions
         
         Task InitRpcModules();
 
-        Task BeforeStep(string name) => Task.CompletedTask;
+        Task OnBeforeStep(string name) => Task.CompletedTask;
 
-        Task AfterStep(string name) => Task.CompletedTask;
+        Task OnAfterStep(string name) => Task.CompletedTask;
     }
 }
