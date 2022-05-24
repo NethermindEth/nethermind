@@ -213,35 +213,36 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        private Task RunStep(IStep step, StepInfo stepInfo, CancellationToken cancellationToken)
+        private async Task RunStep(IStep step, StepInfo stepInfo, CancellationToken cancellationToken)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
-            return step.Execute(cancellationToken).ContinueWith(t =>
+            try
             {
+                await step.Execute(cancellationToken);
                 stopwatch.Stop();
 
-                if (t.IsFaulted && step.MustInitialize)
+                if (_logger.IsDebug) _logger.Debug(
+                    $"Step {step.Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
+            }
+            catch (Exception e)
+            {
+                stopwatch.Stop();
+                if (step.MustInitialize)
                 {
                     if (_logger.IsError) _logger.Error(
-                        $"Step {step.Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
-                        t.Exception);
-                }
-                else if (t.IsFaulted)
-                {
-                    if (_logger.IsWarn) _logger.Warn(
-                        $"Step {step.Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms");
+                        $"Step {step.Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms", e);
                 }
                 else
                 {
                     if (_logger.IsDebug) _logger.Debug(
                         $"Step {step.Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
                 }
+            }
 
-                stepInfo.Stage = StepInitializationStage.Complete;
-                _autoResetEvent.Set();
+            stepInfo.Stage = StepInitializationStage.Complete;
+            _autoResetEvent.Set();
 
-                if (_logger.IsInfo) _logger.Info($"{step.Name.PadRight(24)} complete");
-            });
+            if (_logger.IsInfo) _logger.Info($"{step.Name.PadRight(24)} complete");
         }
 
         private int _foreverLoop;
