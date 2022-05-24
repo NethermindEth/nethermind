@@ -87,7 +87,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 _logManager);
 
             ChangeableTransactionProcessorAdapter transactionProcessorAdapter = new(txEnv.TransactionProcessor);
-            BlockProcessor.BlockValidationTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.StateProvider);
+            BlockProcessor.BlockTransactionsExecutor transactionsExecutor = new(transactionProcessorAdapter, txEnv.StateProvider);
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
                 txEnv,
                 _blockValidator,

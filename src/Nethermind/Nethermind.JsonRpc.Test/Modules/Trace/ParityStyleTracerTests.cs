@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 specProvider,
                 Always.Valid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, storageProvider),
                 stateProvider,
                 storageProvider,
                 NullReceiptStorage.Instance,

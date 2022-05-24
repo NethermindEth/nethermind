@@ -34,36 +34,44 @@ namespace Nethermind.Blockchain.Processing
     {
         public class BlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
         {
-            private readonly ITransactionProcessorAdapter _transactionProcessor;
             private readonly IStateProvider _stateProvider;
+            private readonly IStorageProvider _storageProvider;
+            private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
+            private readonly ITransactionProcessorAdapter _executeAdapter;
+            private readonly ITransactionProcessorAdapter _buildUpAdapter;
+            private readonly ChangeableTransactionProcessorAdapter _changeableTransactionProcessorAdapter;
 
-            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
-                : this(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider)
+            public BlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider, IStorageProvider storageProvider)
             {
-            }
-
-            public BlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IStateProvider stateProvider)
-            {
-                _transactionProcessor = transactionProcessor;
                 _stateProvider = stateProvider;
+                _storageProvider = storageProvider;
+                _changeableTransactionProcessorAdapter = new ChangeableTransactionProcessorAdapter(transactionProcessor);
+                _executeAdapter = _changeableTransactionProcessorAdapter.CurrentAdapter;
+                _buildUpAdapter = new BuildUpTransactionProcessorAdapter(transactionProcessor);
+                _blockTransactionsExecutor = new BlockTransactionsExecutor(_changeableTransactionProcessorAdapter, stateProvider);
             }
 
-            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed; 
-        
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
-                for (int i = 0; i < block.Transactions.Length; i++)
+                if (spec.IsEip658Enabled)
                 {
-                    Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                    _changeableTransactionProcessorAdapter.CurrentAdapter = _buildUpAdapter;
+                    TxReceipt[] receipts =  _blockTransactionsExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, spec);
+                    _storageProvider.Commit(receiptsTracer.IsTracingState ? receiptsTracer : NullStorageTracer.Instance);
+                    _stateProvider.Commit(spec, receiptsTracer.IsTracingState ? receiptsTracer : NullStateTracer.Instance);
+                    return receipts;
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+                else
+                {
+                    _changeableTransactionProcessorAdapter.CurrentAdapter = _executeAdapter;
+                    return _blockTransactionsExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, spec);
+                }
             }
-        
-            private void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+
+            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
             {
-                _transactionProcessor.ProcessTransaction(block, currentTx, receiptsTracer, processingOptions, _stateProvider);
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                add { _blockTransactionsExecutor.TransactionProcessed += value!; }
+                remove { _blockTransactionsExecutor.TransactionProcessed -= value!; }
             }
         }
     }

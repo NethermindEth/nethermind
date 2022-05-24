@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain.Processing
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
         public IStateProvider StateProvider => _txEnv.StateProvider;
+        public IStorageProvider StorageProvider => _txEnv.StorageProvider;
 
         public ReadOnlyChainProcessingEnv(
             ReadOnlyTxProcessingEnv txEnv,
@@ -52,7 +53,7 @@ namespace Nethermind.Blockchain.Processing
             _txEnv = txEnv;
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = 
-                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider);
+                blockTransactionsExecutor ?? new BlockProcessor.BlockValidationTransactionsExecutor(_txEnv.TransactionProcessor, StateProvider, StorageProvider);
             
             BlockProcessor = new BlockProcessor(
                 specProvider,
