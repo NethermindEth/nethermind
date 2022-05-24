@@ -133,15 +133,17 @@ namespace Nethermind.Blockchain.Test.Find
         }
         
         [Test]
-        public void filter_all_logs_when_receipts_are_missing([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
+        public void throw_exception_when_receipts_are_missing([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
         {
             StoreTreeBlooms(withBloomDb);
             _receiptStorage = NullReceiptStorage.Instance;
             _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
             
             var logFilter = AllBlockFilter().Build();
-            var logs = _logFinder.FindLogs(logFilter);
-            logs.Should().BeEmpty();
+
+            _logFinder.Invoking(it => it.FindLogs(logFilter))
+                .Should()
+                .Throw<ResourceNotFoundException>();
         }
         
         [Test]
@@ -152,7 +154,7 @@ namespace Nethermind.Blockchain.Test.Find
             _logFinder = new LogFinder(blockFinder, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
             var logFilter = AllBlockFilter().Build();
             var action = new Func<IEnumerable<FilterLog>>(() =>_logFinder.FindLogs(logFilter));
-            action.Should().Throw<ArgumentException>();
+            action.Should().Throw<ResourceNotFoundException>();
             blockFinder.Received().FindHeader(logFilter.ToBlock, true);
             blockFinder.DidNotReceive().FindHeader(logFilter.FromBlock);
         }
@@ -297,7 +299,6 @@ namespace Nethermind.Blockchain.Test.Find
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
             StoreTreeBlooms(true);
-            _receiptStorage = NullReceiptStorage.Instance;
             _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter, cancellationToken);

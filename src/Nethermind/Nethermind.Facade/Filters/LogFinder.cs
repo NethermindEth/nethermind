@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Find
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
             BlockHeader FindHeader(BlockParameter blockParameter, string name, bool headLimit) => 
-                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ArgumentException("Block not found.", name);
+                _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name}");
 
             cancellationToken.ThrowIfCancellationRequested();
             var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), true);
@@ -74,7 +74,18 @@ namespace Nethermind.Blockchain.Find
             {
                 throw new ArgumentException($"'From' block '{fromBlock.Number}' is later than 'to' block '{toBlock.Number}'.");
             }
+            cancellationToken.ThrowIfCancellationRequested();
             
+            if (fromBlock.Number != 0 && !_receiptStorage.HasBlock(fromBlock.Hash!))
+            {
+                throw new ResourceNotFoundException($"Receipt not available for 'From' block '{fromBlock.Number}'.");
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            if (toBlock.Number != 0 && !_receiptStorage.HasBlock(toBlock.Hash!))
+            {
+                throw new ResourceNotFoundException($"Receipt not available for 'To' block '{toBlock.Number}'.");
+            }
             cancellationToken.ThrowIfCancellationRequested();
 
             bool shouldUseBloom = ShouldUseBloomDatabase(fromBlock, toBlock);
