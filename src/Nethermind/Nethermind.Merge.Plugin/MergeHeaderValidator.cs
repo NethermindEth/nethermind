@@ -60,7 +60,7 @@ namespace Nethermind.Merge.Plugin
         
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
-            bool theMergeValid = ValidateTheMergeChecks(header, parent);
+            bool theMergeValid = ValidateTheMergeChecks(header);
             if (_poSSwitcher.IsPostMerge(header) || _preMergeHeaderValidator is null)
                 return theMergeValid && base.Validate(header, parent, isUncle);
             return _preMergeHeaderValidator.Validate(header, parent, isUncle);
