@@ -184,8 +184,8 @@ namespace Nethermind.Init.Steps
                 try
                 {
                     await plugin.OnBeforeStep(step.Name);
-                    if (_logger.IsDebug)
-                        _logger.Debug($"Plugin {plugin.Name} executed BeforeStep('{step.Name}')");
+                    if (_logger.IsInfo)
+                        _logger.Info($"Plugin {plugin.Name} executed BeforeStep('{step.Name}')");
                 }
                 catch (Exception e)
                 {
@@ -202,8 +202,8 @@ namespace Nethermind.Init.Steps
                 try
                 {
                     await plugin.OnAfterStep(step.Name);
-                    if (_logger.IsDebug)
-                        _logger.Debug($"Plugin {plugin.Name} executed AfterStep('{step.Name}')");
+                    if (_logger.IsInfo)
+                        _logger.Info($"Plugin {plugin.Name} executed AfterStep('{step.Name}')");
                 }
                 catch (Exception e)
                 {
