@@ -100,11 +100,11 @@ namespace Nethermind.Init
 
         private void AssignPeersMemory(INetworkConfig networkConfig)
         {
-            PeersMemory = networkConfig.ActivePeersMaxCount.MB();
+            PeersMemory = networkConfig.MaxActivePeers.MB();
             if (PeersMemory > _remainingMemory * 0.75)
             {
                 throw new InvalidDataException(
-                    $"Memory hint is not enough to satisfy the {nameof(NetworkConfig)}.{nameof(INetworkConfig.ActivePeersMaxCount)}. " +
+                    $"Memory hint is not enough to satisfy the {nameof(NetworkConfig)}.{nameof(INetworkConfig.MaxActivePeers)}. " +
                     $"Assign at least MaxActivePeers * ~1MB * ~1.25 of memory.");
             }
         }

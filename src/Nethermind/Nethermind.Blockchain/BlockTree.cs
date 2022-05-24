@@ -250,6 +250,7 @@ namespace Nethermind.Blockchain
             LoadLowestInsertedHeader();
             LoadLowestInsertedBeaconHeader();
             LoadBestKnown();
+            LoadBeaconBestKnown();
         }
 
         private void LoadLowestInsertedBodyNumber()
@@ -276,13 +277,75 @@ namespace Nethermind.Blockchain
             long left = 1L;
             long right = _syncConfig.PivotNumberParsed;
 
-            LowestInsertedHeader = BinarySearchBlockHeader(left, right, HasLevel, BinarySearchDirection.Down);
+            LowestInsertedHeader = BinarySearchBlockHeader(left, right, LevelExists, BinarySearchDirection.Down);
         }
 
-        private bool HasLevel(long blockNumber)
+        private bool LevelExists(long blockNumber, bool findBeacon = false)
+        {
+            ChainLevelInfo? level = LoadLevel(blockNumber);
+            if (findBeacon)
+            {
+                return level is not null && level.HasBeaconBlocks;
+            }
+            return level is not null && level.HasNonBeaconBlocks;
+        }
+        
+        private bool HeaderExists(long blockNumber, bool findBeacon = false)
         {
             ChainLevelInfo level = LoadLevel(blockNumber);
-            return level is not null;
+            if (level is null)
+            {
+                return false;
+            }
+
+            foreach (BlockInfo blockInfo in level.BlockInfos)
+            {
+                BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+                bool isBeaconHeader = (blockInfo.Metadata & BlockMetadata.BeaconHeader) != 0;
+                if (header is not null)
+                {
+                    if (findBeacon && isBeaconHeader)
+                    {
+                        return true;
+                    }
+
+                    if (!findBeacon && !isBeaconHeader)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        
+        private bool BodyExists(long blockNumber, bool findBeacon = false)
+        {
+            ChainLevelInfo level = LoadLevel(blockNumber);
+            if (level is null)
+            {
+                return false;
+            }
+
+            foreach (BlockInfo blockInfo in level.BlockInfos)
+            {
+                Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+                bool isBeaconBody = (blockInfo.Metadata & BlockMetadata.BeaconBody) != 0;
+                if (block is not null)
+                {
+                    if (findBeacon && isBeaconBody)
+                    {
+                        return true;
+                    }
+
+                    if (!findBeacon && !isBeaconBody)
+                    {
+                        return true;
+                    }   
+                }
+            }
+
+            return false;
         }
 
         private void LoadBestKnown()
@@ -290,51 +353,8 @@ namespace Nethermind.Blockchain
             long left = (Head?.Number ?? 0) == 0
                 ? Math.Max(_syncConfig.PivotNumberParsed, LowestInsertedHeader?.Number ?? 0) - 1
                 : Head.Number;
-            // TODO: beaconsync waiting for binary search based on metadata
+            
             long right = Math.Max(0, left) + BestKnownSearchLimit;
-
-            bool LevelExists(long blockNumber)
-            {
-                return LoadLevel(blockNumber) is not null;
-            }
-
-            bool HeaderExists(long blockNumber)
-            {
-                ChainLevelInfo level = LoadLevel(blockNumber);
-                if (level is null)
-                {
-                    return false;
-                }
-
-                foreach (BlockInfo blockInfo in level.BlockInfos)
-                {
-                    if (FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None) is not null)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
-            bool BodyExists(long blockNumber)
-            {
-                ChainLevelInfo level = LoadLevel(blockNumber);
-                if (level is null)
-                {
-                    return false;
-                }
-
-                foreach (BlockInfo blockInfo in level.BlockInfos)
-                {
-                    if (FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None) is not null)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
 
             long bestKnownNumberFound =
                 BinarySearchBlockNumber(1, left, LevelExists) ?? 0;
@@ -356,12 +376,12 @@ namespace Nethermind.Blockchain
                              $"level = Max({bestKnownNumberFound}, {bestKnownNumberAlternative}), " +
                              $"header = Max({bestSuggestedHeaderNumber}, {bestSuggestedHeaderNumberAlternative}), " +
                              $"body = Max({bestSuggestedBodyNumber}, {bestSuggestedBodyNumberAlternative})");
-
-            BestKnownNumber = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
+            
+            bestKnownNumberFound = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
             bestSuggestedHeaderNumber = Math.Max(bestSuggestedHeaderNumber, bestSuggestedHeaderNumberAlternative);
             bestSuggestedBodyNumber = Math.Max(bestSuggestedBodyNumber, bestSuggestedBodyNumberAlternative);
 
-            if (BestKnownNumber < 0 ||
+            if (bestKnownNumberFound < 0 ||
                 bestSuggestedHeaderNumber < 0 ||
                 bestSuggestedBodyNumber < 0 ||
                 bestSuggestedHeaderNumber < bestSuggestedBodyNumber)
@@ -377,17 +397,66 @@ namespace Nethermind.Blockchain
                 else
                 {
                     throw new InvalidDataException("Invalid initial block tree state loaded - " +
-                                                   $"best known: {BestKnownNumber}|" +
+                                                   $"best known: {bestKnownNumberFound}|" +
                                                    $"best header: {bestSuggestedHeaderNumber}|" +
                                                    $"best body: {bestSuggestedBodyNumber}|");
                 }
             }
-
+            
+            BestKnownNumber = Math.Max(bestKnownNumberFound, bestKnownNumberAlternative);
             BestSuggestedHeader = FindHeader(bestSuggestedHeaderNumber, BlockTreeLookupOptions.None);
             BlockHeader? bestSuggestedBodyHeader = FindHeader(bestSuggestedBodyNumber, BlockTreeLookupOptions.None);
             BestSuggestedBody = bestSuggestedBodyHeader is null
                 ? null
                 : FindBlock(bestSuggestedBodyHeader.Hash, BlockTreeLookupOptions.None);
+        }
+
+        private void LoadBeaconBestKnown()
+        {
+            long left = Math.Max(Head?.Number ?? 0, (LowestInsertedBeaconHeader?.Number ?? 0) - 1);
+            long right = Math.Max(0, left) + BestKnownSearchLimit;
+            
+            long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
+            long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
+            
+            long? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeLong();
+            long bestBeaconBodyNumber = BinarySearchBlockNumber(
+                beaconPivotNumber.HasValue ? beaconPivotNumber.Value : left, right, BodyExists, findBeacon: true) ?? 0;
+            
+            if (_logger.IsInfo)
+                _logger.Info("Beacon Numbers resolved, " +
+                             $"level = {bestKnownNumberFound}, " +
+                             $"header = {bestBeaconHeaderNumber}, " +
+                             $"body = {bestBeaconBodyNumber}");
+            
+            if (bestKnownNumberFound < 0 ||
+                bestBeaconHeaderNumber < 0 ||
+                bestBeaconBodyNumber < 0 ||
+                bestBeaconHeaderNumber < bestBeaconBodyNumber)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Detected corrupted block tree data ({bestBeaconHeaderNumber} < {bestBeaconBodyNumber}) (possibly due to an unexpected shutdown). Attempting to fix by moving head backwards. This may fail and you may need to resync the node.");
+                if (bestBeaconHeaderNumber < bestBeaconBodyNumber)
+                {
+                    bestBeaconBodyNumber = bestBeaconHeaderNumber;
+                    _tryToRecoverFromHeaderBelowBodyCorruption = true;
+                }
+                else
+                {
+                    throw new InvalidDataException("Invalid initial block tree state loaded - " +
+                                                   $"best known: {bestKnownNumberFound}|" +
+                                                   $"best header: {bestBeaconHeaderNumber}|" +
+                                                   $"best body: {bestBeaconBodyNumber}|");
+                }
+            }
+            
+            BestKnownBeaconNumber = bestKnownNumberFound;
+            BestSuggestedBeaconHeader = FindHeader(bestBeaconHeaderNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BlockHeader? bestBeaconBodyHeader = FindHeader(bestBeaconBodyNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BestSuggestedBeaconBody = bestBeaconBodyHeader is null
+                ? null
+                : FindBlock(bestBeaconBodyHeader.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
         private enum BinarySearchDirection
@@ -396,7 +465,7 @@ namespace Nethermind.Blockchain
             Down
         }
 
-        private BlockHeader? BinarySearchBlockHeader(long left, long right, Func<long, bool> isBlockFound,
+        private BlockHeader? BinarySearchBlockHeader(long left, long right, Func<long, bool, bool> isBlockFound,
             BinarySearchDirection direction = BinarySearchDirection.Up)
         {
             long? blockNumber = BinarySearchBlockNumber(left, right, isBlockFound, direction);
@@ -416,8 +485,8 @@ namespace Nethermind.Blockchain
             return null;
         }
 
-        private static long? BinarySearchBlockNumber(long left, long right, Func<long, bool> isBlockFound,
-            BinarySearchDirection direction = BinarySearchDirection.Up)
+        private static long? BinarySearchBlockNumber(long left, long right, Func<long, bool, bool> isBlockFound,
+            BinarySearchDirection direction = BinarySearchDirection.Up, bool findBeacon = false)
         {
             if (left > right)
             {
@@ -430,7 +499,7 @@ namespace Nethermind.Blockchain
                 long index = direction == BinarySearchDirection.Up
                     ? left + (right - left) / 2
                     : right - (right - left) / 2;
-                if (isBlockFound(index))
+                if (isBlockFound(index, findBeacon))
                 {
                     result = index;
                     if (direction == BinarySearchDirection.Up)
@@ -455,7 +524,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (isBlockFound(left))
+            if (isBlockFound(left, findBeacon))
             {
                 result = direction == BinarySearchDirection.Up ? left : right;
             }
@@ -502,8 +571,6 @@ namespace Nethermind.Blockchain
 
             bool isOnMainChain = (options & BlockTreeInsertOptions.NotOnMainChain) == 0;
             BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-            ChainLevelInfo chainLevel = new(isOnMainChain, blockInfo);
-            _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
 
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
             {
@@ -545,6 +612,20 @@ namespace Nethermind.Blockchain
                     LowestInsertedBeaconHeader = header;
                 }
             }
+            
+            bool addBeaconMetadata = (options & BlockTreeInsertOptions.AddBeaconMetadata) != 0;
+            if (addBeaconMetadata)
+            {
+                blockInfo.Metadata = blockInfo.Metadata | BlockMetadata.BeaconHeader;
+            }
+            bool moveToBeaconMainChain = (options & BlockTreeInsertOptions.MoveToBeaconMainChain) != 0;
+            if (moveToBeaconMainChain)
+            {
+                blockInfo.Metadata = blockInfo.Metadata | BlockMetadata.BeaconMainChain;
+            }
+            
+            ChainLevelInfo chainLevel = new(isOnMainChain, blockInfo);
+            _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
 
             return AddBlockResult.Added;
         }
@@ -576,6 +657,35 @@ namespace Nethermind.Blockchain
             {
                 Insert(block.Header, options);
             }
+            
+            bool addBeaconMetadata = (options & BlockTreeInsertOptions.AddBeaconMetadata) != 0;
+            bool moveToBeaconMainChain = (options & BlockTreeInsertOptions.MoveToBeaconMainChain) != 0;
+            if (addBeaconMetadata)
+            {
+                // we're manipulating level when we're inserting header and
+                ChainLevelInfo chainLevelInfo = LoadLevel(block.Number);
+                if (chainLevelInfo is not null)
+                {
+                    for (int i = 0; i < chainLevelInfo.BlockInfos.Length; ++i)
+                    {
+                        var blockInfo = chainLevelInfo.BlockInfos[i];
+                        if (blockInfo.BlockHash == block.Hash)
+                        {
+                            blockInfo.Metadata |= BlockMetadata.BeaconBody;
+                            if (moveToBeaconMainChain)
+                                blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+                        }
+                        else
+                        {
+                            // we're removing other blocks from main chain
+                            if (moveToBeaconMainChain)
+                                blockInfo.Metadata &= ~BlockMetadata.BeaconMainChain;
+                        }
+                    }
+                    
+                    _chainLevelInfoRepository.PersistLevel(block.Number, chainLevelInfo);
+                }
+            }
 
             return AddBlockResult.Added;
         }
@@ -605,10 +715,10 @@ namespace Nethermind.Blockchain
             bool? setAsMain = null)
         {
             bool shouldProcess = (options & BlockTreeSuggestOptions.ShouldProcess) != 0;
-            bool tryProcessKnownBlock = (options & BlockTreeSuggestOptions.TryProcessKnownBlock) != 0;
+            bool fillBeaconBlock = (options & BlockTreeSuggestOptions.FillBeaconBlock) != 0;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {tryProcessKnownBlock}");
+                    $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}");
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
             if (header.StateRoot is null && !header.IsGenesis)
@@ -634,7 +744,7 @@ namespace Nethermind.Blockchain
             }
 
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
-            if (!tryProcessKnownBlock && isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
+            if (!fillBeaconBlock && isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
                 if (_logger.IsTrace) _logger.Trace($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} already known.");
                 return AddBlockResult.AlreadyKnown;
@@ -664,9 +774,13 @@ namespace Nethermind.Blockchain
             {
                 Rlp newRlp = _headerDecoder.Encode(header);
                 _headerDb.Set(header.Hash, newRlp.Bytes);
+            }
 
+            if (!isKnown || fillBeaconBlock)
+            {
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-                UpdateOrCreateLevel(header.Number, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
+
+                UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
             
@@ -760,7 +874,7 @@ namespace Nethermind.Blockchain
                             $"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
                     SetTotalDifficulty(header);
                     blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty!.Value);
-                    level = UpdateOrCreateLevel(header.Number, blockInfo);
+                    level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                 }
                 else
                 {
@@ -1200,7 +1314,7 @@ namespace Nethermind.Blockchain
 
                 BlockInfo info = level.BlockInfos[index.Value];
                 info.WasProcessed = true;
-                if (index.Value != 0)
+                if (block.Number<previousHeadNumber) 
                 {
                     (level.BlockInfos[index.Value], level.BlockInfos[0]) =
                         (level.BlockInfos[0], level.BlockInfos[index.Value]);
@@ -1276,6 +1390,34 @@ namespace Nethermind.Blockchain
                 MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
             }
         }
+        
+        public bool IsBetterThanHead(BlockHeader? header)
+        {
+            bool result = false;
+            if (header is not null)
+            {
+                if (header.IsGenesis && Genesis is null)
+                {
+                    result = true;
+                }
+                else
+                {
+                    result = header.TotalDifficulty > (Head?.TotalDifficulty ?? 0)
+                             // so above is better and more correct but creates an impression of the node staying behind on stats page
+                             // so we are okay to process slightly more
+                             // and below is less correct but potentially reporting well
+                             // || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? 0)
+                             // below are some new conditions under test
+                             || (header.TotalDifficulty == Head?.TotalDifficulty &&
+                                 ((Head?.Hash ?? Keccak.Zero).CompareTo(header.Hash) > 0))
+                             || (header.TotalDifficulty == Head?.TotalDifficulty &&
+                                 ((Head?.Number ?? 0L).CompareTo(header.Number) > 0))
+                             || (header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty);
+                }
+            }
+            
+            return result;
+        }
 
 
         /// <summary>
@@ -1331,7 +1473,7 @@ namespace Nethermind.Blockchain
                 ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                 : null;
 
-            if (_logger.IsTrace) _logger.Trace($"Block added to main {block}");
+            if (_logger.IsTrace) _logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
             BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
             if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
@@ -1352,7 +1494,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
+            if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
         }
 
         private bool HeadImprovementRequirementsSatisfied(BlockHeader header)
@@ -1546,8 +1688,8 @@ namespace Nethermind.Blockchain
             _blockInfoDb.Set(HeadAddressInDb, block.Hash.Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
         }
-
-        private ChainLevelInfo UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
+        
+        private ChainLevelInfo UpdateOrCreateLevel(long number, Keccak hash, BlockInfo blockInfo, bool setAsMain = false)
         {
             using (BatchWrite? batch = _chainLevelInfoRepository.StartBatch())
             {
@@ -1556,15 +1698,23 @@ namespace Nethermind.Blockchain
                 if (level is not null)
                 {
                     BlockInfo[] blockInfos = level.BlockInfos;
-                    Array.Resize(ref blockInfos, blockInfos.Length + 1);
+
+                    int? foundIndex = FindIndex(hash, level);
+                    if (!foundIndex.HasValue)
+                    {
+                        Array.Resize(ref blockInfos, blockInfos.Length + 1);
+                    }
+
+                    int index = foundIndex ?? blockInfos.Length - 1;
+
                     if (setAsMain)
                     {
-                        blockInfos[^1] = blockInfos[0];
+                        blockInfos[index] = blockInfos[0];
                         blockInfos[0] = blockInfo;
                     }
                     else
                     {
-                        blockInfos[^1] = blockInfo;
+                        blockInfos[index] = blockInfo;
                     }
 
                     level.BlockInfos = blockInfos;
@@ -1640,11 +1790,10 @@ namespace Nethermind.Blockchain
         {
             return _chainLevelInfoRepository.LoadLevel(number);
         }
-
-        public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber,
+        
+        public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize = 3000,
             UInt256? startingTotalDifficulty = null)
         {
-            long batchSize = 3000;
             long currentNum = Math.Min(endNumber, startNumber + batchSize);
 
             // TODO: beaconsync duplicate code
@@ -1740,7 +1889,8 @@ namespace Nethermind.Blockchain
         public Keccak? HeadHash => Head?.Hash;
         public Keccak? GenesisHash => Genesis?.Hash;
         public Keccak? PendingHash => Head?.Hash;
-
+        public Keccak? FinalizedHash { get; private set; }
+        public Keccak? SafeHash { get; private set; }
         public Block? FindBlock(Keccak? blockHash, BlockTreeLookupOptions options)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
@@ -1771,7 +1921,7 @@ namespace Nethermind.Blockchain
                             $"Entering missing block info in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}");
                     SetTotalDifficulty(block.Header);
                     blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty!.Value);
-                    level = UpdateOrCreateLevel(block.Number, blockInfo);
+                    level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo);
                 }
                 else
                 {
@@ -1828,7 +1978,7 @@ namespace Nethermind.Blockchain
                 {
                     child.TotalDifficulty = current.TotalDifficulty + child.Difficulty;
                     BlockInfo blockInfo = new(child.Hash, child.TotalDifficulty.Value);
-                    UpdateOrCreateLevel(child.Number, blockInfo);
+                    UpdateOrCreateLevel(child.Number, child.Hash, blockInfo);
                     if (_logger.IsTrace)
                         _logger.Trace($"Calculated total difficulty for {child} is {child.TotalDifficulty}");
                     current = child;
@@ -1984,6 +2134,17 @@ namespace Nethermind.Blockchain
                 {
                     _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
                 }
+            }
+        }
+        
+        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockHash)
+        {
+            FinalizedHash = finalizedBlockHash;
+            SafeHash = safeBlockHash;
+            using (_metadataDb.StartBatch())
+            {
+                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);  
+                _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);  
             }
         }
     }

@@ -252,7 +252,7 @@ public partial class EngineModuleTests
         // finish beacon forwards sync
         foreach (Block block in missingBlocks)
         {
-            await chain.BlockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock);
+            await chain.BlockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock);
         }
         bestBeaconBlockRequest.TryGetBlock(out Block? bestBeaconBlock);
         SemaphoreSlim bestBlockProcessed = new(0);
@@ -261,7 +261,7 @@ public partial class EngineModuleTests
             if (e.Block.Hash == bestBeaconBlock!.Hash)
                     bestBlockProcessed.Release(1);
         };
-        await chain.BlockTree.SuggestBlockAsync(bestBeaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.TryProcessKnownBlock);
+        await chain.BlockTree.SuggestBlockAsync(bestBeaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock);
 
         await bestBlockProcessed.WaitAsync();
         

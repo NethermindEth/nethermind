@@ -176,7 +176,11 @@
     },
     "Kiln": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Network.DiagTracerEnabled true --Merge.TerminalBlockNumber 55127"
+      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Merge.TerminalBlockNumber null"
+    },
+    "KilnPreTTD": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kiln_pre_ttd_pivot.cfg  --Init.DiagnosticMode MemDb"
     },
     "Kiln_FastSync": {
       "commandName": "Project",
@@ -189,6 +193,17 @@
     "Mainnet_ShadowFork": {
       "commandName": "Project",
       "commandLineArgs": "--config mainnet_shadowfork.cfg  --baseDbPath D:\\shadowfork_db"
+    },
+    "Hive": {
+      "commandName": "Project",
+      "commandLineArgs": "--config hive.cfg"
+    },
+    "Ropsten Archive": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\ropsten_archive.cfg --baseDbPath C:\\nethermind_db",
+      "environmentVariables": {
+        " ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }

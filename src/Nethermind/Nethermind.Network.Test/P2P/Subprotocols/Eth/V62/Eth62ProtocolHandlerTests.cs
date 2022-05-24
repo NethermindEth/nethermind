@@ -73,7 +73,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Genesis.Returns(_genesisBlock.Header);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
-            _gossipPolicy.ShouldGossipBlocks.Returns(true);
+            _gossipPolicy.CanGossipBlocks.Returns(true);
+            _gossipPolicy.ShouldGossipBlock(Arg.Any<BlockHeader>()).Returns(true);
             _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(false);
             _handler = new Eth62ProtocolHandler(
                 _session,
@@ -115,7 +116,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Should_stop_notifying_about_new_blocks_and_new_block_hashes_if_in_PoS()
         {
-            _gossipPolicy.ShouldGossipBlocks.Returns(false);
+            _gossipPolicy.CanGossipBlocks.Returns(false);
             
             _handler = new Eth62ProtocolHandler(
                 _session,
@@ -147,7 +148,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Should_not_broadcast_a_block_if_in_PoS()
         {
             Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
-            _gossipPolicy.ShouldGossipBlocks.Returns(false);
+            _gossipPolicy.CanGossipBlocks.Returns(false);
             _handler.NotifyOfNewBlock(block, SendBlockPriority.High);
             _session.Received(0).DeliverMessage(Arg.Any<NewBlockMessage>());
             _session.ClearReceivedCalls();

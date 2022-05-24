@@ -28,4 +28,5 @@ public class BlockCacheService : IBlockCacheService
     public ConcurrentDictionary<Keccak, Block> BlockCache { get; } = new();
     public Keccak? ProcessDestination { get; set; }
     public Keccak? SyncingHead { get; set; }
+    public Keccak FinalizedHash { get; set; } = Keccak.Zero;
 }

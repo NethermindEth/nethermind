@@ -34,7 +34,7 @@ public class MergeSealValidator : ISealValidator
     }
     public bool ValidateParams(BlockHeader parent, BlockHeader header)
     {
-        if (_poSSwitcher.IsPostMerge(header, parent))
+        if (_poSSwitcher.IsPostMerge(header))
         {
             return true;
         }

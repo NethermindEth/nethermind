@@ -24,11 +24,13 @@ namespace Nethermind.Blockchain.Receipts
     {
         public TxReceipt[] TxReceipts { get; }
         public BlockHeader BlockHeader { get; }
+        public bool WasRemoved { get; }
 
-        public ReceiptsEventArgs(BlockHeader blockHeader, TxReceipt[] txReceipts)
+        public ReceiptsEventArgs(BlockHeader blockHeader, TxReceipt[] txReceipts, bool wasRemoved)
         {
             BlockHeader = blockHeader;
             TxReceipts = txReceipts;
+            WasRemoved = wasRemoved;
         }
     }
 }

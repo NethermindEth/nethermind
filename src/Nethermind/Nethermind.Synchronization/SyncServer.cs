@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization
 
         public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
-            if (!_gossipPolicy.ShouldGossipBlocks) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
             
             if (block.TotalDifficulty == null)
             {
@@ -248,7 +248,7 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"SyncServer-SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
+                if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {syncPeer} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
                 AddBlockResult result = _blockTree.SuggestBlock(block);
                 if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
             }
@@ -313,7 +313,7 @@ namespace Nethermind.Synchronization
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
         {
-            if (!_gossipPolicy.ShouldGossipBlocks) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
             
             if (number > syncPeer.HeadNumber)
             {
@@ -492,7 +492,7 @@ namespace Nethermind.Synchronization
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
         {
-            if (!_gossipPolicy.ShouldGossipBlocks) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
             
             try
             {

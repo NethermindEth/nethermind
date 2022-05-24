@@ -50,6 +50,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -109,6 +110,7 @@ namespace Nethermind.Synchronization.Test
             public UInt256 TotalDifficulty { get; set; }
 
             public bool IsInitialized { get; set; }
+            public bool IsPriority { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {
@@ -315,16 +317,20 @@ namespace Nethermind.Synchronization.Test
                 MergeConfig? mergeConfig = new() {Enabled = true };
                 if (WithTTD(synchronizerType))
                 {
-                    mergeConfig.TerminalTotalDifficulty = "0";
+                    mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString();
                 }
-                
-                PoSSwitcher poSSwitcher = new(mergeConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), _logManager);
+                IBlockCacheService blockCacheService = new BlockCacheService();
+                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), blockCacheService, _logManager);
+
+                ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
+                SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
                     new TrieStore(stateDb, LimboLogs.Instance),
+                    progressTracker,
                     syncConfig,
                     _logManager);
 
@@ -352,7 +358,6 @@ namespace Nethermind.Synchronization.Test
                 IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
                 {
-                    IBlockCacheService blockCacheService = new BlockCacheService();
                     IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, mergeConfig, dbProvider.MetadataDb,
                         BlockTree, new PeerRefresher(SyncPeerPool), _logManager);
                     blockDownloaderFactory = new MergeBlockDownloaderFactory(
@@ -379,14 +384,11 @@ namespace Nethermind.Synchronization.Test
                         stats,
                         syncModeSelector,
                         syncConfig,
+                        snapProvider,
                         blockDownloaderFactory,
                         pivot,
-                        new BeaconSync(beaconPivot, BlockTree,syncConfig, dbProvider.MetadataDb, blockCacheService, LimboLogs.Instance),
+                        poSSwitcher,
                         mergeConfig,
-                        new BlockCacheService(),
-                        syncProgressResolver,
-                        new TestBlockValidator(),
-                        Substitute.For<IBlockProcessingQueue>(),
                         _logManager);
                 }
                 else
@@ -414,6 +416,7 @@ namespace Nethermind.Synchronization.Test
                         stats,
                         syncModeSelector,
                         syncConfig,
+                        snapProvider,
                         blockDownloaderFactory,
                         pivot,
                         _logManager);

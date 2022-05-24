@@ -84,15 +84,15 @@ namespace Nethermind.Merge.Plugin
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 
-                _poSSwitcher = new PoSSwitcher(_mergeConfig,
-                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
-                _blockFinalizationManager = new ManualBlockFinalizationManager();
                 _blockCacheService = new BlockCacheService();
+                _poSSwitcher = new PoSSwitcher(_mergeConfig, new SyncConfig(),
+                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _blockCacheService, _api.LogManager);
+                _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 InitRewardCalculatorSource();
                 _api.SealValidator = new MergeSealValidator(_poSSwitcher, _api.SealValidator);
 
-                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockFinalizationManager);
+                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
                 
                 _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
             }
@@ -159,26 +159,22 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockValidator,
                         _api.BlockTree,
                         _api.BlockchainProcessor,
-                        _api.EthSyncingInfo,
                         _api.Config<IInitConfig>(),
                         _poSSwitcher,
                         _beaconSync,
                         _beaconPivot,
-                        _blockCacheService,
-                        _api.SyncProgressResolver,
+                        _blockCacheService,         
+                        _api.BlockProcessingQueue,
                         _beaconSync,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
                         _api.BlockTree,
                         _blockFinalizationManager,
                         _poSSwitcher,
-                        _api.EthSyncingInfo,
                         _api.BlockConfirmationManager,
                         payloadPreparationService,
                         _blockCacheService,
                         _beaconSync,
-                        _beaconSync,
-                        _beaconPivot,
                         _peerRefresher,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
@@ -218,7 +214,7 @@ namespace Nethermind.Merge.Plugin
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
-                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _api.DbProvider.MetadataDb, _blockCacheService, _api.LogManager);
+                _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.LogManager);
 
                 _api.BetterPeerStrategy =
                     new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.SyncProgressResolver, _poSSwitcher, _api.LogManager);
@@ -253,14 +249,11 @@ namespace Nethermind.Merge.Plugin
                     _api.NodeStatsManager!,
                     _api.SyncModeSelector,
                     _syncConfig,
+                    _api.SnapProvider,
                     _api.BlockDownloaderFactory,
                     _api.Pivot,
-                    _beaconSync,
+                    _poSSwitcher,
                     _mergeConfig,
-                    _blockCacheService,
-                    _api.SyncProgressResolver,
-                    _api.BlockValidator,
-                    _api.BlockProcessingQueue,
                     _api.LogManager);
             }
 

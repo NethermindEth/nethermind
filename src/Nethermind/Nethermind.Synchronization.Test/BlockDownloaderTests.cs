@@ -48,6 +48,7 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -525,6 +526,7 @@ namespace Nethermind.Synchronization.Test
             public long HeadNumber { get; set; }
             public UInt256 TotalDifficulty { get; set; } = UInt256.MaxValue;
             public bool IsInitialized { get; set; }
+            public bool IsPriority { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {
@@ -872,11 +874,13 @@ namespace Nethermind.Synchronization.Test
                 MemDb stateDb = new();
                 
                 SyncConfig syncConfig = new();
+                ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
                     new TrieStore(stateDb, LimboLogs.Instance),
+                    progressTracker,
                     syncConfig,
                     LimboLogs.Instance);
                 TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy =
@@ -908,19 +912,14 @@ namespace Nethermind.Synchronization.Test
                 BuildTree(chainLength, withReceipts);
             }
 
-            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags)
+            public SyncPeerMock(BlockTree blockTree, bool withReceipts, Response flags, UInt256 peerTotalDifficulty)
             {
                 _withReceipts = withReceipts;
                 Flags = flags;
                 BlockTree = blockTree;
-                UpdateTree();
-            }
-
-            private void UpdateTree()
-            {
                 HeadNumber = BlockTree.Head.Number;
                 HeadHash = BlockTree.HeadHash;
-                TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
+                TotalDifficulty = peerTotalDifficulty;
             }
 
             private void BuildTree(long chainLength, bool withReceipts)
@@ -934,8 +933,10 @@ namespace Nethermind.Synchronization.Test
 
                 builder = builder.OfChainLength((int) chainLength);
                 BlockTree = builder.TestObject;
-
-                UpdateTree();
+                
+                HeadNumber = BlockTree.Head.Number;
+                HeadHash = BlockTree.HeadHash;
+                TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
             }
 
             public void ExtendTree(long newLength)
@@ -949,6 +950,7 @@ namespace Nethermind.Synchronization.Test
             public long HeadNumber { get; set; }
             public UInt256 TotalDifficulty { get; set; }
             public bool IsInitialized { get; set; }
+            public bool IsPriority { get; set; }
 
             public void Disconnect(DisconnectReason reason, string details)
             {

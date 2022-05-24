@@ -32,13 +32,27 @@ namespace Nethermind.AccountAbstraction.Network
         private readonly IUserOperationBroadcaster _broadcaster;
         private readonly ILogger _logger;
 
-        public AccountAbstractionPeerManager(IDictionary<Address, IUserOperationPool> userOperationPools, IUserOperationBroadcaster broadcaster, ILogger logger)
+        public AccountAbstractionPeerManager(IDictionary<Address,IUserOperationPool> userOperationPools,
+            IUserOperationBroadcaster broadcaster,
+            ILogger logger)
+            : this(userOperationPools, broadcaster, 0, logger)
+        {
+        }
+        
+        public AccountAbstractionPeerManager(IDictionary<Address, IUserOperationPool> userOperationPools,
+            IUserOperationBroadcaster broadcaster,
+            int numberOfPriorityAaPeers,
+            ILogger logger)
         {
             _userOperationPools = userOperationPools;
             _broadcaster = broadcaster;
             _logger = logger;
+
+            NumberOfPriorityAaPeers = numberOfPriorityAaPeers;
         }
 
+        public int NumberOfPriorityAaPeers { get; set; }
+        
         public void AddPeer(IUserOperationPoolPeer peer)
         {
             PeerInfo peerInfo = new(peer);
