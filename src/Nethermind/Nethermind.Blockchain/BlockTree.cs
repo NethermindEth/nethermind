@@ -2143,8 +2143,8 @@ namespace Nethermind.Blockchain
             SafeHash = safeBlockHash;
             using (_metadataDb.StartBatch())
             {
-                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, FinalizedHash!.Bytes);  
-                _metadataDb.Set(MetadataDbKeys.SafeBlockHash, SafeHash!.Bytes);  
+                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);  
+                _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);  
             }
         }
     }
