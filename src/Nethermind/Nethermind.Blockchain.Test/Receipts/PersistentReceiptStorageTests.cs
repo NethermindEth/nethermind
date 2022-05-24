@@ -191,7 +191,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test]
         public void HasBlock_should_returnFalseForMissingHash()
         {
-            _storage.HasBlock(Keccak.Zero).Should().BeFalse();
+            _storage.HasBlock(Keccak.Compute("missing-value")).Should().BeFalse();
         }
         
         [Test]
