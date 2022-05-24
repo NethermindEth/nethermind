@@ -2139,13 +2139,20 @@ namespace Nethermind.Blockchain
         
         public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockHash)
         {
-            FinalizedHash = finalizedBlockHash;
-            SafeHash = safeBlockHash;
             using (_metadataDb.StartBatch())
             {
-                _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);  
-                _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);  
+                try
+                {
+                    _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
+                    _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
+                }
+                catch (RlpException)
+                {                
+                    if (_logger.IsDebug) _logger.Debug($"Failed to save finalized or safe blocks, received block hashes: Finalized {finalizedBlockHash} and Safe {safeBlockHash},");
+                }
             }
+            FinalizedHash = finalizedBlockHash;
+            SafeHash = safeBlockHash;
         }
     }
 }
