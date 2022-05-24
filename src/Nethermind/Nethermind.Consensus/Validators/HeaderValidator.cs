@@ -52,16 +52,7 @@ namespace Nethermind.Consensus.Validators
             _daoBlockNumber = specProvider.DaoBlockNumber;
         }
 
-        public virtual bool ValidateHash(BlockHeader header)
-        {
-            bool hashAsExpected = header.Hash == header.CalculateHash();
-            if (!hashAsExpected)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-            }
-
-            return hashAsExpected;
-        }
+        public static bool ValidateHash(BlockHeader header) => header.Hash == header.CalculateHash();
 
         /// <summary>
         /// Note that this does not validate seal which is the responsibility of <see cref="ISealValidator"/>>
@@ -73,6 +64,11 @@ namespace Nethermind.Consensus.Validators
         public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
             bool hashAsExpected = ValidateHash(header);
+            
+            if (!hashAsExpected)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+            }
 
             IReleaseSpec spec = _specProvider.GetSpec(header.Number);
             bool extraDataValid = ValidateExtraData(header, parent, spec, isUncle);

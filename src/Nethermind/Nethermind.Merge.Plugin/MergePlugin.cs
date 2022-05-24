@@ -198,8 +198,10 @@ namespace Nethermind.Merge.Plugin
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
 
                 // ToDo strange place for validators initialization
-                _peerRefresher = new PeerRefresher(_api.SyncPeerPool);
-                _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, new PeerRefresher(_api.SyncPeerPool), _api.LogManager);
+                PeerRefresher peerRefresher = new(_api.SyncPeerPool, _api.TimerFactory);
+                _peerRefresher = peerRefresher;
+                _api.DisposeStack.Push(peerRefresher);
+                _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
                 _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,

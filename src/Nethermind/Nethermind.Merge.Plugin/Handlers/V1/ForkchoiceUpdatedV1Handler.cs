@@ -88,6 +88,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     _mergeSyncController.InitSyncing(block.Header);
+                    _peerRefresher.RefreshPeers(block.ParentHash);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
 
@@ -106,10 +107,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.Hash ?? newHeadBlock.CalculateHash()))
             {
-                // ToDO of course we shouldn't refresh the peers in this way. This need to be optimized and we need to rethink refreshing
-                if (i % 10 == 0)
-                    _peerRefresher.RefreshPeers(newHeadBlock.Hash!);
-                ++i;
+                _peerRefresher.RefreshPeers(newHeadBlock.ParentHash);
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
                 if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}"); }
