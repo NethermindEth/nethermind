@@ -241,7 +241,16 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (_logger.IsInfo) { _logger.Info($"Valid. Request: {requestStr}"); }
             
-            _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash,forkchoiceState.SafeBlockHash);
+            if(!_blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash,forkchoiceState.SafeBlockHash)) 
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Failed to update finalized or safe blocks, Finalized {forkchoiceState.FinalizedBlockHash} and Safe {forkchoiceState.SafeBlockHash}");
+
+                return ForkchoiceUpdatedV1Result.Error(
+                    $"Failed to update finalized or safe blocks, Finalized {forkchoiceState.FinalizedBlockHash} and Safe {forkchoiceState.SafeBlockHash}",
+                    MergeErrorCodes.InvalidForkchoiceState);
+            }
 
             return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
         }

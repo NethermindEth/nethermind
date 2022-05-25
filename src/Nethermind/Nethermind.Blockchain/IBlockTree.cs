@@ -168,7 +168,7 @@ namespace Nethermind.Blockchain
 
         void DeleteInvalidBlock(Block invalidBlock);
 
-        void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash);
+        bool ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash);
 
         void LoadLowestInsertedBeaconHeader();
 
