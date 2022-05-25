@@ -27,7 +27,7 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaPlugin : IConsensusPlugin
+    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
@@ -60,6 +60,16 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
+        public Task InitSynchronization()
+        {
+            if (_nethermindApi is not null)
+            {
+                _nethermindApi.BetterPeerStrategy = new AuRaBetterPeerStrategy(_nethermindApi.BetterPeerStrategy!, _nethermindApi.LogManager);
+            }
+
+            return Task.CompletedTask;
+        }
+
         public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi is not null)
@@ -75,5 +85,7 @@ namespace Nethermind.Consensus.AuRa
         public IBlockProductionTrigger? DefaultBlockProductionTrigger { get; private set; }
         
         public INethermindApi CreateApi() => new AuRaNethermindApi();
+
+        public bool Enabled => true;
     }
 }
