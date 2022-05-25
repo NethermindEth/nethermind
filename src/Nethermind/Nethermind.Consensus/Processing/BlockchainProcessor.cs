@@ -568,15 +568,11 @@ namespace Nethermind.Consensus.Processing
                 // otherwise some nodes would be missing
                 bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
                 bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-                preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) &&
-                                                   !suggestedBlockIsPostMerge;
-                postMergeFinishBranchingCondition = suggestedBlockIsPostMerge &&
-                                                    _blockTree.WasProcessed(branchingPoint.Number,
-                                                        branchingPoint.Hash) == false;
+                preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}, postMergeFinishBranchingCondition: {postMergeFinishBranchingCondition}");
-            } while (preMergeFinishBranchingCondition || postMergeFinishBranchingCondition);
+                        $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
+            } while (preMergeFinishBranchingCondition);
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {
