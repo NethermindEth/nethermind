@@ -144,7 +144,7 @@ namespace Nethermind.Merge.Plugin
                 if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
                 
                 // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
-                while (!((IBlockProcessingQueue)_api.BlockchainProcessor).IsEmpty)
+                while (!_api.BlockProcessingQueue.IsEmpty)
                 {
                     Thread.Sleep(100);
                 }
