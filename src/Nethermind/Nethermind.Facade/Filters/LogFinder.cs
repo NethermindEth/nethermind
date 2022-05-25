@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Find
                 _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name}");
 
             cancellationToken.ThrowIfCancellationRequested();
-            var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), true);
+            var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), false);
             cancellationToken.ThrowIfCancellationRequested();
             var fromBlock = FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
 
