@@ -85,10 +85,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
         
         public bool IsBeaconSyncHeadersFinished()
         {
-            long lowestedBeaconHeaderNumber = _blockTree.LowestInsertedBeaconHeader?.Number ?? 0;
+            long lowestInsertedBeaconHeader = _blockTree.LowestInsertedBeaconHeader?.Number ?? 0;
             bool finished = _blockTree.LowestInsertedBeaconHeader == null
-                            || lowestedBeaconHeaderNumber <= _beaconPivot.PivotDestinationNumber
-                            || lowestedBeaconHeaderNumber <= (_blockTree.BestSuggestedHeader?.Number ?? long.MaxValue);
+                            || lowestInsertedBeaconHeader <= _beaconPivot.PivotDestinationNumber;
+                           // || lowestedBeaconHeaderNumber <= (_blockTree.BestSuggestedHeader?.Number ?? long.MaxValue); ToDo Sarah
             
             if (_logger.IsTrace) _logger.Trace($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
             return finished;
