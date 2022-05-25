@@ -504,7 +504,6 @@ namespace Nethermind.Consensus.Processing
             List<Block> blocksToBeAddedToMain = new();
 
             bool preMergeFinishBranchingCondition;
-            bool postMergeFinishBranchingCondition;
             bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
 
             Block toBeProcessed = suggestedBlock;
