@@ -17,15 +17,16 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Runner.Ethereum.Api;
+using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
@@ -37,14 +38,19 @@ namespace Nethermind.Merge.Plugin.Test
         private MergeConfig _mergeConfig = null!;
         private NethermindApi _context = null!;
         private MergePlugin _plugin = null!;
+        private CliquePlugin _consensusPlugin = null;
 
         [SetUp]
         public void Setup()
         {
-            _mergeConfig = new MergeConfig() {Enabled = true, BlockAuthorAccount = TestItem.AddressA.ToString()};
+            _mergeConfig = new MergeConfig() {Enabled = true, FeeRecipient = TestItem.AddressA.ToString()};
+            MiningConfig? miningConfig = new() {Enabled = true};
             _context = Build.ContextWithMocks();
+            _context.SealEngineType = SealEngineType.Clique;
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
             _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
+            _context.ConfigProvider.GetConfig<IMiningConfig>().Returns(miningConfig);
+            _context.BlockProcessingQueue?.IsEmpty.Returns(true);
             _context.MemDbFactory = new MemDbFactory();
             _context.BlockProducerEnvFactory = new BlockProducerEnvFactory(
                 _context.DbProvider!,
@@ -57,9 +63,16 @@ namespace Nethermind.Merge.Plugin.Test
                 _context.BlockPreprocessor!,
                 _context.TxPool!,
                 _context.TransactionComparerProvider,
-                new MiningConfig(),
+                miningConfig,
                 _context.LogManager!);
+            _context.ChainSpec!.Clique = new CliqueParameters()
+            {
+                Epoch = CliqueConfig.Default.Epoch,
+                Period = CliqueConfig.Default.BlockPeriod
+            };
             _plugin = new MergePlugin();
+            
+            _consensusPlugin = new();
         }
         
         [TestCase(true)]
@@ -67,9 +80,11 @@ namespace Nethermind.Merge.Plugin.Test
         public void Init_merge_plugin_does_not_throw_exception(bool enabled)
         {
             _mergeConfig.Enabled = enabled;
+            Assert.DoesNotThrowAsync(async () => await _consensusPlugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
-            Assert.DoesNotThrowAsync(async () => await _plugin.InitBlockProducer());
+            Assert.DoesNotThrowAsync(async () => await _plugin.InitSynchronization());
+            Assert.DoesNotThrowAsync(async () => await _plugin.InitBlockProducer(_consensusPlugin));
             Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
             Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
         }
@@ -77,17 +92,17 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public async Task Initializes_correctly()
         {
+            Assert.DoesNotThrowAsync(async () => await _consensusPlugin.Init(_context));
             await _plugin.Init(_context);
+            await _plugin.InitSynchronization();
             await _plugin.InitNetworkProtocol();
             ISyncConfig syncConfig = _context.Config<ISyncConfig>();
-            Assert.IsFalse(syncConfig.SynchronizationEnabled);
             Assert.IsTrue(syncConfig.NetworkingEnabled);
-            Assert.IsFalse(syncConfig.BlockGossipEnabled);
-            await _plugin.InitBlockProducer();
-            Assert.IsInstanceOf<Eth2BlockProducer>(_context.BlockProducer);
+            Assert.IsTrue(_context.GossipPolicy.CanGossipBlocks);
+            await _plugin.InitBlockProducer(_consensusPlugin);
+            Assert.IsInstanceOf<MergeBlockProducer>(_context.BlockProducer);
             await _plugin.InitRpcModules();
             _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
-            await _context.BlockchainProcessor!.Received().StopAsync(true);
             await _plugin.DisposeAsync();
         }
     }

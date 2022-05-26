@@ -46,12 +46,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
         [TestCase(5)]
         public void RunMigration(int? migratedBlockNumber)
         {
-            var chainLength = 10;
-            var configProvider = Substitute.For<IConfigProvider>();
-            var blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
-            var inMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
-            var outMemoryReceiptStorage = new InMemoryReceiptStorage() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
-            var context = new NethermindApi() 
+            int chainLength = 10;
+            IConfigProvider configProvider = Substitute.For<IConfigProvider>();
+            BlockTreeBuilder blockTreeBuilder = Core.Test.Builders.Build.A.BlockTree().OfChainLength(chainLength);
+            InMemoryReceiptStorage inMemoryReceiptStorage = new() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
+            InMemoryReceiptStorage outMemoryReceiptStorage = new() {MigratedBlockNumber = migratedBlockNumber != null ? 0 : long.MaxValue};
+            NethermindApi context = new() 
             {
                 ConfigProvider = configProvider, 
                 EthereumJsonSerializer = new EthereumJsonSerializer(), 
@@ -71,16 +71,16 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             int txIndex = 0;
             for (int i = 1; i < chainLength; i++)
             {
-                var block = context.BlockTree.FindBlock(i);
+                Block block = context.BlockTree.FindBlock(i);
                 inMemoryReceiptStorage.Insert(block,
                     Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject,
                     Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject);
             }
             
-            ManualResetEvent guard = new ManualResetEvent(false);
+            ManualResetEvent guard = new(false);
             Keccak lastTransaction = TestItem.Keccaks[txIndex - 1];
             context.DbProvider.ReceiptsDb.When(x => x.Remove(lastTransaction.Bytes)).Do(c => guard.Set());
-            var migration = new ReceiptMigration(context);
+            ReceiptMigration migration = new(context);
             if (migratedBlockNumber.HasValue)
             {
                 migration.Run(migratedBlockNumber.Value);
@@ -92,7 +92,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
 
             
             guard.WaitOne(TimeSpan.FromSeconds(1));
-            var txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
+            int txCount = ((migratedBlockNumber ?? chainLength) - 1 - 1) * 2;
             context.DbProvider.ReceiptsDb.Received(Quantity.Exactly(txCount)).Remove(Arg.Any<byte[]>());
             outMemoryReceiptStorage.Count.Should().Be(txCount);
         }
@@ -133,7 +133,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
+            public event EventHandler<ReceiptsEventArgs> ReceiptsInserted { add { } remove { } }
         }
     }
 }

@@ -18,16 +18,13 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.InitializationSteps;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaPlugin : IConsensusPlugin
+    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin
     {
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
@@ -57,6 +54,16 @@ namespace Nethermind.Consensus.AuRa
 
         public Task InitRpcModules()
         {
+            return Task.CompletedTask;
+        }
+
+        public Task InitSynchronization()
+        {
+            if (_nethermindApi is not null)
+            {
+                _nethermindApi.BetterPeerStrategy = new AuRaBetterPeerStrategy(_nethermindApi.BetterPeerStrategy!, _nethermindApi.LogManager);
+            }
+
             return Task.CompletedTask;
         }
 

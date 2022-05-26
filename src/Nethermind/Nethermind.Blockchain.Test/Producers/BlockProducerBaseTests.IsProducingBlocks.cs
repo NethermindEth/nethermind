@@ -19,14 +19,14 @@ using System;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -95,8 +95,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
-                LimboLogs.Instance,
-                Substitute.For<IManualBlockProductionTrigger>());
+                LimboLogs.Instance);
             await AssertIsProducingBlocks(blockProducer);
         }
         

@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.Blocks
             return options;
         }
 
-        public override Task<BlocksRequest> PrepareRequest() => Task.FromResult(ShouldBeActive() ? _blocksRequest : null!);
+        public override Task<BlocksRequest> PrepareRequest() => Task.FromResult(_blocksRequest);
 
         public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo peer = null)
         {

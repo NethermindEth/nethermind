@@ -17,7 +17,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
 using Nethermind.Core.Timers;

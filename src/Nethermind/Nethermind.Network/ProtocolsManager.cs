@@ -18,9 +18,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Threading;
 using Nethermind.Config;
-using Nethermind.Core.Crypto;
+using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -63,6 +62,7 @@ namespace Nethermind.Network
         private readonly IProtocolValidator _protocolValidator;
         private readonly INetworkStorage _peerStorage;
         private readonly ISpecProvider _specProvider;
+        private readonly IGossipPolicy _gossipPolicy;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
@@ -81,6 +81,7 @@ namespace Nethermind.Network
             IProtocolValidator protocolValidator,
             INetworkStorage peerStorage,
             ISpecProvider specProvider,
+            IGossipPolicy gossipPolicy,
             ILogManager logManager)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -94,6 +95,7 @@ namespace Nethermind.Network
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -195,11 +197,11 @@ namespace Nethermind.Network
                 {
                     var ethHandler = version switch
                     {
-                        62 => new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
-                        63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _logManager),
-                        64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _specProvider, _logManager),
-                        65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _specProvider, _logManager),
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _specProvider, _logManager),
+                        62 => new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _logManager),
+                        63 => new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _logManager),
+                        64 => new Eth64ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _gossipPolicy, _specProvider, _logManager),
+                        65 => new Eth65ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _specProvider, _logManager),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -358,7 +360,7 @@ namespace Nethermind.Network
                         session.InitiateDisconnect(DisconnectReason.AlreadyConnected, "sync peer");
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
+                    if (_logger.IsInfo) _logger.Info($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
 
                     //Add/Update peer to the storage and to sync manager
                     _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation));

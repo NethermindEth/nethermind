@@ -15,27 +15,30 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Ethereum.Difficulty.Test")]
+
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashDifficultyCalculator : IDifficultyCalculator
+    internal class EthashDifficultyCalculator : IDifficultyCalculator
     {
         // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
         public const int InitialDifficultyBombBlock = 200000;
         private readonly ISpecProvider _specProvider;
-        private readonly UInt256 _minimumDifficulty;
-        private const long OfGenesisBlock = 131_072;
 
-        public EthashDifficultyCalculator(ISpecProvider specProvider, UInt256? minimumDifficulty = null)
+        public EthashDifficultyCalculator(ISpecProvider specProvider)
         {
             _specProvider = specProvider;
-            _minimumDifficulty = minimumDifficulty ?? OfGenesisBlock;
         }
 
+        private const long OfGenesisBlock = 131_072;
+        
         public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
             Calculate(parent.Difficulty, 
                 parent.Timestamp, 
@@ -60,7 +63,7 @@ namespace Nethermind.Consensus.Ethash
             BigInteger timeAdjustment = TimeAdjustment(spec, (BigInteger)parentTimestamp, (BigInteger)currentTimestamp, parentHasUncles);
             BigInteger timeBomb = TimeBomb(spec, blockNumber);
             return (UInt256)BigInteger.Max(
-                (BigInteger)_minimumDifficulty,
+                OfGenesisBlock,
                 (BigInteger)parentDifficulty +
                 timeAdjustment * baseIncrease +
                 timeBomb);

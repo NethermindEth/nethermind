@@ -17,6 +17,7 @@
 
 using System.Net;
 using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -72,6 +73,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                 _syncManager,
                 _transactionPool,
                 _pooledTxsRequestor,
+                Policy.FullGossip,
                 _specProvider,
                 LimboLogs.Instance);
             _handler.Init();

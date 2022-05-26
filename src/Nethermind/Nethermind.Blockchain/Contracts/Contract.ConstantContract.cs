@@ -19,7 +19,6 @@ using System;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Blockchain.Contracts

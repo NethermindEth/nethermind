@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -40,6 +41,7 @@ namespace Nethermind.Blockchain
         public ulong ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggestedHeader => _wrapped.BestSuggestedHeader;
+        public BlockHeader BestSuggestedBeaconHeader => _wrapped.BestSuggestedBeaconHeader;
         public BlockHeader LowestInsertedHeader => _wrapped.LowestInsertedHeader;
 
         public long? LowestInsertedBodyNumber
@@ -54,9 +56,20 @@ namespace Nethermind.Blockchain
             set => _wrapped.BestPersistedState = value;
         }
 
+
+        public BlockHeader? LowestInsertedBeaconHeader
+        {
+            get => _wrapped.LowestInsertedBeaconHeader;
+            set => _wrapped.LowestInsertedBeaconHeader = value;
+        }
+        
         public Block BestSuggestedBody => _wrapped.BestSuggestedBody;
         public long BestKnownNumber => _wrapped.BestKnownNumber;
+        public long BestKnownBeaconNumber => _wrapped.BestKnownBeaconNumber;
         public Block Head => _wrapped.Head;
+        public void MarkChainAsProcessed(Block[] blocks) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
+        public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null) => throw new InvalidOperationException();
+        public UInt256? UpdateTotalDifficulty(Block block, UInt256 totalDifficulty) => throw new InvalidOperationException();
         public bool CanAcceptNewBlocks { get; } = false;
 
         public async Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
@@ -66,27 +79,29 @@ namespace Nethermind.Blockchain
 
         public ChainLevelInfo FindLevel(long number) => _wrapped.FindLevel(number);
         public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _wrapped.FindCanonicalBlockInfo(blockNumber);
-
-        public AddBlockResult Insert(Block block) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
-
+        public AddBlockResult Insert(Block block, bool saveHeader = false, BlockTreeInsertOptions options = BlockTreeInsertOptions.None) => 
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
+        
         public void UpdateHeadBlock(Keccak blockHash)
         {
             // hacky while there is not special tree for RPC 
             _wrapped.UpdateHeadBlock(blockHash);
         }
 
-        public AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
+        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
         
-        public Task<AddBlockResult> SuggestBlockAsync(Block block, bool shouldProcess = true, bool? setAsMain = null) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlockAsync)} calls");
+        public Task<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlockAsync)} calls");
 
-        public AddBlockResult Insert(BlockHeader header) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
+        public AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
         public AddBlockResult SuggestHeader(BlockHeader header) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestHeader)} calls");
 
         public Keccak HeadHash => _wrapped.HeadHash;
         public Keccak GenesisHash => _wrapped.GenesisHash;
         public Keccak PendingHash => _wrapped.PendingHash;
+        public Keccak FinalizedHash => _wrapped.FinalizedHash;
+        public Keccak SafeHash => _wrapped.SafeHash;
 
         public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options) => _wrapped.FindBlock(blockHash, options);
 
@@ -112,9 +127,13 @@ namespace Nethermind.Blockchain
         public BlockHeader FindBestSuggestedHeader() => _wrapped.FindBestSuggestedHeader();
 
         public bool IsKnownBlock(long number, Keccak blockHash) => _wrapped.IsKnownBlock(number, blockHash);
+        
+        public bool IsKnownBeaconBlock(long number, Keccak blockHash) => _wrapped.IsKnownBeaconBlock(number, blockHash);
 
         public bool WasProcessed(long number, Keccak blockHash) => _wrapped.WasProcessed(number, blockHash);
-
+        
+        public void LoadLowestInsertedBeaconHeader() =>_wrapped.LoadLowestInsertedBeaconHeader();
+        
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock
         {
             add { }
@@ -177,6 +196,9 @@ namespace Nethermind.Blockchain
 
         }
 
+        public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
         public void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
+        
+        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) => _wrapped.ForkChoiceUpdated(finalizedBlockHash,safeBlockBlockHash);
     }
 }

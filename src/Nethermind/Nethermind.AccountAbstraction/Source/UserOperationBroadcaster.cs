@@ -19,7 +19,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Broadcaster;
-using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;

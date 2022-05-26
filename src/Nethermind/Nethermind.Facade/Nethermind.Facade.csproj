@@ -14,7 +14,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+      <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
       <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
       <ProjectReference Include="..\Nethermind.Wallet\Nethermind.Wallet.csproj" />

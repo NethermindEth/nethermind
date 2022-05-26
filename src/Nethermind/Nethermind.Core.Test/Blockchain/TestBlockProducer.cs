@@ -18,10 +18,10 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Blockchain
                 timestamper,
                 specProvider,
                 logManager,
-                ConstantDifficultyCalculator.One)
+                ConstantDifficulty.One)
         {
         }
         
@@ -73,10 +73,10 @@ namespace Nethermind.Core.Test.Blockchain
             }
         }
 
-        protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null)
+        protected override Task<Block?> TryProduceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
         {
             parentHeader ??= BlockParent;
-            return base.TryProduceNewBlock(token, parentHeader, blockTracer);
+            return base.TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
         }
     }
 }

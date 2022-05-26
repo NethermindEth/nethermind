@@ -53,9 +53,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDbProvider dbProvider = await TestMemDbProvider.InitAsync();
 
             BlockTree blockTree = new(
-                dbProvider.BlocksDb,
-                dbProvider.HeadersDb,
-                dbProvider.BlockInfosDb,
+                dbProvider,
                 new ChainLevelInfoRepository(dbProvider.BlockInfosDb),
                 specProvider,
                 new BloomStorage(new BloomConfig(), dbProvider.HeadersDb, new InMemoryDictionaryFileStoreFactory()),

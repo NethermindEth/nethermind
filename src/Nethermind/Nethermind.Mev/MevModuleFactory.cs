@@ -17,11 +17,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;

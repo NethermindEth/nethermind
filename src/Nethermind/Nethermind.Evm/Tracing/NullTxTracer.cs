@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Tracing
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
             => throw new InvalidOperationException(ErrorMessage);
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
             => throw new InvalidOperationException(ErrorMessage);
 
         public void ReportOperationError(EvmExceptionType error)

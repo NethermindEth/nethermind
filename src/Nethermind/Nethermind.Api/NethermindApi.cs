@@ -20,18 +20,18 @@ using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.PubSub;
 using Nethermind.Core.Specs;
@@ -43,6 +43,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Grpc;
+using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -51,7 +52,6 @@ using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
@@ -68,6 +68,7 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Api
 {
@@ -80,7 +81,7 @@ namespace Nethermind.Api
         }
 
         private IReadOnlyDbProvider? _readOnlyDbProvider;
-        
+
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree.AsReadOnly();
@@ -134,10 +135,13 @@ namespace Nethermind.Api
         public IFileSystem FileSystem { get; set; } = new FileSystem();
         public IFilterStore? FilterStore { get; set; }
         public IFilterManager? FilterManager { get; set; }
+        public IUnclesValidator? UnclesValidator { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
-        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; } =
+
+        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
             new BuildBlocksWhenRequested();
+
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }
         public IKeyStore? KeyStore { get; set; }
@@ -146,6 +150,7 @@ namespace Nethermind.Api
         public ILogManager LogManager { get; set; }
         public IKeyValueStoreWithBatching? MainStateDbWithCache { get; set; }
         public IMessageSerializationService MessageSerializationService { get; } = new MessageSerializationService();
+        public IGossipPolicy GossipPolicy { get; set; } = Policy.FullGossip;
         public IMonitoringService MonitoringService { get; set; } = NullMonitoringService.Instance;
         public INodeStatsManager? NodeStatsManager { get; set; }
         public IPeerManager? PeerManager { get; set; }
@@ -159,12 +164,32 @@ namespace Nethermind.Api
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxHost? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
+        public IRpcAuthentication? RpcAuthentication { get; set; }
         public ISealer? Sealer { get; set; } = NullSealEngine.Instance;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.None;
         public ISealValidator? SealValidator { get; set; } = NullSealEngine.Instance;
+        private ISealEngine? _sealEngine;
+        public ISealEngine SealEngine
+        {
+            get
+            {
+                return _sealEngine ??= new SealEngine(Sealer, SealValidator);
+            }
+
+            set
+            {
+                _sealEngine = value;
+            }
+        }
+
         public ISessionMonitor? SessionMonitor { get; set; }
         public ISpecProvider? SpecProvider { get; set; }
         public ISyncModeSelector? SyncModeSelector { get; set; }
+        
+        public ISyncProgressResolver? SyncProgressResolver { get; set; }
+        public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
+        public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
+        public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
@@ -185,18 +210,20 @@ namespace Nethermind.Api
         public TxValidator? TxValidator { get; set; }
         public IBlockFinalizationManager? FinalizationManager { get; set; }
         public IGasLimitCalculator GasLimitCalculator { get; set; }
-        
+
         public IBlockProducerEnvFactory BlockProducerEnvFactory { get; set; }
         public IGasPriceOracle? GasPriceOracle { get; set; }
-        
+
         public IEthSyncingInfo EthSyncingInfo { get; set; }
+        public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
+        public IBlockProductionPolicy BlockProductionPolicy { get; set; }
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
         
         public ISubscriptionFactory SubscriptionFactory { get; set; }
         public ProtectedPrivateKey? NodeKey { get; set; }
-        
+
         /// <summary>
         /// Key used for signing blocks. Original as its loaded on startup. This can later be changed via RPC in <see cref="Signer"/>. 
         /// </summary>

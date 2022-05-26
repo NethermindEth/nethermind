@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Tracing
             StatusCode = Evm.StatusCode.Failure;
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             throw new NotSupportedException();
         }

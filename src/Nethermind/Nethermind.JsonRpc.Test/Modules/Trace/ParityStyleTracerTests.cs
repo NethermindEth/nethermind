@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -57,9 +57,10 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             IDb blocksDb = new MemDb();
             IDb blocksInfoDb = new MemDb();
             IDb headersDb = new MemDb();
+            IDb metadataDb = new MemDb();
             ChainLevelInfoRepository repository = new(blocksInfoDb);
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, repository, specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
+            _blockTree = new BlockTree(blocksDb, headersDb, blocksInfoDb, metadataDb, repository, specProvider, NullBloomStorage.Instance, new SyncConfig(), LimboLogs.Instance);
 
             MemDb stateDb = new();
             MemDb codeDb = new();

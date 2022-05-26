@@ -20,23 +20,22 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
-using Nethermind.Db.Rocks;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Converters;
@@ -232,10 +231,10 @@ namespace Nethermind.Init.Steps
             InitSealEngine();
             if (_api.SealValidator == null) throw new StepDependencyException(nameof(_api.SealValidator));
 
-            /* validation */
-            IHeaderValidator? headerValidator = setApi.HeaderValidator = CreateHeaderValidator();
+            setApi.HeaderValidator = CreateHeaderValidator();
 
-            UnclesValidator unclesValidator = new(
+            IHeaderValidator? headerValidator = setApi.HeaderValidator;
+            IUnclesValidator unclesValidator = setApi.UnclesValidator = new UnclesValidator(
                 getApi.BlockTree,
                 headerValidator,
                 getApi.LogManager);
@@ -279,6 +278,7 @@ namespace Nethermind.Init.Steps
             IFilterStore? filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
+            setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
             
             InitializeFullPruning(pruningConfig, initConfig, _api, stateReader);
             
@@ -345,12 +345,12 @@ namespace Nethermind.Init.Steps
 
         protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider.GetDefaultComparer();
 
-        protected virtual HeaderValidator CreateHeaderValidator() =>
-            new HeaderValidator(
-                _api.BlockTree,
-                _api.SealValidator,
-                _api.SpecProvider,
-                _api.LogManager);
+        // TODO: we should not have the create header -> we should have a header that also can use the information about the transitions
+         protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
+             _api.BlockTree,
+             _api.SealValidator,
+             _api.SpecProvider,
+             _api.LogManager);
 
         // TODO: remove from here - move to consensus?
         protected virtual BlockProcessor CreateBlockProcessor()

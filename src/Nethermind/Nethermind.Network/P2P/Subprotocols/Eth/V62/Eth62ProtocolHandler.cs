@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -26,6 +27,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 
@@ -36,6 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private bool _statusReceived;
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
+        private readonly IGossipPolicy _gossipPolicy;
 
         public Eth62ProtocolHandler(
             ISession session,
@@ -43,10 +46,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ITxPool txPool,
+            IGossipPolicy gossipPolicy,
             ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
+
+            EnsureGossipPolicy();
         }
 
         public void DisableTxFiltering()
@@ -81,7 +88,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             BlockHeader head = SyncServer.Head;
             StatusMessage statusMessage = new();
-            statusMessage.ChainId = (UInt256) SyncServer.ChainId;
+            statusMessage.ChainId = SyncServer.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash!;
@@ -122,9 +129,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     Handle(statusMsg);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
-                    NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
-                    ReportIn(newBlockHashesMessage);
-                    Handle(newBlockHashesMessage);
+                    Metrics.Eth62NewBlockHashesReceived++;
+                    if (_gossipPolicy.ShouldDisconnectGossipingNodes)
+                    {
+                        Disconnect(DisconnectReason.BreachOfProtocol,
+                            "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
+                    }
+                    else if (!_gossipPolicy.ShouldDiscardBlocks)
+                    {
+                        NewBlockHashesMessage newBlockHashesMessage =
+                            Deserialize<NewBlockHashesMessage>(message.Content);
+                        ReportIn(newBlockHashesMessage);
+                        Handle(newBlockHashesMessage);
+                    }
+
                     break;
                 case Eth62MessageCode.Transactions:
                     Metrics.Eth62TransactionsReceived++;
@@ -134,6 +152,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(txMsg);
                         Handle(txMsg);
                     }
+
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage
@@ -157,11 +176,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleBodies(bodiesMsg, size);
                     break;
                 case Eth62MessageCode.NewBlock:
-                    NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
-                    ReportIn(newBlockMsg);
-                    Handle(newBlockMsg);
+                    Metrics.Eth62NewBlockReceived++;
+                    if (_gossipPolicy.ShouldDisconnectGossipingNodes)
+                    {
+                        Disconnect(DisconnectReason.BreachOfProtocol,
+                            "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
+                    }
+                    else if (!_gossipPolicy.ShouldDiscardBlocks)
+                    {
+                        NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
+                        ReportIn(newBlockMsg);
+                        Handle(newBlockMsg);
+                    }
+
                     break;
             }
+        }
+
+        private bool CanGossip => EnsureGossipPolicy();
+
+        private bool EnsureGossipPolicy()
+        {
+            if (!_gossipPolicy.CanGossipBlocks)
+            {
+                SyncServer.StopNotifyingPeersAboutNewBlocks();
+                return false;
+            }
+
+            return true;
         }
 
         private void Handle(StatusMessage status)
@@ -187,6 +229,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 TotalDifficulty = status.TotalDifficulty
             };
 
+            Session.IsNetworkIdMatched = SyncServer.ChainId == (ulong)status.ChainId;
             HeadHash = status.BestHash;
             TotalDifficulty = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);
@@ -210,7 +253,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            Metrics.Eth62NewBlockHashesReceived++;
             (Keccak, long)[] blockHashes = newBlockHashes.BlockHashes;
             for (int i = 0; i < blockHashes.Length; i++)
             {
@@ -221,8 +263,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void Handle(NewBlockMessage msg)
         {
-            Metrics.Eth62NewBlockReceived++;
-            
             try
             {
                 msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
@@ -237,6 +277,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override void NotifyOfNewBlock(Block block, SendBlockPriority priority)
         {
+            if (!CanGossip || !_gossipPolicy.ShouldGossipBlock(block.Header))
+            {
+                return;
+            }
+
             switch (priority)
             {
                 case SendBlockPriority.High:
@@ -276,7 +321,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NewBlockHashesMessage msg = new((blockHash, number));
             Send(msg);
         }
-        
+
         protected override void OnDisposed()
         {
         }

@@ -20,20 +20,16 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Services;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -48,12 +44,13 @@ namespace Nethermind.Consensus.Clique
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
+            if (_nethermindApi!.SealEngineType != Core.SealEngineType.Clique)
             {
                 return Task.CompletedTask;
             }
 
-            var (getFromApi, setInApi) = _nethermindApi.ForInit;
+            (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
+
 
             _cliqueConfig = new CliqueConfig
             {
@@ -70,11 +67,12 @@ namespace Nethermind.Consensus.Clique
             
             setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, getFromApi.ChainSpec);
 
-            setInApi.SealValidator = new CliqueSealValidator(
+            setInApi.SealValidator = new CliqueSealValidator( 
                 _cliqueConfig,
                 _snapshotManager,
                 getFromApi.LogManager);
-
+            
+            // both Clique and the merge provide no block rewards 
             setInApi.RewardCalculatorSource = NoBlockRewards.Instance;
             setInApi.BlockPreprocessor.AddLast(new AuthorRecoveryStep(_snapshotManager!));
 
@@ -88,7 +86,7 @@ namespace Nethermind.Consensus.Clique
                 return Task.FromResult((IBlockProducer)null);
             }
 
-            var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
+            (IApiWithBlockchain getFromApi, IApiWithBlockchain setInApi) = _nethermindApi!.ForProducer;
             
             _miningConfig = getFromApi.Config<IMiningConfig>();
             if (!_miningConfig.Enabled)
@@ -102,18 +100,18 @@ namespace Nethermind.Consensus.Clique
                 _snapshotManager!,
                 getFromApi.LogManager);
             
-            ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
-            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
+            ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider!.AsReadOnly(false);
+            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
             ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
 
-            ReadOnlyTxProcessingEnv producerEnv = new ReadOnlyTxProcessingEnv(
+            ReadOnlyTxProcessingEnv producerEnv = new (
                 readOnlyDbProvider,
                 getFromApi.ReadOnlyTrieStore,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
                 
-            BlockProcessor producerProcessor = new BlockProcessor(
+            BlockProcessor producerProcessor = new (
                 getFromApi!.SpecProvider,
                 getFromApi!.BlockValidator,
                 NoBlockRewards.Instance,
@@ -131,7 +129,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
 
-            OneTimeChainProcessor chainProcessor = new OneTimeChainProcessor(
+            OneTimeChainProcessor chainProcessor = new (
                 readOnlyDbProvider,
                 producerChainProcessor);
 
@@ -179,14 +177,14 @@ namespace Nethermind.Consensus.Clique
                 return Task.CompletedTask;
             }
 
-            var (getFromApi, _) = _nethermindApi!.ForRpc;
-            CliqueRpcRpcModule cliqueRpcRpcModule = new CliqueRpcRpcModule(
+            (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
+            CliqueRpcModule cliqueRpcModule = new (
                 getFromApi!.BlockProducer as ICliqueBlockProducer,
                 _snapshotManager!,
                 getFromApi.BlockTree!);
 
-            var modulePool = new SingletonModulePool<ICliqueRpcModule>(cliqueRpcRpcModule);
-            getFromApi.RpcModuleProvider.Register(modulePool);
+            SingletonModulePool<ICliqueRpcModule> modulePool = new (cliqueRpcModule);
+            getFromApi.RpcModuleProvider!.Register(modulePool);
 
             return Task.CompletedTask;
         }
@@ -194,7 +192,7 @@ namespace Nethermind.Consensus.Clique
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
         
         [Todo("Redo clique producer to support triggers and MEV")]
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi.ManualBlockProductionTrigger;
+        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi!.ManualBlockProductionTrigger;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 

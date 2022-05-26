@@ -96,6 +96,7 @@ namespace Nethermind.Runner.Ethereum
                 .Build();
             
             string urlsString = string.Join(" ; ", urls);
+            // TODO: replace http with ws where relevant
             
             ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
 

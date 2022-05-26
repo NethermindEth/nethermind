@@ -21,7 +21,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliqueSealValidator : ISealValidator
+    internal class CliqueSealValidator : ISealValidator
     {
         private readonly ICliqueConfig _cliqueConfig;
         private readonly ISnapshotManager _snapshotManager;
@@ -164,7 +164,7 @@ namespace Nethermind.Consensus.Clique
             // If the block is a checkpoint block, validate the signer list
             if (IsEpochTransition(number))
             {
-                var signersBytes = new byte[snapshot.Signers.Count * Address.ByteLength];
+                byte[] signersBytes = new byte[snapshot.Signers.Count * Address.ByteLength];
                 int signerIndex = 0;
                 foreach (Address signer in snapshot.Signers.Keys) Array.Copy(signer.Bytes, 0, signersBytes, signerIndex++ * Address.ByteLength, Address.ByteLength);
 

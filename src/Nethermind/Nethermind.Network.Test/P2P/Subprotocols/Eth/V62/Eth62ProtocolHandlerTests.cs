@@ -23,6 +23,7 @@ using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -53,6 +54,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         private ITxPool _transactionPool;
         private Block _genesisBlock;
         private Eth62ProtocolHandler _handler;
+        private IGossipPolicy _gossipPolicy;
 
         [SetUp]
         public void Setup()
@@ -70,12 +72,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            _gossipPolicy = Substitute.For<IGossipPolicy>();
+            _gossipPolicy.CanGossipBlocks.Returns(true);
+            _gossipPolicy.ShouldGossipBlock(Arg.Any<BlockHeader>()).Returns(true);
+            _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(false);
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
                 new NodeStatsManager(timerFactory, LimboLogs.Instance),
                 _syncManager,
                 _transactionPool,
+                _gossipPolicy,
                 LimboLogs.Instance);
             _handler.Init();
         }
@@ -107,6 +114,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
+        public void Should_stop_notifying_about_new_blocks_and_new_block_hashes_if_in_PoS()
+        {
+            _gossipPolicy.CanGossipBlocks.Returns(false);
+            
+            _handler = new Eth62ProtocolHandler(
+                _session,
+                _svc,
+                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
+                _syncManager,
+                _transactionPool,
+                _gossipPolicy,
+                LimboLogs.Instance);
+            
+            _syncManager.Received().StopNotifyingPeersAboutNewBlocks();
+        }
+
+        [Test]
         public void Can_broadcast_a_block()
         {
             Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
@@ -118,6 +142,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _session.ClearReceivedCalls();
             _handler.NotifyOfNewBlock(block, (SendBlockPriority) 99);
             _session.Received().DeliverMessage(Arg.Any<NewBlockHashesMessage>());
+        }
+        
+        [Test]
+        public void Should_not_broadcast_a_block_if_in_PoS()
+        {
+            Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
+            _gossipPolicy.CanGossipBlocks.Returns(false);
+            _handler.NotifyOfNewBlock(block, SendBlockPriority.High);
+            _session.Received(0).DeliverMessage(Arg.Any<NewBlockMessage>());
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(block, SendBlockPriority.Low);
+            _session.Received(0).DeliverMessage(Arg.Any<NewBlockHashesMessage>());
+            _session.ClearReceivedCalls();
+            _handler.NotifyOfNewBlock(block, (SendBlockPriority) 99);
+            _session.Received(0).DeliverMessage(Arg.Any<NewBlockHashesMessage>());
         }
 
         [Test]
@@ -238,6 +277,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Arg.Is<Block>(b => b.Hash == newBlockMessage.Block.Hash),
                 _handler);
         }
+        
+        [Test]
+        public void Should_disconnect_peer_sending_new_block_message_in_PoS()
+        {
+            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
+            newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
+
+            _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(true);
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(newBlockMessage, Eth62MessageCode.NewBlock);
+
+            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
+        }
 
         [Test]
         public void Throws_if_adding_new_block_fails()
@@ -263,6 +317,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             NewBlockHashesMessage msg = new((Keccak.Zero, 1), (Keccak.Zero, 2));
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
+        }
+        
+        [Test]
+        public void Should_disconnect_peer_sending_new_block_hashes_in_PoS()
+        {
+            NewBlockHashesMessage msg = new NewBlockHashesMessage((Keccak.Zero, 1), (Keccak.Zero, 2));
+            
+            _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(true);
+            
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
+            
+            _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
         }
 
         [Test]

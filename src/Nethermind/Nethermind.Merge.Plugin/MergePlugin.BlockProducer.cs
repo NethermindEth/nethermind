@@ -17,12 +17,13 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
@@ -30,20 +31,18 @@ namespace Nethermind.Merge.Plugin
     public partial class MergePlugin
     {
         private IMiningConfig _miningConfig = null!;
-        private Eth2BlockProducer _blockProducer = null!;
+        private PostMergeBlockProducer _postMergeBlockProducer = null!;
+        private IManualBlockProductionTrigger? _blockProductionTrigger = null;
         private ManualTimestamper? _manualTimestamper;
-        private readonly IManualBlockProductionTrigger _defaultBlockProductionTrigger = new BuildBlocksWhenRequested();
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             if (_mergeConfig.Enabled)
             {
-                _miningConfig = _api.Config<IMiningConfig>();
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
                 if (_api.BlockTree == null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.BlockProcessingQueue == null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_api.StateProvider == null) throw new ArgumentNullException(nameof(_api.StateProvider));
                 if (_api.SpecProvider == null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.BlockValidator == null) throw new ArgumentNullException(nameof(_api.BlockValidator));
                 if (_api.RewardCalculatorSource == null) throw new ArgumentNullException(nameof(_api.RewardCalculatorSource));
@@ -51,26 +50,43 @@ namespace Nethermind.Merge.Plugin
                 if (_api.TxPool == null) throw new ArgumentNullException(nameof(_api.TxPool));
                 if (_api.DbProvider == null) throw new ArgumentNullException(nameof(_api.DbProvider));
                 if (_api.ReadOnlyTrieStore == null) throw new ArgumentNullException(nameof(_api.ReadOnlyTrieStore));
+                if (_api.BlockchainProcessor == null) throw new ArgumentNullException(nameof(_api.BlockchainProcessor));
+                if (_api.HeaderValidator == null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
+                if (_mergeBlockProductionPolicy == null) throw new ArgumentNullException(nameof(_mergeBlockProductionPolicy));
+                if (_api.SealValidator == null) throw new ArgumentNullException(nameof(_api.SealValidator));
+                
+                if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
-                ILogger logger = _api.LogManager.GetClassLogger();
-                if (logger.IsWarn) logger.Warn("Starting ETH2 block producer & sealer");
-
+                IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
+                    ? await consensusPlugin.InitBlockProducer()
+                    : null;
+                _miningConfig = _api.Config<IMiningConfig>();
                 _manualTimestamper ??= new ManualTimestamper();
-                _api.BlockProducer = _blockProducer = new Eth2BlockProducerFactory(additionalTxSource).Create(
-                    _api.BlockProducerEnvFactory,
-                    _api.BlockTree,
-                    blockProductionTrigger ?? DefaultBlockProductionTrigger,
-                    _api.SpecProvider,
-                    _api.EngineSigner,
-                    _manualTimestamper,
-                    _miningConfig,
-                    _api.LogManager
-                );
+                _blockProductionTrigger = new BuildBlocksWhenRequested();
+                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
+                Address feeRecipient;
+                if (string.IsNullOrWhiteSpace(_mergeConfig.FeeRecipient))
+                {
+                    feeRecipient = Address.Zero;
+                    if (_logger.IsInfo) _logger.Info("FeeRecipient will be set based on PayloadAttributes.SuggestedFeeRecipient field from CL");
+                }
+                else
+                {
+                    feeRecipient = new Address(_mergeConfig.FeeRecipient);
+                    if (_logger.IsInfo) _logger.Info($"FeeRecipient: {feeRecipient}");
+                }
+                
+                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, feeRecipient, _api.SealValidator, _api.LogManager);
+                _api.Sealer = _api.SealEngine;
+                PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
+                _postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, _blockProductionTrigger);
+                
+                _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
             }
 
-            return Task.FromResult((IBlockProducer)_blockProducer);
+            return _api.BlockProducer;
         }
 
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _defaultBlockProductionTrigger;
+        public bool Enabled => _mergeConfig.Enabled;
     }
 }

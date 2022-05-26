@@ -385,6 +385,7 @@ namespace Nethermind.Network
 
         private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
         {
+            
             peer.IsAwaitingConnection = false;
             bool added = _peerPool.ActivePeers.TryAdd(nodeId, peer);
             if (added)

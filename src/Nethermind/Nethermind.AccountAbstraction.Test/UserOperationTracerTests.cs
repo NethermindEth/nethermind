@@ -39,7 +39,7 @@ namespace Nethermind.AccountAbstraction.Test
     {
         [TestCase(Instruction.GASPRICE, false)]
         [TestCase(Instruction.GASLIMIT, false)]
-        [TestCase(Instruction.DIFFICULTY, false)]
+        [TestCase(Instruction.PREVRANDAO, false)]
         [TestCase(Instruction.TIMESTAMP, false)]
         [TestCase(Instruction.BASEFEE, false)]
         [TestCase(Instruction.BLOCKHASH, false)]

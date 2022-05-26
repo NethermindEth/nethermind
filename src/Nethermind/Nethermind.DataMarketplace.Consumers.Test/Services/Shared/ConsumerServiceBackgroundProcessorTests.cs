@@ -17,7 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Processing;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;

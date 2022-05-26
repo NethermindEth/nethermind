@@ -21,7 +21,7 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashCache : IEthashDataSet
+    internal class EthashCache : IEthashDataSet
     {
         private struct Bucket
         {

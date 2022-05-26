@@ -16,7 +16,7 @@
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class FullDataSet : IEthashDataSet
+    internal class FullDataSet : IEthashDataSet
     {
         private uint[][] Data { get; set; }
         

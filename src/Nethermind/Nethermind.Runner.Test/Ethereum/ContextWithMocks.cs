@@ -17,16 +17,18 @@
 using System.IO.Abstractions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -42,7 +44,6 @@ using Nethermind.KeyStore;
 using Nethermind.Monitoring;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
-using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -55,6 +56,8 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
+using Nethermind.Specs;
+using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 
 namespace Nethermind.Runner.Test.Ethereum
@@ -104,6 +107,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 RlpxPeer = Substitute.For<IRlpxHost>(),
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
+                SnapProvider = Substitute.For<ISnapProvider>(),
                 StateProvider = Substitute.For<IStateProvider>(),
                 StateReader = Substitute.For<IStateReader>(),
                 StorageProvider = Substitute.For<IStorageProvider>(),
@@ -124,7 +128,13 @@ namespace Nethermind.Runner.Test.Ethereum
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
-                EthSyncingInfo = Substitute.For<IEthSyncingInfo>()
+                EthSyncingInfo = Substitute.For<IEthSyncingInfo>(),
+                HealthHintService = Substitute.For<IHealthHintService>(),
+                TxValidator = new TxValidator(MainnetSpecProvider.Instance.ChainId),
+                UnclesValidator = Substitute.For<IUnclesValidator>(),
+                BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
+                SyncProgressResolver = Substitute.For<ISyncProgressResolver>(),
+                BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>()
             };
     }
 }

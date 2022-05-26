@@ -15,10 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -28,57 +25,62 @@ using Nethermind.AccountAbstraction.Contracts;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Source;
-using Nethermind.AccountAbstraction.Test.TestContracts;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Contracts.Json;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Test;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Facade;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.Test;
-using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
-using Newtonsoft.Json.Linq;
 using NSubstitute;
 
 namespace Nethermind.AccountAbstraction.Test
 {
     public partial class AccountAbstractionRpcModuleTests
     {
-        public static Task<TestAccountAbstractionRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null, UInt256? initialBaseFeePerGas = null)
+        public static Task<TestAccountAbstractionRpcBlockchain> CreateChain(IReleaseSpec? releaseSpec = null,
+            UInt256? initialBaseFeePerGas = null)
         {
             TestAccountAbstractionRpcBlockchain testMevRpcBlockchain = new(initialBaseFeePerGas);
-            TestSpecProvider testSpecProvider = releaseSpec is not null ? new TestSpecProvider(releaseSpec) : new TestSpecProvider(London.Instance);
+            TestSpecProvider testSpecProvider = releaseSpec is not null
+                ? new TestSpecProvider(releaseSpec)
+                : new TestSpecProvider(London.Instance);
             testSpecProvider.ChainId = 1;
             return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
         }
-        
+
         public class TestAccountAbstractionRpcBlockchain : TestRpcBlockchain
         {
-            public IDictionary<Address, IUserOperationPool> UserOperationPool { get; private set; } = new Dictionary<Address, IUserOperationPool>();
-            public IDictionary<Address, UserOperationSimulator> UserOperationSimulator { get; private set; } = new Dictionary<Address, UserOperationSimulator>();
+            public IDictionary<Address, IUserOperationPool> UserOperationPool { get; private set; } =
+                new Dictionary<Address, IUserOperationPool>();
+
+            public IDictionary<Address, UserOperationSimulator> UserOperationSimulator { get; private set; } =
+                new Dictionary<Address, UserOperationSimulator>();
+
             public AbiDefinition EntryPointContractAbi { get; private set; } = null!;
-            public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } = new Dictionary<Address, UserOperationTxBuilder>();
+
+            public IDictionary<Address, UserOperationTxBuilder> UserOperationTxBuilder { get; private set; } =
+                new Dictionary<Address, UserOperationTxBuilder>();
+
             public UserOperationTxSource UserOperationTxSource { get; private set; } = null!;
             public Address[] EntryPointAddresses { get; private set; } = null!;
             public Address[] WhitelistedPayamsters { get; private set; } = null!;
@@ -90,7 +92,6 @@ namespace Nethermind.AccountAbstraction.Test
                     .WithTimestamp(UInt256.One)
                     .WithGasLimit(GasLimitCalculator.GasLimit)
                     .WithBaseFeePerGas(initialBaseFeePerGas ?? 0);
-                
             }
             
             public IAccountAbstractionRpcModule AccountAbstractionRpcModule { get; set; } = Substitute.For<IAccountAbstractionRpcModule>();
@@ -104,14 +105,15 @@ namespace Nethermind.AccountAbstraction.Test
                     WhitelistedPaymasters = ""
                 };
             public Address MinerAddress => TestItem.PrivateKeyD.Address;
-            private IBlockValidator BlockValidator { get; set; } = null!;
             private ISigner Signer { get; }
 
             public override ILogManager LogManager => NUnitLogManager.Instance;
-            
-            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
+
+            protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer,
+                ITransactionComparerProvider transactionComparerProvider)
             {
-                MiningConfig miningConfig = new() {MinGasPrice = UInt256.One};
+                MiningConfig miningConfig = new() { MinGasPrice = UInt256.One };
+                SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
                     DbProvider,
@@ -134,22 +136,40 @@ namespace Nethermind.AccountAbstraction.Test
                             Signer,
                             EntryPointAddresses)
                 };
-                
+
                 UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, State, Signer, LogManager.GetClassLogger());
 
-                Eth2TestBlockProducerFactory producerFactory = new Eth2TestBlockProducerFactory(GasLimitCalculator, UserOperationTxSource);
-                Eth2BlockProducer blockProducer = producerFactory.Create(
-                    blockProducerEnvFactory, 
-                    BlockTree, 
-                    BlockProductionTrigger, 
-                    SpecProvider,
-                    new Eth2Signer(MinerAddress), 
-                    Timestamper, 
-                    miningConfig, 
-                    LogManager);
+                PostMergeBlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
+                    ITxSource? txSource = null)
+                {
+                    var blockProducerEnv = blockProducerEnvFactory.Create(txSource);
+                    return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, miningConfig,
+                        LogManager, GasLimitCalculator).Create(
+                        blockProducerEnv, blockProductionTrigger);
+                }
+
+                IBlockProducer blockProducer =
+                    CreatePostMergeBlockProducer(BlockProductionTrigger, UserOperationTxSource);
+
+                blockProducer.BlockProduced += OnBlockProduced;
 
                 return blockProducer;
             }
+
+            private void OnBlockProduced(object? sender, BlockEventArgs e)
+            {
+                BlockTree.SuggestBlock(e.Block, BlockTreeSuggestOptions.None, false);
+                BlockchainProcessor.Process(e.Block!, GetProcessingOptions(), NullBlockTracer.Instance);
+                BlockTree.UpdateMainChain(new[] { e.Block! }, true);
+            }
+
+            private ProcessingOptions GetProcessingOptions()
+            {
+                ProcessingOptions options = ProcessingOptions.None;
+                options |= ProcessingOptions.StoreReceipts;
+                return options;
+            }
+
 
             protected override BlockProcessor CreateBlockProcessor()
             {
@@ -196,16 +216,18 @@ namespace Nethermind.AccountAbstraction.Test
                 var json = parser.LoadContract(typeof(EntryPoint));
                 EntryPointContractAbi = parser.Parse(json);
 
-                foreach(Address entryPoint in entryPointContractAddresses){
+                foreach (Address entryPoint in entryPointContractAddresses)
+                {
                     UserOperationTxBuilder[entryPoint] = new UserOperationTxBuilder(
-                        EntryPointContractAbi, 
+                        EntryPointContractAbi,
                         Signer,
-                        entryPoint!, 
-                        SpecProvider, 
+                        entryPoint!,
+                        SpecProvider,
                         State);
                 }
-                
-                foreach(Address entryPoint in entryPointContractAddresses){
+
+                foreach (Address entryPoint in entryPointContractAddresses)
+                {
                     UserOperationSimulator[entryPoint] = new(
                         UserOperationTxBuilder[entryPoint],
                         State,
@@ -223,51 +245,57 @@ namespace Nethermind.AccountAbstraction.Test
                 }
 
                 IUserOperationBroadcaster broadcaster = new UserOperationBroadcaster(LogManager.GetClassLogger());
-                
-                foreach(Address entryPoint in entryPointContractAddresses){
+
+                foreach (Address entryPoint in entryPointContractAddresses)
+                {
                     UserOperationPool[entryPoint] = new UserOperationPool(
-                        _accountAbstractionConfig, 
+                        _accountAbstractionConfig,
                         BlockTree,
-                        entryPoint!, 
+                        entryPoint!,
                         LogManager.GetClassLogger(),
-                        new PaymasterThrottler(), 
-                        LogFinder, 
-                        Signer, 
-                        State, 
-                        Timestamper, 
-                        UserOperationSimulator[entryPoint], 
+                        new PaymasterThrottler(),
+                        LogFinder,
+                        Signer,
+                        State,
+                        Timestamper,
+                        UserOperationSimulator[entryPoint],
                         new UserOperationSortedPool(
-                            _accountAbstractionConfig.UserOperationPoolSize, 
-                            new CompareUserOperationsByDecreasingGasPrice(), 
-                            LogManager, 
+                            _accountAbstractionConfig.UserOperationPoolSize,
+                            new CompareUserOperationsByDecreasingGasPrice(),
+                            LogManager,
                             _accountAbstractionConfig.MaximumUserOperationPerSender),
                         broadcaster,
                         SpecProvider.ChainId);
                 }
-                
+
                 return blockProcessor;
             }
 
-            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
+            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null,
+                UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in _entryPointContractAddressesString){
+                IList<string> _entryPointContractAddressesString =
+                    _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string _addressString in _entryPointContractAddressesString)
+                {
                     bool parsed = Address.TryParse(
                         _addressString,
                         out Address? entryPointContractAddress);
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
-                AccountAbstractionRpcModule = new AccountAbstractionRpcModule(UserOperationPool, entryPointContractAddresses.ToArray());
-                
+
+                AccountAbstractionRpcModule =
+                    new AccountAbstractionRpcModule(UserOperationPool, entryPointContractAddresses.ToArray());
+
                 return chain;
             }
-            
+
             private IBlockValidator CreateBlockValidator()
             {
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
-                
+                HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
+
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
                     headerValidator,
@@ -277,7 +305,7 @@ namespace Nethermind.AccountAbstraction.Test
             }
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
-            
+
             public void SendUserOperation(Address entryPoint, UserOperation userOperation)
             {
                 ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
@@ -287,11 +315,14 @@ namespace Nethermind.AccountAbstraction.Test
 
             public void SupportedEntryPoints()
             {
-                ResultWrapper<Address[]> resultOfEntryPoints= AccountAbstractionRpcModule.eth_supportedEntryPoints();
-                resultOfEntryPoints.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfEntryPoints.Result.Error);
+                ResultWrapper<Address[]> resultOfEntryPoints = AccountAbstractionRpcModule.eth_supportedEntryPoints();
+                resultOfEntryPoints.GetResult().ResultType.Should()
+                    .NotBe(ResultType.Failure, resultOfEntryPoints.Result.Error);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in _entryPointContractAddressesString){
+                IList<string> _entryPointContractAddressesString =
+                    _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string _addressString in _entryPointContractAddressesString)
+                {
                     bool parsed = Address.TryParse(
                         _addressString,
                         out Address? entryPointContractAddress);

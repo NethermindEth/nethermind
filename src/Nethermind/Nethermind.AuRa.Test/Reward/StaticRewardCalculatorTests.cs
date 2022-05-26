@@ -17,8 +17,8 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Consensus.AuRa.Rewards;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;

@@ -124,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
             return Decode<T>(oldRlp.Bytes.AsRlpStream(), rlpBehaviors);
         }
 
-        public static T Decode<T>(byte[] bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T Decode<T>(byte[]? bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return Decode<T>(bytes.AsRlpStream(), rlpBehaviors);
         }

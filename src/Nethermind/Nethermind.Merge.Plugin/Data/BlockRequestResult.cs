@@ -16,77 +16,64 @@
 // 
 
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
-using Google.Protobuf.WellKnownTypes;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data
 {
+    /// <summary>
+    /// A data object representing a block as being sent from the execution layer to the consensus layer.
+    /// </summary>
     public class BlockRequestResult
     {
-        public BlockRequestResult() : this(true)
+        public BlockRequestResult()
         {
-            
         }
-        
-        public BlockRequestResult(bool setDefaults = false)
-        {
-            if (setDefaults)
-            {
-                Difficulty = UInt256.One;
-                Nonce = 0;
-                ExtraData = Bytes.Empty;
-                MixHash = Keccak.Zero;
-                Uncles = Array.Empty<Keccak>();
-            }
-        }
-        
+
         public BlockRequestResult(Block block)
         {
-            BlockHash = block.Hash;
-            ParentHash = block.ParentHash;
-            Miner = block.Beneficiary;
-            StateRoot = block.StateRoot;
-            Number = block.Number;
+            BlockHash = block.Hash!;
+            ParentHash = block.ParentHash!;
+            FeeRecipient = block.Beneficiary!;
+            StateRoot = block.StateRoot!;
+            BlockNumber = block.Number;
             GasLimit = block.GasLimit;
             GasUsed = block.GasUsed;
-            ReceiptsRoot = block.ReceiptsRoot;
-            LogsBloom = block.Bloom;
+            ReceiptsRoot = block.ReceiptsRoot!;
+            LogsBloom = block.Bloom!;
+            PrevRandao = block.MixHash ?? Keccak.Zero;
             SetTransactions(block.Transactions);
-            Difficulty = block.Difficulty;
-            Nonce = block.Nonce;
-            ExtraData = block.ExtraData;
-            MixHash = block.MixHash;
-            Uncles = block.Uncles.Select(o => o.Hash!);
-            Timestamp = block.Timestamp;
+            ExtraData = block.ExtraData!;
+            Timestamp = (ulong)block.Timestamp; // Timestamp should be changed to ulong across entire Nethermind code?
+            BaseFeePerGas = block.BaseFeePerGas;
         }
 
         public bool TryGetBlock(out Block? block)
         {
             try
             {
-                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, Miner, Difficulty, Number, GasLimit, Timestamp, ExtraData)
+                BlockHeader header = new(ParentHash, Keccak.OfAnEmptySequenceRlp, FeeRecipient, UInt256.Zero, BlockNumber, GasLimit, Timestamp, ExtraData)
                 {
                     Hash = BlockHash,
                     ReceiptsRoot = ReceiptsRoot,
                     StateRoot = StateRoot,
-                    MixHash = MixHash,
                     Bloom = LogsBloom,
-                    GasUsed = GasUsed
+                    GasUsed = GasUsed,
+                    BaseFeePerGas = BaseFeePerGas,
+                    Nonce = 0,
+                    MixHash = PrevRandao,
+                    Author = FeeRecipient
                 };
                 Transaction[] transactions = GetTransactions();
                 header.TxRoot = new TxTrie(transactions).RootHash;
+                header.IsPostMerge = true;
                 block = new Block(header, transactions, Array.Empty<BlockHeader>());
                 return true;
             }
@@ -97,41 +84,35 @@ namespace Nethermind.Merge.Plugin.Data
             }
         }
         
-        public UInt256 Difficulty { get; set; }
-        public bool ShouldSerializeDifficulty() => false;
-        public byte[] ExtraData { get; set; } = null!;
-        public bool ShouldSerializeExtraData() => false;
-        public long GasLimit { get; set; }
-        public long GasUsed { get; set; }
-       
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Keccak BlockHash { get; set; } = null!;
+        public Keccak ParentHash { get; set; } = null!;
+        public Address FeeRecipient { get; set; }
+        public Keccak StateRoot { get; set; } = null!;
+        public Keccak ReceiptsRoot { get; set; } = null!;
+        
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Bloom LogsBloom { get; set; } = Bloom.Empty;
-        public Address? Miner { get; set; }
-        public Keccak MixHash { get; set; } = null!;
-        public bool ShouldSerializeMixHash() => false;
+        public Keccak PrevRandao { get; set; } = Keccak.Zero;
+        
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public ulong Nonce { get; set; }
-        public bool ShouldSerializeNonce() => false;
+        public long BlockNumber { get; set; }
+        public long GasLimit { get; set; }
+        public long GasUsed { get; set; }
+        public ulong Timestamp { get; set; }
+        public byte[] ExtraData { get; set; } = Array.Empty<byte>();
+        public UInt256 BaseFeePerGas { get; set; }
+        
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public long Number { get; set; }
-        public Keccak ParentHash { get; set; } = null!;
-        public Keccak ReceiptsRoot { get; set; } = null!;
-        public Keccak StateRoot { get; set; } = null!;
+        public Keccak BlockHash { get; set; } = null!;
         public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
-        public IEnumerable<Keccak>? Uncles { get; set; }
-        public bool ShouldSerializeUncles() => false;
-        public UInt256 Timestamp { get; set; }
 
-        public override string ToString() => BlockHash == null ? $"{Number} null" : $"{Number} ({BlockHash})";
+        public override string ToString() => BlockHash == null ? $"{BlockNumber} null" : $"{BlockNumber} ({BlockHash})";
 
         public void SetTransactions(params Transaction[] transactions)
         {
             Transactions = new byte[transactions.Length][];
             for (int i = 0; i < Transactions.Length; i++)
             {
-                Transactions[i] = Rlp.Encode(transactions[i]).Bytes;
+                Transactions[i] = Rlp.Encode(transactions[i], RlpBehaviors.SkipTypedWrapping).Bytes;
             }
         }
 
@@ -140,8 +121,9 @@ namespace Nethermind.Merge.Plugin.Data
             Transaction[] transactions = new Transaction[Transactions.Length];
             for (int i = 0; i < Transactions.Length; i++)
             {
-                transactions[i] = Rlp.Decode<Transaction>(Transactions[i]);
+                transactions[i] = Rlp.Decode<Transaction>(Transactions[i], RlpBehaviors.SkipTypedWrapping);
             }
+            
             return transactions;
         }
     }

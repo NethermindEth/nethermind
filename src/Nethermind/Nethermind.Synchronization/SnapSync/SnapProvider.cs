@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             _store = new TrieStore(
                 _dbProvider.StateDb,
-                No.Pruning,
+                Trie.Pruning.No.Pruning,
                 Persist.EveryBlock,
                 logManager);
 

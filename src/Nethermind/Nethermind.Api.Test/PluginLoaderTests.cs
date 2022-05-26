@@ -116,8 +116,8 @@ public class PluginLoaderTests
         var expected = new List<Type>
         {
             typeof(EthashPlugin),
-            typeof(MergePlugin),
             typeof(NethDevPlugin),
+            typeof(MergePlugin),
             typeof(MevPlugin),
             typeof(HealthChecksPlugin),
             typeof(HivePlugin)

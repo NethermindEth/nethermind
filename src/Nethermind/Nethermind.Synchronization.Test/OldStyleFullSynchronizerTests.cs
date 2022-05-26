@@ -22,7 +22,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -62,10 +63,12 @@ namespace Nethermind.Synchronization.Test
             quickConfig.FastSync = false;
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-            var stats = new NodeStatsManager(timerFactory, LimboLogs.Instance);
-            _pool = new SyncPeerPool(_blockTree, stats, 25, LimboLogs.Instance);
+            NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
+            _pool = new SyncPeerPool(_blockTree, stats, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, LimboLogs.Instance);
             SyncConfig syncConfig = new();
             ProgressTracker progressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+
             SyncProgressResolver resolver = new(
                 _blockTree,
                 _receiptStorage,
@@ -74,11 +77,14 @@ namespace Nethermind.Synchronization.Test
                 progressTracker,
                 syncConfig,
                 LimboLogs.Instance);
-
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
-
-            MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, LimboLogs.Instance);
-            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage, Always.Valid,Always.Valid, _pool, stats, syncModeSelector, syncConfig, snapProvider, LimboLogs.Instance);
+            TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(resolver, LimboLogs.Instance);
+            MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
+            Pivot pivot = new (syncConfig);
+            BlockDownloaderFactory blockDownloaderFactory = new(MainnetSpecProvider.Instance, _blockTree,
+                _receiptStorage, Always.Valid, Always.Valid, _pool, stats, syncModeSelector, syncConfig, pivot, new TotalDifficultyBasedBetterPeerStrategy(resolver, LimboLogs.Instance),
+                LimboLogs.Instance);
+            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage,
+                _pool, stats, syncModeSelector, syncConfig, snapProvider, blockDownloaderFactory, pivot, LimboLogs.Instance);
             _syncServer = new SyncServer(
                 _stateDb,
                 _codeDb,
@@ -90,6 +96,7 @@ namespace Nethermind.Synchronization.Test
                 syncModeSelector,
                 quickConfig,
                 new WitnessCollector(new MemDb(), LimboLogs.Instance), 
+                Policy.FullGossip,
                 LimboLogs.Instance);
         }
 
