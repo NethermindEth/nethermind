@@ -74,7 +74,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 
                 _blockCacheService = new BlockCacheService();
-                _poSSwitcher = new PoSSwitcher(_mergeConfig, new SyncConfig(),
+                _poSSwitcher = new PoSSwitcher(_mergeConfig, _syncConfig,
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _blockCacheService, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
