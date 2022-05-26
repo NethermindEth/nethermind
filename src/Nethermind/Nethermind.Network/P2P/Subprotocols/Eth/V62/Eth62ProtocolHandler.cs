@@ -116,6 +116,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     const string postFinalized = $"{nameof(T)} message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.";
                     ReportIn(postFinalized);
                     Disconnect(DisconnectReason.BreachOfProtocol, postFinalized);
+                    Logger.Warn(postFinalized);
                     return false;
                 }
                 
@@ -123,6 +124,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     const string postTransition = $"{nameof(T)} message received after TERMINAL_TOTAL_DIFFICULTY PoS block. Ignoring Message.";
                     ReportIn(postTransition);
+                    Logger.Warn(postTransition);
                     return false;
                 }
 
