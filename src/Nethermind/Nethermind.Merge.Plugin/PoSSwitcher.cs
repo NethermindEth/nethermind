@@ -90,13 +90,12 @@ namespace Nethermind.Merge.Plugin
         {
             LoadTerminalBlock();
             LoadFinalizedBlockHash();
+            _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
+            LoadFinalTotalDifficulty();
 
             if (_terminalBlockNumber != null || _finalTotalDifficulty != null)
                 _hasEverReachedTerminalDifficulty = true;
 
-            _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
-           
-            LoadFinalTotalDifficulty();
             if (_terminalBlockNumber == null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
 
