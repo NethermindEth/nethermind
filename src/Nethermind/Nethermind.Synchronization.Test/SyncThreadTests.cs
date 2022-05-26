@@ -47,6 +47,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -362,17 +363,15 @@ namespace Nethermind.Synchronization.Test
             TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(resolver, LimboLogs.Instance);
             MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
             Pivot pivot = new(syncConfig);
-            BlockDownloaderFactory blockDownloaderFactory = new BlockDownloaderFactory(MainnetSpecProvider.Instance,
+            SyncReport syncReport = new(syncPeerPool, nodeStatsManager, selector, syncConfig, pivot, LimboLogs.Instance);
+            BlockDownloaderFactory blockDownloaderFactory = new(MainnetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
                 blockValidator,
                 sealValidator,
                 syncPeerPool,
-                nodeStatsManager,
-                StaticSelector.Full,
-                syncConfig,
-                pivot,
                 new TotalDifficultyBasedBetterPeerStrategy(resolver, LimboLogs.Instance),
+                syncReport,
                 logManager);
             Synchronizer synchronizer = new(
                 dbProvider,
@@ -386,6 +385,7 @@ namespace Nethermind.Synchronization.Test
                 snapProvider,
                 blockDownloaderFactory,
                 pivot,
+                syncReport,
                 logManager);
             SyncServer syncServer = new(
                 stateDb,
