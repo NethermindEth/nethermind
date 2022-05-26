@@ -32,7 +32,6 @@ namespace Nethermind.Api.Extensions
         /// <remarks>
         /// Can be called many times, with different parameters, each time should create a new instance. Example usage in MEV plugin.
         /// </remarks>
-        // TODO: no... it should be like this
         Task<IBlockProducer> InitBlockProducer(
             IBlockProductionTrigger? blockProductionTrigger = null,
             ITxSource? additionalTxSource = null);

@@ -30,9 +30,6 @@ namespace Nethermind.Consensus.Rewards
 
         public BlockReward[] CalculateRewards(Block block) => _noRewards;
 
-        public IRewardCalculator Get(ITransactionProcessor processor)
-        {
-            return Instance;
-        }
+        public IRewardCalculator Get(ITransactionProcessor processor) => Instance;
     }
 }

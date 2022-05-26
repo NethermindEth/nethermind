@@ -235,7 +235,6 @@ namespace Nethermind.Consensus.Validators
         /// <param name="header">Block header to validate</param>
         /// <param name="isUncle"><value>True</value> if the <paramref name="header"/> is an uncle, otherwise <value>False</value></param>
         /// <returns><value>True</value> if <paramref name="header"/> is valid, otherwise <value>False</value></returns>
-        // TODO: this should be an extension method?
         public virtual bool Validate(BlockHeader header, bool isUncle = false)
         {
             BlockHeader parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

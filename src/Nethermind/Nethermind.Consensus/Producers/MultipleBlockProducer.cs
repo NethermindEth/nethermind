@@ -25,7 +25,6 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Producers
 {
-    // TODO: merge with Mev block producer?
     public abstract class MultipleBlockProducer<T> : IBlockProducer where T : IBlockProducerInfo
     {
         private readonly IBlockProductionTrigger _blockProductionTrigger;
@@ -85,8 +84,7 @@ namespace Nethermind.Consensus.Producers
 
             return false;
         }
-
-        // TODO: bad
+        
         public ITimestamper Timestamper => _blockProducers[0].BlockProducer.Timestamper;
         
         public event EventHandler<BlockEventArgs>? BlockProduced;

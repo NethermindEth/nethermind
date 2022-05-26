@@ -22,7 +22,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Contracts
 {
-    // TODO: why this is a comparer? it is simply some matching function, has nothing to do with equality?
     public class LogEntryAddressAndTopicsMatchTemplateEqualityComparer : IEqualityComparer<LogEntry>
     {
         public static readonly LogEntryAddressAndTopicsMatchTemplateEqualityComparer Instance = new();

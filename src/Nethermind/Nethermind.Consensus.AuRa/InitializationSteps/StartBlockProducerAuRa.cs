@@ -132,19 +132,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 constantContractTxProcessingEnv,
                 _api.SpecProvider, 
                 new LocalTxFilter(_api.EngineSigner));
-            
-            AuRaBlockProcessor processor = new (
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(changeableTxProcessingEnv.TransactionProcessor),
-                _api.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(changeableTxProcessingEnv),
-                changeableTxProcessingEnv.StateProvider,
-                changeableTxProcessingEnv.StorageProvider,
-                _api.ReceiptStorage,
-                _api.LogManager,
-                changeableTxProcessingEnv.BlockTree,
-                auRaTxFilter,
-                CreateGasLimitCalculator(constantContractTxProcessingEnv) as AuRaContractGasLimitOverride);
 
             _validator = new AuRaValidatorFactory(_api.AbiEncoder,
                     changeableTxProcessingEnv.StateProvider,

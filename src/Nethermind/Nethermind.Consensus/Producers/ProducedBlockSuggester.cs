@@ -21,7 +21,6 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.Producers
 {
-    // TODO: remove this class?
     public class ProducedBlockSuggester : IDisposable
     {
         private readonly IBlockTree _blockTree;

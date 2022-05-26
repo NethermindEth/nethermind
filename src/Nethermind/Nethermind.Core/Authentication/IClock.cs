@@ -19,6 +19,7 @@ using System;
 
 namespace Nethermind.JsonRpc;
 
+// TODO: Not needed?
 public interface IClock
 {
     long GetCurrentTime();
