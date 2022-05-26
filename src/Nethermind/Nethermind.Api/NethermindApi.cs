@@ -190,6 +190,9 @@ namespace Nethermind.Api
         public IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         public IPivot? Pivot { get; set; }
+
+        public MovablePivot? MergeSyncPivot { get; set; }
+
         public ISyncPeerPool? SyncPeerPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }

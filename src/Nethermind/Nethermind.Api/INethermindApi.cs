@@ -17,6 +17,7 @@
 
 #nullable enable
 using Nethermind.Config;
+using Nethermind.Synchronization;
 
 namespace Nethermind.Api
 {

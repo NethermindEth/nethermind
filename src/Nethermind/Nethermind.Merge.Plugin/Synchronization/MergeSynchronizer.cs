@@ -24,6 +24,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -42,6 +43,8 @@ public class MergeSynchronizer : Synchronizer
     private readonly ISyncProgressResolver _syncProgressResolver;
     private readonly IBlockValidator _blockValidator;
     private readonly IBlockProcessingQueue _blockProcessingQueue;
+    private readonly IPivot _beaconSyncPivot;
+    private readonly INetworkConfig _networkConfig;
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -61,8 +64,21 @@ public class MergeSynchronizer : Synchronizer
         ISyncProgressResolver syncProgressResolver,
         IBlockValidator blockValidator,
         IBlockProcessingQueue blockProcessingQueue,
-        ILogManager logManager) : base(dbProvider, specProvider, blockTree, receiptStorage, peerPool, nodeStatsManager,
-        syncModeSelector, syncConfig, snapProvider, blockDownloaderFactory, pivot, logManager)
+        IPivot beaconSyncPivot,
+        INetworkConfig networkConfig, 
+        ILogManager logManager) 
+        : base(dbProvider, 
+            specProvider, 
+            blockTree, 
+            receiptStorage, 
+            peerPool, 
+            nodeStatsManager,
+            syncModeSelector,
+            syncConfig,
+            snapProvider,
+            blockDownloaderFactory,
+            pivot,
+            logManager)
     {
         _mergeSync = mergeSync;
         _mergeConfig = mergeConfig;
@@ -70,6 +86,8 @@ public class MergeSynchronizer : Synchronizer
         _syncProgressResolver = syncProgressResolver;
         _blockValidator = blockValidator;
         _blockProcessingQueue = blockProcessingQueue;
+        _beaconSyncPivot = beaconSyncPivot;
+        _networkConfig = networkConfig;
     }
 
     public override void Start()
@@ -86,10 +104,11 @@ public class MergeSynchronizer : Synchronizer
     private void StartBeaconHeadersComponents()
     {
         FastBlocksPeerAllocationStrategyFactory fastFactory = new();
+        RefreshingPeerAllocationStrategyFactory refreshingPeerAllocationStrategyFactory = new(fastFactory, _beaconSyncPivot, _networkConfig.MaxActivePeers, _logManager);
         BeaconHeadersSyncFeed beaconHeadersFeed =
             new(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _logManager);
         BeaconHeadersSyncDispatcher beaconHeadersDispatcher =
-            new(beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
+            new(beaconHeadersFeed!, _syncPeerPool, refreshingPeerAllocationStrategyFactory, _logManager);
         beaconHeadersDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
         {
             if (t.IsFaulted)

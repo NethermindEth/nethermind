@@ -346,8 +346,7 @@ namespace Nethermind.Synchronization.Test
                         _logManager);
 
                 TotalDifficultyBasedBetterPeerStrategy totalDifficultyBasedBetterPeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
-                IBetterPeerStrategy bestPeerStrategy;
-                bestPeerStrategy = IsMerge(synchronizerType)
+                IBetterPeerStrategy bestPeerStrategy = IsMerge(synchronizerType)
                     ? new MergeBetterPeerStrategy(totalDifficultyBasedBetterPeerStrategy, syncProgressResolver,
                         poSSwitcher, LimboLogs.Instance)
                     : totalDifficultyBasedBetterPeerStrategy;
@@ -355,6 +354,7 @@ namespace Nethermind.Synchronization.Test
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool,
                     syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
                 Pivot pivot = new (syncConfig);
+                MovablePivot syncPivot = new(pivot);
 
                 IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
@@ -396,6 +396,8 @@ namespace Nethermind.Synchronization.Test
                         syncProgressResolver,
                         new TestBlockValidator(),
                         Substitute.For<IBlockProcessingQueue>(),
+                        syncPivot,
+                        new NetworkConfig(),
                         _logManager);
                 }
                 else

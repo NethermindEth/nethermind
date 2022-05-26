@@ -24,20 +24,16 @@ namespace Nethermind.Synchronization;
 
 public class Pivot : IPivot
 {
-    private readonly ISyncConfig _syncconfig;
-    
     public Pivot(ISyncConfig syncConfig)
     {
-        _syncconfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-
-        PivotNumber = _syncconfig.PivotNumberParsed;
-        PivotHash = _syncconfig.PivotHashParsed;
-        PivotTotalDifficulty = _syncconfig.PivotTotalDifficultyParsed;
+        syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+        PivotNumber = syncConfig.PivotNumberParsed;
+        PivotHash = syncConfig.PivotHashParsed;
+        PivotTotalDifficulty = syncConfig.PivotTotalDifficultyParsed;
         PivotDestinationNumber = 0L;
     }
     
     public long PivotNumber { get; }
-
     public Keccak? PivotHash { get; }
 
     public UInt256? PivotTotalDifficulty { get; }

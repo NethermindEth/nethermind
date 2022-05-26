@@ -127,11 +127,10 @@ namespace Nethermind.Merge.Plugin
                 if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
-                if (_api.BlockProcessingQueue is null)
-                    throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_api.SyncProgressResolver is null)
-                    throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
+                if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_api.SyncProgressResolver is null) throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+                if (_api.MergeSyncPivot is null) throw new ArgumentNullException(nameof(_api.MergeSyncPivot));
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
                 if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
@@ -162,6 +161,7 @@ namespace Nethermind.Merge.Plugin
                         payloadPreparationService,
                         _blockCacheService,
                         _beaconSync,
+                        _api.MergeSyncPivot,
                         _api.LogManager),
                     new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
                         _blockFinalizationManager),
@@ -195,6 +195,7 @@ namespace Nethermind.Merge.Plugin
 
                 // ToDo strange place for validators initialization
                 _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
+                MovablePivot syncPivot = _api.MergeSyncPivot = new MovablePivot(_beaconPivot);
                 _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
@@ -244,6 +245,8 @@ namespace Nethermind.Merge.Plugin
                     _api.SyncProgressResolver,
                     _api.BlockValidator,
                     _api.BlockProcessingQueue,
+                    syncPivot,
+                    _api.Config<INetworkConfig>(),
                     _api.LogManager);
             }
 

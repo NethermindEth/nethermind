@@ -48,6 +48,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly IBlockCacheService _blockCacheService;
         private readonly IMergeSyncController _mergeSyncController;
+        private readonly MovablePivot _syncPivot;
         private readonly ILogger _logger;
         private int i = 0;
 
@@ -59,6 +60,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IPayloadPreparationService payloadPreparationService,
             IBlockCacheService blockCacheService,
             IMergeSyncController mergeSyncController,
+            MovablePivot syncPivot,
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -70,6 +72,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _payloadPreparationService = payloadPreparationService;
             _blockCacheService = blockCacheService;
             _mergeSyncController = mergeSyncController;
+            _syncPivot = syncPivot;
             _logger = logManager.GetClassLogger();
         }
 
@@ -85,6 +88,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     _mergeSyncController.InitSyncing(block.Header);
+                    _syncPivot.PivotHeader = block.Header;
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
 
                     if (_logger.IsInfo) { _logger.Info($"Start a new sync process... Request: {requestStr}"); }
@@ -104,6 +108,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 ++i;
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                _syncPivot.PivotHeader = newHeadBlock.Header;
                 if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}"); }
 
                 return ForkchoiceUpdatedV1Result.Syncing;

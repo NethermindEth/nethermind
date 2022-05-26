@@ -58,6 +58,7 @@ namespace Nethermind.Api
         ISynchronizer? Synchronizer { get; set; }
         IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         IPivot? Pivot { get; set; }
+        MovablePivot? MergeSyncPivot { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
