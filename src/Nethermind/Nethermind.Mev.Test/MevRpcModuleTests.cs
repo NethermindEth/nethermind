@@ -1077,7 +1077,6 @@ namespace Nethermind.Mev.Test
         }
         
         [Test]
-        [Retry(3)]
         public async Task Should_choose_only_some_bundles_maximizing_profit_between_1_and_maxMergedBundle()
         {
             var chain = await CreateChain(3);
