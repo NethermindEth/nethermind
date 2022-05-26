@@ -168,6 +168,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(txMsg);
                         Handle(txMsg);
                     }
+                    else
+                    {
+                        const string txFlooding = $"Ignoring {nameof(TransactionsMessage)} because of message flooding.";
+                        ReportIn(txFlooding);
+                    }
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage
