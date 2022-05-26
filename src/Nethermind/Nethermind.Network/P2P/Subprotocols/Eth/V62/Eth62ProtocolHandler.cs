@@ -109,6 +109,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override void HandleMessage(ZeroPacket message)
         {
+            bool CanAcceptBlockGossip<T>()
+            {
+                if (_gossipPolicy.ShouldDisconnectGossipingNodes)
+                {
+                    const string postFinalized = $"{nameof(T)} message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.";
+                    ReportIn(postFinalized);
+                    Disconnect(DisconnectReason.BreachOfProtocol, postFinalized);
+                    return false;
+                }
+                
+                if (_gossipPolicy.ShouldDiscardBlocks)
+                {
+                    const string postTransition = $"{nameof(T)} message received after TERMINAL_TOTAL_DIFFICULTY PoS block. Ignoring Message.";
+                    ReportIn(postTransition);
+                    return false;
+                }
+
+                return true;
+            }
+            
             int packetType = message.PacketType;
             if (!_statusReceived && packetType != Eth62MessageCode.Status)
             {
@@ -130,19 +150,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlockHashes:
                     Metrics.Eth62NewBlockHashesReceived++;
-                    if (_gossipPolicy.ShouldDisconnectGossipingNodes)
-                    {
-                        Disconnect(DisconnectReason.BreachOfProtocol,
-                            "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
-                    }
-                    else if (!_gossipPolicy.ShouldDiscardBlocks)
+                    if (CanAcceptBlockGossip<NewBlockHashesMessage>())
                     {
                         NewBlockHashesMessage newBlockHashesMessage =
                             Deserialize<NewBlockHashesMessage>(message.Content);
                         ReportIn(newBlockHashesMessage);
                         Handle(newBlockHashesMessage);
                     }
-
                     break;
                 case Eth62MessageCode.Transactions:
                     Metrics.Eth62TransactionsReceived++;
@@ -152,7 +166,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         ReportIn(txMsg);
                         Handle(txMsg);
                     }
-
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage
@@ -177,18 +190,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlock:
                     Metrics.Eth62NewBlockReceived++;
-                    if (_gossipPolicy.ShouldDisconnectGossipingNodes)
-                    {
-                        Disconnect(DisconnectReason.BreachOfProtocol,
-                            "NewBlock message received after FIRST_FINALIZED_BLOCK PoS block.");
-                    }
-                    else if (!_gossipPolicy.ShouldDiscardBlocks)
+                    if (CanAcceptBlockGossip<NewBlockMessage>())
                     {
                         NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
                         ReportIn(newBlockMsg);
                         Handle(newBlockMsg);
                     }
-
                     break;
             }
         }
