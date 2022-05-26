@@ -109,11 +109,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override void HandleMessage(ZeroPacket message)
         {
-            bool CanAcceptBlockGossip<T>()
+            bool CanAcceptBlockGossip()
             {
                 if (_gossipPolicy.ShouldDisconnectGossipingNodes)
                 {
-                    const string postFinalized = $"{nameof(T)} message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.";
+                    const string postFinalized = $"NewBlock message received after FIRST_FINALIZED_BLOCK PoS block. Disconnecting Peer.";
                     ReportIn(postFinalized);
                     Disconnect(DisconnectReason.BreachOfProtocol, postFinalized);
                     Logger.Warn(postFinalized);
@@ -122,7 +122,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 
                 if (_gossipPolicy.ShouldDiscardBlocks)
                 {
-                    const string postTransition = $"{nameof(T)} message received after TERMINAL_TOTAL_DIFFICULTY PoS block. Ignoring Message.";
+                    const string postTransition = $"NewBlock message received after TERMINAL_TOTAL_DIFFICULTY PoS block. Ignoring Message.";
                     ReportIn(postTransition);
                     Logger.Warn(postTransition);
                     return false;
@@ -152,7 +152,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlockHashes:
                     Metrics.Eth62NewBlockHashesReceived++;
-                    if (CanAcceptBlockGossip<NewBlockHashesMessage>())
+                    if (CanAcceptBlockGossip())
                     {
                         NewBlockHashesMessage newBlockHashesMessage =
                             Deserialize<NewBlockHashesMessage>(message.Content);
@@ -197,7 +197,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     break;
                 case Eth62MessageCode.NewBlock:
                     Metrics.Eth62NewBlockReceived++;
-                    if (CanAcceptBlockGossip<NewBlockMessage>())
+                    if (CanAcceptBlockGossip())
                     {
                         NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
                         ReportIn(newBlockMsg);
