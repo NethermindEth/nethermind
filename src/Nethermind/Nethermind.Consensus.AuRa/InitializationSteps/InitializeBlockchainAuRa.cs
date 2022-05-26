@@ -43,12 +43,12 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class InitializeBlockchainAuRa : InitializeBlockchain
     {
-        private readonly AuRaNethermindApi _api;
-        private INethermindApi NethermindApi => _api;
+        protected readonly AuRaNethermindApi _api;
+        protected INethermindApi NethermindApi => _api;
         
-        private AuRaSealValidator? _sealValidator;
-        private IAuRaStepCalculator? _auRaStepCalculator;
-        private readonly IAuraConfig _auraConfig;
+        protected AuRaSealValidator? _sealValidator;
+        protected IAuRaStepCalculator? _auRaStepCalculator;
+        protected readonly IAuraConfig _auraConfig;
         
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
         {
