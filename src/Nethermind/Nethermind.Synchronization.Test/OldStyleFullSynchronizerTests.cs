@@ -36,6 +36,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -80,11 +81,31 @@ namespace Nethermind.Synchronization.Test
             TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(resolver, LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
             Pivot pivot = new (syncConfig);
-            BlockDownloaderFactory blockDownloaderFactory = new(MainnetSpecProvider.Instance, _blockTree,
-                _receiptStorage, Always.Valid, Always.Valid, _pool, stats, syncModeSelector, syncConfig, pivot, new TotalDifficultyBasedBetterPeerStrategy(resolver, LimboLogs.Instance),
+            SyncReport syncReport = new(_pool, stats, syncModeSelector, syncConfig, pivot, LimboLogs.Instance);
+            BlockDownloaderFactory blockDownloaderFactory = new(
+                MainnetSpecProvider.Instance,
+                _blockTree,
+                _receiptStorage, 
+                Always.Valid,
+                Always.Valid,
+                _pool,
+                new TotalDifficultyBasedBetterPeerStrategy(resolver, LimboLogs.Instance),
+                syncReport,
                 LimboLogs.Instance);
-            _synchronizer = new Synchronizer(dbProvider, MainnetSpecProvider.Instance, _blockTree, _receiptStorage,
-                _pool, stats, syncModeSelector, syncConfig, snapProvider, blockDownloaderFactory, pivot, LimboLogs.Instance);
+            _synchronizer = new Synchronizer(
+                dbProvider, 
+                MainnetSpecProvider.Instance, 
+                _blockTree, 
+                _receiptStorage,
+                _pool, 
+                stats, 
+                syncModeSelector, 
+                syncConfig, 
+                snapProvider, 
+                blockDownloaderFactory, 
+                pivot,
+                syncReport,
+                LimboLogs.Instance);
             _syncServer = new SyncServer(
                 _stateDb,
                 _codeDb,

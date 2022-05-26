@@ -31,6 +31,7 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
@@ -54,8 +55,22 @@ public class MergeSynchronizer : Synchronizer
         IPivot pivot,
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
-        ILogManager logManager) : base(dbProvider, specProvider, blockTree, receiptStorage, peerPool, nodeStatsManager,
-        syncModeSelector, syncConfig, snapProvider, blockDownloaderFactory, pivot, logManager)
+        ILogManager logManager,
+        ISyncReport syncReport) 
+        : base(
+            dbProvider, 
+            specProvider, 
+            blockTree, 
+            receiptStorage, 
+            peerPool, 
+            nodeStatsManager,
+            syncModeSelector,
+            syncConfig,
+            snapProvider,
+            blockDownloaderFactory,
+            pivot,
+            syncReport,
+            logManager)
     {
         _poSSwitcher = poSSwitcher;
         _mergeConfig = mergeConfig;
