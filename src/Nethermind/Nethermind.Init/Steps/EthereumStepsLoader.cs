@@ -70,7 +70,7 @@ namespace Nethermind.Init.Steps
             StepInfo[] stepsWithMatchingApiType = stepsWithTheSameBase
                 .Where(t => HasConstructorWithParameter(t.StepType, apiType)).ToArray();
 
-            if (stepsWithMatchingApiType.Length != 1)
+            if (stepsWithMatchingApiType.Length == 0)
             {
                 // base API type this time
                 stepsWithMatchingApiType = stepsWithTheSameBase
@@ -79,12 +79,10 @@ namespace Nethermind.Init.Steps
             
             if (stepsWithMatchingApiType.Length > 1)
             {
-                string stepsDescribed = string.Join(", ", stepsWithTheSameBase.Select(s => s.StepType.Name));
-                throw new StepDependencyException(
-                    $"Found {stepsWithMatchingApiType.Length} steps with matching API type among {stepsDescribed}");
+                Array.Sort(stepsWithMatchingApiType, (t1, t2) => t1.StepType.IsAssignableFrom(t2.StepType) ? 1 : -1);
             }
 
-            return stepsWithMatchingApiType.Length == 1 ? stepsWithMatchingApiType[0] : null;
+            return stepsWithMatchingApiType.FirstOrDefault();
         }
         
         private static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);

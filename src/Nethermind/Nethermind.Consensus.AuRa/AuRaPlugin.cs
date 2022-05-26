@@ -24,7 +24,7 @@ using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin
+    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _nethermindApi;
         public string Name => SealEngineType;
@@ -82,5 +82,7 @@ namespace Nethermind.Consensus.AuRa
         public IBlockProductionTrigger? DefaultBlockProductionTrigger { get; private set; }
         
         public INethermindApi CreateApi() => new AuRaNethermindApi();
+
+        public bool Enabled => true;
     }
 }
