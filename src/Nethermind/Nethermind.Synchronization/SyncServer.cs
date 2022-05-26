@@ -141,7 +141,11 @@ namespace Nethermind.Synchronization
 
         public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
-            if (!_gossipPolicy.CanGossipBlocks) return;
+            if (!_gossipPolicy.CanGossipBlocks)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Cannot add new block {block.ToString(Block.Format.FullHashAndNumber)}");
+                return;
+            }
             
             if (block.TotalDifficulty == null)
             {
@@ -313,7 +317,11 @@ namespace Nethermind.Synchronization
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
         {
-            if (!_gossipPolicy.CanGossipBlocks) return;
+            if (!_gossipPolicy.CanGossipBlocks)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Cannot gossip block {hash} {number}");
+                return;
+            }
             
             if (number > syncPeer.HeadNumber)
             {
@@ -492,8 +500,12 @@ namespace Nethermind.Synchronization
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
         {
-            if (!_gossipPolicy.CanGossipBlocks) return;
-            
+            if (!_gossipPolicy.CanGossipBlocks)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Cannot notify of block {peerInfo} {broadcastedBlock.ToString(Block.Format.FullHashAndNumber)}");
+                return;
+            }
+
             try
             {
                 syncPeer.NotifyOfNewBlock(broadcastedBlock, priority);

@@ -293,6 +293,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             if (!CanGossip || !_gossipPolicy.ShouldGossipBlock(block.Header))
             {
+                if (Logger.IsTrace) Logger.Trace($"Cannot notify of new block {block.ToString(Block.Format.FullHashAndNumber)}");
                 return;
             }
 
