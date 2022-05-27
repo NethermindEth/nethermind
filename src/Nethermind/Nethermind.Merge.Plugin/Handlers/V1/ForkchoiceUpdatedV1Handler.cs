@@ -85,7 +85,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {
-                if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
+                if (!_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     _mergeSyncController.InitSyncing(block.Header);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
