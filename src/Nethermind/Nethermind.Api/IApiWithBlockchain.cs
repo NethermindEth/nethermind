@@ -101,8 +101,6 @@ namespace Nethermind.Api
 
         CompositePruningTrigger PruningTrigger { get; }
         
-        IBlockConfirmationManager BlockConfirmationManager { get; set; }
-        
         IBlockProductionPolicy BlockProductionPolicy { get; set; }
     }
 }
