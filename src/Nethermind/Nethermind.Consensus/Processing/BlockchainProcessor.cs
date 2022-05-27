@@ -51,6 +51,8 @@ namespace Nethermind.Consensus.Processing
         private readonly BlockingCollection<BlockRef> _blockQueue = new(new ConcurrentQueue<BlockRef>(),
             MaxProcessingQueueSize);
 
+        private int _queueCount;
+
         private readonly ProcessingStats _stats;
 
         private CancellationTokenSource? _loopCancellationSource;
@@ -60,7 +62,7 @@ namespace Nethermind.Consensus.Processing
 
         private int _currentRecoveryQueueSize;
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
-        private Stopwatch _stopwatch = new();
+        private readonly Stopwatch _stopwatch = new();
 
         /// <summary>
         /// 
@@ -122,6 +124,7 @@ namespace Nethermind.Consensus.Processing
                 try
                 {
                     _recoveryQueue.Add(blockRef);
+                    Interlocked.Increment(ref _queueCount);
                     if (_logger.IsTrace)
                         _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
                 }
@@ -222,12 +225,14 @@ namespace Nethermind.Consensus.Processing
                     }
                     catch (InvalidOperationException)
                     {
+                        Interlocked.Decrement(ref _queueCount);
                         if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
                         return;
                     }
                 }
                 else
                 {
+                    Interlocked.Decrement(ref _queueCount);
                     if (_logger.IsTrace)
                         _logger.Trace(
                             "Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
@@ -244,26 +249,34 @@ namespace Nethermind.Consensus.Processing
 
             foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
-                if (blockRef.IsInDb || blockRef.Block == null)
+                try
                 {
-                    throw new InvalidOperationException("Processing loop expects only resolved blocks");
+                    if (blockRef.IsInDb || blockRef.Block == null)
+                    {
+                        throw new InvalidOperationException("Processing loop expects only resolved blocks");
+                    }
+
+                    Block block = blockRef.Block;
+
+                    if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
+                    _stats.Start();
+
+                    Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
+                    
+                    if (processedBlock == null)
+                    {
+                        if (_logger.IsTrace)
+                            _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                    }
+                    else
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
+                        _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
+                    }
                 }
-
-                Block block = blockRef.Block;
-
-                if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
-                _stats.Start();
-
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
-                if (processedBlock == null)
+                finally
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                    _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
+                    Interlocked.Decrement(ref _queueCount);
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
@@ -283,7 +296,7 @@ namespace Nethermind.Consensus.Processing
 
         public event EventHandler? ProcessingQueueEmpty;
 
-        int IBlockProcessingQueue.Count => _blockQueue.Count + _recoveryQueue.Count;
+        int IBlockProcessingQueue.Count => _queueCount;
 
         public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
         {
