@@ -61,7 +61,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         private IMessageSerializationService _svc;
         private ISyncServer _syncManager;
         private ITxPool _transactionPool;
-        private IPooledTxsRequestor _pooledTxsRequester;
+        private IPooledTxsRequestor _pooledTxsRequestor;
         private IGossipPolicy _gossipPolicy;
         private ISpecProvider _specProvider;
         private Block _genesisBlock;
@@ -79,7 +79,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _session.Node.Returns(node);
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
-            _pooledTxsRequester = Substitute.For<IPooledTxsRequestor>();
+            _pooledTxsRequestor = Substitute.For<IPooledTxsRequestor>();
             _specProvider = Substitute.For<ISpecProvider>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -92,7 +92,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 new NodeStatsManager(timerFactory, LimboLogs.Instance),
                 _syncManager,
                 _transactionPool,
-                _pooledTxsRequester,
+                _pooledTxsRequestor,
                 _gossipPolicy,
                 _specProvider,
                 LimboLogs.Instance);
