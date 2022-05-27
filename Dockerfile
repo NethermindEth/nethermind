@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0 AS build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:6.0-jammy AS build
 
 ARG TARGETPLATFORM
 ARG TARGETOS
@@ -14,8 +14,10 @@ RUN if [ "$TARGETARCH" = "amd64" ] ; \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
     fi
 
-FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0 
+FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0-jammy
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6
+# Fix rocksdb issue in ubuntu 22.04
+RUN ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so > /dev/null 2>&1
 
 WORKDIR /nethermind
 
