@@ -123,6 +123,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Update()
         {
+            try
+            {
             SyncMode newModes;
             string reason = string.Empty;
             if (_syncProgressResolver.IsLoadingBlocksFromDb())
@@ -217,6 +219,9 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             UpdateSyncModes(newModes, reason);
+            } catch (Exception exception) {
+                _logger.Error($"Sync mode timer crashed", exception);
+            }
         }
 
         private void CheckAddFlag(in bool flag, SyncMode mode, ref SyncMode resultMode)
