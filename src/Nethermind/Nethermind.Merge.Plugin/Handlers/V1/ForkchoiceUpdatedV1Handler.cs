@@ -190,30 +190,30 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
 
             /*This checks will be uncommented in next release. We need to check hive tests*/
-            // bool finalizedBlockHashInconsistent = nonZeroFinalizedBlockHash && !_blockTree.IsMainChain(finalizedHeader!);
-            // if (finalizedBlockHashInconsistent)
-            // {
-            //     string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
-            //     if (_logger.IsWarn)
-            //         _logger.Warn(errorMsg);
-            //
-            //     return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
-            // }
-            //
-            // bool safeBlockHashInconsistent = nonZeroSafeBlockHash && !_blockTree.IsMainChain(safeBlockHashHeader!);
-            // if (safeBlockHashInconsistent)
-            // {
-            //     string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
-            //     if (_logger.IsWarn)
-            //         _logger.Warn(errorMsg);
-            //
-            //     return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
-            // }
-            //
-            // if (nonZeroFinalizedBlockHash)
-            // {
-            //     _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
-            // }
+            bool finalizedBlockHashInconsistent = nonZeroFinalizedBlockHash && !_blockTree.IsMainChain(finalizedHeader!);
+            if (finalizedBlockHashInconsistent)
+            {
+                string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
+                if (_logger.IsWarn)
+                    _logger.Warn(errorMsg);
+            
+                return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            }
+            
+            bool safeBlockHashInconsistent = nonZeroSafeBlockHash && !_blockTree.IsMainChain(safeBlockHashHeader!);
+            if (safeBlockHashInconsistent)
+            {
+                string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
+                if (_logger.IsWarn)
+                    _logger.Warn(errorMsg);
+            
+                return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            }
+            
+            if (nonZeroFinalizedBlockHash)
+            {
+                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+            }
             
             // In future safeBlockHash will be added to JSON-RPC
             if (nonZeroSafeBlockHash)
