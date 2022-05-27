@@ -191,12 +191,6 @@ namespace Nethermind.Synchronization.ParallelSync
                                     ref newModes);
                                 CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                                 CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
-                                if (IsTheModeSwitchWorthMentioning(newModes))
-                                {
-                                    string stateString = BuildStateString(best);
-                                    if (_logger.IsInfo)
-                                        _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
-                                }
                             }
                             catch (InvalidAsynchronousStateException)
                             {
@@ -205,7 +199,12 @@ namespace Nethermind.Synchronization.ParallelSync
                             }
                         }
                         
-
+                        if (IsTheModeSwitchWorthMentioning(newModes))
+                        {
+                            string stateString = BuildStateString(best);
+                            if (_logger.IsInfo)
+                                _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
+                        }
 
                         if ((newModes & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None
                             && (Current & (SyncMode.Full | SyncMode.WaitingForBlock)) == SyncMode.None)
@@ -230,10 +229,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsTheModeSwitchWorthMentioning(SyncMode newModes)
         {
-            return _logger.IsDebug ||
-                   newModes != Current &&
-                   (newModes != SyncMode.WaitingForBlock || Current != SyncMode.Full) &&
-                   (newModes != SyncMode.Full || Current != SyncMode.WaitingForBlock);
+            return _logger.IsDebug || newModes != Current;
         }
 
         private void UpdateSyncModes(SyncMode newModes, string? reason = null)
@@ -252,10 +248,14 @@ namespace Nethermind.Synchronization.ParallelSync
             // for example when switching to Full sync we need to ensure that we safely transition
             // DBS and processors if needed
 
+            _logger.Trace("Sync mode event prepare");
             Preparing?.Invoke(this, args);
+            _logger.Trace("Sync mode event changing");
             Changing?.Invoke(this, args);
             Current = newModes;
+            _logger.Trace("Sync mode event changed");
             Changed?.Invoke(this, args);
+            _logger.Trace("Sync mode event done");
         }
 
         /// <summary>
