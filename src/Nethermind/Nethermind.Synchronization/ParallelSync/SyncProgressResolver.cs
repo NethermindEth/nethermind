@@ -23,7 +23,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -32,10 +31,8 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public class SyncProgressResolver : ISyncProgressResolver
     {
-        // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
-        // then we will never have to look 128 back again
-        // note that we will be doing that every second or so
-        private const int MaxLookupBack = 128;
+        // Runs once, than goes cached
+        private const int MaxLookupBack = 8096;
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -87,7 +84,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // In fast sync we never save the state root unless all the descendant nodes have been stored in the DB.
             return stateRootIsInMemory || _stateDb.Get(stateRoot) != null;
         }
-        
+
         public long FindBestFullState()
         {
             // so the full state can be in a few places but there are some best guesses
@@ -101,6 +98,12 @@ namespace Nethermind.Synchronization.ParallelSync
             Block head = _blockTree.Head;
             BlockHeader initialBestSuggested = _blockTree.BestSuggestedHeader; // just storing here for debugging sake
             BlockHeader bestSuggested = initialBestSuggested;
+
+            var previousSavedState = _stateDb.Get(MetadataDbKeys.LatestBlockWithFullState);
+            if (previousSavedState != null)
+            {
+                return BitConverter.ToInt64(previousSavedState);
+            }
 
             long bestFullState = 0;
             if (head != null)
@@ -116,7 +119,8 @@ namespace Nethermind.Synchronization.ParallelSync
                     bestFullState = Math.Max(bestFullState, SearchForFullState(bestSuggested));
                 }
             }
-
+           
+            _stateDb.Set(MetadataDbKeys.LatestBlockWithFullState, BitConverter.GetBytes(bestFullState));           
             return bestFullState;
         }
 

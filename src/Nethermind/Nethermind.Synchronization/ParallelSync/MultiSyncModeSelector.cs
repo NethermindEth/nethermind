@@ -20,6 +20,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -158,7 +159,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
                             best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
                             best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
-                            bool canBeInSnapRangesPhase = CanBeInSnapRangesPhase(best);
+                            bool canBeInSnapRangesPhase = best.IsInStateSync && CanBeInSnapRangesPhase(best);
 
                             newModes = SyncMode.None;
                             CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
@@ -484,16 +485,19 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             bool isCloseToHead = best.PeerBlock >= best.Header && (best.PeerBlock - best.Header) < Constants.MaxDistanceFromHead;
             bool snapNotFinished = !_syncProgressResolver.IsSnapGetRangesFinished();
+            bool isFullStateAccientOrNotFound = best.PeerBlock - best.State > FastSyncCatchUpHeightDelta || best.State == 0;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("SNAP_RANGES",
                     (nameof(SnapSyncEnabled), SnapSyncEnabled),
                     (nameof(isCloseToHead), isCloseToHead),
-                    (nameof(snapNotFinished), snapNotFinished));
+                    (nameof(snapNotFinished), snapNotFinished),
+                    (nameof(isFullStateAccientOrNotFound), isFullStateAccientOrNotFound));
             }
 
             return SnapSyncEnabled
+                && isFullStateAccientOrNotFound
                 && isCloseToHead
                 && snapNotFinished;
         }

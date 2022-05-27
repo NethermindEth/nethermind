@@ -18,7 +18,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         private const int STORAGE_BATCH_SIZE = 1_200;
         private const int CODES_BATCH_SIZE = 1_000;
-        private readonly byte[] ACC_PROGRESS_KEY = Encoding.ASCII.GetBytes("AccountProgressKey");
 
         private long _reqCount;
         private int _activeAccountRequests;
@@ -271,7 +270,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void GetSyncProgress()
         {
-            byte[] progress = _db.Get(ACC_PROGRESS_KEY);
+            byte[] progress = _db.Get(MetadataDbKeys.AccountProgress);
             if (progress is { Length: 32 })
             {
                 NextAccountPath = new Keccak(progress);
@@ -289,7 +288,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             MoreAccountsToRight = false;
             NextAccountPath = Keccak.MaxValue;
-            _db.Set(ACC_PROGRESS_KEY, NextAccountPath.Bytes);
+            _db.Set(MetadataDbKeys.AccountProgress, NextAccountPath.Bytes);
             
             SnapSyncFinished?.Invoke(this, EventArgs.Empty);
         }

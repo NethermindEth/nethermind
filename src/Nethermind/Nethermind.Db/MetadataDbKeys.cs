@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,6 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Text;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Db
 {
     public static class MetadataDbKeys
@@ -26,5 +29,9 @@ namespace Nethermind.Db
         public const int FirstPoSHash = 3;
         public const int FinalizedBlockHash = 3;
         public const int SafeBlockHash = 4;
+        public const int SavedStateBlockNumber = 5;
+
+        public static readonly Keccak AccountProgress = Keccak.Compute(Encoding.ASCII.GetBytes("AccountProgressKey"));
+        public static readonly Keccak LatestBlockWithFullState = Keccak.Compute(Encoding.ASCII.GetBytes("LatestBlockWithFullStateKey"));
     }
 }

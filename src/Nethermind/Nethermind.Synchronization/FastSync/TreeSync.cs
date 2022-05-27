@@ -599,6 +599,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
                 Interlocked.Exchange(ref _rootSaved, 1);
+                _stateDb.Set(MetadataDbKeys.LatestBlockWithFullState, BitConverter.GetBytes(_branchProgress.CurrentSyncBlock));
             }
 
             _branchProgress.ReportSynced(syncItem.Level, syncItem.ParentBranchChildIndex, syncItem.BranchChildIndex, syncItem.NodeDataType, NodeProgressState.Saved);
