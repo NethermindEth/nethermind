@@ -73,6 +73,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockCacheService blockCacheService,
             IBlockProcessingQueue processingQueue,
             IMergeSyncController mergeSyncController,
+            
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -110,16 +111,28 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.InvalidBlockHash;
             }
 
+
+            if (!_blockCacheService.PreBlockSuggest(request.BlockNumber, request.ParentHash))
+            {
+                return NewPayloadV1Result.Invalid(_blockCacheService.LastValidBlockBeforeFailure.Hash);
+            }
             
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             bool parentExists = parentHeader != null;
-            bool parentProcessed = parentExists && _blockTree.WasProcessed(parentHeader!.Number,
-                parentHeader!.Hash ?? parentHeader.CalculateHash());
             if (!parentExists)
             {
                 // possible that headers sync finished before this was called, so blocks in cache weren't inserted
-                if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
+                // So why not check if it was processed, like line 44?
+                /*
+                public bool IsBeaconSyncFinished(BlockHeader? blockHeader)
+                {
+                    return !_beaconPivot.BeaconPivotExists()
+                           || (blockHeader != null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.Hash ?? blockHeader.CalculateHash()));
+                }
+                 */
+                // if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
+                if (_beaconPivot.BeaconPivotExists())
                 {
                     bool inserted = TryInsertDanglingBlock(block);
                     if (_logger.IsInfo)
@@ -135,11 +148,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
                 }
 
+                // TODO: What? It just got accepted?
                 if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
                 _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
                 return NewPayloadV1Result.Accepted;
             }
 
+            // TODO: Why not put this before sync status handling? (or after?)
             // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
             if (block.Number <= (_blockTree.Head?.Number ?? 0))
             {
@@ -151,9 +166,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
             }
 
+            // TODO: Why handled differently than dangling block?
+            bool parentProcessed = parentExists && _blockTree.WasProcessed(parentHeader!.Number,
+                parentHeader!.Hash ?? parentHeader.CalculateHash());
             if (!parentProcessed)
             {
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+                // TODO: Check back how does the block tree process this back eventually
                 _blockTree.Insert(block, true, insertOptions);
                 if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
                 return NewPayloadV1Result.Syncing;
@@ -171,7 +190,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Invalid(Keccak.Zero);
             }
 
+            // TODO: Why stop?
             _mergeSyncController.StopSyncing();
+            
+            // TODO: If this is blocking, why line 164 could happen?
             (ValidationResult ValidationResult, string? Message) result =
                 ValidateBlockAndProcess(block, out Block? processedBlock, parentHeader);
             if ((result.ValidationResult & ValidationResult.AlreadyKnown) != 0 ||
@@ -188,6 +210,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     result.Message));
             }
 
+            // TODO: More syncing result?
             if (result.ValidationResult == ValidationResult.Syncing)
             {
                 if (_logger.IsInfo) _logger.Info($"Processing queue wasn't empty added to queue {requestStr}");
@@ -228,9 +251,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             else
             {
+                // Note: this is a basic validation. It will be processed in 9 line below.
                 bool validAndProcessed = ValidateWithBlockValidator(block, parent, out processedBlock);
                 if (validAndProcessed)
                 {
+                    // TODO: Where else is processingQueue is used at?
                     if (_processingQueue.IsEmpty)
                     {
                         // processingQueue is empty so we can process the block in synchronous way
@@ -329,6 +354,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return payloadStatus;
         }
 
+        // Pop blocks from cache up to ancestor on the beacon chain. Which is then inserted into the block tree
+        // which I assume will switch the canonical chain.
+        // Return false if no ancestor that is part of beacon chain found.
         private bool TryInsertDanglingBlock(Block block)
         {
             BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
@@ -366,6 +394,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                     while (stack.TryPop(out Block? child))
                     {
+                        // Note, this does not seems to process
                         _blockTree.Insert(child, true, insertOptions);
                     }
                 }

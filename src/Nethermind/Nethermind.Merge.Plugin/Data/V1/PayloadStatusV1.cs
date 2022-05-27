@@ -27,6 +27,12 @@ namespace Nethermind.Merge.Plugin.Data.V1
         public static PayloadStatusV1 Syncing = new() { Status = PayloadStatus.Syncing };
         
         public static PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
+        
+        public static PayloadStatusV1 Invalid (Keccak? latestValidHash) => new()
+        {
+            Status = PayloadStatus.Invalid,
+            LatestValidHash = latestValidHash
+        };
 
         public string Status { get; set; }
 

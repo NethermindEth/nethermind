@@ -29,4 +29,5 @@ public class BlockCacheService : IBlockCacheService
     public Keccak? ProcessDestination { get; set; }
     public Keccak? SyncingHead { get; set; }
     public Keccak FinalizedHash { get; set; } = Keccak.Zero;
+    public Block? LastValidBlockBeforeFailure { get; set; } = null;
 }
