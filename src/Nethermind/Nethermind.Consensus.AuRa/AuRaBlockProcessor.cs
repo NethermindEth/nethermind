@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly AuRaContractGasLimitOverride? _gasLimitOverride;
-        private readonly ContractRewriter? _contractRewriter;
+        protected readonly ContractRewriter? _contractRewriter;
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
         private IAuRaValidator? _auRaValidator;
@@ -98,6 +98,12 @@ namespace Nethermind.Consensus.AuRa
             return receipts;
         }
 
+        // HACK: workaround for not having static dispatch :(
+        protected TxReceipt[] BaseProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        {
+            return base.ProcessBlock(block, blockTracer, options);
+        }
+
         // This validations cannot be run in AuraSealValidator because they are dependent on state.
         private void ValidateAuRa(Block block)
         {
@@ -117,7 +123,7 @@ namespace Nethermind.Consensus.AuRa
             long? expectedGasLimit = null;
             if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out expectedGasLimit) == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {block.Number}, hash {block.Hash}, expected value from contract {expectedGasLimit}, but found {block.GasLimit}.");
+                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {block.Number}, hash {block.Hash}, expected value from contract {expectedGasLimit}, but found {block.GasLimit}. {Environment.StackTrace}");
                 throw new InvalidBlockException(block.Hash);
             }
         }

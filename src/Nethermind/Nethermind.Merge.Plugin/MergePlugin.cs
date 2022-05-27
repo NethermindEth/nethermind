@@ -44,9 +44,9 @@ namespace Nethermind.Merge.Plugin
     {
         protected INethermindApi _api = null!;
         private ILogger _logger = null!;
-        private IMergeConfig _mergeConfig = null!;
+        protected IMergeConfig _mergeConfig = null!;
         private ISyncConfig _syncConfig = null!;
-        private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
+        protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService;
@@ -67,7 +67,7 @@ namespace Nethermind.Merge.Plugin
                 _api.RewardCalculatorSource ?? NoBlockRewards.Instance, _poSSwitcher);
         }
 
-        public Task Init(INethermindApi nethermindApi)
+        public virtual Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
             _mergeConfig = nethermindApi.Config<IMergeConfig>();

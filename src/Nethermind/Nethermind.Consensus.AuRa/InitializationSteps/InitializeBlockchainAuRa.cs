@@ -109,14 +109,14 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return processor;
         }
 
-        private ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() => 
+        protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() => 
             new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
         protected override IHealthHintService CreateHealthHintService() =>
             new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);
 
 
-        private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        protected IAuRaValidator CreateAuRaValidator(IBlockProcessor processor, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -160,7 +160,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return validator;
         }
 
-        private AuRaContractGasLimitOverride? GetGasLimitCalculator()
+        protected AuRaContractGasLimitOverride? GetGasLimitCalculator()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;

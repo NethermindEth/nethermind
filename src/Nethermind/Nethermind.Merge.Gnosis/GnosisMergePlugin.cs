@@ -16,14 +16,30 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.State;
 using Nethermind.Specs.ChainSpecStyle;
+using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Api.Extensions;
 
 namespace Nethermind.Merge.Gnosis
 {
-    public class GnosisMergePlugin : MergePlugin
+    public class GnosisMergePlugin : MergePlugin, IInitializationPlugin
     {
+        bool IInitializationPlugin.Enabled => true;
+
         protected override bool MatchVariant(string? variant)
         {
             return variant != null && variant == "AuRa";
+        }
+
+        public override Task Init(INethermindApi nethermindApi)
+        {
+            return base.Init(nethermindApi).ContinueWith(t =>
+            {
+                if (_mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant))
+                {
+                    ((AuRaNethermindApi)nethermindApi).PoSSwitcher = _poSSwitcher;
+                }
+            });
         }
 
         protected override void InitRewardCalculatorSource() { }
