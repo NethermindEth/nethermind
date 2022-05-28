@@ -25,11 +25,13 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -42,6 +44,7 @@ namespace Nethermind.Consensus.Processing
 
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockPreprocessorStep _recoveryStep;
+        private readonly IDb _stateDb;
         private readonly Options _options;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -74,6 +77,7 @@ namespace Nethermind.Consensus.Processing
             IBlockTree? blockTree,
             IBlockProcessor? blockProcessor,
             IBlockPreprocessorStep? recoveryStep,
+            IDb stateDb,
             ILogManager? logManager,
             Options options)
         {
@@ -81,6 +85,7 @@ namespace Nethermind.Consensus.Processing
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _options = options;
 
             _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
@@ -556,7 +561,14 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    break;
+                    if (_logger.IsTrace)
+                        _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)} in fast sync transition");
+                    toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
+                    if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)} in fast sync transition");
+
+                    // if we have parent state it means that we don't need to go deeper
+                    if (toBeProcessed == null || _stateDb.KeyExists(toBeProcessed.StateRoot))
+                        break;
                 }
 
 

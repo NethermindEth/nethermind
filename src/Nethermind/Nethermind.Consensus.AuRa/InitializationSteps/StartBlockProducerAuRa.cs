@@ -257,6 +257,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                         readOnlyBlockTree,
                         blockProcessor,
                         _api.BlockPreprocessor,
+                        dbProvider.GetDb<IDb>(DbNames.State),
                         _api.LogManager,
                         BlockchainProcessor.Options.NoReceipts);
 

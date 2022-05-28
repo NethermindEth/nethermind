@@ -179,7 +179,7 @@ namespace Nethermind.Core.Test.Blockchain
             SealEngine = new SealEngine(sealer, Always.Valid);
             BlockProcessor = CreateBlockProcessor();
             
-            BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
+            BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateDb, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();

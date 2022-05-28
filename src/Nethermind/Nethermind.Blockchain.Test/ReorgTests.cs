@@ -109,6 +109,7 @@ namespace Nethermind.Blockchain.Test
                     txPool,
                     specProvider,
                     LimboLogs.Instance),
+                memDbProvider.StateDb,
                 LimboLogs.Instance, BlockchainProcessor.Options.Default);
         }
 

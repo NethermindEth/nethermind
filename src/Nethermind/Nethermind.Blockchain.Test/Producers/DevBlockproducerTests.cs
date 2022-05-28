@@ -96,6 +96,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 blockTree,
                 blockProcessor,
                 NullRecoveryStep.Instance,
+                dbProvider.GetDb<IDb>(DbNames.State),
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.Default);
             BuildBlocksWhenRequested trigger = new();
