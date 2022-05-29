@@ -66,7 +66,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private void Refresh(Keccak blockHash)
     {
         _lastRefresh = DateTime.Now;
-        foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+        foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
             _syncPeerPool.RefreshTotalDifficulty(peer.SyncPeer, blockHash);
         }
