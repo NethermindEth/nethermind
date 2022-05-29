@@ -185,7 +185,7 @@ namespace Nethermind.Evm
         {
             return (instruction == Instruction.PREVRANDAO && !isPostMerge)
                 ? "DIFFICULTY"
-                : System.Enum.GetName(typeof(Instruction), instruction);
+                : System.Enum.GetName(typeof(Instruction), instruction); //TODO: This is slow! Generate switch?
         }
     }
 }

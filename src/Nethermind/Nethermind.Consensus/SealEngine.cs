@@ -34,26 +34,18 @@ namespace Nethermind.Consensus
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
         }
 
-        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
-        {
-            return _sealer.SealBlock(block, cancellationToken);
-        }
+        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken) => 
+            _sealer.SealBlock(block, cancellationToken);
 
-        public bool CanSeal(long blockNumber, Keccak parentHash)
-        {
-            return _sealer.CanSeal(blockNumber, parentHash);
-        }
+        public bool CanSeal(long blockNumber, Keccak parentHash) => 
+            _sealer.CanSeal(blockNumber, parentHash);
 
         public Address Address => _sealer.Address;
         
-        public bool ValidateParams(BlockHeader parent, BlockHeader header)
-        {
-            return _sealValidator.ValidateParams(parent, header);
-        }
+        public bool ValidateParams(BlockHeader parent, BlockHeader header) => 
+            _sealValidator.ValidateParams(parent, header);
 
-        public bool ValidateSeal(BlockHeader header, bool force)
-        {
-            return _sealValidator.ValidateSeal(header, force);
-        }
+        public bool ValidateSeal(BlockHeader header, bool force) => 
+            _sealValidator.ValidateSeal(header, force);
     }
 }

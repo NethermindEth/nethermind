@@ -50,6 +50,7 @@ namespace Nethermind.Merge.Plugin.Test
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
             _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
             _context.ConfigProvider.GetConfig<IMiningConfig>().Returns(miningConfig);
+            _context.BlockProcessingQueue?.IsEmpty.Returns(true);
             _context.MemDbFactory = new MemDbFactory();
             _context.BlockProducerEnvFactory = new BlockProducerEnvFactory(
                 _context.DbProvider!,

@@ -194,10 +194,6 @@
       "commandName": "Project",
       "commandLineArgs": "--config mainnet_shadowfork.cfg  --baseDbPath D:\\shadowfork_db"
     },
-    "Hive": {
-      "commandName": "Project",
-      "commandLineArgs": "--config hive.cfg"
-    },
     "Ropsten Archive": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\ropsten_archive.cfg --baseDbPath C:\\nethermind_db",

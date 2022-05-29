@@ -85,6 +85,7 @@ namespace Nethermind.Synchronization
             ISnapProvider snapProvider,
             IBlockDownloaderFactory blockDownloaderFactory,
             IPivot pivot,
+            ISyncReport syncReport,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -99,9 +100,8 @@ namespace Nethermind.Synchronization
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            _logManager = logManager;
-
-            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, _syncMode, syncConfig, pivot, logManager);
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
         }
 
         public virtual void Start()

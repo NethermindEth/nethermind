@@ -28,14 +28,11 @@ namespace Nethermind.Merge.Plugin.Handlers
     public class ExecutionStatusHandler : IHandler<ExecutionStatusResult>
     {
         private readonly IBlockFinder _blockFinder;
-        private readonly IManualBlockFinalizationManager _blockFinalizationManager;
 
         public ExecutionStatusHandler(
-            IBlockFinder blockFinder,
-            IManualBlockFinalizationManager blockFinalizationManager)
+            IBlockFinder blockFinder)
         {
             _blockFinder = blockFinder;
-            _blockFinalizationManager = blockFinalizationManager;
         }
 
         public ResultWrapper<ExecutionStatusResult> Handle()

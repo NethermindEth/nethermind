@@ -75,14 +75,6 @@ namespace Nethermind.Consensus.Processing
             TransactionProcessor = new TransactionProcessor(specProvider, worldState, Machine, logManager);
         }
 
-        public void Reset()
-        {
-            StateProvider.Reset();
-            StorageProvider.Reset();
-            
-            _codeDb.ClearTempChanges();
-        }
-
-        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, stateRoot);
+        public IReadOnlyTransactionProcessor Build(Keccak stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, StorageProvider, _codeDb, stateRoot);
     }
 }

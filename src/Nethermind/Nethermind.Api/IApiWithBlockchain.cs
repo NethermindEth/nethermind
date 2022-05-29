@@ -100,7 +100,7 @@ namespace Nethermind.Api
         IEthSyncingInfo? EthSyncingInfo { get; set; }
 
         CompositePruningTrigger PruningTrigger { get; }
-        
+
         IBlockProductionPolicy BlockProductionPolicy { get; set; }
     }
 }

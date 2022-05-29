@@ -23,7 +23,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -56,25 +55,23 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
             ISyncPeerPool peerPool,
-            INodeStatsManager nodeStatsManager,
-            ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             IBetterPeerStrategy betterPeerStrategy,
+            ISyncReport syncReport,
             ILogManager logManager)
         {
-            _poSSwitcher = poSSwitcher;
-            _beaconPivot = beaconPivot;
+            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _beaconPivot = beaconPivot ?? throw new ArgumentNullException(nameof(beaconPivot));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
-            _betterPeerStrategy = betterPeerStrategy;
-            _logManager = logManager;
+            _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _chainLevelHelper = new ChainLevelHelper(_blockTree, syncConfig, _logManager);
-
-            _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, beaconPivot, logManager);
         }
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
