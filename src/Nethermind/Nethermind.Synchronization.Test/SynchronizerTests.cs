@@ -360,7 +360,8 @@ namespace Nethermind.Synchronization.Test
                 if (IsMerge(synchronizerType))
                 {
                     IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, mergeConfig, dbProvider.MetadataDb,
-                        BlockTree, new PeerRefresher(SyncPeerPool), _logManager);
+                        BlockTree, _logManager);
+                    SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, beaconPivot, _logManager);
                     blockDownloaderFactory = new MergeBlockDownloaderFactory(
                         poSSwitcher,
                         beaconPivot,
