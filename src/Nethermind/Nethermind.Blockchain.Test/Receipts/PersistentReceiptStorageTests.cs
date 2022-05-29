@@ -188,6 +188,18 @@ namespace Nethermind.Blockchain.Test.Receipts
             _storage.Insert(block, receipts);
         }
         
+        [Test]
+        public void HasBlock_should_returnFalseForMissingHash()
+        {
+            _storage.HasBlock(Keccak.Compute("missing-value")).Should().BeFalse();
+        }
+        
+        [Test]
+        public void HasBlock_should_returnTrueForKnownHash()
+        {
+            var (block, receipts) = InsertBlock();
+            _storage.HasBlock(block.Hash).Should().BeTrue();
+        }
 
         private (Block block, TxReceipt[] receipts) InsertBlock(Block block = null)
         {

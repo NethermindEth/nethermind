@@ -13,19 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System.Transactions;
 
-namespace Nethermind.Blockchain.Receipts
+namespace Nethermind.Blockchain.Find;
+
+public class ResourceNotFoundException: ArgumentException
 {
-    public interface IReceiptStorage : IReceiptFinder
+    public ResourceNotFoundException(string message) : base(message)
     {
-        void Insert(Block block, params TxReceipt[] txReceipts);
-        long? LowestInsertedReceiptBlockNumber { get; set; }
-        long MigratedBlockNumber { get; set; }
-        event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
-        bool HasBlock(Keccak hash);
     }
 }
