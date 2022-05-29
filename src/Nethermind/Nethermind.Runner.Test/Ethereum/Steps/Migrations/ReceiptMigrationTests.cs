@@ -132,6 +132,11 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 get => _outStorage.MigratedBlockNumber;
                 set => _outStorage.MigratedBlockNumber = value;
             }
+            
+            public bool HasBlock(Keccak hash)
+            {
+                return _outStorage.HasBlock(hash);
+            }
 
             public event EventHandler<ReceiptsEventArgs> ReceiptsInserted { add { } remove { } }
         }

@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -620,6 +621,14 @@ namespace Nethermind.Synchronization.Peers
                                 if (_logger.IsTrace) _logger.Trace($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                                 _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
                                 syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - null response");
+                                return;
+                            }
+
+                            if (!HeaderValidator.ValidateHash(header))
+                            {
+                                if (_logger.IsTrace) _logger.Trace($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}Invalid block hash.");
+                                _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
+                                syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - invalid header hash");
                                 return;
                             }
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,14 +13,16 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core;
+using System;
+using System.Transactions;
 
-namespace Nethermind.Consensus.Validators
+namespace Nethermind.Blockchain.Find;
+
+public class ResourceNotFoundException: ArgumentException
 {
-    public interface IHeaderValidator
+    public ResourceNotFoundException(string message) : base(message)
     {
-        bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false);
-        bool Validate(BlockHeader header, bool isUncle = false);
     }
 }
