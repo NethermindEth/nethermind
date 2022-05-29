@@ -212,7 +212,7 @@ namespace Nethermind.Merge.Plugin
                 PeerRefresher peerRefresher = new(_api.SyncPeerPool, _api.TimerFactory);
                 _peerRefresher = peerRefresher;
                 _api.DisposeStack.Push(peerRefresher);
-                _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
+                _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
                 _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,

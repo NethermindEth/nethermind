@@ -359,7 +359,7 @@ namespace Nethermind.Synchronization.Test
                 IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
                 {
-                    IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, mergeConfig, dbProvider.MetadataDb,
+                    IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb,
                         BlockTree, _logManager);
                     SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, beaconPivot, _logManager);
                     blockDownloaderFactory = new MergeBlockDownloaderFactory(
