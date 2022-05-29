@@ -25,13 +25,14 @@ namespace Nethermind.State
         
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {
-            return new (StateProvider.TakeSnapshot(), StorageProvider.TakeSnapshot(newTransactionStart));
+            Snapshot storageSnapshot = StorageProvider.TakeSnapshot(newTransactionStart);
+            return new (StateProvider.TakeSnapshot(), storageSnapshot.PersistentStorageSnapshot, storageSnapshot.TransientStorageSnapshot);
         }
 
         public void Restore(Snapshot snapshot)
         {
             StateProvider.Restore(snapshot.StateSnapshot);
-            StorageProvider.Restore(snapshot.StorageSnapshot);
+            StorageProvider.Restore(snapshot);
         }
 
         public IStorageProvider StorageProvider { get; }

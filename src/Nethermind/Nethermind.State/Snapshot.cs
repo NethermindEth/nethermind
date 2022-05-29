@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -26,16 +26,17 @@ namespace Nethermind.State
     /// </summary>
     public readonly struct Snapshot
     {
-        public Snapshot(int stateSnapshot, int storageSnapshot)
+        public Snapshot(int stateSnapshot, int storageSnapshot, int transientStorageSnapshot)
         {
             StateSnapshot = stateSnapshot;
-            StorageSnapshot = storageSnapshot;
+            PersistentStorageSnapshot = storageSnapshot;
+            TransientStorageSnapshot = transientStorageSnapshot;
         }
         
         public int StateSnapshot { get; }
         
-        public int StorageSnapshot { get; }
-        
+        public int PersistentStorageSnapshot { get; }
+        public int TransientStorageSnapshot { get; }
         public const int EmptyPosition = -1;
     }
 }
