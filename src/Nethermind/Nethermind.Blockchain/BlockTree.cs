@@ -2137,24 +2137,22 @@ namespace Nethermind.Blockchain
             }
         }
         
-        public bool ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockHash)
+        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockHash)
         {
             using (_metadataDb.StartBatch())
             {
                 try
                 {
-                    _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(finalizedBlockHash).Bytes);
-                    _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(safeBlockHash).Bytes);
+                    _metadataDb.Set(MetadataDbKeys.FinalizedBlockHash, Rlp.Encode(FinalizedHash!).Bytes);
+                    _metadataDb.Set(MetadataDbKeys.SafeBlockHash, Rlp.Encode(SafeHash!).Bytes);
                 }
                 catch (RlpException)
                 {                
-                    if (_logger.IsDebug) _logger.Debug($"Failed to save finalized or safe blocks, received: Finalized {finalizedBlockHash} and Safe {safeBlockHash},");
-                    return false;
+                    if (_logger.IsDebug) _logger.Debug($"Failed to save finalized or safe blocks, received block hashes: Finalized {finalizedBlockHash} and Safe {safeBlockHash},");
                 }
             }
             FinalizedHash = finalizedBlockHash;
             SafeHash = safeBlockHash;
-            return true;
         }
     }
 }
