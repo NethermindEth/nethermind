@@ -112,6 +112,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
+            // ToDo if block is below syncPivot, we can return SYNCING and igonre block
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             bool parentExists = parentHeader != null;
             bool parentProcessed = parentExists && _blockTree.WasProcessed(parentHeader!.Number,
