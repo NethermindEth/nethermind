@@ -236,6 +236,171 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(_values[(Resettable.StartCapacity + 1) % 2], valueAfter);
         }
 
+        [Test]
+        public void Can_tload_uninitialized_locations()
+        {
+            Context ctx = new();
+            StorageProvider provider = BuildStorageProvider(ctx);
+            // Should be 0 if not set
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero());
+
+            // Should be 0 if loading from the same contract but different index
+            provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 1)).IsZero());
+
+            // Should be 0 if loading from the same index but different contract
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address2, 1)).IsZero());
+        }
+
+        [Test]
+        public void Can_tload_after_tstore()
+        {
+            Context ctx = new();
+            StorageProvider provider = BuildStorageProvider(ctx);
+
+            provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
+            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(ctx.Address1, 2)));
+        }
+
+        [TestCase(-1)]
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void Tload_same_address_same_index_different_values_restore(int snapshot)
+        {
+            Context ctx = new();
+            StorageProvider provider = BuildStorageProvider(ctx);
+            Snapshot[] snapshots = new Snapshot[4];
+            snapshots[0] = ((IStorageProvider)provider).TakeSnapshot();
+            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
+            snapshots[1] = ((IStorageProvider)provider).TakeSnapshot();
+            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[2]);
+            snapshots[2] = ((IStorageProvider)provider).TakeSnapshot();
+            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[3]);
+            snapshots[3] = ((IStorageProvider)provider).TakeSnapshot();
+
+            Assert.AreEqual(snapshots[snapshot + 1].TransientStorageSnapshot, snapshot);
+            // Persistent storage is unimpacted by transient storage
+            Assert.AreEqual(snapshots[snapshot + 1].PersistentStorageSnapshot, -1);
+            provider.Restore(snapshots[snapshot + 1]);
+
+            Assert.AreEqual(_values[snapshot + 1], provider.GetTransientState(new StorageCell(ctx.Address1, 1)));
+        }
+
+        [Test]
+        public void Commit_resets_transient_state()
+        {
+            Context ctx = new();
+            StorageProvider provider = BuildStorageProvider(ctx);
+
+            provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
+            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(ctx.Address1, 2)));
+
+            provider.Commit();
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
+        }
+
+        [Test]
+        public void Reset_resets_transient_state()
+        {
+            Context ctx = new();
+            StorageProvider provider = BuildStorageProvider(ctx);
+
+            provider.SetTransientState(new StorageCell(ctx.Address1, 2), _values[1]);
+            Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(ctx.Address1, 2)));
+
+            provider.Reset();
+            Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
+        }
+
+        [TestCase(-1)]
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void Transient_state_restores_independed_of_permanent_state(int snapshot)
+        {
+            Context ctx = new();
+            StorageProvider provider = BuildStorageProvider(ctx);
+            Snapshot[] snapshots = new Snapshot[4];
+
+            // No updates
+            snapshots[0] = ((IStorageProvider)provider).TakeSnapshot();
+            Assert.AreEqual(snapshots[0].TransientStorageSnapshot, -1);
+            Assert.AreEqual(snapshots[0].PersistentStorageSnapshot, -1);
+
+            // Only update transient
+            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
+            snapshots[1] = ((IStorageProvider)provider).TakeSnapshot();
+            Assert.AreEqual(snapshots[1].TransientStorageSnapshot, 0);
+            Assert.AreEqual(snapshots[1].PersistentStorageSnapshot, -1);
+
+            // Update both
+            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[2]);
+            provider.Set(new StorageCell(ctx.Address1, 1), _values[9]);
+            snapshots[2] = ((IStorageProvider)provider).TakeSnapshot();
+            Assert.AreEqual(snapshots[2].TransientStorageSnapshot, 1);
+            Assert.AreEqual(snapshots[2].PersistentStorageSnapshot, 0);
+
+            // Only update persistent
+            provider.Set(new StorageCell(ctx.Address1, 1), _values[8]);
+            snapshots[3] = ((IStorageProvider)provider).TakeSnapshot();
+            Assert.AreEqual(snapshots[3].TransientStorageSnapshot, 1);
+            Assert.AreEqual(snapshots[3].PersistentStorageSnapshot, 1);
+
+            provider.Restore(snapshots[snapshot + 1]);
+
+            // Since we didn't update transient on the 3rd snapshot
+            if (snapshot == 2)
+            {
+                snapshot--;
+            }
+            Assert.AreEqual(_values[snapshot + 1], provider.GetTransientState(new StorageCell(ctx.Address1, 1)));
+        }
+
+        [TestCase(-1)]
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        public void Permanent_state_restores_independed_of_transient_state(int snapshot)
+        {
+            Context ctx = new();
+            StorageProvider provider = BuildStorageProvider(ctx);
+            Snapshot[] snapshots = new Snapshot[4];
+
+            // No updates
+            snapshots[0] = ((IStorageProvider)provider).TakeSnapshot();
+            Assert.AreEqual(snapshots[0].TransientStorageSnapshot, -1);
+            Assert.AreEqual(snapshots[0].PersistentStorageSnapshot, -1);
+
+            // Only update persistent
+            provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
+            snapshots[1] = ((IStorageProvider)provider).TakeSnapshot();
+            Assert.AreEqual(snapshots[1].PersistentStorageSnapshot, 0);
+            Assert.AreEqual(snapshots[1].TransientStorageSnapshot, -1);
+
+            // Update both
+            provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
+            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[9]);
+            snapshots[2] = ((IStorageProvider)provider).TakeSnapshot();
+            Assert.AreEqual(snapshots[2].PersistentStorageSnapshot, 1);
+            Assert.AreEqual(snapshots[2].TransientStorageSnapshot, 0);
+
+            // Only update transient
+            provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[8]);
+            snapshots[3] = ((IStorageProvider)provider).TakeSnapshot();
+            Assert.AreEqual(snapshots[3].PersistentStorageSnapshot, 1);
+            Assert.AreEqual(snapshots[3].TransientStorageSnapshot, 1);
+
+            provider.Restore(snapshots[snapshot + 1]);
+
+            // Since we didn't update transient on the 3rd snapshot
+            if (snapshot == 2)
+            {
+                snapshot--;
+            }
+            Assert.AreEqual(_values[snapshot + 1], provider.Get(new StorageCell(ctx.Address1, 1)));
+        }
+
         private class Context
         {
             public IStateProvider StateProvider { get; }
