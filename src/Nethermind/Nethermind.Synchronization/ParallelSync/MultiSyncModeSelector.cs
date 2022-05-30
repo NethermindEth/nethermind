@@ -506,6 +506,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool CanBeInSnapRangesPhase(Snapshot best)
         {
             bool isCloseToHead = best.PeerBlock >= best.Header && (best.PeerBlock - best.Header) < Constants.MaxDistanceFromHead;
+            bool isFullStateAncientOrNotFound = best.PeerBlock - best.State > FastSyncCatchUpHeightDelta || best.State == 0;
             bool snapNotFinished = !_syncProgressResolver.IsSnapGetRangesFinished();
 
             if (_logger.IsTrace)
@@ -513,12 +514,14 @@ namespace Nethermind.Synchronization.ParallelSync
                 LogDetailedSyncModeChecks("SNAP_RANGES",
                     (nameof(SnapSyncEnabled), SnapSyncEnabled),
                     (nameof(isCloseToHead), isCloseToHead),
-                    (nameof(snapNotFinished), snapNotFinished));
+                    (nameof(snapNotFinished), snapNotFinished),
+                    (nameof(isFullStateAncientOrNotFound), isFullStateAncientOrNotFound));
             }
 
             return SnapSyncEnabled
                 && isCloseToHead
-                && snapNotFinished;
+                && snapNotFinished 
+                && isFullStateAncientOrNotFound;
         }
 
         private bool HasJustStartedFullSync(Snapshot best) =>

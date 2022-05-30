@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -36,6 +37,7 @@ namespace Nethermind.Synchronization.ParallelSync
         // then we will never have to look 128 back again
         // note that we will be doing that every second or so
         private const int MaxLookupBack = 128;
+        public static readonly Keccak LatestBlockWithFullState = Keccak.Compute(Encoding.ASCII.GetBytes("LatestBlockWithFullStateKey"));
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -49,6 +51,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private readonly long _bodiesBarrier;
         private readonly long _receiptsBarrier;
+
+        private long bestStateCounter = -1;
 
         public SyncProgressResolver(IBlockTree blockTree,
             IReceiptStorage receiptStorage,
@@ -87,7 +91,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // In fast sync we never save the state root unless all the descendant nodes have been stored in the DB.
             return stateRootIsInMemory || _stateDb.Get(stateRoot) != null;
         }
-        
+
         public long FindBestFullState()
         {
             // so the full state can be in a few places but there are some best guesses
@@ -114,6 +118,25 @@ namespace Nethermind.Synchronization.ParallelSync
                 if (bestFullState < bestSuggested?.Number)
                 {
                     bestFullState = Math.Max(bestFullState, SearchForFullState(bestSuggested));
+                }
+            }
+
+            if (bestFullState == 0)
+            {
+                if (bestStateCounter != -1)
+                {
+                    return bestStateCounter;
+                }
+                byte[] bestStatePersistedCounter = _stateDb.Get(LatestBlockWithFullState);
+                bestStateCounter = bestStatePersistedCounter != null ? BitConverter.ToInt64(bestStatePersistedCounter) : 0;
+                return bestStateCounter;
+            }
+            else
+            {
+                if (bestFullState != bestStateCounter)
+                {
+                    _stateDb.Set(LatestBlockWithFullState, BitConverter.GetBytes(bestFullState));
+                    bestStateCounter = bestFullState;
                 }
             }
 
