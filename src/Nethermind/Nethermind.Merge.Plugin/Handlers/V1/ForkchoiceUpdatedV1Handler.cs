@@ -210,10 +210,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             //     return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
             // }
             //
-            // if (nonZeroFinalizedBlockHash)
-            // {
-            //     _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
-            // }
+           
+            if (nonZeroFinalizedBlockHash)
+            {
+                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+            }
             
             // In future safeBlockHash will be added to JSON-RPC
             if (nonZeroSafeBlockHash)
