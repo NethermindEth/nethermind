@@ -71,6 +71,7 @@ namespace Nethermind.Consensus.Processing
         /// <param name="blockTree"></param>
         /// <param name="blockProcessor"></param>
         /// <param name="recoveryStep"></param>
+        /// <param name="stateDb"></param>
         /// <param name="logManager"></param>
         /// <param name="options"></param>
         public BlockchainProcessor(
@@ -567,11 +568,10 @@ namespace Nethermind.Consensus.Processing
                     if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)} in fast sync transition");
 
                     // if we have parent state it means that we don't need to go deeper
-                    if (toBeProcessed == null || _stateDb.KeyExists(toBeProcessed.StateRoot))
+                    if (toBeProcessed?.StateRoot == null || _stateDb.KeyExists(toBeProcessed.StateRoot))
                         break;
                 }
-
-
+                
                 // TODO: there is no test for the second condition
                 // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
                 // then on restart we would find 14 as the branch head (since 14 is on the main chain)
