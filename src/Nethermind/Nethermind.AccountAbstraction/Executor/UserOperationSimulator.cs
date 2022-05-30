@@ -45,7 +45,6 @@ namespace Nethermind.AccountAbstraction.Executor
     public class UserOperationSimulator : IUserOperationSimulator
     {
         private readonly IBlockTree _blockTree;
-        private readonly Address _create2FactoryAddress;
         private readonly IReadOnlyDbProvider _dbProvider;
         private readonly AbiDefinition _entryPointContractAbi;
         private readonly ILogManager _logManager;
@@ -65,7 +64,6 @@ namespace Nethermind.AccountAbstraction.Executor
             IStateProvider stateProvider,
             IStateReader stateReader,
             AbiDefinition entryPointContractAbi,
-            Address create2FactoryAddress,
             Address entryPointContractAddress,
             Address[] whitelistedPaymasters,
             ISpecProvider specProvider,
@@ -79,7 +77,6 @@ namespace Nethermind.AccountAbstraction.Executor
             _stateProvider = stateProvider;
             _stateReader = stateReader;
             _entryPointContractAbi = entryPointContractAbi;
-            _create2FactoryAddress = create2FactoryAddress;
             _entryPointContractAddress = entryPointContractAddress;
             _whitelistedPaymasters = whitelistedPaymasters;
             _specProvider = specProvider;

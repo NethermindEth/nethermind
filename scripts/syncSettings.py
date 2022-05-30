@@ -81,6 +81,22 @@ configs = {
         "url": "https://dai.poa.network",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
+    },
+    # aa section
+    "mainnet_aa": {
+        "url": "api.etherscan.io",
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
+    },
+    "goerli_aa": {
+        "url": "api-goerli.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
+    },
+    "xdai_aa": {
+        "url": "https://dai.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     }
 }
 

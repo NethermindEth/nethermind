@@ -519,7 +519,8 @@ namespace Nethermind.Merge.Plugin.Test
             actualFinalizedHash = blockForRpc.Hash;
             actualFinalizedHash.Should().NotBeNull();
             actualFinalizedHash.Should().Be(startingHead);
-            
+
+            Assert.AreEqual(actualFinalizedHash, chain.BlockFinalizationManager.LastFinalizedHash);
             AssertExecutionStatusChanged(rpc, newHeadHash!, startingHead, startingHead);
         }
         
