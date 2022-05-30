@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -57,7 +57,7 @@ namespace Nethermind.Store.Test
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Commit();
-            provider.Restore(-1);
+            provider.Restore(new Snapshot(Snapshot.EmptyPosition, Snapshot.EmptyPosition, Snapshot.EmptyPosition));
         }
 
         private StorageProvider BuildStorageProvider(Context ctx)

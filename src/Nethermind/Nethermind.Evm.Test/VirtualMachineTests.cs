@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -423,6 +423,28 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset, receipt.GasSpent, "gas");
             Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), Storage.Get(new StorageCell(Recipient, 0)), "storage");
+        }
+
+        [Test]
+        public void Tload()
+        {
+            TestAllTracerWithOutput receipt = Execute(
+                (byte)Instruction.PUSH1,
+                0, // index
+                (byte)Instruction.TLOAD);
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad, receipt.GasSpent, "gas");
+        }
+
+        [Test]
+        public void Tstore()
+        {
+            TestAllTracerWithOutput receipt = Execute(
+                (byte)Instruction.PUSH1,
+                96, // data
+                (byte)Instruction.PUSH1,
+                64, // position
+                (byte)Instruction.TSTORE);
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore, receipt.GasSpent, "gas");
         }
 
         [Test]

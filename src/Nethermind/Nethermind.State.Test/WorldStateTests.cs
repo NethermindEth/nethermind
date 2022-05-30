@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -48,7 +48,7 @@ namespace Nethermind.Store.Test
             Snapshot snapshot = worldState.TakeSnapshot();
 
             snapshot.StateSnapshot.Should().Be(0);
-            snapshot.StorageSnapshot.Should().Be(0);
+            snapshot.PersistentStorageSnapshot.Should().Be(0);
         }
 
         [Test]
@@ -60,11 +60,12 @@ namespace Nethermind.Store.Test
             WorldState worldState = new(stateProvider, storageProvider);
 
             stateProvider.TakeSnapshot().Returns(1);
-            storageProvider.TakeSnapshot().Returns(2);
+            storageProvider.TakeSnapshot().Returns(new Snapshot(1, 2, 3));
             
             Snapshot snapshot = worldState.TakeSnapshot();
             snapshot.StateSnapshot.Should().Be(1);
-            snapshot.StorageSnapshot.Should().Be(2);
+            snapshot.PersistentStorageSnapshot.Should().Be(2);
+            snapshot.TransientStorageSnapshot.Should().Be(3);
         }
         
         [Test]
@@ -85,9 +86,9 @@ namespace Nethermind.Store.Test
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
 
             WorldState worldState = new(stateProvider, storageProvider);
-            worldState.Restore(new Snapshot(1, 2));
+            worldState.Restore(new Snapshot(1, 2, 1));
             stateProvider.Received().Restore(1);
-            storageProvider.Received().Restore(2);
+            storageProvider.Received().Restore(new Snapshot(1, 2, 1));
         }
     }
 }

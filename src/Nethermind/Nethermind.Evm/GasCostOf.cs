@@ -70,5 +70,7 @@ namespace Nethermind.Evm
         
         public const long AccessAccountListEntry = 2400; // eip-2930
         public const long AccessStorageListEntry = 1900; // eip-2930
+        public const long TLoad = 100;
+        public const long TStore = 100;
     }
 }

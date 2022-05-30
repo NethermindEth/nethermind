@@ -2009,6 +2009,58 @@ namespace Nethermind.Evm
 
                         break;
                     }
+                    case Instruction.TLOAD:
+                    {
+                        Metrics.TloadOpcode++;
+                        var gasCost = spec.GetTLoadCost();
+
+                        if (!UpdateGas(gasCost, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+
+                        stack.PopUInt256(out UInt256 storageIndex);
+                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+
+                        byte[] value = _storage.GetTransientState(storageCell);
+                        stack.PushBytes(value);
+
+                        break;
+                        }
+                    case Instruction.TSTORE:
+                    {
+                        Metrics.TstoreOpcode++;
+
+                        if (vmState.IsStatic)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
+                            return CallResult.StaticCallViolationException;
+                        }
+
+                        if (!UpdateGas(spec.GetTStoreCost(), ref gasAvailable))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+
+                        stack.PopUInt256(out UInt256 storageIndex);
+                        Span<byte> newValue = stack.PopBytes();
+                        bool newIsZero = newValue.IsZero();
+                        if (!newIsZero)
+                        {
+                            newValue = newValue.WithoutLeadingZeros().ToArray();
+                        }
+                        else
+                        {
+                            newValue = BytesZero;
+                        }
+
+                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                        _storage.Set(storageCell, newValue.ToArray());
+
+                        break;
+                    }
                     case Instruction.JUMP:
                     {
                         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
