@@ -2011,6 +2011,11 @@ namespace Nethermind.Evm
                     }
                     case Instruction.TLOAD:
                     {
+                        if (!spec.TransientStorageEnabled)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                            return CallResult.InvalidInstructionException;
+                        }
                         Metrics.TloadOpcode++;
                         var gasCost = spec.GetTLoadCost();
 
@@ -2030,6 +2035,11 @@ namespace Nethermind.Evm
                         }
                     case Instruction.TSTORE:
                     {
+                        if (!spec.TransientStorageEnabled)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                            return CallResult.InvalidInstructionException;
+                        }
                         Metrics.TstoreOpcode++;
 
                         if (vmState.IsStatic)

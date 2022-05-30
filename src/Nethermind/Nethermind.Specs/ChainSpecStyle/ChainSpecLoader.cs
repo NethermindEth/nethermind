@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -146,6 +146,7 @@ namespace Nethermind.Specs.ChainSpecStyle
                 Eip3541Transition = chainSpecJson.Params.Eip3541Transition,
                 Eip3529Transition = chainSpecJson.Params.Eip3529Transition,
                 Eip3607Transition = chainSpecJson.Params.Eip3607Transition,
+                Eip1153Transition = chainSpecJson.Params.Eip1153Transition,
                 TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
                 TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
                 ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,

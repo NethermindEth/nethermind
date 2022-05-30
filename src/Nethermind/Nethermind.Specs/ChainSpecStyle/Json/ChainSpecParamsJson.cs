@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -138,5 +138,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public long? Eip1559BaseFeeMinValueTransition { get; set; }
         
         public UInt256? Eip1559BaseFeeMinValue  { get; set; }
+
+        public long? Eip1153Transition { get; set; }
     }
 }
