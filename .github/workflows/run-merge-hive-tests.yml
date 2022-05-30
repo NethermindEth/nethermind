@@ -45,18 +45,23 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: results
-          path: workspace/logs/*.json
+          path: workspace
           retention-days: 7
+      - name: Move Results
+        run: |
+          mv workspace /tmp
       - name: Checkout Printer
         uses: actions/checkout@v2
         with: 
           repository: DockBoss/hiveResults
       - name: Set Up Python
         uses: actions/setup-python@v3
-      - name: Download Results
-        uses: actions/download-artifact@v2
-        with:
-          name: results
-      - name: Print Results
+      - name: Total Results
         run: |
          python res.py
+      - name: Results
+        if: ${{ env.NUM_FAILED }} != 0
+        uses: actions/github-script@v3
+        with:
+          script: |
+            core.setFailed("Some Tests Failed: see logs for more information")
