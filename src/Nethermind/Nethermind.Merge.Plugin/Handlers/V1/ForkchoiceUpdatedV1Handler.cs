@@ -81,11 +81,16 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
             if (_logger.IsInfo) { _logger.Info($"Received: {requestStr}"); }
+
+            if (_blockCacheService.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak lastValidHash))
+            {
+                return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
+            }
             
             Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
             if (newHeadBlock == null)
             {
-                if (!_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
+                if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     _mergeSyncController.InitSyncing(block.Header);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
