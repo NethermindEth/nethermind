@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -175,16 +176,17 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     Block currentBlock = blocks[blockIndex];
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
 
-                    if (!_blockCacheService.PreBlockSuggest(currentBlock.Number, currentBlock.ParentHash))
+                    _blockCacheService.SuggestChildParent(currentBlock.Hash, currentBlock.ParentHash);
+                    if (_blockCacheService.IsOnKnownInvalidChain(currentBlock.Hash, out Keccak? lastValidHash))
                     {
                         throw new EthSyncException(
-                            $"{bestPeer} sent a block while a known invalid ancestor is still not resolved {currentBlock.ToString(Block.Format.Short)}.");
+                            $"{bestPeer} sent a block while a known invalid ancestor is still not resolved {currentBlock.ToString(Block.Format.Short)} Last valid hash: {lastValidHash}.");
                     }
 
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
-                        _blockCacheService.OnInvalidBlock(currentBlock);
+                        _blockCacheService.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
                         throw new EthSyncException(
                             $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
@@ -218,8 +220,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBlock} ShouldProcess: {shouldProcess}");
-                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0,
-                            _blockTree.SuggestBlock(currentBlock, suggestOptions)))
+
+                    AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
+                    if (addResult == AddBlockResult.InvalidBlock)
+                    {
+                        _blockCacheService.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
+                    }
+                    
+                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
                     {
                         if (shouldProcess == false)
                             _blockTree.UpdateMainChain(new[] { currentBlock }, false);

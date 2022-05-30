@@ -19,6 +19,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Synchronization;
 
@@ -30,33 +31,19 @@ public interface IBlockCacheService
     Keccak ProcessDestination { get; set; }
     Keccak SyncingHead { get; set; }
     Keccak FinalizedHash { get; set; }
+
+    /// <summary>
+    /// Suggest that these hash are child parent of each other. Used to determine if a hash is on an invalid chain
+    /// </summary>
+    /// <param name="child"></param>
+    /// <param name="parent"></param>
+    void SuggestChildParent(Keccak child, Keccak parent);
+
+    void OnInvalidBlock(Keccak failedBlock, Keccak parent);
     
-    /*
-     * if a block failed somewhere in sync or processing this will be non-null, and `engine_newPayload` will need to
-     * return the last valid block
-     */
-    Block? LastValidBlockBeforeFailure { get; set; }
-
-    /**
-     * Run on new block, either in sync or in new payload. Return false if block processing should not continue due to
-     * a known invalid ancestor.
-     */
-    bool PreBlockSuggest(long blockNumber, Keccak parentHash)
-    {
-        if (LastValidBlockBeforeFailure != null &&
-            blockNumber > LastValidBlockBeforeFailure.Number &&
-            parentHash != LastValidBlockBeforeFailure.Hash)
-        {
-            return false;
-        }
-        
-        // Either, everything is going fine, or this block is a new child of the failed block.
-        LastValidBlockBeforeFailure = null;
-        return true;
-    }
-
-    void OnInvalidBlock(Block block)
-    {
-        LastValidBlockBeforeFailure = block;
-    }
+    /// <summary>
+    /// Return last valid hash if this block is known to be on an invalid chain.
+    /// Return null otherwise
+    /// </summary>
+    bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash, int lookupLimit = 16);
 }

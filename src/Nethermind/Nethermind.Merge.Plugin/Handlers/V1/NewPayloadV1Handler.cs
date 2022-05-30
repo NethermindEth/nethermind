@@ -73,7 +73,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockCacheService blockCacheService,
             IBlockProcessingQueue processingQueue,
             IMergeSyncController mergeSyncController,
-            
             ILogManager logManager)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -94,6 +93,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             string requestStr = $"a new payload: {request}";
             if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
 
+            _blockCacheService.SuggestChildParent(request.BlockHash, request.ParentHash);
+
+            if (_blockCacheService.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
+            {
+                return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
+            }
+
             request.TryGetBlock(out Block? block);
             if (block == null)
             {
@@ -110,12 +116,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return NewPayloadV1Result.InvalidBlockHash;
             }
-
-
-            if (!_blockCacheService.PreBlockSuggest(request.BlockNumber, request.ParentHash))
-            {
-                return NewPayloadV1Result.Invalid(_blockCacheService.LastValidBlockBeforeFailure.Hash);
-            }
             
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
@@ -131,8 +131,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                            || (blockHeader != null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.Hash ?? blockHeader.CalculateHash()));
                 }
                  */
-                // if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
-                if (_beaconPivot.BeaconPivotExists())
+                if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
                 {
                     bool inserted = TryInsertDanglingBlock(block);
                     if (_logger.IsInfo)
@@ -146,6 +145,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     }
 
                     return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
+                }
+                else
+                {
+                    // Pfft... I don't know
+                    _mergeSyncController.InitSyncing(block.Header);
                 }
 
                 // TODO: What? It just got accepted?
@@ -204,6 +208,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     string resultStr = isValid ? "Valid" : "Invalid";
                     if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}");
+                }
+
+                if (!isValid)
+                {
+                    _blockCacheService.OnInvalidBlock(request.BlockHash, request.ParentHash);
                 }
 
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, isValid, parentHeader,

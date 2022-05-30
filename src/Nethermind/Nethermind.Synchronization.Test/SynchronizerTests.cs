@@ -374,6 +374,7 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         bestPeerStrategy,
                         syncReport,
+                        blockCacheService,
                         _logManager
                     );
                     Synchronizer = new MergeSynchronizer(
