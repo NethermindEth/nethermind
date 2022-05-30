@@ -99,9 +99,7 @@ namespace Nethermind.Merge.Plugin
             if (_terminalBlockNumber == null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
 
-            if (_logger.IsInfo)
-                _logger.Info(
-                    $"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {_hasEverReachedTerminalDifficulty}, Terminal Block Number {_terminalBlockNumber}, FinalTotalDifficulty: {FinalTotalDifficulty}");
+            if (_logger.IsInfo) _logger.Info($"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {_hasEverReachedTerminalDifficulty}, Terminal Block Number {_terminalBlockNumber}, FinalTotalDifficulty: {FinalTotalDifficulty}");
         }
 
         private void LoadFinalTotalDifficulty()
@@ -109,7 +107,7 @@ namespace Nethermind.Merge.Plugin
             _finalTotalDifficulty = _mergeConfig.FinalTotalDifficultyParsed;
 
             // pivot post TTD, so we know FinalTotalDifficulty
-            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty !=null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
+            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty != null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
             {
                 _finalTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
             }
@@ -177,9 +175,7 @@ namespace Nethermind.Merge.Plugin
             {
                 if (_finalizedBlockHash == Keccak.Zero)
                 {
-                    if (_logger.IsInfo)
-                        _logger.Info(
-                            $"Reached the first finalized PoS block FinalizedHash: {finalizedHash}, NewHeadHash: {newHeadHash}");
+                    if (_logger.IsInfo) _logger.Info($"Reached the first finalized PoS block FinalizedHash: {finalizedHash}, NewHeadHash: {newHeadHash}");
                     _blockTree.NewHeadBlock -= CheckIfTerminalBlockReached;
                 }
 
