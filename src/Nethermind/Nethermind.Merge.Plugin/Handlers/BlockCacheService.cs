@@ -42,6 +42,7 @@ public class BlockCacheService : IBlockCacheService
 
     public void OnInvalidBlock(Keccak failedBlock, Keccak parent)
     {
+        SuggestChildParent(failedBlock, parent);
         _failedBlock.Set(failedBlock, parent);
     }
 
@@ -55,7 +56,7 @@ public class BlockCacheService : IBlockCacheService
         if (lookupLimit != 0 && _hashTree.TryGet(blockHash, out Keccak parentBlock))
         {
             // TODO: Add a definitely valid block check, so it would stop early
-            if(IsOnKnownInvalidChain(blockHash, out lastValidHash, lookupLimit - 1))
+            if(IsOnKnownInvalidChain(parentBlock, out lastValidHash, lookupLimit - 1))
             {
                 // So that further call is O(1)
                 _failedBlock.Set(blockHash, lastValidHash);
@@ -65,6 +66,4 @@ public class BlockCacheService : IBlockCacheService
         
         return false;
     }
-
-    public Block? LastValidBlockBeforeFailure { get; set; } = null;
 }

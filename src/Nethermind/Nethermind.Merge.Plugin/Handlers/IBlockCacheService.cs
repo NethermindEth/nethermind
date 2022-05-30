@@ -39,6 +39,11 @@ public interface IBlockCacheService
     /// <param name="parent"></param>
     void SuggestChildParent(Keccak child, Keccak parent);
 
+    /// <summary>
+    /// Mark the block hash as a failed block.
+    /// </summary>
+    /// <param name="failedBlock"></param>
+    /// <param name="parent"></param>
     void OnInvalidBlock(Keccak failedBlock, Keccak parent);
     
     /// <summary>
