@@ -24,8 +24,6 @@ namespace Nethermind.Merge.Gnosis
 {
     public class GnosisMergePlugin : MergePlugin, IInitializationPlugin
     {
-        bool IInitializationPlugin.Enabled => true;
-
         protected override bool MatchVariant(string? variant)
         {
             return variant != null && variant == "AuRa";
@@ -143,6 +141,12 @@ namespace Nethermind.Merge.Gnosis
                     txFilterPipeline
                 );
             }
+        }
+
+        public bool ShouldRunSteps(INethermindApi api)
+        {
+            var mergeConfig = api.Config<IMergeConfig>();
+            return mergeConfig.Enabled && MatchVariant(mergeConfig.Variant);
         }
     }
 }

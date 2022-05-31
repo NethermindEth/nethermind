@@ -19,5 +19,5 @@ namespace Nethermind.Api.Extensions;
 
 public interface IInitializationPlugin : INethermindPlugin
 {
-    bool Enabled { get; }
+    bool ShouldRunSteps(INethermindApi api);
 }

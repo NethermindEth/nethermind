@@ -83,6 +83,6 @@ namespace Nethermind.Consensus.AuRa
         
         public INethermindApi CreateApi() => new AuRaNethermindApi();
 
-        public bool Enabled => true;
+        public bool ShouldRunSteps(INethermindApi api) => true;
     }
 }
