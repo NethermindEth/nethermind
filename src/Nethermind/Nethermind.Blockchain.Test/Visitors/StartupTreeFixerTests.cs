@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
-                testRpc.BlockPreprocessorStep, new MemDb(), LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
             
@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
-                testRpc.BlockPreprocessorStep, new MemDb(), LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
             
@@ -174,7 +174,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
-                testRpc.BlockPreprocessorStep, new MemDb(), LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
             

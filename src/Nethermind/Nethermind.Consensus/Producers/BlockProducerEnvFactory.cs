@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Producers
                     readOnlyBlockTree,
                     blockProcessor,
                     _blockPreprocessorStep,
-                    readOnlyDbProvider.GetDb<IDb>(DbNames.State),
+                    txProcessingEnv.StateReader,
                     _logManager,
                     BlockchainProcessor.Options.NoReceipts);
 

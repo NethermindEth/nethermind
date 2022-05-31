@@ -317,7 +317,7 @@ namespace Nethermind.Synchronization.Test
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
-            BlockchainProcessor processor = new(tree, blockProcessor, step, stateDb, logManager,
+            BlockchainProcessor processor = new(tree, blockProcessor, step, stateReader, logManager,
                 BlockchainProcessor.Options.Default);
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
@@ -340,7 +340,7 @@ namespace Nethermind.Synchronization.Test
                 NullWitnessCollector.Instance,
                 logManager);
 
-            BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateDb, logManager,
+            BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,
                 BlockchainProcessor.Options.NoReceipts);
             ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance, specProvider);
             TxPoolTxSource transactionSelector = new(txPool, specProvider, transactionComparerProvider, logManager, txFilterPipeline);

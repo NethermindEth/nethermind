@@ -31,6 +31,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing
@@ -44,7 +45,7 @@ namespace Nethermind.Consensus.Processing
 
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockPreprocessorStep _recoveryStep;
-        private readonly IDb _stateDb;
+        private readonly IStateReader _stateReader;
         private readonly Options _options;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -71,14 +72,14 @@ namespace Nethermind.Consensus.Processing
         /// <param name="blockTree"></param>
         /// <param name="blockProcessor"></param>
         /// <param name="recoveryStep"></param>
-        /// <param name="stateDb"></param>
+        /// <param name="stateReader"></param>
         /// <param name="logManager"></param>
         /// <param name="options"></param>
         public BlockchainProcessor(
             IBlockTree? blockTree,
             IBlockProcessor? blockProcessor,
             IBlockPreprocessorStep? recoveryStep,
-            IDb stateDb,
+            IStateReader stateReader,
             ILogManager? logManager,
             Options options)
         {
@@ -86,7 +87,7 @@ namespace Nethermind.Consensus.Processing
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _options = options;
 
             _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
@@ -568,7 +569,7 @@ namespace Nethermind.Consensus.Processing
                     if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)} in fast sync transition");
 
                     // if we have parent state it means that we don't need to go deeper
-                    if (toBeProcessed?.StateRoot == null || _stateDb.KeyExists(toBeProcessed.StateRoot))
+                    if (toBeProcessed?.StateRoot == null || _stateReader.HasStateForBlock(toBeProcessed.Header))
                         break;
                 }
                 

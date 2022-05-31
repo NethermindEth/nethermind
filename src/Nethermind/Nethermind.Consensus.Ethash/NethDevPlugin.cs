@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.Ethash
                 readOnlyBlockTree,
                 producerProcessor,
                 getFromApi.BlockPreprocessor,
-                getFromApi.DbProvider.StateDb,
+                getFromApi.StateReader,
                 getFromApi.LogManager,
                 BlockchainProcessor.Options.NoReceipts);
 
