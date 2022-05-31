@@ -33,9 +33,14 @@ public class MergeProcessingRecoveryStep : IBlockPreprocessorStep
     
     public void RecoverData(Block block)
     {
-        if (block.TotalDifficulty != null)
+        if (block.TotalDifficulty is not null)
+        {
             block.Header.IsPostMerge = _poSSwitcher.IsPostMerge(block.Header);
-        if (block.Author == null && block.IsPostMerge)
+        }
+
+        if (block.Author is null && block.IsPostMerge)
+        {
             block.Header.Author = block.Beneficiary;
+        }
     }
 }

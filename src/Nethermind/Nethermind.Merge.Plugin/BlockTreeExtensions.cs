@@ -15,17 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Merge.Plugin
+using Nethermind.Blockchain;
+using Nethermind.Core;
+
+namespace Nethermind.Merge.Plugin;
+
+public static class BlockTreeExtensions
 {
-    // Error codes spec: https://github.com/ethereum/execution-apis/blob/v1.0.0-alpha.5/src/engine/specification.md#errors
-    public static class MergeErrorCodes
-    {
-        public const int None = 0;
-
-        public const int UnknownPayload = -38001;
-        
-        public const int InvalidForkchoiceState = -38002;
-
-        public const int InvalidPayloadAttributes = -38003;
-    }
+    public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, Block block) => 
+        block.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
+    
+    public static bool IsOnMainChainBehindHead(this IBlockTree blockTree, Block block) => 
+        block.Number < (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
 }

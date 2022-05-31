@@ -28,14 +28,15 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers.V1;
 
 namespace Nethermind.Merge.Plugin.Handlers
 {
     /// <summary>
-    /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation.
-    /// Each payload is assigned a payload ID which can be used by the consensus client to retrieve payload later
-    /// by calling a GetPayload method.
-    /// https://hackmd.io/@n0ble/kiln-spec
+    /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation in <see cref="ForkchoiceUpdatedV1Handler"/>.
+    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>
+    /// Each payload is assigned a payloadId which can be used by the consensus client to retrieve payload later by calling a <see cref="GetPayloadV1Handler"/>.
+    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_getpayloadv1"/>
     /// </summary>
     public class PayloadPreparationService : IPayloadPreparationService
     {
@@ -52,7 +53,7 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         // first BlockRequestResult is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, BlockImprovementContext> _payloadStorage = new();
-        private TaskQueue _taskQueue = new();
+        private readonly TaskQueue _taskQueue = new();
 
         public PayloadPreparationService(
             PostMergeBlockProducer blockProducer,
@@ -68,7 +69,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             _sealer = sealer;
             _timeout = TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot);
 
-            _cleanupOldPayloadDelay = 2 * mergeConfig.SecondsPerSlot * 1000; // 2 * slots time * 1000 (converting seconds to miliseconds)
+            _cleanupOldPayloadDelay = 2 * mergeConfig.SecondsPerSlot * 1000; // 2 * slots time * 1000 (converting seconds to milliseconds)
             ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * _timeout);
             timer.Elapsed += CleanupOldPayloads;
             timer.AutoReset = false;
@@ -77,9 +78,9 @@ namespace Nethermind.Merge.Plugin.Handlers
             _logger = logManager.GetClassLogger();
         }
 
-        public string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
-            string payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes).ToHexString(true);
+            string payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             if (!_payloadStorage.ContainsKey(payloadId))
             {
                 payloadAttributes.SuggestedFeeRecipient = _sealer.Address != Address.Zero
@@ -89,8 +90,7 @@ namespace Nethermind.Merge.Plugin.Handlers
                 Task blockImprovementTask = ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock);
                 _taskQueue.Enqueue(() => blockImprovementTask);
             }
-            else
-                if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
+            else if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
 
             return payloadId;
         }
@@ -104,8 +104,7 @@ namespace Nethermind.Merge.Plugin.Handlers
             return emptyBlock;
         }
 
-        private Task ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
-            Block emptyBlock)
+        private Task ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock)
         {
             if (_logger.IsTrace)
                 _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader}");
@@ -176,14 +175,14 @@ namespace Nethermind.Merge.Plugin.Handlers
             return t.Result;
         }
 
-        public Block? GetPayload(byte[] payloadId)
+        public Block? GetPayload(string payloadId)
         {
-            var payloadStr = payloadId.ToHexString(true);
-            if (_payloadStorage.ContainsKey(payloadStr))
+            if (_payloadStorage.TryRemove(payloadId, out BlockImprovementContext? blockContext))
             {
-                _payloadStorage.TryRemove(payloadStr, out BlockImprovementContext? blockContext);
-                blockContext?.Cancel();
-                return blockContext?.CurrentBestBlock;
+                // TODO: We can wait here a bit ~500ms for the block production to complete.
+                // Client software MAY stop the corresponding build process after serving this call.
+                blockContext.Cancel();
+                return blockContext.CurrentBestBlock;
             }
 
             return null;
@@ -191,16 +190,15 @@ namespace Nethermind.Merge.Plugin.Handlers
 
         public event EventHandler<BlockEventArgs>? BlockImproved;
 
-        private byte[] ComputeNextPayloadId(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        private string ComputeNextPayloadId(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
-            byte[] input = new byte[32 + 32 + 32 + 20];
-            Span<byte> inputSpan = input.AsSpan();
+            Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20];
             parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));
             payloadAttributes.Timestamp.ToBigEndian(inputSpan.Slice(32, 32));
             payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
             payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
-            Keccak inputHash = Keccak.Compute(input);
-            return inputHash.Bytes.Slice(0, 8);
+            ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
+            return inputHash.BytesAsSpan.Slice(0, 8).ToHexString(true);
         }
 
         class TaskQueue
