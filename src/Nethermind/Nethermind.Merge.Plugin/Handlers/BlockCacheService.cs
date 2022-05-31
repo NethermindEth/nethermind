@@ -31,39 +31,20 @@ public class BlockCacheService : IBlockCacheService
     public Keccak? SyncingHead { get; set; }
     public Keccak FinalizedHash { get; set; } = Keccak.Zero;
 
-    // Sometimes the full block is not available. 
-    LruCache<Keccak, Keccak> _hashTree = new LruCache<Keccak, Keccak>(256, "HashTree");
-    LruCache<Keccak, Keccak> _failedBlock = new LruCache<Keccak, Keccak>(256, "FailedBlock");
+    private InvalidChainTracker _invalidChainTracker = new InvalidChainTracker();
     
     public void SuggestChildParent(Keccak child, Keccak parent)
     {
-        _hashTree.Set(child, parent);
+        _invalidChainTracker.SetChildParent(child, parent);
     }
 
     public void OnInvalidBlock(Keccak failedBlock, Keccak parent)
     {
-        SuggestChildParent(failedBlock, parent);
-        _failedBlock.Set(failedBlock, parent);
+        _invalidChainTracker.OnInvalidBlock(failedBlock, parent);
     }
 
-    public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash, int lookupLimit = 16)
+    public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
     {
-        if (_failedBlock.TryGet(blockHash, out lastValidHash))
-        {
-            return true;
-        }
-
-        if (lookupLimit != 0 && _hashTree.TryGet(blockHash, out Keccak parentBlock))
-        {
-            // TODO: Add a definitely valid block check, so it would stop early
-            if(IsOnKnownInvalidChain(parentBlock, out lastValidHash, lookupLimit - 1))
-            {
-                // So that further call is O(1)
-                _failedBlock.Set(blockHash, lastValidHash);
-                return true;
-            }
-        }
-        
-        return false;
+        return _invalidChainTracker.IsOnKnownInvalidChain(blockHash, out lastValidHash);
     }
 }

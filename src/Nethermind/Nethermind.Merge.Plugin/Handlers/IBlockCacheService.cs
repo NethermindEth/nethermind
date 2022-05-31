@@ -50,5 +50,5 @@ public interface IBlockCacheService
     /// Return last valid hash if this block is known to be on an invalid chain.
     /// Return null otherwise
     /// </summary>
-    bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash, int lookupLimit = 16);
+    bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash);
 }
