@@ -75,6 +75,16 @@ namespace Nethermind.AccountAbstraction.Source
 
             SetupAndStartTimer();
         }
+
+        public uint GetOpsSeen(Address paymaster)
+        {
+            return _opsSeen.GetOrAdd(paymaster, 0);
+        }
+        
+        public uint GetOpsIncluded(Address paymaster)
+        {
+            return _opsIncluded.GetOrAdd(paymaster, 0);
+        }
         
         /* @dev Adds a new "seen operation" in the throttler's dictionary for a given paymaster.
          * If the paymaster is not in the throttler's records, include it and start its "seen" count at 1. 
@@ -108,12 +118,13 @@ namespace Nethermind.AccountAbstraction.Source
             //Divide operations seen by MinInclusionRateDenominator, rounded down. It is expected that a paymaster has
             //included at least these many operations.
             if (!_opsSeen.ContainsKey(paymaster)) return PaymasterStatus.Ok;
-            minExpectedIncluded = FloorDivision(_opsSeen[paymaster], MinInclusionRateDenominator);
+            minExpectedIncluded = FloorDivision(GetOpsSeen(paymaster), MinInclusionRateDenominator);
             
             //Check if the paymaster has included the required number of operations, and change status as punishment
             //depending on how far behind it has fallen.
-            if (_opsIncluded[paymaster] <= minExpectedIncluded + ThrottlingSlack) return PaymasterStatus.Ok;
-            if (_opsIncluded[paymaster] <= minExpectedIncluded + BanSlack) return PaymasterStatus.Throttled;
+            uint opsIncluded = GetOpsIncluded(paymaster);
+            if (opsIncluded <= minExpectedIncluded + ThrottlingSlack) return PaymasterStatus.Ok;
+            if (opsIncluded <= minExpectedIncluded + BanSlack) return PaymasterStatus.Throttled;
             
             return PaymasterStatus.Banned;
         }
