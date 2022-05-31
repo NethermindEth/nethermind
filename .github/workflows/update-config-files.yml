@@ -36,6 +36,7 @@ jobs:
             - goerli.cfg
             - rinkeby.cfg
             - ropsten.cfg
+            - sepolia.cfg
 
             Properties refreshed:
             - PivotNumber
