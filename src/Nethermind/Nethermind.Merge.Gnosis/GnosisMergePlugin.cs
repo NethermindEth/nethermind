@@ -40,8 +40,6 @@ namespace Nethermind.Merge.Gnosis
             });
         }
 
-        protected override void InitRewardCalculatorSource() { }
-
         protected override ITxSource? CreateTxSource(IStateProvider stateProvider)
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(

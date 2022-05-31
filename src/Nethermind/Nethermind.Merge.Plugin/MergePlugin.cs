@@ -61,12 +61,6 @@ namespace Nethermind.Merge.Plugin
 
         protected virtual bool MatchVariant(string? variant) => variant == null || variant == "Mainnet";
 
-        protected virtual void InitRewardCalculatorSource()
-        {
-            _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
-                _api.RewardCalculatorSource ?? NoBlockRewards.Instance, _poSSwitcher);
-        }
-
         public virtual Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
@@ -89,7 +83,8 @@ namespace Nethermind.Merge.Plugin
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _blockCacheService, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
-                InitRewardCalculatorSource();
+                _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
+                    _api.RewardCalculatorSource ?? NoBlockRewards.Instance, _poSSwitcher);
                 _api.SealValidator = new MergeSealValidator(_poSSwitcher, _api.SealValidator);
 
                 _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
