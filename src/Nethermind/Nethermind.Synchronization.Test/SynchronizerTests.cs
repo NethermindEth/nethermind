@@ -356,6 +356,7 @@ namespace Nethermind.Synchronization.Test
                     syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
                 Pivot pivot = new (syncConfig);
 
+                InvalidChainTracker invalidChainTracker = new();
                 IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
                 {
@@ -374,7 +375,7 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         bestPeerStrategy,
                         syncReport,
-                        blockCacheService,
+                        invalidChainTracker,
                         _logManager
                     );
                     Synchronizer = new MergeSynchronizer(

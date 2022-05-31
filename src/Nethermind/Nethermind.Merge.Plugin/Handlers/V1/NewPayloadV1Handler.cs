@@ -16,12 +16,10 @@
 // 
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -30,14 +28,12 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -58,9 +54,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockCacheService _blockCacheService;
         private readonly IBlockProcessingQueue _processingQueue;
         private readonly IMergeSyncController _mergeSyncController;
+        private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
-        private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
@@ -72,6 +68,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBeaconPivot beaconPivot,
             IBlockCacheService blockCacheService,
             IBlockProcessingQueue processingQueue,
+            IInvalidChainTracker invalidChainTracker,
             IMergeSyncController mergeSyncController,
             ILogManager logManager)
         {
@@ -84,6 +81,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
             _processingQueue = processingQueue;
+            _invalidChainTracker = invalidChainTracker; 
             _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
         }
@@ -93,13 +91,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             string requestStr = $"a new payload: {request}";
             if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
 
-            _blockCacheService.SuggestChildParent(request.BlockHash, request.ParentHash);
-
-            if (_blockCacheService.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
-            {
-                return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
-            }
-
             request.TryGetBlock(out Block? block);
             if (block == null)
             {
@@ -107,6 +98,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _logger.Warn($"Invalid block. Result of {requestStr}");
 
                 return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
+            }
+            
+            _invalidChainTracker.SuggestChildParent(request.BlockHash, request.ParentHash);
+            if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
+            {
+                return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
             }
 
             if (_blockValidator.ValidateHash(block.Header) == false)
@@ -212,7 +209,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 if (!isValid)
                 {
-                    _blockCacheService.OnInvalidBlock(request.BlockHash, request.ParentHash);
+                    _invalidChainTracker.OnInvalidBlock(request.BlockHash, request.ParentHash);
                 }
 
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, isValid, parentHeader,
@@ -337,20 +334,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 payloadStatus.ValidationError = validationMessage;
                 payloadStatus.Status = PayloadStatus.Invalid;
-                if (_lastValidHashes.ContainsKey(request.ParentHash))
+                if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
                 {
-                    if (_lastValidHashes.TryRemove(request.ParentHash, out Keccak? lastValidHash))
-                    {
-                        _lastValidHashes.TryAdd(request.BlockHash, lastValidHash);
-                    }
-
                     payloadStatus.LatestValidHash = lastValidHash;
                 }
                 else
                 {
                     if (parent != null)
                     {
-                        _lastValidHashes.TryAdd(request.BlockHash, request.ParentHash);
                         payloadStatus.LatestValidHash = request.ParentHash;
                     }
                     else

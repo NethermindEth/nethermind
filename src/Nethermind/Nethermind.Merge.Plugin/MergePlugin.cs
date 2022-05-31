@@ -52,6 +52,7 @@ namespace Nethermind.Merge.Plugin
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService;
+        private IInvalidChainTracker _invalidChainTracker;
         private IPeerRefresher _peerRefresher;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
@@ -77,6 +78,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 
                 _blockCacheService = new BlockCacheService();
+                _invalidChainTracker = new InvalidChainTracker();
                 _poSSwitcher = new PoSSwitcher(_mergeConfig, _syncConfig,
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _blockCacheService, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
@@ -165,6 +167,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconPivot,
                         _blockCacheService,         
                         _api.BlockProcessingQueue,
+                        _invalidChainTracker,
                         _beaconSync,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
@@ -174,6 +177,7 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockConfirmationManager,
                         payloadPreparationService,
                         _blockCacheService,
+                        _invalidChainTracker,
                         _beaconSync,
                         _peerRefresher,
                         _api.LogManager),
@@ -243,7 +247,7 @@ namespace Nethermind.Merge.Plugin
                     _syncConfig,
                     _api.BetterPeerStrategy!,
                     syncReport,
-                    _blockCacheService,
+                    _invalidChainTracker,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(
                     _api.DbProvider, 

@@ -48,7 +48,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IReceiptStorage _receiptStorage;
         private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IBlockCacheService _blockCacheService;
+        private readonly IInvalidChainTracker _invalidChainTracker;
         private int _sinceLastTimeout;
 
         public MergeBlockDownloader(
@@ -64,7 +64,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISpecProvider specProvider,
             IBetterPeerStrategy betterPeerStrategy,
             IChainLevelHelper chainLevelHelper,
-            IBlockCacheService blockCacheService,
+            IInvalidChainTracker invalidChainTracker,
             ILogManager logManager)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
                 specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, logManager),
@@ -79,7 +79,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _beaconPivot = beaconPivot;
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, logManager), specProvider);
-            _blockCacheService = blockCacheService;
+            _invalidChainTracker = invalidChainTracker;
             _logger = logManager.GetClassLogger();
         }
 
@@ -176,8 +176,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     Block currentBlock = blocks[blockIndex];
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
 
-                    _blockCacheService.SuggestChildParent(currentBlock.Hash, currentBlock.ParentHash);
-                    if (_blockCacheService.IsOnKnownInvalidChain(currentBlock.Hash, out Keccak? lastValidHash))
+                    _invalidChainTracker.SuggestChildParent(currentBlock.Hash, currentBlock.ParentHash);
+                    if (_invalidChainTracker.IsOnKnownInvalidChain(currentBlock.Hash, out Keccak? lastValidHash))
                     {
                         throw new EthSyncException(
                             $"{bestPeer} sent a block while a known invalid ancestor is still not resolved {currentBlock.ToString(Block.Format.Short)} Last valid hash: {lastValidHash}.");
@@ -186,7 +186,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
-                        _blockCacheService.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
+                        _invalidChainTracker.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
                         throw new EthSyncException(
                             $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
@@ -224,7 +224,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
                     if (addResult == AddBlockResult.InvalidBlock)
                     {
-                        _blockCacheService.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
+                        _invalidChainTracker.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
                     }
                     
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))

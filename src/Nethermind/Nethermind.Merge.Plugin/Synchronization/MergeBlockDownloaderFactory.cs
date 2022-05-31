@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
-        private readonly IBlockCacheService _blockCacheService;
+        private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly IChainLevelHelper _chainLevelHelper;
 
         public MergeBlockDownloaderFactory(
@@ -61,7 +61,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISyncConfig syncConfig,
             IBetterPeerStrategy betterPeerStrategy,
             ISyncReport syncReport,
-            IBlockCacheService blockCacheService,
+            IInvalidChainTracker invalidChainTracker,
             ILogManager logManager)
         {
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
@@ -76,13 +76,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _chainLevelHelper = new ChainLevelHelper(_blockTree, syncConfig, _logManager);
-            _blockCacheService = blockCacheService;
+            _invalidChainTracker = invalidChainTracker;
         }
 
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
-                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper, _blockCacheService,
+                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper, _invalidChainTracker,
                 _logManager);
         }
     }

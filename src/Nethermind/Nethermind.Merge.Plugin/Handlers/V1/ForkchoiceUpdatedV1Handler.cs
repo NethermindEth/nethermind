@@ -24,14 +24,11 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -47,6 +44,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockConfirmationManager _blockConfirmationManager;
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly IBlockCacheService _blockCacheService;
+        private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private readonly IPeerRefresher _peerRefresher;
@@ -59,6 +57,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockConfirmationManager blockConfirmationManager,
             IPayloadPreparationService payloadPreparationService,
             IBlockCacheService blockCacheService,
+            IInvalidChainTracker invalidChainTracker,
             IMergeSyncController mergeSyncController,
             IPeerRefresher peerRefresher,
             ILogManager logManager)
@@ -71,6 +70,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                                         throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadPreparationService = payloadPreparationService;
             _blockCacheService = blockCacheService;
+            _invalidChainTracker = invalidChainTracker;
             _mergeSyncController = mergeSyncController;
             _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
@@ -82,7 +82,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
             if (_logger.IsInfo) { _logger.Info($"Received: {requestStr}"); }
 
-            if (_blockCacheService.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak lastValidHash))
+            if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak lastValidHash))
             {
                 return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
             }

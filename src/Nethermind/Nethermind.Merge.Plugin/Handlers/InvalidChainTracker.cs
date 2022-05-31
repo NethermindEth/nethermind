@@ -21,12 +21,21 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, LowestValidBlock, LowestValidBlock>
+/// <summary>
+/// Something that tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to
+/// be invalid.
+/// </summary>
+public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, LowestValidBlock, LowestValidBlock>, IInvalidChainTracker
 {
     public InvalidChainTracker(): base(256, 1024) {
     }
     
     public InvalidChainTracker(int maxKeyHandle, int maxSectionSize): base(maxKeyHandle, maxSectionSize) {
+    }
+
+    public void SuggestChildParent(Keccak child, Keccak parent)
+    {
+        SetChildParent(child, parent);
     }
 
     public void OnInvalidBlock(Keccak failedBlock, Keccak parent)
