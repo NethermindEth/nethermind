@@ -21,15 +21,15 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -92,7 +92,7 @@ namespace Nethermind.Clique.Test
                 if (_logger.IsInfo) _logger.Info($"CREATING NODE {privateKey.Address}");
                 _logManagers[privateKey] = LimboLogs.Instance;
 //                _logManagers[privateKey] = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug, $"{privateKey.Address} "));
-                var nodeLogManager = _logManagers[privateKey]; 
+                ILogManager nodeLogManager = _logManagers[privateKey]; 
                 
                 AutoResetEvent newHeadBlockEvent = new(false);
                 _blockEvents.Add(privateKey, newHeadBlockEvent);
@@ -150,7 +150,7 @@ namespace Nethermind.Clique.Test
                 BlockchainProcessor processor = new(blockTree, blockProcessor, new AuthorRecoveryStep(snapshotManager), nodeLogManager, BlockchainProcessor.Options.NoReceipts);
                 processor.Start();
 
-                var minerTrieStore = trieStore.AsReadOnly();
+                IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
               
                 StateProvider minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
                 StorageProvider minerStorageProvider = new(minerTrieStore, minerStateProvider, nodeLogManager);
@@ -190,9 +190,9 @@ namespace Nethermind.Clique.Test
                     MainnetSpecProvider.Instance, 
                     _cliqueConfig,
                     nodeLogManager);
-
-                var suggester = new ProducedBlockSuggester(blockTree, blockProducer);
                 blockProducer.Start();
+                
+                ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, blockProducer);
 
                 _producers.Add(privateKey, blockProducer);
 
@@ -378,7 +378,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING {count} SIGNERS AT BLOCK {number}");
-                var header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
+                BlockHeader header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
                 Assert.AreEqual(count, _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Signers.Count, nodeKey + " signers count");
                 return this;
             }
@@ -388,7 +388,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING EMPTY TALLY FOR {privateKeyB.Address} EMPTY AT {number}");
-                var header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
+                BlockHeader header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
                 Assert.AreEqual(false, _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Tally.ContainsKey(privateKeyB.Address), nodeKey + " tally empty");
                 return this;
             }
@@ -682,7 +682,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public async Task Can_vote_a_validator_in()
         {
-            var goerli = On.FastGoerli;
+            On goerli = On.FastGoerli;
             goerli
                 .CreateNode(TestItem.PrivateKeyA)
                 .CreateNode(TestItem.PrivateKeyB)
@@ -710,7 +710,7 @@ namespace Nethermind.Clique.Test
         [Test, Retry(3)]
         public async Task Can_vote_a_validator_out()
         {
-            var goerli = On.FastGoerli;
+            On goerli = On.FastGoerli;
             goerli
                 .CreateNode(TestItem.PrivateKeyA)
                 .CreateNode(TestItem.PrivateKeyB)
@@ -796,7 +796,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public async Task Can_reorganize_when_receiving_in_turn_blocks()
         {
-            var goerli = On.FastGoerli;
+            On goerli = On.FastGoerli;
             goerli
                 .CreateNode(TestItem.PrivateKeyB)
                 .CreateNode(TestItem.PrivateKeyA)
@@ -813,7 +813,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public async Task Ignores_blocks_from_bad_network()
         {
-            var goerli = On.FastGoerli;
+            On goerli = On.FastGoerli;
             goerli
                 .CreateNode(TestItem.PrivateKeyB)
                 .ProcessGenesis(TestItem.PrivateKeyB)
@@ -835,7 +835,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public async Task Waits_for_block_timestamp_before_broadcasting()
         {
-            var goerli = On.Goerli;
+            On goerli = On.Goerli;
             goerli
                 .CreateNode(TestItem.PrivateKeyB)
                 .CreateNode(TestItem.PrivateKeyA)
@@ -870,7 +870,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public async Task Can_stop()
         {
-            var goerli = On.Goerli
+            On goerli = On.Goerli
                 .CreateNode(TestItem.PrivateKeyA);
 
             await goerli.StopNode(TestItem.PrivateKeyA);
@@ -887,7 +887,7 @@ namespace Nethermind.Clique.Test
         {
             PrivateKey[] keys = new[] {TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC}.OrderBy(pk => pk.Address, AddressComparer.Instance).ToArray();
 
-            var goerli = On.FastGoerli;
+            On goerli = On.FastGoerli;
             for (int i = 0; i < keys.Length; i++)
             {
                 goerli
@@ -898,11 +898,11 @@ namespace Nethermind.Clique.Test
 
             for (int i = 1; i <= 10; i++)
             {
-                var inTurnKey = keys[i % 3];
+                PrivateKey inTurnKey = keys[i % 3];
                 goerli.AddPendingTransaction(keys[(i + 1) % 3]);
                 for (int j = 0; j < keys.Length; j++)
                 {
-                    var nodeKey = keys[j];
+                    PrivateKey nodeKey = keys[j];
                     if (!nodeKey.Equals(inTurnKey))
                     {
                         goerli.Process(nodeKey, goerli.GetBlock(inTurnKey, i));

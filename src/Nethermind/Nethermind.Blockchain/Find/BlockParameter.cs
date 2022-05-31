@@ -15,10 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.HashLib;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Find
 {
@@ -29,6 +26,10 @@ namespace Nethermind.Blockchain.Find
         public static BlockParameter Pending = new(BlockParameterType.Pending);
 
         public static BlockParameter Latest = new(BlockParameterType.Latest);
+        
+        public static BlockParameter Finalized = new(BlockParameterType.Finalized);
+        
+        public static BlockParameter Safe = new(BlockParameterType.Safe);
 
         public BlockParameterType Type { get; }
         public long? BlockNumber { get; }

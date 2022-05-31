@@ -33,6 +33,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncModeSelector _syncModeSelector;
+        private readonly IPivot _pivot;
         private readonly ILogger _logger;
 
         private SyncPeersReport _syncPeersReport;
@@ -49,12 +50,13 @@ namespace Nethermind.Synchronization.Reporting
             set => _timer.Interval = value;
         }
 
-        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, ILogManager logManager, double tickTime = 1000)
+        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncModeSelector syncModeSelector, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, double tickTime = 1000)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+            _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
 
             _fastBlocksPivotNumber = _syncConfig.PivotNumberParsed;
@@ -131,6 +133,8 @@ namespace Nethermind.Synchronization.Reporting
 
         public MeasuredProgress FullSyncBlocksDownloaded { get; } = new();
 
+        public MeasuredProgress BeaconHeaders { get; } = new();
+
         public long FullSyncBlocksKnown { get; set; }
 
         private static string Pad(decimal value, int length)
@@ -206,6 +210,11 @@ namespace Nethermind.Synchronization.Reporting
             if ((currentSyncMode & SyncMode.FastSync) == SyncMode.FastSync)
             {
                 WriteFullSyncReport();
+            }
+
+            if ((currentSyncMode & SyncMode.BeaconHeaders) == SyncMode.BeaconHeaders)
+            {
+                WriteBeaconSyncReport();
             }
         }
 
@@ -301,6 +310,15 @@ namespace Nethermind.Synchronization.Reporting
                 _logger.Info($"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedPivot} | queue {Pad(ReceiptsInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksReceipts.TotalPerSecond, SpeedPaddingLength)}bps");
                 FastBlocksReceipts.SetMeasuringPoint();
             }
+        }
+
+        private void WriteBeaconSyncReport()
+        {
+            long numHeadersToDownload = _pivot.PivotNumber - _pivot.PivotDestinationNumber + 1;
+            int paddingLength = numHeadersToDownload.ToString().Length;
+            _logger.Info($"Beacon Headers from block {_pivot.PivotDestinationNumber} to block {_pivot.PivotNumber} | "
+                         + $"{Pad(BeaconHeaders.CurrentValue, paddingLength)} / {Pad(numHeadersToDownload, paddingLength)} | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(BeaconHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(BeaconHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
+            BeaconHeaders.SetMeasuringPoint();
         }
 
         public void Dispose()

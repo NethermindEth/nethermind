@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc.Modules
     {
         public const string Admin = nameof(Admin);
         public const string Clique = nameof(Clique);
-        public const string Consensus = nameof(Consensus);
+        public const string Engine = nameof(Engine);
         public const string Db = nameof(Db);
         public const string Debug = nameof(Debug);
         public const string Erc20 = nameof(Erc20);
@@ -52,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules
         {
             Admin,
             Clique,
-            Consensus,
+            Engine,
             Db,
             Debug,
             Erc20,

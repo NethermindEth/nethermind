@@ -52,6 +52,7 @@
     <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
+	  <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
@@ -84,6 +85,9 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Update="..\Chains\themerge_devnet_m4.json">
+      <Link>chainspec\themerge_devnet_m4.json</Link>
     </Content>
   </ItemGroup>
   <ItemGroup>
@@ -133,6 +137,7 @@
 
     <Target Name="CopyPluginsAfterPublish" AfterTargets="AfterPublish">
     <Message Text="---&gt; Copying Plugins After Publish" Importance="High" />
+    <Copy SourceFiles="@(PluginsForBuild)" DestinationFolder="$(OutDir)\plugins" />
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" /> 
   </Target>
  </Project>

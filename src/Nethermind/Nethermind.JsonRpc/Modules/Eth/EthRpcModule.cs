@@ -615,13 +615,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
-            IEnumerable<FilterLog> GetLogs(BlockParameter blockParameter, BlockParameter toBlockParameter,
-                CancellationTokenSource cancellationTokenSource, CancellationToken token)
+            IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
             {
                 using (cancellationTokenSource)
                 {
-                    foreach (FilterLog log in _blockchainBridge.GetLogs(blockParameter, toBlockParameter,
-                        filter.Address, filter.Topics, token))
+                    foreach (FilterLog log in logs)
                     {
                         yield return log;
                     }
@@ -656,8 +654,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"'From' block '{fromBlockNumber}' is later than 'to' block '{toBlockNumber}'.", ErrorCodes.InvalidParams);
             }
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filter.FromBlock, filter.ToBlock,
-                cancellationTokenSource, cancellationToken));
+            try
+            {
+                IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(filter.FromBlock, filter.ToBlock,
+                    filter.Address, filter.Topics, cancellationToken);
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
+            }
+            catch (ResourceNotFoundException exception)
+            {
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(exception.Message, ErrorCodes.ResourceNotFound);
+            }
         }
 
         public ResultWrapper<IEnumerable<byte[]>> eth_getWork()

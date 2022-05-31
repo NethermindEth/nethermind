@@ -60,7 +60,8 @@
         "eip1559Transition": "0xA03549",
         "eip3198Transition": "0xA03549",
         "eip3529Transition": "0xA03549",
-        "eip3541Transition": "0xA03549"
+        "eip3541Transition": "0xA03549",
+        "terminalTotalDifficulty": "152D02C7E14AF6800000"
     },
 	"genesis": {
 		"seal": {

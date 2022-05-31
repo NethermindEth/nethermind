@@ -18,13 +18,13 @@
 using System.Collections.Generic;
 using System.Threading;
 using FluentAssertions;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;

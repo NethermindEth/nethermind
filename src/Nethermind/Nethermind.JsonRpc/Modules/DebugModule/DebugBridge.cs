@@ -22,8 +22,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -65,6 +65,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             IDb headersDb = dbProvider.HeadersDb ?? throw new ArgumentNullException(nameof(dbProvider.HeadersDb));
             IDb receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
             IDb codeDb = dbProvider.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
+            IDb metadataDb = dbProvider.MetadataDb ?? throw new ArgumentNullException(nameof(dbProvider.MetadataDb));
 
             _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
             {
@@ -73,6 +74,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 {DbNames.BlockInfos, blockInfosDb},
                 {DbNames.Blocks, blocksDb},
                 {DbNames.Headers, headersDb},
+                {DbNames.Metadata, metadataDb},
                 {DbNames.Code, codeDb},
                 {DbNames.Receipts, receiptsDb},
             };

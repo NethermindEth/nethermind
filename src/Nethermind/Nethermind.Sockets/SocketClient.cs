@@ -1,9 +1,11 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
 
@@ -11,7 +13,7 @@ namespace Nethermind.Sockets
 {
     public class SocketClient : ISocketsClient
     {
-        public const int MAX_POOLED_SIZE = 1024 * 1024;
+        public const int MAX_POOLED_SIZE = 5 * 1024 * 1024; // TODO: Either resize down or change to LargerArrayPool
 
         protected readonly ISocketHandler _handler;
         protected readonly IJsonSerializer _jsonSerializer;

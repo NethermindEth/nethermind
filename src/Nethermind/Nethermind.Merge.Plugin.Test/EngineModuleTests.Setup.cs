@@ -18,65 +18,110 @@
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
+using Nethermind.Core.Timers;
+using Nethermind.Db;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Runner.Ethereum;
+using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
+using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain() => await new MergeTestBlockchain(new ManualTimestamper()).Build(new SingleReleaseSpecProvider(Berlin.Instance, 1));
+        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) 
+            => await new MergeTestBlockchain(mergeConfig, mockedPayloadService)
+                .Build(
+                    new SingleReleaseSpecProvider(London.Instance, 1));
 
-        private IEngineRpcModule CreateConsensusModule(MergeTestBlockchain chain)
+        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
         {
+            IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
+            
+            chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), chain.MergeConfig, new MemDb(), chain.BlockTree, peerRefresher, chain.LogManager);
+            BlockCacheService blockCacheService = new();
+            chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
-                new AssembleBlockHandler(chain.BlockTree, chain.BlockProductionTrigger, chain.Timestamper, chain.LogManager),
-                new NewBlockHandler(chain.BlockTree, chain.BlockPreprocessorStep, chain.BlockchainProcessor, chain.State, new InitConfig(), chain.LogManager),
-                new SetHeadBlockHandler(chain.BlockTree, chain.State, chain.LogManager),
-                new FinaliseBlockHandler(chain.BlockFinder, chain.BlockFinalizationManager, chain.LogManager),
+                new GetPayloadV1Handler(chain.PayloadPreparationService!, chain.LogManager),
+                new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, new InitConfig(), chain.PoSSwitcher, chain.BeaconSync, chain.BeaconPivot, blockCacheService, chain.BlockProcessingQueue, chain.BeaconSync, chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.PayloadPreparationService!, blockCacheService, chain.BeaconSync, peerRefresher, chain.LogManager),
+                new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
+                new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
+                new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
                 chain.LogManager);
         }
 
         private class MergeTestBlockchain : TestBlockchain
         {
-            public MergeTestBlockchain(ManualTimestamper timestamper)
+            public IMergeConfig MergeConfig { get; set; }
+            
+            public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
+
+            public IPayloadPreparationService? PayloadPreparationService { get; set; }
+
+            public ISealValidator SealValidator { get; set; }
+
+            public IManualBlockProductionTrigger BlockProductionTrigger { get; set; } = new BuildBlocksWhenRequested();
+            
+            public IBeaconPivot BeaconPivot { get; set; }
+            
+            public BeaconSync BeaconSync { get; set; }
+
+            public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             {
-                Timestamper = timestamper;
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
-                Signer = new Eth2Signer(MinerAddress);
+                BlockConfirmationManager = new BlockConfirmationManager();
+                MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
+                PayloadPreparationService = mockedPayloadPreparationService;
             }
             
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-            public override ILogManager LogManager { get; } = new NUnitLogManager();
+            public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
             
-            private IBlockValidator BlockValidator { get; set; } = null!;
-
-            private ISigner Signer { get; }
+            public IEthSyncingInfo EthSyncingInfo { get; private set; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
-                MiningConfig miningConfig = new();
+                Address feeRecipient = !string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero;
+                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, feeRecipient, SealValidator, LogManager);
+                IBlockProducer preMergeBlockProducer =
+                    base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
+                MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
-                
+                EthSyncingInfo = new EthSyncingInfo(BlockTree);
+                PostMergeBlockProducerFactory? blockProducerFactory = new(
+                    SpecProvider,
+                    SealEngine,
+                    Timestamper,
+                    miningConfig,
+                    LogManager,
+                    targetAdjustedGasLimitCalculator);
+
                 BlockProducerEnvFactory blockProducerEnvFactory = new(
                     DbProvider, 
                     BlockTree, 
@@ -90,16 +135,15 @@ namespace Nethermind.Merge.Plugin.Test
                     transactionComparerProvider,
                     miningConfig,
                     LogManager);
-                
-                return new Eth2TestBlockProducerFactory(targetAdjustedGasLimitCalculator).Create(
-                    blockProducerEnvFactory,
-                    BlockTree,
-                    BlockProductionTrigger,
-                    SpecProvider,
-                    Signer,
-                    Timestamper,
-                    miningConfig,
-                    LogManager);
+
+
+                BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+                PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
+                    blockProducerEnv, BlockProductionTrigger);
+                PostMergeBlockProducer = postMergeBlockProducer;
+                PayloadPreparationService ??= new PayloadPreparationService(postMergeBlockProducer, BlockProductionTrigger, SealEngine,
+                    MergeConfig, TimerFactory.Default, LogManager);
+                return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
             }
             
             protected override BlockProcessor CreateBlockProcessor()
@@ -119,24 +163,23 @@ namespace Nethermind.Merge.Plugin.Test
 
             private IBlockValidator CreateBlockValidator()
             {
-                HeaderValidator headerValidator = new(BlockTree, new Eth2SealEngine(Signer), SpecProvider, LogManager);
+                IBlockCacheService blockCacheService = new BlockCacheService();
+                PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, blockCacheService, LogManager);
+                SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
+                HeaderValidator = new MergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealValidator, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
-                    headerValidator,
+                    HeaderValidator,
                     Always.Valid,
                     SpecProvider,
                     LogManager);
             }
-
-            public Address MinerAddress => TestItem.PrivateKeyA.Address;
             public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
-                await chain.BlockchainProcessor.StopAsync(true);
-                Suggester.Dispose();
                 return chain;
             }
 

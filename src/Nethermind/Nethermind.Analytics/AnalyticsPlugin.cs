@@ -90,7 +90,7 @@ namespace Nethermind.Analytics
             
             if (_isOn)
             {
-                AnalyticsWebSocketsModule webSocketsModule = new AnalyticsWebSocketsModule(getFromAPi.EthereumJsonSerializer, getFromAPi.LogManager);
+                AnalyticsWebSocketsModule webSocketsModule = new(getFromAPi.EthereumJsonSerializer, getFromAPi.LogManager);
                 getFromAPi.WebSocketsManager!.AddModule(webSocketsModule, true);
                 getFromAPi.Publishers.Add(webSocketsModule);
             }
@@ -103,7 +103,7 @@ namespace Nethermind.Analytics
         public Task InitRpcModules()
         {
             var (getFromAPi, _) = _api.ForRpc;
-            AnalyticsRpcModule analyticsRpcModule = new AnalyticsRpcModule(
+            AnalyticsRpcModule analyticsRpcModule = new(
                 getFromAPi.BlockTree, getFromAPi.StateReader, getFromAPi.LogManager);
             getFromAPi.RpcModuleProvider.Register(new SingletonModulePool<IAnalyticsRpcModule>(analyticsRpcModule));
             return Task.CompletedTask;

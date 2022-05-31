@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -46,35 +47,46 @@ namespace Nethermind.Blockchain
         /// Best block that has been suggested for processing
         /// </summary>
         Block BestSuggestedBody { get; }
+        
+        BlockHeader? BestSuggestedBeaconHeader { get; }
 
         /// <summary>
-        /// Lowest header added in reverse insert
+        /// Lowest header added in reverse fast sync insert
         /// </summary>
         BlockHeader? LowestInsertedHeader { get; }
 
         /// <summary>
-        /// Lowest body added in reverse insert
+        /// Lowest body added in reverse fast sync insert
         /// </summary>
         long? LowestInsertedBodyNumber { get; set; }
+        
+        /// <summary>
+        /// Lowest header number added in reverse beacon sync insert
+        /// </summary>
+        BlockHeader? LowestInsertedBeaconHeader { get; set; }
 
         /// <summary>
         /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
         long BestKnownNumber { get; }
+        
+        
+        long BestKnownBeaconNumber { get; }
 
         /// <summary>
         /// Inserts a disconnected block header (without body)
         /// </summary>
         /// <param name="header">Header to add</param>
+        /// <param name="options"></param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(BlockHeader header);
+        AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options = BlockTreeInsertOptions.None);
 
         /// <summary>
         /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(Block block);
+        AddBlockResult Insert(Block block, bool saveHeader = false, BlockTreeInsertOptions options = BlockTreeInsertOptions.None);
 
         void Insert(IEnumerable<Block> blocks);
 
@@ -86,7 +98,7 @@ namespace Nethermind.Blockchain
         /// <param name="block">Block to be included</param>
         /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult SuggestBlock(Block block, bool shouldProcess = true, bool? setAsMain = null);
+        AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null);
         
         /// <summary>
         /// Suggests block for inclusion in the block tree. Wait for DB unlock if needed.
@@ -94,7 +106,7 @@ namespace Nethermind.Blockchain
         /// <param name="block">Block to be included</param>
         /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        Task<AddBlockResult> SuggestBlockAsync(Block block, bool shouldProcess = true, bool? setAsMain = null);
+        Task<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null);
 
         /// <summary>
         /// Suggests a block header (without body)
@@ -110,6 +122,14 @@ namespace Nethermind.Blockchain
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
         bool IsKnownBlock(long number, Keccak blockHash);
+        
+        /// <summary>
+        /// Checks if beacon block was inserted and the block RLP is in the DB
+        /// </summary>
+        /// <param name="number">Number of the block to check (needed for faster lookup)</param>
+        /// <param name="blockHash">Hash of the block to check</param>
+        /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
+        bool IsKnownBeaconBlock(long number, Keccak blockHash);
 
         /// <summary>
         /// Checks if the state changes of the block can be found in the state tree.
@@ -126,10 +146,14 @@ namespace Nethermind.Blockchain
         /// <param name="wereProcessed"></param>
         /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
         void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false);
+        
+        void MarkChainAsProcessed(Block[] blocks);
 
         bool CanAcceptNewBlocks { get; }
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
+
+        UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null);
 
         ChainLevelInfo? FindLevel(long number);
 
@@ -144,38 +168,17 @@ namespace Nethermind.Blockchain
 
         void DeleteInvalidBlock(Block invalidBlock);
 
+        void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash);
+
+        void LoadLowestInsertedBeaconHeader();
+
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewHeadBlock;
-        
+
         int DeleteChainSlice(in long startNumber, long? endNumber = null);
 
-        bool IsBetterThanHead(BlockHeader? header)
-        {
-            bool result = false;
-            if (header is not null)
-            {
-                if (header.IsGenesis && Genesis is null)
-                {
-                    result = true;
-                }
-                else
-                {
-                    result = header.TotalDifficulty > (Head?.TotalDifficulty ?? 0)
-                             // so above is better and more correct but creates an impression of the node staying behind on stats page
-                             // so we are okay to process slightly more
-                             // and below is less correct but potentially reporting well
-                             // || totalDifficulty >= (_blockTree.Head?.TotalDifficulty ?? 0)
-                             // below are some new conditions under test
-                             || (header.TotalDifficulty == Head?.TotalDifficulty &&
-                                 ((Head?.Hash ?? Keccak.Zero).CompareTo(header.Hash) > 0))
-                             || (header.TotalDifficulty == Head?.TotalDifficulty &&
-                                 ((Head?.Number ?? 0L).CompareTo(header.Number) > 0));
-                }
-            }
-
-            return result;
-        }
+        bool IsBetterThanHead(BlockHeader? header);
     }
 }

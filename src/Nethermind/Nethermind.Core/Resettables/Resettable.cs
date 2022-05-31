@@ -16,7 +16,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
 
 namespace Nethermind.Core.Resettables
 {

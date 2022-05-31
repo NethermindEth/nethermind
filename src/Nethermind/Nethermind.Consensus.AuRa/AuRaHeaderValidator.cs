@@ -18,7 +18,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa
         public AuRaHeaderValidator(
             IBlockTree blockTree, 
             ISealValidator sealValidator, 
-            ISpecProvider specProvider, 
+            ISpecProvider specProvider,
             ILogManager logManager,
             IList<long> blockGasLimitContractTransitions)
             : base(blockTree, sealValidator, specProvider, logManager)

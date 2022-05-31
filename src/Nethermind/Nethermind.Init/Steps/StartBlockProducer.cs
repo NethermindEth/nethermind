@@ -19,14 +19,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeBlockProducer), typeof(ReviewBlockTree))]
+    [RunnerStepDependencies(typeof(InitializeBlockProducer), typeof(ReviewBlockTree))]  // Unfortunately EngineRPC API need review blockTree
     public class StartBlockProducer : IStep
     {
         protected IApiWithBlockchain _api;
@@ -38,18 +37,51 @@ namespace Nethermind.Init.Steps
 
         public async Task Execute(CancellationToken _)
         {
-            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
-            if (miningConfig.Enabled)
+            if (_api.BlockProductionPolicy.ShouldStartBlockProduction() && _api.BlockProducer != null)
             {
-                if (_api.BlockProducer == null) throw new StepDependencyException(nameof(_api.BlockProducer));
                 if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-                
+
                 ILogger logger = _api.LogManager.GetClassLogger();
                 if (logger.IsWarn) logger.Warn($"Starting {_api.SealEngineType} block producer & sealer");
                 ProducedBlockSuggester suggester = new(_api.BlockTree, _api.BlockProducer);
                 _api.DisposeStack.Push(suggester);
-            
-                _api.BlockProducer.Start();
+                await _api.BlockProducer.Start();
+            }
+        }
+
+        protected virtual async Task<IBlockProducer> BuildProducer()
+        {
+            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider,
+                _api.BlockTree,
+                _api.ReadOnlyTrieStore,
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource,
+                _api.ReceiptStorage,
+                _api.BlockPreprocessor,
+                _api.TxPool,
+                _api.TransactionComparerProvider,
+                _api.Config<IMiningConfig>(),
+                _api.LogManager);
+
+            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
+            IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
+
+            if (consensusPlugin is not null)
+            {
+                // TODO: need to wrap preMerge producer inside theMerge first, then need to wrap all of it with MEV
+                // I am pretty sure that MEV can be done better than this way
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins())
+                {
+                    // TODO: foreach returns the first one now
+                    return await wrapperPlugin.InitBlockProducer(consensusPlugin);
+                }
+
+                return await consensusPlugin.InitBlockProducer();
+            }
+            else
+            {
+                throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
             }
         }
     }

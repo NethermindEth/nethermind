@@ -26,13 +26,14 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
     {
-        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, string[] enabledModules)
+        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules)
         {
             Scheme = scheme;
             Host = host;
             Port = port;
             RpcEndpoint = rpcEndpoint;
             EnabledModules = enabledModules;
+            IsAuthenticated = isAuthenticated;
         }
 
         public static JsonRpcUrl Parse(string packedUrlValue)
@@ -41,8 +42,8 @@ namespace Nethermind.JsonRpc
                 throw new ArgumentNullException(nameof(packedUrlValue));
 
             string[] parts = packedUrlValue.Split('|');
-            if (parts.Length != 3)
-                throw new FormatException("Packed url value must contain 3 parts delimited by '|'");
+            if (parts.Length != 3 && parts.Length != 4)
+                throw new FormatException("Packed url value must contain 3 or 4 parts delimited by '|'");
 
             string url = parts[0];
             if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
@@ -70,9 +71,25 @@ namespace Nethermind.JsonRpc
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one module delimited by ';'");
 
-            return new JsonRpcUrl(uri.Scheme, uri.Host, uri.Port, endpoint, enabledModules);
+            bool isAuthenticated = enabledModules.Any(m => m.ToLower() == "engine");
+
+            // Check if authentication disabled for this url
+            if (parts.Length == 4)
+            {
+                if (parts[3] != "no-auth")
+                {
+                    throw new FormatException("Fourth part should be \"no-auth\"");
+                }
+
+                isAuthenticated = false;
+            }
+
+            JsonRpcUrl result = new (uri.Scheme, uri.Host, uri.Port, endpoint, isAuthenticated, enabledModules);
+
+           return result;
         }
 
+        public bool IsAuthenticated { get; private set; }
         public string Scheme { get; set; }
         public string Host { get; set; }
         public int Port { get; set; }
@@ -106,7 +123,7 @@ namespace Nethermind.JsonRpc
         }
 
         public override int GetHashCode() => HashCode.Combine(Scheme, Host, Port, RpcEndpoint, EnabledModules as IStructuralEquatable);
-        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, EnabledModules as string[]);
+        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, EnabledModules as string[]);
         public override string ToString() => $"{Scheme}://{Host}:{Port}";
     }
 }

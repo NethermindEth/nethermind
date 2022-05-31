@@ -18,54 +18,65 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
-using Org.BouncyCastle.Asn1.Cms;
-using Result = Nethermind.Merge.Plugin.Data.Result;
 
 namespace Nethermind.Merge.Plugin
 {
     public class EngineRpcModule : IEngineRpcModule
     {
-        private readonly IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> _assembleBlockHandler;
-        private readonly IHandler<BlockRequestResult, NewBlockResult> _newBlockHandler;
-        private readonly IHandler<Keccak, Result> _setHeadHandler;
-        private readonly IHandler<Keccak, Result> _finaliseBlockHandler;
+        private readonly IAsyncHandler<byte[], BlockRequestResult?> _getPayloadHandlerV1;
+        private readonly IAsyncHandler<BlockRequestResult, PayloadStatusV1> _newPayloadV1Handler;
+        private readonly IForkchoiceUpdatedV1Handler _forkchoiceUpdatedV1Handler;
+        private readonly IHandler<ExecutionStatusResult> _executionStatusHandler;
+        private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
+        private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
-        private readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
+        private readonly TimeSpan Timeout = TimeSpan.FromSeconds(8);
         private readonly ILogger _logger;
 
         public EngineRpcModule(
-            IHandlerAsync<AssembleBlockRequest, BlockRequestResult?> assembleBlockHandler,
-            IHandler<BlockRequestResult, NewBlockResult> newBlockHandler,
-            IHandler<Keccak, Result> setHeadHandler,
-            IHandler<Keccak, Result> finaliseBlockHandler,
+            IAsyncHandler<byte[], BlockRequestResult?> getPayloadHandlerV1,
+            IAsyncHandler<BlockRequestResult, PayloadStatusV1> newPayloadV1Handler,
+            IForkchoiceUpdatedV1Handler forkchoiceUpdatedV1Handler,
+            IHandler<ExecutionStatusResult> executionStatusHandler,
+            IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> executionPayloadBodiesHandler,
+            IHandler<TransitionConfigurationV1, TransitionConfigurationV1> transitionConfigurationHandler,
             ILogManager logManager)
         {
-            _assembleBlockHandler = assembleBlockHandler;
-            _newBlockHandler = newBlockHandler;
-            _setHeadHandler = setHeadHandler;
-            _finaliseBlockHandler = finaliseBlockHandler;
+            _getPayloadHandlerV1 = getPayloadHandlerV1;
+            _newPayloadV1Handler = newPayloadV1Handler;
+            _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
+            _executionStatusHandler = executionStatusHandler;
+            _executionPayloadBodiesHandler = executionPayloadBodiesHandler;
+            _transitionConfigurationHandler = transitionConfigurationHandler;
             _logger = logManager.GetClassLogger();
         }
 
-        public Task<ResultWrapper<BlockRequestResult?>> engine_assembleBlock(AssembleBlockRequest request)
+        public ResultWrapper<ExecutionStatusResult> engine_executionStatus()
         {
-            return _assembleBlockHandler.HandleAsync(request);
+            return _executionStatusHandler.Handle();
         }
 
-        public async Task<ResultWrapper<NewBlockResult>> engine_newBlock(BlockRequestResult requestResult)
+        public async Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId)
+        {
+            return await (_getPayloadHandlerV1.HandleAsync(payloadId));
+        }
+
+
+        public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(
+            BlockRequestResult executionPayload)
         {
             if (await _locker.WaitAsync(Timeout))
             {
                 try
                 {
-                    return _newBlockHandler.Handle(requestResult);
+                    return await _newPayloadV1Handler.HandleAsync(executionPayload);
                 }
                 finally
                 {
@@ -74,18 +85,21 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newBlock)} timeout.");
-                return ResultWrapper<NewBlockResult>.Success(new NewBlockResult {Valid = false});
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newPayloadV1)} timeout.");
+                return ResultWrapper<PayloadStatusV1>.Fail($"{nameof(engine_newPayloadV1)} timeout.",
+                    ErrorCodes.Timeout);
             }
         }
 
-        public async Task<ResultWrapper<Result>> engine_setHead(Keccak blockHash)
+
+        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(
+            ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         {
             if (await _locker.WaitAsync(Timeout))
             {
                 try
                 {
-                    return _setHeadHandler.Handle(blockHash);
+                    return await _forkchoiceUpdatedV1Handler.Handle(forkchoiceState, payloadAttributes);
                 }
                 finally
                 {
@@ -94,75 +108,21 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_setHead)} timeout.");
-                return ResultWrapper<Result>.Success(Result.Fail);
+                if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdatedV1)} timeout.");
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdatedV1)} timeout.",
+                    ErrorCodes.Timeout);
             }
         }
 
-        public Task<ResultWrapper<Result>> engine_finaliseBlock(Keccak blockHash) => 
-            Task.FromResult(_finaliseBlockHandler.Handle(blockHash));
-
-        public Task engine_preparePayload(Keccak parentHash, UInt256 timestamp, Keccak random, Address coinbase)
+        public async Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesV1(Keccak[] blockHashes)
         {
-            throw new NotImplementedException();
+            return await _executionPayloadBodiesHandler.HandleAsync(blockHashes);
         }
 
-        public Task<ResultWrapper<BlockRequestResult?>> engine_getPayload(Keccak parentHash, UInt256 timeStamp,
-            Keccak random, Address coinbase)
+        public ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
+            TransitionConfigurationV1 beaconTransitionConfiguration)
         {
-            throw new NotImplementedException();
-        }
-
-        public Task<ResultWrapper<ExecutePayloadResult>> engine_executePayload(BlockRequestResult executionPayload)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task engine_consensusValidated(Keccak parentHash, VerificationStatus status)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task engine_forkchoiceUpdated(Keccak headBlockHash, Keccak finalizedBlockHash, Keccak confirmedBlockHash)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task engine_terminalTotalDifficultyOverride(UInt256 terminalTotalDifficulty)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task engine_terminalPoWBlockOverride(Keccak blockHash)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<ResultWrapper<Block?>> engine_getPowBlock(Keccak blockHash)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task engine_syncCheckpointSet(BlockRequestResult executionPayloadHeader)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task engine_syncStatus(SyncStatus sync, Keccak blockHash, UInt256 blockNumber)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task engine_consensusStatus(UInt256 transitionTotalDifficulty, Keccak terminalPowBlockHash,
-            Keccak finalizedBlockHash,
-            Keccak confirmedBlockHash, Keccak headBlockHash)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task engine_executionStatus(Keccak finalizedBlockHash, Keccak confirmedBlockHash, Keccak headBlockHash)
-        {
-            throw new NotImplementedException();
+            return _transitionConfigurationHandler.Handle(beaconTransitionConfiguration);
         }
     }
 }

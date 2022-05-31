@@ -15,14 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Ethereum.Difficulty.Test")]
+
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashDifficultyCalculator : IDifficultyCalculator
+    internal class EthashDifficultyCalculator : IDifficultyCalculator
     {
         // Note: block 200000 is when the difficulty bomb was introduced but we did not spec it in any release info, just hardcoded it
         public const int InitialDifficultyBombBlock = 200000;

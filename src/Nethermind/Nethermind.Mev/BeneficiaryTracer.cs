@@ -67,7 +67,7 @@ namespace Nethermind.Mev
         public void ReportStorageRead(StorageCell storageCell) { }
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) { }
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null) { }
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc) { }
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) { }
         public void ReportOperationError(EvmExceptionType error) { }
         public void ReportOperationRemainingGas(long gas) { }
         public void SetOperationStack(List<string> stackTrace) { }

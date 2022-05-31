@@ -78,7 +78,7 @@ Nethermind is a is a high-performance, highly configurable full Ethereum protoco
 ```sh
 sudo apt-get install libsnappy-dev libc6-dev libc6
 
-# Link libraries (only for Ubuntu 21.10)
+# Link libraries (only for Ubuntu >= 21.04)
 sudo ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so
 ```
 *Tested on Ubuntu 21.04, 20.04 and 18.04 LTS and 21.10*

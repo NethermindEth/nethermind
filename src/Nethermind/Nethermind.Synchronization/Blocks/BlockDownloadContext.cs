@@ -26,7 +26,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    internal class BlockDownloadContext
+    public class BlockDownloadContext
     {
         private readonly Dictionary<int, int> _indexMapping;
         private readonly ISpecProvider _specProvider;

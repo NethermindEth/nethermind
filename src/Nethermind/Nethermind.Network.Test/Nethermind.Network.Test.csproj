@@ -15,6 +15,9 @@
     <None Remove="Rlpx\block.go.snappy" />
     <None Remove="Rlpx\block.py.snappy" />
     <None Remove="Rlpx\block.rlp" />
+    <None Update="Specs\merge_fork_id_test.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Content Include="Rlpx\block.go.snappy">

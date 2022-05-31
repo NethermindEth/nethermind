@@ -18,6 +18,7 @@
 using System;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Spec
 {
@@ -34,6 +35,15 @@ namespace Nethermind.Blockchain.Spec
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
+        
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        {
+            _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
+        }
+
+        public long? MergeBlockNumber => _specProvider.MergeBlockNumber;
+
+        public UInt256? TerminalTotalDifficulty => _specProvider.TerminalTotalDifficulty;
 
         public IReleaseSpec GenesisSpec => _specProvider.GenesisSpec;
 

@@ -1,5 +1,4 @@
 using System;
-using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;

@@ -25,7 +25,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class HintBasedCache
+    internal class HintBasedCache
     {
         private Dictionary<Guid, HashSet<uint>> _epochsPerGuid = new();
         private Dictionary<uint, int> _epochRefs = new();

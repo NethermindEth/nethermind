@@ -19,15 +19,15 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -44,8 +44,10 @@ using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -320,7 +322,7 @@ namespace Nethermind.Synchronization.Test
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager nodeStatsManager = new(timerFactory, logManager);
-            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, 25, logManager);
+            SyncPeerPool syncPeerPool = new(tree, nodeStatsManager, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, logManager);
 
             StateProvider devState = new(trieStore, codeDb, logManager);
             StorageProvider devStorage = new(trieStore, devState, logManager);
@@ -354,25 +356,36 @@ namespace Nethermind.Synchronization.Test
                 logManager);
 
             ProgressTracker progressTracker = new(tree, dbProvider.StateDb, LimboLogs.Instance);
-            
-            SyncProgressResolver resolver = new(
-                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, logManager);
-            MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, logManager);
-
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
-            Synchronizer synchronizer = new(
-                dbProvider,
-                MainnetSpecProvider.Instance,
+            SyncProgressResolver resolver = new(
+                tree, receiptStorage, stateDb, NullTrieNodeResolver.Instance, progressTracker, syncConfig, logManager);
+            TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(resolver, LimboLogs.Instance);
+            MultiSyncModeSelector selector = new(resolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, logManager);
+            Pivot pivot = new(syncConfig);
+            SyncReport syncReport = new(syncPeerPool, nodeStatsManager, selector, syncConfig, pivot, LimboLogs.Instance);
+            BlockDownloaderFactory blockDownloaderFactory = new(MainnetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,
                 blockValidator,
                 sealValidator,
                 syncPeerPool,
+                new TotalDifficultyBasedBetterPeerStrategy(resolver, LimboLogs.Instance),
+                syncReport,
+                logManager);
+            Synchronizer synchronizer = new(
+                dbProvider,
+                MainnetSpecProvider.Instance,
+                tree,
+                NullReceiptStorage.Instance,
+                syncPeerPool,
                 nodeStatsManager,
                 StaticSelector.Full,
                 syncConfig,
                 snapProvider,
+                blockDownloaderFactory,
+                pivot,
+                syncReport,
                 logManager);
             SyncServer syncServer = new(
                 stateDb,
@@ -385,6 +398,7 @@ namespace Nethermind.Synchronization.Test
                 selector,
                 syncConfig,
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 logManager);
 
             ManualResetEventSlim waitEvent = new();

@@ -15,18 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
-using Nethermind.Logging;
+using Nethermind.Consensus.Producers;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
     public class InitializeBlockProducer : IStep
     {
         protected IApiWithBlockchain _api;
@@ -38,8 +37,7 @@ namespace Nethermind.Init.Steps
 
         public async Task Execute(CancellationToken _)
         {
-            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
-            if (miningConfig.Enabled)
+            if (_api.BlockProductionPolicy.ShouldStartBlockProduction())
             {
                 _api.BlockProducer = await BuildProducer();
             }

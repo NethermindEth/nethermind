@@ -14,6 +14,13 @@
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "Mainnet_archive": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\mainnet_archive.cfg",
+      "environmentVariables": {
+        " ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
     "Rinkeby": {
       "commandName": "Project",
       "commandLineArgs": "--config rinkeby --baseDbPath D:\\rinkeby_fast --SyncConfig.FastSync true",
@@ -24,6 +31,18 @@
     "Goerli": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\goerli_mem_fast --JsonRpc.Enabled true"
+    },
+    "Goerli_archive": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\goerli_archive --JsonRpc.Enabled true"
+    },
+    "Hacknet_v2": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\hacknet_v2.cfg --baseDbPath C:\\hacknet --JsonRpc.Enabled true"
+    },
+    "Hacknet_v3": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\hacknet_v3.cfg --baseDbPath C:\\hacknet --JsonRpc.Enabled true"
     },
     "Sokol": {
       "commandName": "Project",
@@ -36,6 +55,10 @@
     "xDai": {
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath C:\\nethermind_db"
+    },
+    "xDai_archive": {
+      "commandName": "Project",
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai_archive.cfg --baseDbPath C:\\nethermind_db"
     },
     "AuRaTestMiner": {
       "commandName": "Project",
@@ -83,6 +106,46 @@
       "commandName": "Project",
       "commandLineArgs": "--config configs\\hive.cfg --Init.DiagnosticMode MemDb"
     },
+    "TheMergeDevnet": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\themerge_devnet.cfg --Init.DiagnosticMode MemDb"
+    },
+    "TheMergeDevnet M3": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_devnet_m3.cfg --Init.DiagnosticMode MemDb"
+    },
+    "TheMergeDevnet M4": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_devnet_m4.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Hacknet V2": {
+      "commandName": "Project",
+      "commandLineArgs": "--config hacknet_v2.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Hacknet V3": {
+      "commandName": "Project",
+      "commandLineArgs": "--config hacknet_v3.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Pithos": {
+      "commandName": "Project",
+      "commandLineArgs": "--config pithos.cfg --Init.DiagnosticMode MemDb"
+    },
+    "TheMerge_Kinstugi_TestVectors": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_kiln_testvectors.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false --Merge.FeeRecipient 0x0000000000000000000000000000000000000000"
+    },
+    "TheMerge_Kinstugi_M2": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_kiln_m2.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 100"
+    },
+    "TheMerge_Kinstugi_Mev": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_kiln_mev.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false"
+    },
+    "Kintsugi": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kiln.cfg --Init.DiagnosticMode MemDb"
+    },
     "xDai_testnet": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\xdai_testnet.cfg --Init.DiagnosticMode MemDb"
@@ -90,6 +153,53 @@
     "Sepolia": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\sepolia.cfg --Init.DiagnosticMode MemDb"
+    },
+    "Kiln_devnet": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kiln_devnet.cfg  --Init.DiagnosticMode MemDb"
+    },
+    "kiln_fastSync": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kiln_fastsync.cfg  --Init.DiagnosticMode MemDb"
+    },
+    "TheMerge_Kiln_TestVectors" : {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_kiln_testvectors.cfg --Init.DiagnosticMode MemDb"
+    },
+    "themerge_hivetests": {
+      "commandName": "Project",
+      "commandLineArgs": "--config themerge_hivetests.cfg  --Init.DiagnosticMode MemDb"
+    },
+    "xDai_themerge": {
+      "commandName": "Project",
+      "commandLineArgs": "--config xdai_themerge.cfg  --Init.DiagnosticMode MemDb"
+    },
+    "Kiln": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Merge.TerminalBlockNumber null"
+    },
+    "KilnPreTTD": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kiln_pre_ttd_pivot.cfg  --Init.DiagnosticMode MemDb"
+    },
+    "Kiln_FastSync": {
+      "commandName": "Project",
+      "commandLineArgs": "--config kiln_fastsync.cfg"
+    },
+    "Goerli ShadowFork": {
+      "commandName": "Project",
+      "commandLineArgs": "--config goerli_shadowfork.cfg"
+    }, 
+    "Mainnet_ShadowFork": {
+      "commandName": "Project",
+      "commandLineArgs": "--config mainnet_shadowfork.cfg  --baseDbPath D:\\shadowfork_db"
+    },
+    "Ropsten Archive": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\ropsten_archive.cfg --baseDbPath C:\\nethermind_db",
+      "environmentVariables": {
+        " ASPNETCORE_ENVIRONMENT": "Development"
+      }
     }
   }
 }

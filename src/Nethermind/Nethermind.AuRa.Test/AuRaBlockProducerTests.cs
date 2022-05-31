@@ -21,13 +21,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Castle.DynamicProxy.Generators.Emitters.SimpleAST;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -124,7 +124,7 @@ namespace Nethermind.AuRa.Test
                             gasLimitCalculator,
                             MainnetSpecProvider.Instance,
                             LimboLogs.Instance);
-
+                        
                         ProducedBlockSuggester suggester = new(BlockTree, AuRaBlockProducer);
                     }
         }
@@ -231,14 +231,14 @@ namespace Nethermind.AuRa.Test
         private async Task<TestResult> StartStop(Context context, bool processingQueueEmpty = true, bool newBestSuggestedBlock = false, int stepDelayMultiplier = 100)
         {
             AutoResetEvent processedEvent = new(false);
-            context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>())
+            context.BlockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
                 .Returns(AddBlockResult.Added)
                 .AndDoes(c =>
                 {
                     processedEvent.Set();
                 });
 
-            context.AuRaBlockProducer.Start();
+            await context.AuRaBlockProducer.Start();
             await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier, CancellationToken.None);
             context.BlockTree.ClearReceivedCalls();
             
@@ -264,7 +264,7 @@ namespace Nethermind.AuRa.Test
                 await context.AuRaBlockProducer.StopAsync();
             }
 
-            return new TestResult(q => context.BlockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
+            return new TestResult(q => context.BlockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>()));
         }
         
         private class TestResult

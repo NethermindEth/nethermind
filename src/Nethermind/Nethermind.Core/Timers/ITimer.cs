@@ -16,7 +16,6 @@
 // 
 
 using System;
-using System.Timers;
 
 namespace Nethermind.Core.Timers
 {

@@ -24,8 +24,8 @@ using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -201,7 +201,7 @@ namespace Nethermind.Consensus.Clique
 
         private Task? _producerTask;
 
-        public void Start()
+        public Task Start()
         {
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
             _producerTask = Task.Factory.StartNew(
@@ -223,6 +223,7 @@ namespace Nethermind.Consensus.Clique
                     if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
                 }
             });
+            return Task.CompletedTask;
         }
 
         private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -380,10 +381,8 @@ namespace Nethermind.Consensus.Clique
             {
                 // Gather all the proposals that make sense voting on
                 List<Address> addresses = new();
-                foreach (var proposal in _proposals)
+                foreach ((Address address, bool authorize) in _proposals)
                 {
-                    Address address = proposal.Key;
-                    bool authorize = proposal.Value;
                     if (_snapshotManager.IsValidVote(snapshot, address, authorize))
                     {
                         addresses.Add(address);
@@ -437,7 +436,7 @@ namespace Nethermind.Consensus.Clique
                 header.Timestamp = new UInt256(_timestamper.UnixTime.Seconds);
             }
 
-            _stateProvider.StateRoot = parentHeader.StateRoot;
+            _stateProvider.StateRoot = parentHeader.StateRoot!;
             
             IEnumerable<Transaction> selectedTxs = _txSource.GetTransactions(parentBlock.Header, header.GasLimit);
             Block block = new BlockToProduce(header, selectedTxs, Array.Empty<BlockHeader>());

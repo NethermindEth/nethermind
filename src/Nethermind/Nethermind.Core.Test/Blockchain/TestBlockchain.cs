@@ -19,15 +19,15 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -43,6 +43,7 @@ using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Specs.Test;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -85,7 +86,13 @@ namespace Nethermind.Core.Test.Blockchain
         public IDbProvider DbProvider { get; set; }
         public ISpecProvider SpecProvider { get; set; }
         
+        public ISealEngine SealEngine { get; set; }
+        
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
+        
+        public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
+        
+        public IPoSSwitcher PoSSwitcher { get; set; }
 
         protected TestBlockchain()
         {
@@ -103,14 +110,16 @@ namespace Nethermind.Core.Test.Blockchain
 
         public static readonly UInt256 InitialValue = 1000.Ether();
         private TrieStoreBoundaryWatcher _trieStoreWatcher;		
-        private BlockValidator _blockValidator;
+        public IHeaderValidator HeaderValidator { get; set; }
+
+        public IBlockValidator BlockValidator { get; set; }
         public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
         public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; }
 
         public ManualTimestamper Timestamper { get; protected set; }
         
-        public ProducedBlockSuggester Suggester { get; private set; }
+        public ProducedBlockSuggester Suggester { get; protected set; }
 
         public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
@@ -156,28 +165,30 @@ namespace Nethermind.Core.Test.Blockchain
             VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
-            HeaderValidator headerValidator = new(BlockTree, Always.Valid, SpecProvider, LogManager);
+            HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
                 
-            _blockValidator = new BlockValidator(
+            BlockValidator = new BlockValidator(
                 new TxValidator(SpecProvider.ChainId),
-                headerValidator,
+                HeaderValidator,
                 Always.Valid,
                 SpecProvider,
                 LogManager);
             
+            PoSSwitcher = NoPoS.Instance;
+            ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
+            SealEngine = new SealEngine(sealer, Always.Valid);
             BlockProcessor = CreateBlockProcessor();
             
-            BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Nethermind.Blockchain.Processing.BlockchainProcessor.Options.Default);
+            BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();
             
             TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
-            ISealer sealer = new NethDevSealEngine(TestItem.AddressD);
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
             BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
-            Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
             BlockProducer.Start();
+            Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
 
             _resetEvent = new SemaphoreSlim(0);
             _suggestedBlockResetEvent = new ManualResetEvent(true);
@@ -187,8 +198,9 @@ namespace Nethermind.Core.Test.Blockchain
                 _suggestedBlockResetEvent.Set();
             };
 
-            var genesis = GetGenesisBlock();
+            Block? genesis = GetGenesisBlock();
             BlockTree.SuggestBlock(genesis);
+            
             await WaitAsync(_resetEvent, "Failed to process genesis in time.");
             await AddBlocksOnStart();
             return this;
@@ -233,7 +245,7 @@ namespace Nethermind.Core.Test.Blockchain
                 BlockTree, 
                 ReadOnlyTrieStore, 
                 SpecProvider, 
-                _blockValidator,
+                BlockValidator,
                 NoBlockRewards.Instance,
                 ReceiptStorage,
                 BlockPreprocessorStep,
@@ -293,7 +305,7 @@ namespace Nethermind.Core.Test.Blockchain
         protected virtual BlockProcessor CreateBlockProcessor() =>
             new(
                 SpecProvider,
-                _blockValidator,
+                BlockValidator,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,

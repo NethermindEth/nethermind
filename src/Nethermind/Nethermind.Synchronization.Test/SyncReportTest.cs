@@ -52,7 +52,7 @@ namespace Nethermind.Synchronization.Test
             syncConfig.FastBlocks = fastBlocks;
             syncConfig.FastSync = fastSync;
             
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), selector,  syncConfig, LimboLogs.Instance, 10);
+            SyncReport syncReport = new (pool, Substitute.For<INodeStatsManager>(), selector,  syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, 10);
             selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
             await Task.Delay(200);
             syncReport.FastBlocksHeaders.MarkEnd();

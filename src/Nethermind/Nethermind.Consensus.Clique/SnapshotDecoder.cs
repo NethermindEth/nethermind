@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.Clique
             Rlp[] rlp = new Rlp[3 * tallyCount + 1];
             rlp[0] = Rlp.Encode(tallyCount);
             int i = 0;
-            foreach (var tallyItem in tally)
+            foreach (KeyValuePair<Address, Tally> tallyItem in tally)
             {
                 rlp[3 * i + 1] = Rlp.Encode(tallyItem.Key);
                 rlp[3 * i + 2] = Rlp.Encode(tallyItem.Value.Votes);

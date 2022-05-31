@@ -18,9 +18,9 @@
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test.Producers
             {
             }
 
-            public override void Start() { }
+            public override Task Start() { return Task.CompletedTask; }
 
             public override Task StopAsync() => Task.CompletedTask;
 

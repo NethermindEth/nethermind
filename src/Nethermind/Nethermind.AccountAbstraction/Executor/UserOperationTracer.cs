@@ -36,7 +36,7 @@ namespace Nethermind.AccountAbstraction.Executor
     {
         private static readonly Instruction[] _bannedOpcodes =
         {
-            Instruction.GASPRICE, Instruction.GASLIMIT, Instruction.DIFFICULTY, Instruction.TIMESTAMP,
+            Instruction.GASPRICE, Instruction.GASLIMIT, Instruction.PREVRANDAO, Instruction.TIMESTAMP,
             Instruction.BASEFEE, Instruction.BLOCKHASH, Instruction.NUMBER, Instruction.SELFBALANCE,
             Instruction.BALANCE, Instruction.ORIGIN, Instruction.COINBASE, Instruction.CREATE
         };
@@ -141,7 +141,7 @@ namespace Nethermind.AccountAbstraction.Executor
             throw new NotImplementedException();
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             if (_nextOpcodeMustBeCall)
             {

@@ -19,7 +19,7 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -194,7 +194,7 @@ namespace Nethermind.Mev.Test
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
             MevRpcModuleTests.SuccessfullySendBundle(chain, 3, coinbaseTx);
-            
+
             await chain.AddBlock(true);
             
             MevRpcModuleTests.GetHashes(chain.BlockTree.Head!.Transactions).Should().Equal(MevRpcModuleTests.GetHashes(new []{coinbaseTx}));
