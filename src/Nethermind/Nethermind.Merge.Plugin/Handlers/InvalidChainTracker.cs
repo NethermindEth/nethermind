@@ -24,18 +24,18 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <summary>
 /// Something that tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to
 /// be invalid.
+///
+/// As far as section tree is concerned, the nodes may contain a <see cref="Keccak"/> hash which is the parent for an invalid block,
+/// if the node is considered invalid. The aggregate for the section and chain is a <see cref="LowestInvalidBlock"/> which contains an
+/// InvalidBlock and InvalidBlockParent which is used to store if the section have invalid block from it's parent or not.
+/// 
 /// </summary>
-public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, LowestValidBlock, LowestValidBlock>, IInvalidChainTracker
+public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, LowestInvalidBlock, LowestInvalidBlock>, IInvalidChainTracker
 {
     public InvalidChainTracker(): base(256, 1024) {
     }
     
     public InvalidChainTracker(int maxKeyHandle, int maxSectionSize): base(maxKeyHandle, maxSectionSize) {
-    }
-
-    public void SuggestChildParent(Keccak child, Keccak parent)
-    {
-        SetChildParent(child, parent);
     }
 
     public void OnInvalidBlock(Keccak failedBlock, Keccak parent)
@@ -45,7 +45,7 @@ public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, Lowes
 
     public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
     {
-        LowestValidBlock? queryResult = base.QueryUpTo(blockHash);
+        LowestInvalidBlock? queryResult = base.QueryUpTo(blockHash);
 
         if (queryResult?.InvalidBlock == null)
         {
@@ -54,13 +54,14 @@ public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, Lowes
         }
 
         lastValidHash = queryResult.InvalidBlockParent;
-        return true;
+        return queryResult.InvalidBlock != null;
     }
 
-    protected override LowestValidBlock? OnValueSet(Section section, Keccak key, Keccak? newValue, Keccak? prevValue)
+    protected override LowestInvalidBlock? UpdateSectionAggregateOnValueSet(Section section, Keccak key, Keccak? newValue, Keccak? prevValue)
     {
         if (newValue == null)
         {
+            // No new value set. Do nothing.
             return section.SectionAggregate;
         }
         
@@ -69,7 +70,7 @@ public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, Lowes
             section.ItemIdx[key] < section.ItemIdx[section.SectionAggregate.InvalidBlock] // The new invalid block is older
             )
         {
-            return new LowestValidBlock()
+            return new LowestInvalidBlock()
             {
                 InvalidBlock = key,
                 InvalidBlockParent = newValue,
@@ -79,7 +80,7 @@ public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, Lowes
         return section.SectionAggregate; // No change
     }
 
-    protected override (LowestValidBlock? parentAggregate, LowestValidBlock? childAggregate) OnSplit(LowestValidBlock? oldParentAggregate,
+    protected override (LowestInvalidBlock? parentAggregate, LowestInvalidBlock? childAggregate) UpdateSectionAggregateOnSplit(LowestInvalidBlock? oldParentAggregate,
         Section parentSection, Section childSection)
     {
         if (oldParentAggregate?.InvalidBlock != null)
@@ -101,14 +102,14 @@ public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, Lowes
         return (null, null); // Does not matter. No invalid block in parent or child
     }
 
-    protected override LowestValidBlock? RecalculateChainAggregate(LowestValidBlock? parentChainAggregate, LowestValidBlock? sectionAggregate,
+    protected override LowestInvalidBlock? UpdateChainAggregate(LowestInvalidBlock? parentChainAggregate, LowestInvalidBlock? sectionAggregate,
         Section section)
     {
         if (parentChainAggregate?.InvalidBlock != null) return parentChainAggregate;
         return sectionAggregate;
     }
 
-    protected override LowestValidBlock? AggregateWithSubSection(Section section, Keccak key)
+    protected override LowestInvalidBlock? AggregateWithSubSection(Section section, Keccak key)
     {
         if (section.ParentChainAggregate?.InvalidBlock != null)
         {
@@ -127,7 +128,7 @@ public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, Lowes
     }
 }
 
-public class LowestValidBlock
+public class LowestInvalidBlock
 {
     public Keccak? InvalidBlockParent;
     public Keccak? InvalidBlock;

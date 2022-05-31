@@ -24,27 +24,27 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 /// <summary>
 ///
-/// An implementation of `IAggregateChainQueryStore` that works by storing a forest of section where each section
-/// is a contiguous chain of nodes with no known branch in between. When a branch happens, a section will split into
-/// three, a parent section and two child section each becoming a new chain.
+/// An implementation of <see cref="IAggregateChainQueryStore{TKey,TValue,TAggregate}"/> that works by storing a forest
+/// of section where each section is a contiguous chain of nodes with no known branch in between. When a branch happens,
+/// a section will split into three, a parent section and two child section each becoming a new chain.
 /// 
 /// Each node can have a value (or nothing),
 /// Each Section have an
 ///     - Aggregate value.
 ///     - Chain Aggregate value.
-/// On a node value update, `OnValueSet` will be called to recalculate the section aggregate value,
-/// then `AggregateChain` will be called, passing in it's parent's chain aggregate value and it's aggregate value to
+/// On a node value update, <see cref="UpdateSectionAggregateOnValueSet"/> will be called to recalculate the section aggregate value,
+/// then <see cref="UpdateChainAggregate"/> will be called, passing in it's parent's chain aggregate value and it's aggregate value to
 /// calculate it's chain aggregate value. Then, recursively, all of it's child will have it's chain aggregate value
-/// updated with `AggregateChain`.
+/// updated with <see cref="UpdateChainAggregate"/>.
 ///
 /// This allows for an aggregate query for a chain that requires data from the root of chain (or at least a far ancestor),
 /// without having to go through all nodes, assuming that the section is large, and not much branching happens.
 /// Query that is specific to a node within section however, is not automatically optimized. You'll need a fancy
 /// TAggregate to make it work. Or shortcut it via node index probably.
 ///
-/// QueryUpTo should be O(1) + whatever AggregateWithSubsection complexity is.
-/// SetChildParent is O(n) where n is the size of child section. 
-/// SetValue is O(n) where n is the number of descendent section.
+/// <see cref="QueryUpTo"/> should be O(1) + whatever <see cref="AggregateWithSubSection"/> complexity is.
+/// <see cref="SetChildParent"/> is O(n) where n is the size of child section. 
+/// <see cref="SetValue"/> is O(n) where n is the number of descendent section.
 /// 
 /// Assuming most operation is on newer shorter chain/branch, it should not do many operation. Sections are pointed at by an
 /// LRU of accessed key. Old section which is not pointed by any LRU entry will get garbage collected. Together
@@ -242,15 +242,15 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
         newSection.ChildSections = section.ChildSections;
         section.ChildSections = new HashSet<Section> { newSection };
 
-        (TAggregate? parentAggregate, TAggregate? childAggregate) newAggregate = OnSplit(section.SectionAggregate, section, newSection);
+        (TAggregate? parentAggregate, TAggregate? childAggregate) newAggregate = UpdateSectionAggregateOnSplit(section.SectionAggregate, section, newSection);
         section.SectionAggregate = newAggregate.parentAggregate;
         newSection.SectionAggregate = newAggregate.childAggregate;
 
         section.ChainAggregate =
-            RecalculateChainAggregate(section.ParentChainAggregate, section.SectionAggregate, section);
+            UpdateChainAggregate(section.ParentChainAggregate, section.SectionAggregate, section);
         newSection.ParentChainAggregate = section.ChainAggregate;
         newSection.ChainAggregate =
-            RecalculateChainAggregate(newSection.ParentChainAggregate, newSection.SectionAggregate, newSection);
+            UpdateChainAggregate(newSection.ParentChainAggregate, newSection.SectionAggregate, newSection);
 
         return newSection;
     }
@@ -289,7 +289,7 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
             parentSection.Values.Add(key, value);
         }
         _blockSection.Set(key, parentSection);
-        parentSection.SectionAggregate = OnValueSet(parentSection, key, value, default);
+        parentSection.SectionAggregate = UpdateSectionAggregateOnValueSet(parentSection, key, value, default);
     }
 
 
@@ -303,7 +303,7 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
             AppendToSection(newSection, key, default);
         }
 
-        newSection.ChainAggregate = RecalculateChainAggregate(default, newSection.SectionAggregate, newSection);
+        newSection.ChainAggregate = UpdateChainAggregate(default, newSection.SectionAggregate, newSection);
         return newSection;
     }
 
@@ -319,13 +319,13 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
             section = NewSection(key);
         }
         
-        section.SectionAggregate = OnValueSet(section, key, value, prevValue);
+        section.SectionAggregate = UpdateSectionAggregateOnValueSet(section, key, value, prevValue);
         PropagateChainAggregate(section);
     }
 
     private void PropagateChainAggregate(Section section)
     {
-        section.ChainAggregate = RecalculateChainAggregate(section.ParentChainAggregate, section.SectionAggregate, section);
+        section.ChainAggregate = UpdateChainAggregate(section.ParentChainAggregate, section.SectionAggregate, section);
 
         foreach (Section sectionChildSection in section.ChildSections)
         {
@@ -345,30 +345,29 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
     }
 
     /// <summary>
-    /// Called when a new value is set for a node. Implementation is expected to return an update section aggregate
+    /// Called when a new value is set for a node. Implementation is expected to return an updated section aggregate
     /// </summary>
     /// <param name="section"></param>
     /// <param name="key"></param>
     /// <param name="newValue"></param>
     /// <param name="prevValue"></param>
-    protected abstract TAggregate? OnValueSet(Section section, TKey key, TValue? newValue, TValue? prevValue);
+    protected abstract TAggregate? UpdateSectionAggregateOnValueSet(Section section, TKey key, TValue? newValue, TValue? prevValue);
     
     /// <summary>
     /// Called when a node is split into two. Used to recalculate new aggregate for both section which should be
     /// returned.
-    /// value accordingly.
     /// </summary>
     /// <param name="parentSection"></param>
     /// <param name="childSection"></param>
-    protected abstract (TAggregate? parentAggregate, TAggregate? childAggregate) OnSplit(TAggregate? oldParentAggregate, Section parentSection, Section childSection);
+    protected abstract (TAggregate? parentAggregate, TAggregate? childAggregate) UpdateSectionAggregateOnSplit(TAggregate? oldParentAggregate, Section parentSection, Section childSection);
     
     /// <summary>
-    /// Called when an ancestor was updated, or after `OnValueSet` and `OnSplit`. ParentChainAggregate for the section
+    /// Called when an ancestor was updated, or after setting value or split or if ParentChainAggregate for the section
     /// was updated. Implementation is expected to calculate a new chain aggregate for the section.
     /// </summary>
     /// <param name="section"></param>
     /// <returns></returns>
-    protected abstract TChainAggregate? RecalculateChainAggregate(TChainAggregate? parentChainAggregate, TAggregate? sectionAggregate, Section section);
+    protected abstract TChainAggregate? UpdateChainAggregate(TChainAggregate? parentChainAggregate, TAggregate? sectionAggregate, Section section);
     
     /// <summary>
     /// Called when `QueryUpTo` is called. Implementation is expected to calculate a more accurate chain aggregate

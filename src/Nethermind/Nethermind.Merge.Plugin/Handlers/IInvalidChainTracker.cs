@@ -26,7 +26,7 @@ public interface IInvalidChainTracker
     /// </summary>
     /// <param name="child"></param>
     /// <param name="parent"></param>
-    void SuggestChildParent(Keccak child, Keccak parent);
+    void SetChildParent(Keccak child, Keccak parent);
 
     /// <summary>
     /// Mark the block hash as a failed block.

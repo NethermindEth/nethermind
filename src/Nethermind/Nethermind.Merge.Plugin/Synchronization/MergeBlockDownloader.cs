@@ -176,12 +176,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     Block currentBlock = blocks[blockIndex];
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
 
-                    _invalidChainTracker.SuggestChildParent(currentBlock.Hash, currentBlock.ParentHash);
-                    if (_invalidChainTracker.IsOnKnownInvalidChain(currentBlock.Hash, out Keccak? lastValidHash))
-                    {
-                        throw new EthSyncException(
-                            $"{bestPeer} sent a block while a known invalid ancestor is still not resolved {currentBlock.ToString(Block.Format.Short)} Last valid hash: {lastValidHash}.");
-                    }
+                    _invalidChainTracker.SetChildParent(currentBlock.Hash, currentBlock.ParentHash);
 
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))

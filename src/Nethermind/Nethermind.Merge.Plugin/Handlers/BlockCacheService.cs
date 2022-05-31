@@ -16,10 +16,7 @@
 // 
 
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -30,21 +27,4 @@ public class BlockCacheService : IBlockCacheService
     public Keccak? ProcessDestination { get; set; }
     public Keccak? SyncingHead { get; set; }
     public Keccak FinalizedHash { get; set; } = Keccak.Zero;
-
-    private InvalidChainTracker _invalidChainTracker = new InvalidChainTracker();
-    
-    public void SuggestChildParent(Keccak child, Keccak parent)
-    {
-        _invalidChainTracker.SetChildParent(child, parent);
-    }
-
-    public void OnInvalidBlock(Keccak failedBlock, Keccak parent)
-    {
-        _invalidChainTracker.OnInvalidBlock(failedBlock, parent);
-    }
-
-    public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
-    {
-        return _invalidChainTracker.IsOnKnownInvalidChain(blockHash, out lastValidHash);
-    }
 }
