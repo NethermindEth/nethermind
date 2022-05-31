@@ -17,6 +17,7 @@
 
 using System;
 using Nethermind.AccountAbstraction.Source;
+using Nethermind.Core;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -26,6 +27,5 @@ namespace Nethermind.AccountAbstraction.Test
         {
             base.UpdateUserOperationMaps(source, args);
         }
-        
     }
 }
