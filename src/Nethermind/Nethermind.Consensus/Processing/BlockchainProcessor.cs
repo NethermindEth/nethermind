@@ -570,7 +570,14 @@ namespace Nethermind.Consensus.Processing
 
                     // if we have parent state it means that we don't need to go deeper
                     if (toBeProcessed?.StateRoot == null || _stateReader.HasStateForBlock(toBeProcessed.Header))
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Found state for parent: {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
                         break;
+                    }
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info($"A new block {toBeProcessed} in fast sync transition branch - state not found");
+                    }
                 }
                 
                 // TODO: there is no test for the second condition
