@@ -545,29 +545,21 @@ namespace Nethermind.Consensus.Processing
 
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                 bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
+                if (_logger.IsTrace)
+                    _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+                toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
+                if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
-                if (!isFastSyncTransition)
+                if (toBeProcessed == null)
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
-                    toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
-                    if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
-
-                    if (toBeProcessed == null)
-                    {
-                        if (_logger.IsDebug)
-                            _logger.Debug(
-                                $"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
-                        break;
-                    }
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            $"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
+                    break;
                 }
-                else
-                {
-                    if (_logger.IsTrace)
-                        _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)} in fast sync transition");
-                    toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
-                    if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)} in fast sync transition");
 
+                if (isFastSyncTransition)
+                {
                     // if we have parent state it means that we don't need to go deeper
                     if (toBeProcessed?.StateRoot == null || _stateReader.HasStateForBlock(toBeProcessed.Header))
                     {
@@ -579,7 +571,7 @@ namespace Nethermind.Consensus.Processing
                         if (_logger.IsInfo) _logger.Info($"A new block {toBeProcessed} in fast sync transition branch - state not found");
                     }
                 }
-                
+
                 // TODO: there is no test for the second condition
                 // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
                 // then on restart we would find 14 as the branch head (since 14 is on the main chain)
