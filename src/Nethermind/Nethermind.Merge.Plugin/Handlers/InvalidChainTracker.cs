@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Collections.ObjectModel;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -32,20 +33,37 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// </summary>
 public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, LowestInvalidBlock, LowestInvalidBlock>, IInvalidChainTracker
 {
+    private readonly object _opLock = new();
+    
     public InvalidChainTracker(): base(256, 1024) {
     }
     
     public InvalidChainTracker(int maxKeyHandle, int maxSectionSize): base(maxKeyHandle, maxSectionSize) {
     }
 
+    public void SetChildParent(Keccak child, Keccak parent)
+    {
+        lock (_opLock)
+        {
+            base.SetChildParent(child, parent);
+        }
+    }
+
     public void OnInvalidBlock(Keccak failedBlock, Keccak parent)
     {
-        SetValue(failedBlock, parent);
+        lock (_opLock)
+        {
+            SetValue(failedBlock, parent);
+        }
     }
 
     public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
     {
-        LowestInvalidBlock? queryResult = base.QueryUpTo(blockHash);
+        LowestInvalidBlock? queryResult;
+        lock (_opLock)
+        {
+            queryResult = base.QueryUpTo(blockHash);
+        }
 
         if (queryResult?.InvalidBlock == null)
         {

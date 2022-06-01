@@ -35,28 +35,39 @@ public class InvalidChainTrackerTest
         _tracker = new(256, 3); // Small max section size, to make sure things propagate correctly
     }
     
-    private List<Keccak> MakeChain(int n)
+    private List<Keccak> MakeChain(int n, bool connectInReverse=false)
     {
         Keccak? prev = null;
         List<Keccak> hashList = new();
         for (int i = 0; i < n; i++)
         {
             Keccak newHash = Keccak.Compute(Random.Shared.NextInt64().ToString());
-            if (prev != null)
-            {
-                _tracker.SetChildParent(newHash, prev);
-            }
             hashList.Add(newHash);
-            prev = newHash;
+        }
+
+        if (connectInReverse)
+        {
+            for (int i = hashList.Count - 2; i >= 0; i--)
+            {
+                _tracker.SetChildParent(hashList[i+1], hashList[i]);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < hashList.Count-1; i++)
+            {
+                _tracker.SetChildParent(hashList[i+1], hashList[i]);
+            }
         }
 
         return hashList;
     }
 
-    [Test]
-    public void given_aChainOfLength5_when_originBlockIsInvalid_then_otherBlockIsInvalid()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void given_aChainOfLength5_when_originBlockIsInvalid_then_otherBlockIsInvalid(bool connectInReverse)
     {
-        List<Keccak> hashes = MakeChain(5);
+        List<Keccak> hashes = MakeChain(5, connectInReverse);
         
         Keccak? lastValidHash;
         _tracker.IsOnKnownInvalidChain(hashes[1], out lastValidHash).Should().BeFalse();
@@ -72,11 +83,12 @@ public class InvalidChainTrackerTest
         lastValidHash.Should().BeEquivalentTo(hashes[1]);
     }
     
-    [Test]
-    public void given_aChainOfLength5_when_aLastValidHashIsInvalidated_then_lastValidHashShouldBeForwarded()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void given_aChainOfLength5_when_aLastValidHashIsInvalidated_then_lastValidHashShouldBeForwarded(bool connectInReverse)
     {
         Keccak? lastValidHash;
-        List<Keccak> hashes = MakeChain(5);
+        List<Keccak> hashes = MakeChain(5, connectInReverse);
         
         _tracker.OnInvalidBlock(hashes[3], hashes[2]);
         _tracker.IsOnKnownInvalidChain(hashes[3], out lastValidHash).Should().BeTrue();
@@ -91,19 +103,22 @@ public class InvalidChainTrackerTest
         lastValidHash.Should().BeEquivalentTo(hashes[1]);
     }
     
-    [Test]
-    public void given_aTreeWith3Branch_trackerShouldDetectCorrectValidChain()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void given_aTreeWith3Branch_trackerShouldDetectCorrectValidChain(bool connectInReverse)
     {
         Keccak? lastValidHash;
-        List<Keccak> mainChain = MakeChain(20);
-        List<Keccak> branchAt5 = MakeChain(10);
-        List<Keccak> branchAt10 = MakeChain(10);
-        List<Keccak> branchAt15 = MakeChain(10);
-        List<Keccak> branchAt15_butConnectOnItem5 = MakeChain(10);
-        List<Keccak> branchAt11_butConnectLater = MakeChain(10);
-        List<Keccak> branchAt5_butConnectLater = MakeChain(10);
+        List<Keccak> mainChain = MakeChain(20, connectInReverse);
+        List<Keccak> branchAt5 = MakeChain(10, connectInReverse);
+        List<Keccak> branchAt10 = MakeChain(10, connectInReverse);
+        List<Keccak> branchAt15 = MakeChain(10, connectInReverse);
+        List<Keccak> branchAt15_butConnectOnItem5 = MakeChain(10, connectInReverse);
+        List<Keccak> branchAt11_butConnectLater = MakeChain(10, connectInReverse);
+        List<Keccak> branchAt5_butConnectLater = MakeChain(10, connectInReverse);
         
-        _tracker.SetChildParent(mainChain[0], mainChain[1]);
+        _tracker.SetChildParent(mainChain[1], mainChain[0]);
+        _tracker.SetChildParent(mainChain[1], mainChain[0]);
+        
         _tracker.SetChildParent(branchAt5[0], mainChain[5]);
         _tracker.SetChildParent(branchAt10[0], mainChain[10]);
         _tracker.SetChildParent(branchAt15[0], mainChain[15]);
@@ -140,31 +155,57 @@ public class InvalidChainTrackerTest
         _tracker.IsOnKnownInvalidChain(branchAt5_butConnectLater[9], out lastValidHash).Should().BeFalse();
     }
 
-    [Test]
-    public void whenTryingToCreateACycle_throwException()
-    {
-        List<Keccak> mainChain = MakeChain(50);
-        List<Keccak> secondChain = MakeChain(50);
-
-        _tracker.Invoking((tracker) => tracker.SetChildParent(mainChain[10], mainChain[20]))
-            .Should().Throw<InvalidOperationException>();
-        
-        _tracker.Invoking((tracker) => tracker.SetChildParent(mainChain[20], mainChain[10]))
-            .Should().Throw<InvalidOperationException>();
-        
-        _tracker.SetChildParent(secondChain[0], mainChain[30]);
-        
-        _tracker.Invoking((tracker) => tracker.SetChildParent(mainChain[10], secondChain[10]))
-            .Should().Throw<InvalidOperationException>();
-            
-    }
-
-    [Test]
-    public void givenAnInvalidBlock_whenAttachingLater_trackingShouldStillBeCorrect()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void whenReattachingNodeFromSameChain_itShouldDetach_correctly(bool connectInReverse)
     {
         Keccak? lastValidHash;
-        List<Keccak> mainChain = MakeChain(50);
-        List<Keccak> secondChain = MakeChain(50);
+        List<Keccak> mainChain = MakeChain(50, connectInReverse);
+            
+        _tracker.SetChildParent(mainChain[40], mainChain[20]);
+        
+        _tracker.OnInvalidBlock(mainChain[21], mainChain[20]);
+        _tracker.IsOnKnownInvalidChain(mainChain[39], out lastValidHash).Should().BeTrue();
+        _tracker.IsOnKnownInvalidChain(mainChain[40], out lastValidHash).Should().BeFalse();
+        
+        _tracker.OnInvalidBlock(mainChain[5], mainChain[4]);
+        _tracker.IsOnKnownInvalidChain(mainChain[39], out lastValidHash).Should().BeTrue();
+        _tracker.IsOnKnownInvalidChain(mainChain[40], out lastValidHash).Should().BeTrue();
+
+        // Again, but with parent on higher level, which should detach them completely from main chain
+        mainChain = MakeChain(50);
+            
+        _tracker.SetChildParent(mainChain[20], mainChain[40]);
+        
+        _tracker.OnInvalidBlock(mainChain[20], mainChain[19]);
+        _tracker.IsOnKnownInvalidChain(mainChain[39], out lastValidHash).Should().BeFalse();
+        _tracker.IsOnKnownInvalidChain(mainChain[40], out lastValidHash).Should().BeFalse();
+        
+        _tracker.OnInvalidBlock(mainChain[5], mainChain[4]);
+        _tracker.IsOnKnownInvalidChain(mainChain[39], out lastValidHash).Should().BeFalse();
+        _tracker.IsOnKnownInvalidChain(mainChain[40], out lastValidHash).Should().BeFalse();
+    }
+    
+    [TestCase(true)]
+    [TestCase(false)]
+    public void whenCreatingACycle_itShouldResolveItByDetachingChild(bool connectInReverse)
+    {
+        List<Keccak> chain1 = MakeChain(50, connectInReverse);
+        List<Keccak> chain2 = MakeChain(50, connectInReverse);
+        List<Keccak> chain3 = MakeChain(50, connectInReverse);
+        
+        _tracker.SetChildParent(chain2[0], chain1[5]);
+        _tracker.SetChildParent(chain3[0], chain2[5]);
+        _tracker.SetChildParent(chain1[0], chain2[40]);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void givenAnInvalidBlock_whenAttachingLater_trackingShouldStillBeCorrect(bool connectInReverse)
+    {
+        Keccak? lastValidHash;
+        List<Keccak> mainChain = MakeChain(50, connectInReverse);
+        List<Keccak> secondChain = MakeChain(50, connectInReverse);
         Keccak invalidBlockParent = Keccak.Compute(Random.Shared.NextInt64().ToString());
         Keccak invalidBlock = Keccak.Compute(Random.Shared.NextInt64().ToString());
         
@@ -181,19 +222,21 @@ public class InvalidChainTrackerTest
         _tracker.IsOnKnownInvalidChain(secondChain[40], out lastValidHash).Should().BeTrue();
     }
 
-    [Test]
-    public void given_highSectionSize_thenLongChainShouldCreateLargeSection()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void given_highSectionSize_thenLongChainShouldCreateLargeSection(bool connectInReverse)
     {
         _tracker = new InvalidChainTracker(256, 1024);
-        MakeChain(500);
+        MakeChain(500, connectInReverse);
         _tracker.TotalCreatedSection.Should().BeLessOrEqualTo(1);
     }
 
-    [Test]
-    public void given_lowSectionSize_thenLongChainShouldCreateManySmallSection()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void given_lowSectionSize_thenLongChainShouldCreateManySmallSection(bool connectInReverse)
     {
         _tracker = new InvalidChainTracker(256, 10);
-        MakeChain(500);
+        MakeChain(500, connectInReverse);
         _tracker.TotalCreatedSection.Should().BeGreaterThanOrEqualTo(50);
     }
 }

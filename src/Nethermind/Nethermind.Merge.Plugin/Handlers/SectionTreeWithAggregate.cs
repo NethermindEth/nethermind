@@ -43,8 +43,9 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// TAggregate to make it work. Or shortcut it via node index probably.
 ///
 /// <see cref="QueryUpTo"/> should be O(1) + whatever <see cref="AggregateWithSubSection"/> complexity is.
-/// <see cref="SetChildParent"/> is O(n) where n is the size of child section. 
-/// <see cref="SetValue"/> is O(n) where n is the number of descendent section.
+/// <see cref="SetChildParent"/> is O(n) where n is the size of child section. O(1)+O(m) at root or tail of a chain where m
+///     is the number of descendent section.
+/// <see cref="SetValue"/> is O(m) where m is the number of descendent section.
 /// 
 /// Assuming most operation is on newer shorter chain/branch, it should not do many operation. Sections are pointed at by an
 /// LRU of accessed key. Old section which is not pointed by any LRU entry will get garbage collected. Together
@@ -60,17 +61,27 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
         internal TChainAggregate? ParentChainAggregate { get; set; }
         internal TChainAggregate? ChainAggregate  { get; set; }
         internal TAggregate? SectionAggregate  { get; set; }
-        
-        // Storing as a dictionary instead of table for fast IsChildParentInSection
+
+        // A startIdx item to store the start index of an item (for the idx in the ItemIdx). This is done so that
+        // Prepend operation is possible which is needed when extending graph from root, like with header sync.
+        internal int StartIdx { get; set; } = 0;
+
+        // Storing as a dictionary instead of table for fast check to know if a node in the middle of the section
+        // is adjacent to another node. Unfortunately this means we can't iterate from one item to another easily
         internal Dictionary<TKey, int> ItemIdx { get; set; } = new();
         internal Dictionary<TKey, TValue> Values { get; set; } = new();
+        
         internal HashSet<Section> ChildSections { get; set; } = new();
+        // A weak reference to the parent. Parent pointer is used during attaching two section where the child 
+        // section need to detach itself from it's old parent. Using a weak reference because older segment maybe
+        // garbage collected
+        internal WeakReference<Section> ParentSection { get; set; } = new(null);
 
         public bool IsChildParentInSection(TKey child, TKey parent)
         {
             if (ItemIdx.TryGetValue(child, out int childIdx) && ItemIdx.TryGetValue(parent, out int parentIdx))
             {
-                return (parentIdx - childIdx) == 1;
+                return (childIdx - parentIdx) == 1;
             }
 
             return false;
@@ -91,9 +102,10 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
     private readonly LruCache<TKey, Section> _blockSection;
     private int _totalCreatedSection = 0;
 
+    // For unit testing
     public int TotalCreatedSection { get => _totalCreatedSection; }
-    
-    public SectionTreeWithAggregate(int maxKeyHandle, int maxSectionSize)
+
+    protected SectionTreeWithAggregate(int maxKeyHandle, int maxSectionSize)
     {
         _blockSection = new LruCache<TKey, Section>(maxKeyHandle, "SectionTreeWithAggregate");
         _maxSectionSize = maxSectionSize;
@@ -117,7 +129,7 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
         return false;
     }
     
-    public void SetChildParent(TKey child, TKey parent)
+    public virtual void SetChildParent(TKey child, TKey parent)
     {
         if (EqualityComparer<TKey>.Default.Equals(child, parent))
         {
@@ -133,32 +145,48 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
             NewSection(parent, child);
             return;
         }
-
-        if (hasChildSection && hasParentSection && childSection == parentSection && childSection.IsChildParentInSection(child, parent))
-        {
-            // Already in parent child
-            return;
-        }
-
-        if (hasChildSection && hasParentSection && parentSection.IsTail(parent) && childSection.IsHead(child) && parentSection.ChildSections.Contains(childSection))
-        {
-            // Already in parent child
-            return;
-        }
-            
-
+        
         if (hasChildSection && hasParentSection)
         {
-            if (isReachableFrom(parentSection, childSection))
+            if (parentSection.IsTail(parent) && childSection.IsHead(child) && parentSection.ChildSections.Contains(childSection))
             {
-                throw new InvalidOperationException(
-                    "Child section is already reachable from parent. Only Tree is supported, not a DAG.");
+                // Already in parent child
+                return;
             }
-            if (isReachableFrom(childSection, parentSection))
+
+            if (childSection == parentSection)
             {
-                throw new InvalidOperationException(
-                    "Parent section is reachable from child. This can cause a cycle which is not supported here.");
+                if (childSection.IsChildParentInSection(child, parent))
+                {
+                    // Already in parent child
+                    return;
+                }
+                
+                // Well great. 
+                if (parentSection.ItemIdx[parent] < parentSection.ItemIdx[child])
+                {
+                    // In expected order. Detach child first, then parent, because we don't 
+                    // want to remove parent from the main section just yet
+                    childSection = SplitSectionFromHash(parentSection, child);
+                    SplitSectionFromHash(parentSection, parent, true);
+                }
+                else
+                {
+                    // This is weird. But doable. Detach parent first, Then child
+                    parentSection = SplitSectionFromHash(childSection, parent);
+                    childSection = SplitSectionFromHash(childSection, parent);
+                }
             }
+            else
+            {
+                // Now parentSection's tail is definitely parent
+                SplitSectionFromHash(parentSection, parent, true);
+                // Now childSection's head is definitely child
+                childSection = SplitSectionFromHash(childSection, child);
+            }
+                
+            AttachSection(parentSection, childSection);
+            return;
         }
 
         if (hasParentSection)
@@ -166,32 +194,41 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
             // Now parentSection's tail is definitely parent
             SplitSectionFromHash(parentSection, parent, true);
         }
-        else
+
+        if (hasChildSection)
         {
-            parentSection = NewSection(parent);
+            // Now childSection's head is definitely child
+            childSection = SplitSectionFromHash(childSection, child);
         }
-        
-        if (hasChildSection || parentSection.ChildSections.Count > 0 || parentSection.ItemIdx.Count >= _maxSectionSize)
-        {
-            // Now the childSection's head is definitely child
-            if (childSection == null)
-            {
-                // Parent section have child section > 1, so a new child section need to be attached,
-                // but no child section is created for the child, since its new.
-                childSection = NewSection(child);
-            }
-            else
-            {
-                childSection = SplitSectionFromHash(childSection, child);
-            }
-            
-            AttachSection(parentSection, childSection);
-        }
-        else
+
+        bool cannotAppendToParent = hasParentSection && (parentSection.ChildSections.Count > 0 || parentSection.ItemIdx.Count >= _maxSectionSize);
+        bool cannotPrependToChild = hasChildSection && (childSection.ParentSection.TryGetTarget(out Section _) || childSection.ItemIdx.Count >= _maxSectionSize);
+
+        if (hasParentSection && !cannotAppendToParent)
         {
             AppendToSection(parentSection, child);
             PropagateChainAggregate(parentSection);
+            return;
         }
+        
+        if (hasChildSection && !cannotPrependToChild)
+        {
+            PrependToSection(childSection, parent);
+            PropagateChainAggregate(childSection);
+            return;
+        }
+
+        if (parentSection == null)
+        {
+            parentSection = NewSection(parent);
+        }
+
+        if (childSection == null)
+        {
+            childSection = NewSection(child);
+        }
+        
+        AttachSection(parentSection, childSection);
     }
 
     /// <summary>
@@ -209,17 +246,17 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
         {
             newHeadIdx++;
         }
-
-        if (section.ItemIdx.Count == newHeadIdx)
+        
+        if (section.ItemIdx.Count == newHeadIdx - section.StartIdx)
         {
             return null;
         }
 
-        if (newHeadIdx == 0)
+        if (newHeadIdx == section.StartIdx)
         {
             return section;
         }
-        
+
         Section newSection = new();
         _totalCreatedSection++;
         
@@ -241,6 +278,7 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
         // Forwarding childs
         newSection.ChildSections = section.ChildSections;
         section.ChildSections = new HashSet<Section> { newSection };
+        newSection.ParentSection.SetTarget(section);
 
         (TAggregate? parentAggregate, TAggregate? childAggregate) newAggregate = UpdateSectionAggregateOnSplit(section.SectionAggregate, section, newSection);
         section.SectionAggregate = newAggregate.parentAggregate;
@@ -261,37 +299,77 @@ public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainA
         {
             return;
         }
-        if (parentSection.ChildSections.Count == 0 && parentSection.ItemIdx.Count + childSection.ItemIdx.Count < _maxSectionSize)
-        {
-            // We merge the two section.
-            foreach ((TKey itemHash, int _) in childSection.ItemIdx)
-            {
-                childSection.Values.TryGetValue(itemHash, out TValue? value);
-                AppendToSection(parentSection, itemHash, value);
-            }
 
-            parentSection.ChildSections = childSection.ChildSections;
-            PropagateChainAggregate(parentSection);
-        }
-        else
+        if (parentSection.ChildSections.Count == 0 && parentSection.ItemIdx.Count + childSection.ItemIdx.Count <= _maxSectionSize)
         {
-            parentSection.ChildSections.Add(childSection);
-            childSection.ParentChainAggregate = parentSection.ChainAggregate;
-            PropagateChainAggregate(parentSection);
+            // Merge these two section instead
+            AppendChildToParent(parentSection, childSection);
+            return;
         }
+        
+        foreach (Section childSectionChildSection in childSection.ChildSections.ToList())
+        {
+            if (isReachableFrom(childSectionChildSection, parentSection))
+            {
+                // For some reason, the parent is a descendent of the child. This is essentially a cycle and the 
+                // behaviour is pretty sketchy. This should not happen with a tree, but if it does happen, we detach
+                // the child that can reach parent to prevent stackoverflow/infinite loop when recalculating 
+                // aggregate.
+                childSectionChildSection.ParentSection.SetTarget(null);
+                childSection.ChildSections.Remove(childSectionChildSection);
+            }
+        }
+        
+        parentSection.ChildSections.Add(childSection);
+        if (childSection.ParentSection.TryGetTarget(out Section oldChildParent))
+        {
+            oldChildParent.ChildSections.Remove(childSection);
+        }
+        childSection.ParentSection.SetTarget(parentSection);
+        childSection.ParentChainAggregate = parentSection.ChainAggregate;
+        PropagateChainAggregate(parentSection);
     }
     
-    private void AppendToSection(Section parentSection, TKey key, TValue? value = default)
+    private void AppendChildToParent(Section parentSection, Section childSection)
     {
-        parentSection.ItemIdx.Add(key, parentSection.ItemIdx.Count);
-        if (value != null)
+        // Move item from child to parent. Deleting the child in process.
+        foreach ((TKey itemHash, int _) in childSection.ItemIdx)
         {
-            parentSection.Values.Add(key, value);
+            childSection.Values.TryGetValue(itemHash, out TValue? value);
+            AppendToSection(parentSection, itemHash, value);
         }
-        _blockSection.Set(key, parentSection);
-        parentSection.SectionAggregate = UpdateSectionAggregateOnValueSet(parentSection, key, value, default);
+
+        parentSection.ChildSections = childSection.ChildSections;
+        if (childSection.ParentSection.TryGetTarget(out Section oldChildParent))
+        {
+            oldChildParent.ChildSections.Remove(childSection);
+        }
+        
+        PropagateChainAggregate(parentSection);
     }
 
+    
+    private void AppendToSection(Section section, TKey key, TValue? value = default)
+    {
+        section.ItemIdx.Add(key, section.ItemIdx.Count);
+        if (value != null)
+        {
+            section.Values.Add(key, value);
+        }
+        _blockSection.Set(key, section);
+        section.SectionAggregate = UpdateSectionAggregateOnValueSet(section, key, value, default);
+    }
+
+    private void PrependToSection(Section section, TKey key, TValue? value = default)
+    {
+        section.ItemIdx.Add(key, --section.StartIdx);
+        if (value != null)
+        {
+            section.Values.Add(key, value);
+        }
+        _blockSection.Set(key, section);
+        section.SectionAggregate = UpdateSectionAggregateOnValueSet(section, key, value, default);
+    }
 
     private Section NewSection(params TKey[] items)
     {

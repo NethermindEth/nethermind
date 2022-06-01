@@ -99,12 +99,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
             }
-            
-            _invalidChainTracker.SetChildParent(request.BlockHash, request.ParentHash);
-            if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
-            {
-                return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
-            }
 
             if (_blockValidator.ValidateHash(block.Header) == false)
             {
@@ -112,6 +106,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _logger.Warn($"InvalidBlockHash. Result of {requestStr}");
 
                 return NewPayloadV1Result.InvalidBlockHash;
+            }
+            
+            _invalidChainTracker.SetChildParent(request.BlockHash, request.ParentHash);
+            if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
+            {
+                return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
             }
             
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
