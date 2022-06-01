@@ -169,6 +169,7 @@ namespace Ethereum.Test.Base
                 blockTree,
                 blockProcessor,
                 new RecoverSignatures(ecdsa, NullTxPool.Instance, specProvider, _logManager),
+                stateReader,
                 _logManager,
                 BlockchainProcessor.Options.NoReceipts);
 

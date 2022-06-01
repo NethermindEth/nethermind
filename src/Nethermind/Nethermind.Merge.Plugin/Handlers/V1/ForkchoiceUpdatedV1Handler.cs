@@ -36,8 +36,8 @@ using Nethermind.Synchronization;
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
     /// <summary>
-    /// https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md
-    /// Propagates the change in the fork choice to the execution client
+    /// Propagates the change in the fork choice to the execution client. May initiate creating new payload.
+    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>.
     /// </summary>
     public class ForkchoiceUpdatedV1Handler : IForkchoiceUpdatedV1Handler
     {
@@ -64,11 +64,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _manualBlockFinalizationManager = manualBlockFinalizationManager ??
-                                              throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
+            _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-            _blockConfirmationManager = blockConfirmationManager ??
-                                        throw new ArgumentNullException(nameof(blockConfirmationManager));
+            _blockConfirmationManager = blockConfirmationManager ?? throw new ArgumentNullException(nameof(blockConfirmationManager));
             _payloadPreparationService = payloadPreparationService;
             _blockCacheService = blockCacheService;
             _mergeSyncController = mergeSyncController;
@@ -76,111 +74,87 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState,
-            PayloadAttributes? payloadAttributes)
+        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
-            if (_logger.IsInfo) { _logger.Info($"Received: {requestStr}"); }
+            if (_logger.IsInfo) _logger.Info($"Received: {requestStr}.");
             
-            Block? newHeadBlock = EnsureHeadBlockHash(forkchoiceState.HeadBlockHash);
-            if (newHeadBlock == null)
+            Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
+            if (newHeadBlock is null) // if a head is unknown we are syncing
             {
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     _mergeSyncController.InitSyncing(block.Header);
+                    _peerRefresher.RefreshPeers(block.ParentHash);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
 
-                    if (_logger.IsInfo) { _logger.Info($"Start a new sync process... Request: {requestStr}"); }
+                    if (_logger.IsInfo) _logger.Info($"Start a new sync process... Request: {requestStr}.");
 
                     return ForkchoiceUpdatedV1Result.Syncing;
                 }
 
                 if (_logger.IsInfo)
                 {
-                    _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}");
+                    _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}.");
                 }
 
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.Hash ?? newHeadBlock.CalculateHash()))
+            if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()))
             {
-                // ToDO of course we shouldn't refresh the peers in this way. This need to be optimized and we need to rethink refreshing
-                if (i % 10 == 0)
-                    _peerRefresher.RefreshPeers(newHeadBlock.Hash!);
-                ++i;
+                _peerRefresher.RefreshPeers(newHeadBlock.ParentHash);
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
-                if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}"); }
+                if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}."); }
 
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed");
+            if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed.");
 
 
-            (BlockHeader? finalizedHeader, string? finalizationErrorMsg) =
-                ValidateBlockHash(forkchoiceState.FinalizedBlockHash);
-            if (finalizationErrorMsg != null)
+            BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
+            if (finalizationErrorMsg is not null)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn($"Invalid finalized block hash {finalizationErrorMsg}. Request: {requestStr}");
-
+                if (_logger.IsWarn) _logger.Warn($"Invalid finalized block hash {finalizationErrorMsg}. Request: {requestStr}.");
                 return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
 
-            (BlockHeader? safeBlockHashHeader, string? safeBlockErrorMsg) =
-                ValidateBlockHash(forkchoiceState.SafeBlockHash);
-            if (safeBlockErrorMsg != null)
+            BlockHeader? safeBlockHashHeader = ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
+            if (safeBlockErrorMsg is not null)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}");
-
+                if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}.");
                 return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
 
-            (Block[]? blocks, string? setHeadErrorMsg) =
-                EnsureNewHead(newHeadBlock);
-            if (setHeadErrorMsg != null)
+            Block[]? blocks = EnsureNewHead(newHeadBlock, out string? setHeadErrorMsg);
+            if (setHeadErrorMsg is not null)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}");
-
+                if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
                 return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
             }
-
-            if (_poSSwitcher.TerminalTotalDifficulty == null ||
-                newHeadBlock!.Header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
+            
+            if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(newHeadBlock.Header))
             {
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}");
+                if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}.");
                 
                 // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
                 // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
                 return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
             }
 
-
-            if (_blockTree.IsMainChain(forkchoiceState.HeadBlockHash) &&
-                newHeadBlock.Number < (_blockTree.Head?.Number ?? 0))
+            if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
             {
-                if (_logger.IsInfo)
-                {
-                    _logger.Info(
-                        $"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}");
-                }
-                
+                if (_logger.IsInfo) _logger.Info($"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
                 return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
 
             EnsureTerminalBlock(forkchoiceState, blocks);
             
-            string? payloadId = null;
-            
             bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
-            bool shouldUpdateHead = blocks != null && !newHeadTheSameAsCurrentHead;
+            bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
             if (shouldUpdateHead)
             {
                 _blockTree.UpdateMainChain(blocks!, true, true);
@@ -209,43 +183,44 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             //
             //     return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
             // }
-            //
-           
+
             if (nonZeroFinalizedBlockHash)
             {
-                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock!.Header, finalizedHeader!);
+                _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
             }
             
             // In future safeBlockHash will be added to JSON-RPC
             if (nonZeroSafeBlockHash)
+            {
                 _blockConfirmationManager.Confirm(safeBlockHashHeader!.Hash!);
-            
+            }
+
             if (shouldUpdateHead)
             {
-                _poSSwitcher.ForkchoiceUpdated(newHeadBlock!.Header, forkchoiceState.FinalizedBlockHash);
-                if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head");
+                _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
+                if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head.");
             }
 
-            if (payloadAttributes != null && newHeadBlock!.Timestamp >= payloadAttributes.Timestamp)
+            string? payloadId = null;
+            if (payloadAttributes is not null)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}");
+                if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}.");
 
-                return ForkchoiceUpdatedV1Result.Error(
-                    $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}",
-                    MergeErrorCodes.InvalidPayloadAttributes);
+                    return ForkchoiceUpdatedV1Result.Error(
+                        $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock.Timestamp}. Request: {requestStr}",
+                        MergeErrorCodes.InvalidPayloadAttributes);
+                }
+                else
+                {
+                    payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
+                }
             }
 
-            if (payloadAttributes != null)
-            {
-                payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock!.Header, payloadAttributes);
-            }
+            if (_logger.IsInfo) _logger.Info($"Valid. Request: {requestStr}.");
 
-            if (_logger.IsInfo) { _logger.Info($"Valid. Request: {requestStr}"); }
-            
-            _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash,forkchoiceState.SafeBlockHash);
-
+            _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
             return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
         }
 
@@ -264,8 +239,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     {
                         if (_poSSwitcher.TryUpdateTerminalBlock(blocks[i].Header))
                         {
-                            if (_logger.IsInfo)
-                                _logger.Info($"Terminal block {blocks[i].Header} updated during the forkchoice");
+                            if (_logger.IsInfo) _logger.Info($"Terminal block {blocks[i].Header} updated during the forkchoice");
                         }
 
                         break;
@@ -274,7 +248,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
         }
 
-        private Block? EnsureHeadBlockHash(Keccak headBlockHash)
+        private Block? GetBlock(Keccak headBlockHash)
         {
             Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.None);
             if (block is null)
@@ -285,40 +259,38 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return block;
         }
 
-        private (Block[]? Blocks, string? ErrorMsg) EnsureNewHead(Block newHeadBlock)
+        private Block[]? EnsureNewHead(Block newHeadBlock, out string? errorMessage)
         {
-            string? errorMsg = null;
-            if (_blockTree.Head!.Hash == newHeadBlock!.Hash)
+            errorMessage = null;
+            if (_blockTree.Head!.Hash == newHeadBlock.Hash)
             {
-                return (null, errorMsg);
+                return null;
             }
 
             if (!TryGetBranch(newHeadBlock, out Block[] branchOfBlocks))
             {
-                errorMsg =
-                    $"Block's {newHeadBlock} main chain predecessor cannot be found and it will not be set as head.";
-                if (_logger.IsWarn) _logger.Warn(errorMsg);
+                errorMessage = $"Block's {newHeadBlock} main chain predecessor cannot be found and it will not be set as head.";
+                if (_logger.IsWarn) _logger.Warn(errorMessage);
             }
 
-            return (branchOfBlocks, errorMsg);
+            return branchOfBlocks;
         }
 
-        private (BlockHeader? BlockHeader, string? ErrorMsg) ValidateBlockHash(Keccak blockHash,
-            bool skipZeroHash = true)
+        private BlockHeader? ValidateBlockHash(Keccak blockHash, out string? errorMessage, bool skipZeroHash = true)
         {
-            string? errorMsg = null;
+            errorMessage = null;
             if (skipZeroHash && blockHash == Keccak.Zero)
-                return (null, null);
+            {
+                return null;
+            }
 
             BlockHeader? blockHeader = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
             if (blockHeader is null)
             {
-                errorMsg = $"Block {blockHash} not found.";
-                if (_logger.IsWarn) _logger.Warn(errorMsg);
+                errorMessage = $"Block {blockHash} not found.";
+                if (_logger.IsWarn) _logger.Warn(errorMessage);
             }
-
-
-            return (blockHeader, errorMsg);
+            return blockHeader;
         }
 
 

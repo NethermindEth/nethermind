@@ -101,6 +101,7 @@ namespace Nethermind.JsonRpc.Benchmark
                     NullTxPool.Instance,
                     specProvider,
                     LimboLogs.Instance),
+                stateReader,
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.NoReceipts);
 

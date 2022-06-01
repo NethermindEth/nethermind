@@ -154,6 +154,10 @@
       "commandName": "Project",
       "commandLineArgs": "--config configs\\sepolia.cfg --Init.DiagnosticMode MemDb"
     },
+    "Sepolia Archive": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\sepolia_archive.cfg --Init.DiagnosticMode MemDb"
+    },
     "Kiln_devnet": {
       "commandName": "Project",
       "commandLineArgs": "--config kiln_devnet.cfg  --Init.DiagnosticMode MemDb"

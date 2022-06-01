@@ -1,8 +1,11 @@
 name: '[RUN] Merge Hive Tests'
+   
 on: 
   push:
-    branches: [ kiln ]
+    tags:
+    - '*'
   workflow_dispatch:
+
 jobs:
   build-dockers:
     runs-on: ubuntu-latest

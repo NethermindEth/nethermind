@@ -32,10 +32,15 @@ namespace Nethermind.Consensus
 
         UInt256? TerminalTotalDifficulty { get; }
         
-        // Final total difficulty is total difficulty of the last PoW block. FinalTotalDifficulty >= TerminalTotalDifficulty.
-        // TerminalTotalDifficulty is trigger for transition process. However, the last PoW block will be bigger than TTD.
-        // Thanks to this variable, we can simplify many things in our code. For example, we can insert newPayload with FinalTotalDifficulty
-        // This value will be known after the merge transition, and we can configure it in the first release after the merge.
+        /// <summary>
+        /// Total difficulty is total difficulty of the last PoW block.
+        /// </summary>
+        /// <remarks>
+        /// FinalTotalDifficulty >= TerminalTotalDifficulty.
+        /// TerminalTotalDifficulty is trigger for transition process. However, the last PoW block will be bigger than TTD.
+        /// Thanks to this variable, we can simplify many things in our code. For example, we can insert newPayload with FinalTotalDifficulty
+        /// This value will be known after the merge transition, and we can configure it in the first release after the merge.
+        /// </remarks>
         UInt256? FinalTotalDifficulty { get; }
         
         bool TransitionFinished { get; }
@@ -54,5 +59,12 @@ namespace Nethermind.Consensus
         (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header);
         
         bool IsPostMerge(BlockHeader header);
+    }
+
+    public static class PoSSwitcherExtensions
+    {
+        public static bool MisconfiguredTerminalTotalDifficulty(this IPoSSwitcher poSSwitcher) => poSSwitcher.TerminalTotalDifficulty is null;
+        
+        public static bool BlockBeforeTerminalTotalDifficulty(this IPoSSwitcher poSSwitcher, BlockHeader blockHeader) => blockHeader.TotalDifficulty < poSSwitcher.TerminalTotalDifficulty;
     }
 }

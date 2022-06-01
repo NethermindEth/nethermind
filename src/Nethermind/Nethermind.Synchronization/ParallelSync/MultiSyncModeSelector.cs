@@ -529,11 +529,9 @@ namespace Nethermind.Synchronization.ParallelSync
         
         private bool AnyDesiredPeerKnown(Snapshot best) =>
              _betterPeerStrategy.IsDesiredPeer((best.PeerDifficulty, best.PeerBlock), best.Header);
-
-
+        
         private bool AnyPostPivotPeerKnown(long bestPeerBlock) => bestPeerBlock > _syncConfig.PivotNumberParsed;
-        
-        
+
         private (UInt256? maxPeerDifficulty, long? number) ReloadDataFromPeers()
         {
             UInt256? maxPeerDifficulty = null;

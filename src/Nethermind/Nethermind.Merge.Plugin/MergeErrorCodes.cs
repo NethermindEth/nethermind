@@ -22,7 +22,7 @@ namespace Nethermind.Merge.Plugin
     {
         public const int None = 0;
 
-        public const int UnavailablePayloadV1 = -32001;
+        public const int UnknownPayload = -38001;
         
         public const int InvalidForkchoiceState = -38002;
 

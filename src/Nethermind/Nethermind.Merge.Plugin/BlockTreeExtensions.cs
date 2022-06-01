@@ -13,14 +13,18 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
+using Nethermind.Blockchain;
 using Nethermind.Core;
 
-namespace Nethermind.Consensus.Validators
+namespace Nethermind.Merge.Plugin;
+
+public static class BlockTreeExtensions
 {
-    public interface IHeaderValidator
-    {
-        bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false);
-        bool Validate(BlockHeader header, bool isUncle = false);
-    }
+    public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, Block block) => 
+        block.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
+    
+    public static bool IsOnMainChainBehindHead(this IBlockTree blockTree, Block block) => 
+        block.Number < (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
 }

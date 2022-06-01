@@ -26,7 +26,7 @@ namespace Nethermind.Merge.Plugin.Handlers
     {
         string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
 
-        Block? GetPayload(byte[] payloadId);
+        Block? GetPayload(string payloadId);
 
         event EventHandler<BlockEventArgs>? BlockImproved;
     }

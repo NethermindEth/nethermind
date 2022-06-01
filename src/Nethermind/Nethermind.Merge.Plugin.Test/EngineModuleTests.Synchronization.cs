@@ -54,7 +54,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        await rpc.engine_newPayloadV1(new BlockRequestResult(block));
+        await rpc.engine_newPayloadV1(new ExecutionPayloadV1(block));
         // sync has not started yet
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
         chain.BeaconSync.IsBeaconSyncFinished(block.Header).Should().BeTrue();
@@ -93,10 +93,10 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
         
-        BlockRequestResult parentBlockRequest = new (Build.A.Block.WithNumber(2).TestObject);
-        BlockRequestResult[] requests = CreateBlockRequestBranch(parentBlockRequest, Address.Zero, 7);
+        ExecutionPayloadV1 parentBlockRequest = new (Build.A.Block.WithNumber(2).TestObject);
+        ExecutionPayloadV1[] requests = CreateBlockRequestBranch(parentBlockRequest, Address.Zero, 7);
         ResultWrapper<PayloadStatusV1> payloadStatus;
-        foreach (BlockRequestResult r in requests)
+        foreach (ExecutionPayloadV1 r in requests)
         {
             payloadStatus = await rpc.engine_newPayloadV1(r);
             payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
@@ -136,7 +136,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockChain();
         Keccak startingHead = chain.BlockTree.HeadHash;
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        BlockRequestResult[] requests = CreateBlockRequestBranch(new(chain.BlockTree.Head!), Address.Zero, 7);
+        ExecutionPayloadV1[] requests = CreateBlockRequestBranch(new(chain.BlockTree.Head!), Address.Zero, 7);
 
         ResultWrapper<PayloadStatusV1> payloadStatus;
         for (int i = 4; i < requests.Length - 1; i++)
@@ -183,7 +183,7 @@ public partial class EngineModuleTests
         Keccak startingHead = chain.BlockTree.HeadHash;
         // create 7 block gap
         int gap = 7;
-        BlockRequestResult headBlockRequest = new(chain.BlockTree.Head!);
+        ExecutionPayloadV1 headBlockRequest = new(chain.BlockTree.Head!);
         Block[] missingBlocks = new Block[gap];
         for (int i = 0; i < gap; i++)
         {
@@ -192,7 +192,7 @@ public partial class EngineModuleTests
             missingBlocks[i] = block!;
         }
         // setting up beacon pivot
-        BlockRequestResult pivotRequest = CreateBlockRequest(headBlockRequest, Address.Zero);
+        ExecutionPayloadV1 pivotRequest = CreateBlockRequest(headBlockRequest, Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
         pivotRequest.TryGetBlock(out Block? pivotBlock);
@@ -214,7 +214,7 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
             .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // trigger insertion of blocks in cache into block tree by adding new block
-        BlockRequestResult bestBeaconBlockRequest = CreateBlockRequest(pivotRequest, Address.Zero);
+        ExecutionPayloadV1 bestBeaconBlockRequest = CreateBlockRequest(pivotRequest, Address.Zero);
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // simulate headers sync by inserting 3 headers from pivot backwards
@@ -290,10 +290,10 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
         // create block gap from fast sync pivot
         int gap = 7;
-        BlockRequestResult[] requests =
-            CreateBlockRequestBranch(new BlockRequestResult(syncedBlockTree.Head!), Address.Zero, gap);
+        ExecutionPayloadV1[] requests =
+            CreateBlockRequestBranch(new ExecutionPayloadV1(syncedBlockTree.Head!), Address.Zero, gap);
         // setting up beacon pivot
-        BlockRequestResult pivotRequest = CreateBlockRequest(requests[^1], Address.Zero);
+        ExecutionPayloadV1 pivotRequest = CreateBlockRequest(requests[^1], Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
         pivotRequest.TryGetBlock(out Block? pivotBlock);
@@ -316,7 +316,7 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
             .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // trigger insertion of blocks in cache into block tree by adding new block
-        BlockRequestResult bestBeaconBlockRequest = CreateBlockRequest(pivotRequest, Address.Zero);
+        ExecutionPayloadV1 bestBeaconBlockRequest = CreateBlockRequest(pivotRequest, Address.Zero);
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // fill in beacon headers until fast headers pivot
