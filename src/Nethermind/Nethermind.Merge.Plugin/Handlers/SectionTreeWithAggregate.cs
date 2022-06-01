@@ -47,11 +47,11 @@ namespace Nethermind.Merge.Plugin.Handlers;
 ///     is the number of descendent section.
 /// <see cref="SetValue"/> is O(m) where m is the number of descendent section.
 /// 
-/// Assuming most operation is on newer shorter chain/branch, it should not do many operation. Sections are pointed at by an
-/// LRU of accessed key. Old section which is not pointed by any LRU entry will get garbage collected. Together
-/// with a max section size option, really old node will get garbage collected, an update to those node will create
-/// new unconnected section which will not get propagated to its descendent until it is reconnected.
-/// Set a high number top prevent or reduce the likelihood of that happening.
+/// Sections are pointed at by an LRU of accessed key. Old section which is not pointed by any LRU entry will get
+/// garbage collected. If both root and tail is accessed, the chain of sections in between will still be connected.
+/// Together with a max section size option, really old node will get garbage collected, an update to those node
+/// will create new unconnected section which will not get propagated to its descendent
+/// until it is reconnected. Set a high number top prevent or reduce the likelihood of that happening.
 ///
 /// </summary>
 public abstract class SectionTreeWithAggregate<TKey, TValue, TAggregate, TChainAggregate> : IAggregateChainQueryStore<TKey, TValue, TChainAggregate> 

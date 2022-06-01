@@ -35,7 +35,7 @@ public class InvalidChainTracker: SectionTreeWithAggregate<Keccak, Keccak, Lowes
 {
     private readonly object _opLock = new();
     
-    public InvalidChainTracker(): base(256, 1024) {
+    public InvalidChainTracker(): base(1024*16, 1024) {
     }
     
     public InvalidChainTracker(int maxKeyHandle, int maxSectionSize): base(maxKeyHandle, maxSectionSize) {
