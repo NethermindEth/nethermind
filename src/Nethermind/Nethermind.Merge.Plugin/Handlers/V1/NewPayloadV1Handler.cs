@@ -157,7 +157,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (!parentProcessed)
             {
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
-                // TODO: Check back how does the block tree process this back eventually
                 _blockTree.Insert(block, true, insertOptions);
                 if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
                 return NewPayloadV1Result.Syncing;
@@ -238,7 +237,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
             else
             {
-                // Note: this is a basic validation. It will be processed in 9 line below.
                 bool validAndProcessed = ValidateWithBlockValidator(block, parent, out processedBlock);
                 if (validAndProcessed)
                 {
