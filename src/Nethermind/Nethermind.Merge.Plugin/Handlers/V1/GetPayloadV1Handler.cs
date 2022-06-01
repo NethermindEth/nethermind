@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
@@ -48,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         public async Task<ResultWrapper<BlockRequestResult?>> HandleAsync(byte[] payloadId)
         {
-            Block? block = _payloadPreparationService.GetPayload(payloadId);
+            Block? block = await _payloadPreparationService.GetPayload(payloadId);
 
             if (block == null)
             {

@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Producers
     {
         private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
-        public ITimestamper Timestamper { get; }
+        private ITimestamper Timestamper { get; }
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
         private ISealer Sealer { get; }

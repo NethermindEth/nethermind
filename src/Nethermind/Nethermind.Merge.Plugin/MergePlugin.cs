@@ -33,6 +33,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
 using Nethermind.Merge.Plugin.Synchronization;

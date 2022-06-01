@@ -20,13 +20,13 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Merge.Plugin.BlockProduction
 {
     public interface IPayloadPreparationService
     {
         string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
 
-        Block? GetPayload(byte[] payloadId);
+        ValueTask<Block?> GetPayload(byte[] payloadId);
 
         event EventHandler<BlockEventArgs>? BlockImproved;
     }

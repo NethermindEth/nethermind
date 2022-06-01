@@ -24,7 +24,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
-public class BlockImprovementContext
+public class BlockImprovementContext : IDisposable
 {
     private readonly IManualBlockProductionTrigger _blockProductionTrigger;
     private readonly CancellationTokenSource _cancellationTokenSource;
@@ -36,34 +36,39 @@ public class BlockImprovementContext
         CurrentBestBlock = currentBestBlock;
     }
 
-    public Block CurrentBestBlock { get; private set; }
-
+    public Task ImprovementTask { get; private set; } = Task.CompletedTask; 
+    
+    public Block? CurrentBestBlock { get; private set; }
 
     public Task<Block?> StartImprovingBlock(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
     {
-        return
-            _blockProductionTrigger.BuildBlock(parentHeader, _cancellationTokenSource.Token,
-                    NullBlockTracer.Instance,
-                    payloadAttributes)
-                .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
+        Task<Block?> improvementTask = _blockProductionTrigger.BuildBlock(parentHeader, _cancellationTokenSource.Token, NullBlockTracer.Instance, payloadAttributes)
+            .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
+        ImprovementTask = improvementTask;
+        return improvementTask;
     }
             
     public void Cancel()
     {
-        _cancellationTokenSource?.Cancel();
-        _cancellationTokenSource?.Dispose();
+        _cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Dispose();
     }
 
-    private Block? SetCurrentBestBlock(Task<Block?> t)
+    private Block? SetCurrentBestBlock(Task<Block?> task)
     {
-        if (t.IsCompletedSuccessfully)
+        if (task.IsCompletedSuccessfully)
         {
-            if (t.Result != null)
+            if (task.Result != null)
             {
-                CurrentBestBlock = t.Result;
+                CurrentBestBlock = task.Result;
             }
         }
                 
-        return t.Result;
+        return task.Result;
+    }
+
+    public void Dispose()
+    {
+        Cancel();
     }
 }
