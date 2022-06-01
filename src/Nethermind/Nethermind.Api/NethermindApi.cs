@@ -215,7 +215,6 @@ namespace Nethermind.Api
         public IGasPriceOracle? GasPriceOracle { get; set; }
 
         public IEthSyncingInfo EthSyncingInfo { get; set; }
-        public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
         public IBlockProductionPolicy BlockProductionPolicy { get; set; }
         public IWallet? Wallet { get; set; }
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
