@@ -393,7 +393,7 @@ namespace Nethermind.Store.Test
 
             provider.Restore(snapshots[snapshot + 1]);
 
-            // Since we didn't update transient on the 3rd snapshot
+            // Since we didn't update persistent on the 3rd snapshot
             if (snapshot == 2)
             {
                 snapshot--;

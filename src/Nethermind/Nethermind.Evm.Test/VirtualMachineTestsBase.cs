@@ -259,6 +259,14 @@ namespace Nethermind.Evm.Test
             }
         }
 
+        //protected void AssertTransientStorage(StorageCell storageCell, UInt256 expectedValue)
+        //{
+        //    _callIndex++;
+
+        //    byte[] actualValue = Storage.GetTransientState(storageCell);
+        //    Assert.AreEqual(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray(), actualValue, $"storage {storageCell}, call {_callIndex}");
+        //}
+
         protected void AssertCodeHash(Address address, Keccak codeHash)
         {
             Assert.AreEqual(codeHash, TestState.GetCodeHash(address), "code hash");

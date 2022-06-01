@@ -2047,8 +2047,9 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
                             return CallResult.StaticCallViolationException;
                         }
-
-                        if (!UpdateGas(spec.GetTStoreCost(), ref gasAvailable))
+                        
+                        var gasCost = spec.GetTStoreCost();
+                        if (!UpdateGas(gasCost, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
                             return CallResult.OutOfGasException;
@@ -2067,7 +2068,7 @@ namespace Nethermind.Evm
                         }
 
                         StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-                        _storage.Set(storageCell, newValue.ToArray());
+                        _storage.SetTransientState(storageCell, newValue.ToArray());
 
                         break;
                     }

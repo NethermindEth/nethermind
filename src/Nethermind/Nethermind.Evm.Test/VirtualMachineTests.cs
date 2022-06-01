@@ -22,6 +22,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.State;
 using Nethermind.Int256;
 using NUnit.Framework;
+using Nethermind.Specs;
 
 namespace Nethermind.Evm.Test
 {
@@ -428,22 +429,25 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Tload()
         {
-            TestAllTracerWithOutput receipt = Execute(
-                (byte)Instruction.PUSH1,
-                0, // index
-                (byte)Instruction.TLOAD);
+            byte[] code = Prepare.EvmCode
+                .PushData(96)
+                .Op(Instruction.TLOAD)
+                .Done;
+
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad, receipt.GasSpent, "gas");
         }
 
         [Test]
         public void Tstore()
         {
-            TestAllTracerWithOutput receipt = Execute(
-                (byte)Instruction.PUSH1,
-                96, // data
-                (byte)Instruction.PUSH1,
-                64, // position
-                (byte)Instruction.TSTORE);
+            byte[] code = Prepare.EvmCode
+                .PushData(96)
+                .PushData(64)
+                .Op(Instruction.TSTORE)
+                .Done;
+
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore, receipt.GasSpent, "gas");
         }
 

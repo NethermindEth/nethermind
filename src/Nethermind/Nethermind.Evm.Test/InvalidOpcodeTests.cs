@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -120,6 +120,22 @@ namespace Nethermind.Evm.Test
                                 )
                             ))))).ToArray();
 
+        private static readonly Instruction[] ShanghaiInstructions =
+            FrontierInstructions.Union(
+                HomesteadInstructions.Union(
+                    ByzantiumInstructions.Union(
+                        ConstantinopleFixInstructions.Union(
+                            IstanbulInstructions.Union(
+                                BerlinInstructions.Union(
+                                    LondonInstructions.Union(
+                                    new Instruction[]
+                                        {
+                                            Instruction.TLOAD,
+                                            Instruction.TSTORE
+                                        }
+                                    )
+                            )))))).ToArray();
+
         private Dictionary<long, Instruction[]> _validOpcodes
             = new()
             {
@@ -133,7 +149,8 @@ namespace Nethermind.Evm.Test
                 {MainnetSpecProvider.MuirGlacierBlockNumber, IstanbulInstructions},
                 {MainnetSpecProvider.BerlinBlockNumber, BerlinInstructions},
                 {MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
-                {long.MaxValue, LondonInstructions}
+                {MainnetSpecProvider.ShanghaiBlockNumber, ShanghaiInstructions},
+                {long.MaxValue, ShanghaiInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
@@ -157,6 +174,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.BerlinBlockNumber)]
         [TestCase(MainnetSpecProvider.LondonBlockNumber)]
+        [TestCase(MainnetSpecProvider.ShanghaiBlockNumber)]
         [TestCase(long.MaxValue)]
         public void Test(long blockNumber)
         {

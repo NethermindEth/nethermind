@@ -80,7 +80,12 @@ namespace Nethermind.Specs
                 return London.Instance;
             }
 
-            return ArrowGlacier.Instance;
+            if (blockNumber < ShanghaiBlockNumber)
+            {
+                return ArrowGlacier.Instance;
+            }
+
+            return Shanghai.Instance;
         }
 
         public const long HomesteadBlockNumber = 1_150_000;
