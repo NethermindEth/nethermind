@@ -100,9 +100,7 @@ namespace Nethermind.Api
         IEthSyncingInfo? EthSyncingInfo { get; set; }
 
         CompositePruningTrigger PruningTrigger { get; }
-        
-        IBlockConfirmationManager BlockConfirmationManager { get; set; }
-        
+      
         IBlockProductionPolicy BlockProductionPolicy { get; set; }
     }
 }
