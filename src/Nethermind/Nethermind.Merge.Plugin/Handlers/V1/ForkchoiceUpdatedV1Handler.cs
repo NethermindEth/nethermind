@@ -125,13 +125,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}.");
                 return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
-
-            Block[]? blocks = EnsureNewHead(newHeadBlock, out string? setHeadErrorMsg);
-            if (setHeadErrorMsg is not null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
-                return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
-            }
             
             if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(newHeadBlock.Header))
             {
@@ -142,6 +135,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
             }
 
+            Block[]? blocks = EnsureNewHead(newHeadBlock, out string? setHeadErrorMsg);
+            if (setHeadErrorMsg is not null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
+                return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
+            }
+            
             if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
             {
                 if (_logger.IsInfo) _logger.Info($"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
@@ -157,30 +157,22 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _blockTree.UpdateMainChain(blocks!, true, true);
             }
             
+            if (IsInconsistent(forkchoiceState.FinalizedBlockHash))
+            {
+                string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
+                if (_logger.IsWarn) _logger.Warn(errorMsg);
+                return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            }
+            
+            if (IsInconsistent(forkchoiceState.SafeBlockHash))
+            {
+                string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
+                if (_logger.IsWarn) _logger.Warn(errorMsg);
+                return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
+            }
+
             bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
             bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
-
-            /*This checks will be uncommented in next release. We need to check hive tests*/
-            // bool finalizedBlockHashInconsistent = nonZeroFinalizedBlockHash && !_blockTree.IsMainChain(finalizedHeader!);
-            // if (finalizedBlockHashInconsistent)
-            // {
-            //     string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
-            //     if (_logger.IsWarn)
-            //         _logger.Warn(errorMsg);
-            //
-            //     return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
-            // }
-            //
-            // bool safeBlockHashInconsistent = nonZeroSafeBlockHash && !_blockTree.IsMainChain(safeBlockHashHeader!);
-            // if (safeBlockHashInconsistent)
-            // {
-            //     string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
-            //     if (_logger.IsWarn)
-            //         _logger.Warn(errorMsg);
-            //
-            //     return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
-            // }
-
             if (nonZeroFinalizedBlockHash)
             {
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
@@ -237,6 +229,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     }
                 }
             }
+        }
+
+        private bool IsInconsistent(Keccak blockHash)
+        {
+            return blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash!);
         }
 
         private Block? GetBlock(Keccak headBlockHash)
