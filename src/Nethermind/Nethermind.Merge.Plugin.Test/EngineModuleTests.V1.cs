@@ -1308,15 +1308,13 @@ namespace Nethermind.Merge.Plugin.Test
             using MergeTestBlockchain chain =
                 await CreateBlockChain(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" });
             IEngineRpcModule rpc = CreateEngineModule(chain);
-
-            // Correct new payload
+            
             ExecutionPayloadV1 blockRequestResult1 = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressA);
             ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(blockRequestResult1);
             newPayloadResult1.Data.Status.Should().Be(PayloadStatus.Valid);
-
-            // Fork choice updated with first np hash
+            
             ForkchoiceStateV1 forkChoiceState1 = new ForkchoiceStateV1(blockRequestResult1.BlockHash, blockRequestResult1.BlockHash,
                 blockRequestResult1.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult1 = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState1);
@@ -1347,14 +1345,12 @@ namespace Nethermind.Merge.Plugin.Test
                 await CreateBlockChain(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" });
             IEngineRpcModule rpc = CreateEngineModule(chain);
 
-            // Correct new payload
             ExecutionPayloadV1 blockRequestResult1 = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressA);
             ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(blockRequestResult1);
             newPayloadResult1.Data.Status.Should().Be(PayloadStatus.Valid);
 
-            // Fork choice updated with first np hash
             ForkchoiceStateV1 forkChoiceState1 = new ForkchoiceStateV1(blockRequestResult1.BlockHash, blockRequestResult1.BlockHash,
                 blockRequestResult1.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult1 = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState1);
