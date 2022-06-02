@@ -160,30 +160,22 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _blockTree.UpdateMainChain(blocks!, true, true);
             }
             
-            bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
-            bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
-
-            /*This checks will be uncommented in next release. We need to check hive tests*/
-            bool finalizedBlockHashInconsistent = nonZeroFinalizedBlockHash && !_blockTree.IsMainChain(finalizedHeader!);
-            if (finalizedBlockHashInconsistent)
+            if (IsInconsistent(forkchoiceState.FinalizedBlockHash))
             {
                 string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
-                if (_logger.IsWarn)
-                    _logger.Warn(errorMsg);
-            
+                if (_logger.IsWarn) _logger.Warn(errorMsg);
                 return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
             
-            bool safeBlockHashInconsistent = nonZeroSafeBlockHash && !_blockTree.IsMainChain(safeBlockHashHeader!);
-            if (safeBlockHashInconsistent)
+            if (IsInconsistent(forkchoiceState.SafeBlockHash))
             {
                 string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
-                if (_logger.IsWarn)
-                    _logger.Warn(errorMsg);
-            
+                if (_logger.IsWarn) _logger.Warn(errorMsg);
                 return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
 
+            bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
+            bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
             if (nonZeroFinalizedBlockHash)
             {
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
@@ -246,6 +238,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     }
                 }
             }
+        }
+
+        private bool IsInconsistent(Keccak blockHash)
+        {
+            return blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash!);
         }
 
         private Block? GetBlock(Keccak headBlockHash)
