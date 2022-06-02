@@ -286,7 +286,7 @@ namespace Nethermind.Overseer.Test.Framework
 
         private void CopyRunnerFiles(string targetDirectory)
         {
-            string sourceDirectory = Path.Combine(Directory.GetCurrentDirectory(), "../../../../Nethermind.Runner/bin/Debug/netcoreapp3.0/");
+            string sourceDirectory = Path.Combine(Directory.GetCurrentDirectory(), "../../../../Nethermind.Runner/bin/Debug/net6.0/");
             if (!Directory.Exists(sourceDirectory))
             {
                 throw new IOException($"Runner not found at {sourceDirectory}");

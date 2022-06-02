@@ -9,11 +9,13 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="6.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" Version="6.0.0" />
-        <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="6.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="6.0.1" />
         <PackageReference Include="Microsoft.Extensions.Configuration.FileExtensions" Version="6.0.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="6.0.0" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0" />
-        <PackageReference Include="MongoDB.Driver" Version="2.11.5" />
+        <PackageReference Include="MongoDB.Driver" Version="2.15.1" />
+        <!-- MongoDB.Driver dependency, safe version -->
+        <PackageReference Include="SharpCompress" Version="0.31.0" />
     </ItemGroup>
     
     <ItemGroup>
