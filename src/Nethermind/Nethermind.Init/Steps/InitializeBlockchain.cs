@@ -256,6 +256,7 @@ namespace Nethermind.Init.Steps
                 getApi.BlockTree,
                 mainBlockProcessor,
                 _api.BlockPreprocessor,
+                stateReader,
                 getApi.LogManager,
                 new BlockchainProcessor.Options
                 {

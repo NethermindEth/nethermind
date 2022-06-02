@@ -351,6 +351,7 @@ namespace Nethermind.Synchronization.Blocks
                         }
                     }
                     
+                    if (_logger.IsTrace) _logger.Trace($"BlockDownloader - SuggestBlock {currentBlock}, ShouldProcess: {true}");
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None)))
                     {
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);

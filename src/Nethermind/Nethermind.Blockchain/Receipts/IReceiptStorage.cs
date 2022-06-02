@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Receipts
 {
@@ -25,5 +26,6 @@ namespace Nethermind.Blockchain.Receipts
         long? LowestInsertedReceiptBlockNumber { get; set; }
         long MigratedBlockNumber { get; set; }
         event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
+        bool HasBlock(Keccak hash);
     }
 }

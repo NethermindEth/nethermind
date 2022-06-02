@@ -48,9 +48,13 @@ namespace Nethermind.Hive
 
         public Task InitNetworkProtocol()
         {
-            if (_api.SyncPeerPool == null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
+            if (Enabled)
+            {
+                if (_api.SyncPeerPool == null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
 
-            _api.SyncPeerPool.PeerRefreshed += OnPeerRefreshed;
+                _api.SyncPeerPool.PeerRefreshed += OnPeerRefreshed;
+            }
+
             return Task.CompletedTask;
         }
 

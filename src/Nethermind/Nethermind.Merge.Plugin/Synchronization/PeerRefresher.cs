@@ -15,32 +15,71 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Timers;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class PeerRefresher : IPeerRefresher
+public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 {
     private readonly ISyncPeerPool _syncPeerPool;
+    private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
+    private DateTime _lastRefresh = DateTime.MinValue;
+    private Keccak _lastHash = Keccak.Zero;
+    private readonly ITimer _refreshTimer;
 
-    public PeerRefresher(ISyncPeerPool syncPeerPool)
+    public PeerRefresher(ISyncPeerPool syncPeerPool, ITimerFactory timerFactory)
     {
+        _refreshTimer = timerFactory.CreateTimer(_minRefreshDelay);
+        _refreshTimer.Elapsed += TimerOnElapsed;
+        _refreshTimer.AutoReset = false;
         _syncPeerPool = syncPeerPool;
     }
 
-    public void RefreshPeers(Keccak blockHash)
+    public void RefreshPeers(Keccak? blockHash)
     {
-        IEnumerable<PeerInfo> peers = _syncPeerPool.InitializedPeers;
-        foreach (PeerInfo peer in peers)
+        if (blockHash is not null)
+        {
+            _lastHash = blockHash;
+            TimeSpan timePassed = DateTime.Now - _lastRefresh;
+            if (timePassed > _minRefreshDelay)
+            {
+                Refresh(blockHash);
+            }
+            else if (!_refreshTimer.Enabled)
+            {
+                _refreshTimer.Interval = _minRefreshDelay - timePassed;
+                _refreshTimer.Start();
+            }
+        }
+    }
+
+    private void TimerOnElapsed(object? sender, EventArgs e)
+    {
+        Refresh(_lastHash);
+    }
+    
+    private void Refresh(Keccak blockHash)
+    {
+        _lastRefresh = DateTime.Now;
+        foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
             _syncPeerPool.RefreshTotalDifficulty(peer.SyncPeer, blockHash);
         }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _refreshTimer.Dispose();
+        return default;
     }
 }
 
 public interface IPeerRefresher
 {
-    void RefreshPeers(Keccak blockHash);
+    void RefreshPeers(Keccak? blockHash);
 }

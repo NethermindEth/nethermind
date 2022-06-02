@@ -89,9 +89,7 @@ namespace Nethermind.Core.Test.Blockchain
         public ISealEngine SealEngine { get; set; }
         
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
-        
-        public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
-        
+
         public IPoSSwitcher PoSSwitcher { get; set; }
 
         protected TestBlockchain()
@@ -179,7 +177,7 @@ namespace Nethermind.Core.Test.Blockchain
             SealEngine = new SealEngine(sealer, Always.Valid);
             BlockProcessor = CreateBlockProcessor();
             
-            BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
+            BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
             BlockchainProcessor = chainProcessor;
             BlockProcessingQueue = chainProcessor;
             chainProcessor.Start();

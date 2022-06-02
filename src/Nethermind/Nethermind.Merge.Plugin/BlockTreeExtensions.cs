@@ -15,17 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Crypto;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Merge.Plugin;
+
+public static class BlockTreeExtensions
 {
-    public class BlockConfirmationManager : IBlockConfirmationManager
-    {
-        public Keccak LastConfirmedHash { get; private set; } = Keccak.Zero;
-
-        public void Confirm(Keccak blockHash)
-        {
-            LastConfirmedHash = blockHash;
-        }
-    }
+    public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, Block block) => 
+        block.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
+    
+    public static bool IsOnMainChainBehindHead(this IBlockTree blockTree, Block block) => 
+        block.Number < (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
 }

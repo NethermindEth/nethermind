@@ -719,9 +719,10 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}");
+            
 #if DEBUG
-            /* this is just to make sure that we do not fall into this trap when creating tests */
-            if (header.StateRoot is null && !header.IsGenesis)
+        /* this is just to make sure that we do not fall into this trap when creating tests */
+        if (header.StateRoot is null && !header.IsGenesis)
             {
                 throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
             }

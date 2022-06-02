@@ -15,9 +15,19 @@ RUN if [ "$TARGETARCH" = "amd64" ] ; \
     fi
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:6.0-jammy
+
+ARG TARGETPLATFORM
+ARG TARGETOS
+ARG TARGETARCH
+ARG BUILDPLATFORM
+
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6
+
 # Fix rocksdb issue in ubuntu 22.04
-RUN ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so > /dev/null 2>&1
+RUN if [ "$TARGETARCH" = "amd64" ] ; \
+    then ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so > /dev/null 2>&1 ; \
+    else ln -s /usr/lib/aarch64-linux-gnu/libdl.so.2 /usr/lib/aarch64-linux-gnu/libdl.so > /dev/null 2>&1 ; \
+    fi
 
 WORKDIR /nethermind
 

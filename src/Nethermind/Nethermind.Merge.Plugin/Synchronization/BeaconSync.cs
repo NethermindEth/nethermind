@@ -100,7 +100,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader)
         {
             return !_beaconPivot.BeaconPivotExists()
-                   || (blockHeader != null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.Hash ?? blockHeader.CalculateHash()));
+                   || (blockHeader != null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.GetOrCalculateHash()));
         }
 
         public bool FastSyncEnabled => _syncConfig.FastSync;
