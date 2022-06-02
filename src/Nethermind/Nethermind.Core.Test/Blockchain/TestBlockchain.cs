@@ -89,9 +89,7 @@ namespace Nethermind.Core.Test.Blockchain
         public ISealEngine SealEngine { get; set; }
         
         public ITransactionComparerProvider TransactionComparerProvider { get; set; }
-        
-        public IBlockConfirmationManager BlockConfirmationManager { get; set; } = NoBlockConfirmation.Instance;
-        
+
         public IPoSSwitcher PoSSwitcher { get; set; }
 
         protected TestBlockchain()
