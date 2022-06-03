@@ -123,7 +123,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     _logger.Trace(
                         $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
                 
-                BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
+                BlockHeader[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
                 if (headers == null || headers.Length == 0)
                     break;
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts,

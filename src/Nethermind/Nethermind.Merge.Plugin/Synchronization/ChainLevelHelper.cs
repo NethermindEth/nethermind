@@ -20,7 +20,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
@@ -145,7 +144,7 @@ public class ChainLevelHelper : IChainLevelHelper
     private long? GetStartingPoint()
     {
         long startingPoint = _blockTree.BestKnownNumber + 1;
-        bool foundNotBeaconBlock;
+        bool foundBeaconBlock;
         ChainLevelInfo? startingLevel = _blockTree.FindLevel(startingPoint);
         BlockInfo? beaconMainChainBlock = startingLevel?.BeaconMainChainBlock;
         if (beaconMainChainBlock == null)
@@ -166,7 +165,7 @@ public class ChainLevelHelper : IChainLevelHelper
             }
             
             BlockInfo blockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
-            foundNotBeaconBlock = !blockInfo.IsBeaconInfo;
+            foundBeaconBlock = blockInfo.IsBeaconInfo;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {blockInfo?.ToString()}");
@@ -177,7 +176,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");
                 break;
             }
-        } while (!foundNotBeaconBlock);
+        } while (foundBeaconBlock);
 
         return startingPoint;
     }
