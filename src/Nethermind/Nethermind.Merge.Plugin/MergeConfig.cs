@@ -36,6 +36,6 @@ namespace Nethermind.Merge.Plugin
         
         public ulong SecondsPerSlot { get; set; } = 12;
         
-        public string? BoostRelayUrl { get; set; }
+        public string? BuilderRelayUrl { get; set; }
     }
 }

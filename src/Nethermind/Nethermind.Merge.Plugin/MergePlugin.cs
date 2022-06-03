@@ -155,14 +155,14 @@ namespace Nethermind.Merge.Plugin
                 Thread.Sleep(5000);
 
                 IBlockImprovementContextFactory improvementContextFactory;
-                if (string.IsNullOrEmpty(_mergeConfig.BoostRelayUrl))
+                if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
                 {
                     improvementContextFactory = new BlockImprovementContextFactory(_blockProductionTrigger, TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
                 }
                 else
                 {
                     DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
-                    IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BoostRelayUrl);
+                    IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
                     BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_blockProductionTrigger, TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot), boostRelay, _api.StateReader);
                     improvementContextFactory = boostBlockImprovementContextFactory;
                 }
