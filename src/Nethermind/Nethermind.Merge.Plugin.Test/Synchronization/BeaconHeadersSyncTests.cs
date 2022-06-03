@@ -87,7 +87,7 @@ public class BeaconHeadersSyncTests
             _mergeConfig = mergeConfig ?? new MergeConfig();
             _metadataDb = metadataDb ?? new MemDb();
             PoSSwitcher poSSwitcher = new(_mergeConfig, _syncConfig, _metadataDb, blockTree!,
-                MainnetSpecProvider.Instance, new BlockCacheService(), LimboLogs.Instance);
+                MainnetSpecProvider.Instance, LimboLogs.Instance);
 
             ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
 
@@ -122,7 +122,7 @@ public class BeaconHeadersSyncTests
             PivotTotalDifficulty = "1000"
         };
         PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, memDbProvider.MetadataDb, blockTree!,
-            MainnetSpecProvider.Instance, new BlockCacheService(), LimboLogs.Instance);
+            MainnetSpecProvider.Instance, LimboLogs.Instance);
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new(poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
             Substitute.For<ISyncPeerPool>(), syncConfig, Substitute.For<ISyncReport>(),
@@ -155,7 +155,7 @@ public class BeaconHeadersSyncTests
             PivotTotalDifficulty = "1000"
          };
         PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree!,
-            MainnetSpecProvider.Instance, new BlockCacheService(), LimboLogs.Instance);
+            MainnetSpecProvider.Instance, LimboLogs.Instance);
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new (poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, new MergeConfig() {Enabled = true},  LimboLogs.Instance);
         feed.InitializeFeed();

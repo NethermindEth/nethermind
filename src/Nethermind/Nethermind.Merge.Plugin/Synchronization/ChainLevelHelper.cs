@@ -27,9 +27,9 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
-    BlockHeader[] GetNextHeaders(int maxCount);
+    BlockHeader[]? GetNextHeaders(int maxCount);
 
-    Block[] GetNextBlocks(int maxCount);
+    Block[]? GetNextBlocks(int maxCount);
 }
 
 public class ChainLevelHelper : IChainLevelHelper
@@ -48,7 +48,7 @@ public class ChainLevelHelper : IChainLevelHelper
         _logger = logManager.GetClassLogger();
     }
 
-    public BlockHeader[] GetNextHeaders(int maxCount)
+    public BlockHeader[]? GetNextHeaders(int maxCount)
     {
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
@@ -85,7 +85,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 }
             }
 
-            if ((beaconMainChainBlock.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0)
+            if (beaconMainChainBlock.IsBeaconInfo)
                 newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty;
             if (_logger.IsTrace)
                 _logger.Trace(
@@ -101,7 +101,7 @@ public class ChainLevelHelper : IChainLevelHelper
         return headers.ToArray();
     }
 
-    public Block[] GetNextBlocks(int maxCount)
+    public Block[]? GetNextBlocks(int maxCount)
     {
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
