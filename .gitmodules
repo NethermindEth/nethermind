@@ -1,6 +1,3 @@
-[submodule "src/tests"]
-	path = src/tests
-	url = https://github.com/ethereum/tests.git
 [submodule "src/Dirichlet"]
 	path = src/Dirichlet
 	url = https://github.com/tkstanczak/Dirichlet.git
