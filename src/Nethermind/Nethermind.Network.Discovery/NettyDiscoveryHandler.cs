@@ -92,6 +92,11 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             return;
         }
 
+        if (msgBytes.Length > 1280)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all client. Msg: ${discoveryMsg}");
+        }
+
         IByteBuffer copiedBuffer = Unpooled.CopiedBuffer(msgBytes);
         IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(copiedBuffer, discoveryMsg.FarAddress);
         
