@@ -329,7 +329,6 @@ namespace Nethermind.Consensus.Clique
                 return true;
         }
 
-        public ITimestamper Timestamper => _timestamper;
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
         private Keccak? _recentNotAllowedParent;

@@ -22,48 +22,46 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Merge.Plugin.Handlers;
+namespace Nethermind.Merge.Plugin.BlockProduction;
 
-public class BlockImprovementContext
+public class BlockImprovementContext : IBlockImprovementContext
 {
-    private readonly IManualBlockProductionTrigger _blockProductionTrigger;
     private readonly CancellationTokenSource _cancellationTokenSource;
-
-    public BlockImprovementContext(Block currentBestBlock, IManualBlockProductionTrigger blockProductionTrigger, TimeSpan timeout)
+    
+    public BlockImprovementContext(
+        Block currentBestBlock, 
+        IManualBlockProductionTrigger blockProductionTrigger, 
+        TimeSpan timeout,
+        BlockHeader parentHeader, 
+        PayloadAttributes payloadAttributes)
     {
-        _blockProductionTrigger = blockProductionTrigger;
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
+        ImprovementTask = blockProductionTrigger
+            .BuildBlock(parentHeader, _cancellationTokenSource.Token, NullBlockTracer.Instance, payloadAttributes)
+            .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
     }
 
-    public Block CurrentBestBlock { get; private set; }
+    public Task<Block?> ImprovementTask { get; }
 
+    public Block? CurrentBestBlock { get; private set; }
 
-    public Task<Block?> StartImprovingBlock(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+    private Block? SetCurrentBestBlock(Task<Block?> task)
     {
-        return
-            _blockProductionTrigger.BuildBlock(parentHeader, _cancellationTokenSource.Token,
-                    NullBlockTracer.Instance,
-                    payloadAttributes)
-                .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
-    }
-            
-    public void Cancel()
-    {
-        _cancellationTokenSource?.Cancel();
-        _cancellationTokenSource?.Dispose();
-    }
-
-    private Block? SetCurrentBestBlock(Task<Block?> t)
-    {
-        if (t.IsCompletedSuccessfully)
+        if (task.IsCompletedSuccessfully)
         {
-            if (t.Result != null)
+            if (task.Result != null)
             {
-                CurrentBestBlock = t.Result;
+                CurrentBestBlock = task.Result;
             }
         }
                 
-        return t.Result;
+        return task.Result;
+    }
+
+    public void Dispose()
+    {
+        _cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Dispose();
     }
 }
