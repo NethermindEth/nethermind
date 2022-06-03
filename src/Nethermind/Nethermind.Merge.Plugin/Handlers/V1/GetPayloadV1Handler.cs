@@ -22,6 +22,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Data.V1;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -36,7 +37,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     /// a payload has been cancelled due to the timeout then execution client must respond with error message.
     /// Execution client may stop the building process with the corresponding payload_id value after serving this call.
     /// </summary>
-    public class GetPayloadV1Handler: IAsyncHandler<byte[], BlockRequestResult?>
+    public class GetPayloadV1Handler: IAsyncHandler<byte[], ExecutionPayloadV1?>
     {
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly ILogger _logger;
@@ -47,14 +48,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<BlockRequestResult?>> HandleAsync(byte[] payloadId)
+        public async Task<ResultWrapper<ExecutionPayloadV1?>> HandleAsync(byte[] payloadId)
         {
             Block? block = await _payloadPreparationService.GetPayload(payloadId);
 
             if (block == null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId.ToHexString()} failed");
-                return ResultWrapper<BlockRequestResult?>.Fail(
+                return ResultWrapper<ExecutionPayloadV1?>.Fail(
                     "unknown payload",
                     MergeErrorCodes.UnavailablePayloadV1);
             }
@@ -64,8 +65,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _logger.Info($"GetPayloadV1 result: {block.Header.ToString(BlockHeader.Format.Full)}");
             }
 
-            BlockRequestResult result = new(block);
-            return ResultWrapper<BlockRequestResult?>.Success(result);
+            ExecutionPayloadV1 result = new(block);
+            return ResultWrapper<ExecutionPayloadV1?>.Success(result);
         }
     }
 }

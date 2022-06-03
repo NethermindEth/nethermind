@@ -42,14 +42,14 @@ namespace Nethermind.Merge.Plugin
                 "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<BlockRequestResult?>> engine_getPayloadV1(byte[] payloadId);
+        Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV1(byte[] payloadId);
         
         [JsonRpcMethod(
             Description =
                 "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
-        Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(BlockRequestResult executionPayload);
+        Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayloadV1 executionPayload);
         
         [JsonRpcMethod(
             Description =

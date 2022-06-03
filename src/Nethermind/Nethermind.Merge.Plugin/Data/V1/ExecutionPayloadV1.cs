@@ -16,9 +16,6 @@
 // 
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -26,18 +23,18 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Newtonsoft.Json;
 
-namespace Nethermind.Merge.Plugin.Data
+namespace Nethermind.Merge.Plugin.Data.V1
 {
     /// <summary>
     /// A data object representing a block as being sent from the execution layer to the consensus layer.
     /// </summary>
-    public class BlockRequestResult
+    public class ExecutionPayloadV1
     {
-        public BlockRequestResult()
+        public ExecutionPayloadV1()
         {
         }
 
-        public BlockRequestResult(Block block)
+        public ExecutionPayloadV1(Block block)
         {
             BlockHash = block.Hash!;
             ParentHash = block.ParentHash!;

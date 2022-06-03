@@ -46,7 +46,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     /// Verifies the payload according to the execution environment rule set (EIP-3675)
     /// and returns the status of the verification and the hash of the last valid block
     /// </summary>
-    public class NewPayloadV1Handler : IAsyncHandler<BlockRequestResult, PayloadStatusV1>
+    public class NewPayloadV1Handler : IAsyncHandler<ExecutionPayloadV1, PayloadStatusV1>
     {
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
@@ -88,7 +88,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(BlockRequestResult request)
+        public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayloadV1 request)
         {
             string requestStr = $"a new payload: {request}";
             if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
@@ -290,7 +290,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return options;
         }
 
-        private PayloadStatusV1 BuildExecutePayloadResult(BlockRequestResult request, bool isValid, BlockHeader? parent,
+        private PayloadStatusV1 BuildExecutePayloadResult(ExecutionPayloadV1 request, bool isValid, BlockHeader? parent,
             string? validationMessage)
         {
             PayloadStatusV1 payloadStatus = new();

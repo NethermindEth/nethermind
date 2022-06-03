@@ -55,5 +55,8 @@ namespace Nethermind.Merge.Plugin
         
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         Keccak TerminalBlockHashParsed => string.IsNullOrWhiteSpace(TerminalBlockHash) ? Keccak.Zero : new Keccak(Bytes.FromHexString(TerminalBlockHash));
+        
+        [ConfigItem(Description = "URL to Boost Relay.", DefaultValue = "null")]
+        string? BoostRelayUrl { get; set; }
     }
 }

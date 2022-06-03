@@ -39,7 +39,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
     public class PayloadPreparationService : IPayloadPreparationService
     {
         private readonly PostMergeBlockProducer _blockProducer;
-        private readonly IManualBlockProductionTrigger _blockProductionTrigger;
+        private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private readonly List<string> _payloadsToRemove = new();
@@ -47,28 +47,26 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
         private const int SlotsPerOldPayloadCleanup = 6;
         private readonly  ulong _cleanupOldPayloadDelay;
-        private readonly TimeSpan _timeout;
 
-        // first BlockRequestResult is empty (without txs), second one is the ideal one
-        private readonly ConcurrentDictionary<string, BlockImprovementContext> _payloadStorage = new();
-        private TaskQueue _taskQueue = new();
-
+        // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
+        private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
+        
         public PayloadPreparationService(
             PostMergeBlockProducer blockProducer,
-            IManualBlockProductionTrigger blockProductionTrigger,
+            IBlockImprovementContextFactory blockImprovementContextFactory,
             ISealer sealer,
-            IMergeConfig mergeConfig,
             ITimerFactory timerFactory,
             ILogManager logManager,
+            ulong secondsPerSlot,
             int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup)
         {
             _blockProducer = blockProducer;
-            _blockProductionTrigger = blockProductionTrigger;
+            _blockImprovementContextFactory = blockImprovementContextFactory;
             _sealer = sealer;
-            _timeout = TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot);
+            TimeSpan timeout = TimeSpan.FromSeconds(secondsPerSlot);
 
-            _cleanupOldPayloadDelay = 2 * mergeConfig.SecondsPerSlot * 1000; // 2 * slots time * 1000 (converting seconds to milliseconds)
-            ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * _timeout);
+            _cleanupOldPayloadDelay = 2 * secondsPerSlot * 1000; // 2 * slots time * 1000 (converting seconds to milliseconds)
+            ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
             timer.Elapsed += CleanupOldPayloads;
             timer.Start();
 
@@ -84,8 +82,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     ? _sealer.Address
                     : payloadAttributes.SuggestedFeeRecipient;
                 Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
-                Task blockImprovementTask = ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock);
-                _taskQueue.Enqueue(() => blockImprovementTask);
+                ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock);
             }
             else if (_logger.IsInfo) _logger.Info($"Payload with the same parameters has already started. PayloadId: {payloadId}");
 
@@ -100,23 +97,23 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return emptyBlock;
         }
 
-        private Task ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock)
+        private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock)
         {
             if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader}");
-            BlockImprovementContext blockImprovementContext = new(emptyBlock, _blockProductionTrigger, _timeout);
-            Task<Block?> idealBlockTask = blockImprovementContext.StartImprovingBlock(parentHeader, payloadAttributes)
-                .ContinueWith(LogProductionResult);
-
-            _payloadStorage[payloadId] = blockImprovementContext;
-            return idealBlockTask;
+            IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(emptyBlock, parentHeader, payloadAttributes);
+            blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
+            if (!_payloadStorage.TryAdd(payloadId, blockImprovementContext))
+            {
+                blockImprovementContext.Dispose();
+            }
         }
-
+        
         private void CleanupOldPayloads(object? sender, EventArgs e)
         {
             if (_logger.IsTrace) _logger.Trace($"Started old payloads cleanup");
             UnixTime utcNow = new(DateTime.Now);
 
-            foreach (KeyValuePair<string, BlockImprovementContext> payload in _payloadStorage)
+            foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
             {
                 if (payload.Value.CurrentBestBlock is not null && payload.Value.CurrentBestBlock.Timestamp + _cleanupOldPayloadDelay <= utcNow.Seconds)
                 {
@@ -127,7 +124,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
             foreach (string payloadToRemove in _payloadsToRemove)
             {
-                if (_payloadStorage.TryRemove(payloadToRemove, out BlockImprovementContext? context))
+                if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
                 {
                     context.Dispose();
                     if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
@@ -167,15 +164,17 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         public async ValueTask<Block?> GetPayload(byte[] payloadId)
         {
             string payloadStr = payloadId.ToHexString(true);
-            if (_payloadStorage.TryRemove(payloadStr, out BlockImprovementContext? blockContext))
+            if (_payloadStorage.TryRemove(payloadStr, out IBlockImprovementContext? blockContext))
             {
-                if (!blockContext.ImprovementTask.IsCompleted)
+                using (blockContext)
                 {
-                    await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(500));
+                    if (!blockContext.ImprovementTask.IsCompleted)
+                    {
+                        await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(500));
+                    }
+                    
+                    return blockContext.CurrentBestBlock;
                 }
-
-                blockContext.Cancel();
-                return blockContext.CurrentBestBlock;
             }
 
             return null;
@@ -193,29 +192,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
             Keccak inputHash = Keccak.Compute(input);
             return inputHash.Bytes.Slice(0, 8);
-        }
-
-        private class TaskQueue
-        {
-            private readonly SemaphoreSlim _semaphore;
-
-            public TaskQueue()
-            {
-                _semaphore = new SemaphoreSlim(1);
-            }
-
-            public async Task Enqueue(Func<Task> taskGenerator)
-            {
-                await _semaphore.WaitAsync();
-                try
-                {
-                    await taskGenerator();
-                }
-                finally
-                {
-                    _semaphore.Release();
-                }
-            }
         }
     }
 }

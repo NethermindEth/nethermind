@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,15 +13,15 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Data.V1;
 
-namespace Nethermind.Facade.Proxy
+namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
+
+public class BoostExecutionPayloadV1
 {
-    public interface IHttpClient
-    {
-        Task<T> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default);
-        Task<T> PostJsonAsync<T>(string endpoint, object? payload = null, CancellationToken cancellationToken = default);
-    }
+    public ExecutionPayloadV1 Block { get; set; }
+    public UInt256 Profit { get; set; }
 }

@@ -15,31 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Int256;
+using Org.BouncyCastle.Asn1.Cms;
 
-namespace Nethermind.Consensus.Producers
+namespace Nethermind.Merge.Plugin.BlockProduction;
+
+public class BlockImprovementContextFactory : IBlockImprovementContextFactory
 {
-    public class PayloadAttributes
+    private readonly IManualBlockProductionTrigger _blockProductionTrigger;
+    private readonly TimeSpan _timeout;
+
+    public BlockImprovementContextFactory(IManualBlockProductionTrigger blockProductionTrigger, TimeSpan timeout)
     {
-        public UInt256 Timestamp { get; set; }
-        
-        public Keccak PrevRandao { get; set; }
-        
-        public Address SuggestedFeeRecipient { get; set; }
-        
-        /// <summary>
-        /// GasLimit
-        /// </summary>
-        /// <remarks>
-        /// Only used for MEV-Boost
-        /// </remarks>
-        public long? GasLimit { get; set; }
-        
-        public override string ToString()
-        {
-            return $"PayloadAttributes: ({nameof(Timestamp)}: {Timestamp}, {nameof(PrevRandao)}: {PrevRandao}, {nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient})";
-        }
+        _blockProductionTrigger = blockProductionTrigger;
+        _timeout = timeout;
     }
+    
+    public IBlockImprovementContext StartBlockImprovementContext(
+        Block currentBestBlock, 
+        BlockHeader parentHeader, 
+        PayloadAttributes payloadAttributes) =>
+        new BlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes);
 }
