@@ -35,13 +35,13 @@ namespace Nethermind.TxPool.Filters
         private readonly TxDistinctSortedPool _txs;
         private readonly ILogger _logger;
 
-        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogger logger)
+        public FeeTooLowFilter(IChainHeadInfoProvider headInfo, IAccountStateProvider accountStateProvider, TxDistinctSortedPool txs, ILogManager logManager)
         {
             _specProvider = headInfo.SpecProvider;
             _headInfo = headInfo;
             _accounts = accountStateProvider;
             _txs = txs;
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
         }
 
         public AcceptTxResult Accept(Transaction tx, TxHandlingOptions handlingOptions)
