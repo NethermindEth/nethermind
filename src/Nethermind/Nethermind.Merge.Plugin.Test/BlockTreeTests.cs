@@ -451,16 +451,17 @@ public partial class BlockTreeTests
     public void pointers_are_set_on_restart_during_filling_block_gap()
     {
          BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
-            .WithBlockTrees(4, 10)
+            .WithBlockTrees(4, 30)
             .InsertBeaconPivot(7)
             .InsertHeaders(4, 6)
-            .SuggestBlocks(4, 4)
+            .InsertBeaconBlocks(7, 28)
+            .SuggestBlocks(4, 25)
             .Restart()
-            .AssertBestBeaconBody(7)
-            .AssertBestBeaconHeader(7)
+            .AssertBestBeaconHeader(28)
+            .AssertBestBeaconBody(28)
             .AssertLowestInsertedBeaconHeader(4)
-            .AssertBestSuggestedHeader(4)
-            .AssertBestSuggestedBody(4);
+            .AssertBestSuggestedHeader(25)
+            .AssertBestSuggestedBody(25);
     }
     
     [Test]
@@ -497,7 +498,6 @@ public partial class BlockTreeTests
             .AssertBestSuggestedHeader(3)
             .AssertBestSuggestedBody(3);
     }
-    
 
     [Test]
     public void MarkChainAsProcessed_does_not_change_main_chain()

@@ -413,15 +413,18 @@ namespace Nethermind.Blockchain
 
         private void LoadBeaconBestKnown()
         {
-            long left = Math.Max(Head?.Number ?? 0, (LowestInsertedBeaconHeader?.Number ?? 0) - 1);
+            long left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
             long right = Math.Max(0, left) + BestKnownSearchLimit;
-            
             long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
+
+            left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
+            right = Math.Max(0, left) + BestKnownSearchLimit;
             long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
             
             long? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeLong();
-            long bestBeaconBodyNumber = BinarySearchBlockNumber(
-                beaconPivotNumber.HasValue ? beaconPivotNumber.Value : left, right, BodyExists, findBeacon: true) ?? 0;
+            left = Math.Max(Head?.Number ?? 0, beaconPivotNumber ?? 0) - 1;
+            right = Math.Max(0, left) + BestKnownSearchLimit;
+            long bestBeaconBodyNumber = BinarySearchBlockNumber(left, right, BodyExists, findBeacon: true) ?? 0;
             
             if (_logger.IsInfo)
                 _logger.Info("Beacon Numbers resolved, " +
