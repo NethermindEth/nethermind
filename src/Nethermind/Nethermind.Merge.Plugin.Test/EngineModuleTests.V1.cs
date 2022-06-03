@@ -244,8 +244,6 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
         {
-            const int timeout = 2000;
-
             MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
             using MergeTestBlockchain chain = await CreateBlockChain( mergeConfig);
             BlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(1));
@@ -368,7 +366,6 @@ namespace Nethermind.Merge.Plugin.Test
             bestSuggestedHeaderHash.Should().Be(getPayloadResult.BlockHash);
             bestSuggestedHeaderHash.Should().NotBe(startingBestSuggestedHeader!.Hash!);
         }
-
 
         private async Task<ExecutionPayloadV1> PrepareAndGetPayloadResultV1(MergeTestBlockchain chain,
             IEngineRpcModule rpc)

@@ -25,10 +25,11 @@ namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
 
 public class BoostRelay : IBoostRelay
 {
+    public const string GetPayloadAttributesPath = "/eth/v1/relay/payload_attributes";
+    public const string SendPayloadPath = "/eth/v1/relay/submit_block";
+    
     private readonly IHttpClient _httpClient;
     private readonly string _relayUrl;
-    private const string getPayloadAttributes = "/eth/v1/relay/payload_attributes";
-    private const string submitBlock = "/eth/v1/relay/submit_block";
 
     public BoostRelay(IHttpClient httpClient, string relayUrl)
     {
@@ -37,10 +38,10 @@ public class BoostRelay : IBoostRelay
     }
     
     public Task<PayloadAttributes> GetPayloadAttributes(PayloadAttributes payloadAttributes, CancellationToken cancellationToken) => 
-        _httpClient.PostJsonAsync<PayloadAttributes>(GetUri(_relayUrl, getPayloadAttributes), payloadAttributes, cancellationToken);
+        _httpClient.PostJsonAsync<PayloadAttributes>(GetUri(_relayUrl, GetPayloadAttributesPath), payloadAttributes, cancellationToken);
 
     public Task SendPayload(BoostExecutionPayloadV1 executionPayloadV1, CancellationToken cancellationToken) => 
-        _httpClient.PostJsonAsync<object>(GetUri(_relayUrl, submitBlock), executionPayloadV1, cancellationToken);
+        _httpClient.PostJsonAsync<object>(GetUri(_relayUrl, SendPayloadPath), executionPayloadV1, cancellationToken);
     
     private string GetUri(string relayUrl, string relativeUrl) => relayUrl + relativeUrl;
 }

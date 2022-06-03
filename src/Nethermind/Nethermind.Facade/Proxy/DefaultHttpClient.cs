@@ -48,7 +48,7 @@ namespace Nethermind.Facade.Proxy
         }
 
         public Task<T> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default)
-            => ExecuteAsync<T>(Method.Get, endpoint, cancellationToken);
+            => ExecuteAsync<T>(Method.Get, endpoint, cancellationToken: cancellationToken);
 
         public Task<T> PostJsonAsync<T>(string endpoint, object? payload = null, CancellationToken cancellationToken = default)
             => ExecuteAsync<T>(Method.Post, endpoint, payload, cancellationToken);
