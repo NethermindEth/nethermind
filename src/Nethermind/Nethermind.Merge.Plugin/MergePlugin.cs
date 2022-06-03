@@ -39,6 +39,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -56,6 +57,7 @@ namespace Nethermind.Merge.Plugin
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService;
+        private IInvalidChainTracker _invalidChainTracker;
         private IPeerRefresher _peerRefresher;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
@@ -81,8 +83,14 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 
                 _blockCacheService = new BlockCacheService();
-                _poSSwitcher = new PoSSwitcher(_mergeConfig, _syncConfig,
-                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _api.LogManager);
+                _poSSwitcher = new PoSSwitcher(
+                    _mergeConfig,
+                    _syncConfig,
+                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata),
+                    _api.BlockTree, 
+                    _api.SpecProvider, 
+                    _api.LogManager);
+                _invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(_poSSwitcher, _api.BlockTree, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
@@ -106,8 +114,12 @@ namespace Nethermind.Merge.Plugin
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
                 if (_api.BlockProductionPolicy == null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
-                
-                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
+
+                _api.HeaderValidator = new InvalidHeaderInterceptor(
+                    new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator,
+                        _api.LogManager),
+                    _invalidChainTracker,
+                    _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
@@ -187,6 +199,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconPivot,
                         _blockCacheService,         
                         _api.BlockProcessingQueue,
+                        _invalidChainTracker,
                         _beaconSync,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
@@ -195,6 +208,7 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher,
                         payloadPreparationService,
                         _blockCacheService,
+                        _invalidChainTracker,
                         _beaconSync,
                         _peerRefresher,
                         _api.LogManager),
@@ -233,7 +247,11 @@ namespace Nethermind.Merge.Plugin
                 _peerRefresher = peerRefresher;
                 _api.DisposeStack.Push(peerRefresher);
                 _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
-                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
+                _api.HeaderValidator = new InvalidHeaderInterceptor(
+                    new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator,
+                        _api.LogManager),
+                    _invalidChainTracker,
+                    _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
@@ -265,6 +283,7 @@ namespace Nethermind.Merge.Plugin
                     _syncConfig,
                     _api.BetterPeerStrategy!,
                     syncReport,
+                    _invalidChainTracker,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(
                     _api.DbProvider, 

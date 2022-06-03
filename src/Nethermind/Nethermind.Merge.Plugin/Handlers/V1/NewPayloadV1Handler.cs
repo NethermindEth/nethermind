@@ -16,12 +16,10 @@
 // 
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -30,14 +28,13 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -57,9 +54,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockCacheService _blockCacheService;
         private readonly IBlockProcessingQueue _processingQueue;
         private readonly IMergeSyncController _mergeSyncController;
+        private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
-        private readonly ConcurrentDictionary<Keccak, Keccak> _lastValidHashes = new();
         private readonly ProcessingOptions _processingOptions;
 
         public NewPayloadV1Handler(
@@ -72,6 +69,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBeaconPivot beaconPivot,
             IBlockCacheService blockCacheService,
             IBlockProcessingQueue processingQueue,
+            IInvalidChainTracker invalidChainTracker,
             IMergeSyncController mergeSyncController,
             ILogManager logManager)
         {
@@ -83,6 +81,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
             _processingQueue = processingQueue;
+            _invalidChainTracker = invalidChainTracker; 
             _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
             _processingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge; 
@@ -103,6 +102,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
                 return NewPayloadV1Result.InvalidBlockHash;
+            }
+            
+            _invalidChainTracker.SetChildParent(request.BlockHash, request.ParentHash);
+            if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
+            {
+                return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
             }
             
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
@@ -161,6 +166,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     string resultStr = isValid ? "Valid" : "Invalid";
                     if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}.");
+                }
+
+                if (!isValid)
+                {
+                    _invalidChainTracker.OnInvalidBlock(request.BlockHash, request.ParentHash);
                 }
 
                 return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, isValid, parentHeader, message));
@@ -251,20 +261,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 payloadStatus.ValidationError = validationMessage;
                 payloadStatus.Status = PayloadStatus.Invalid;
-                if (_lastValidHashes.ContainsKey(request.ParentHash))
+                if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
                 {
-                    if (_lastValidHashes.TryRemove(request.ParentHash, out Keccak? lastValidHash))
-                    {
-                        _lastValidHashes.TryAdd(request.BlockHash, lastValidHash);
-                    }
-
                     payloadStatus.LatestValidHash = lastValidHash;
                 }
                 else
                 {
                     if (parent != null)
                     {
-                        _lastValidHashes.TryAdd(request.BlockHash, request.ParentHash);
                         payloadStatus.LatestValidHash = request.ParentHash;
                     }
                     else
@@ -277,6 +281,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return payloadStatus;
         }
 
+        /// Pop blocks from cache up to ancestor on the beacon chain. Which is then inserted into the block tree
+        /// which I assume will switch the canonical chain.
+        /// Return false if no ancestor that is part of beacon chain found.
         private bool TryInsertDanglingBlock(Block block)
         {
             BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;

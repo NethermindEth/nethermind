@@ -15,16 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Concurrent;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Merge.Plugin.Handlers;
+namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public class BlockCacheService : IBlockCacheService
+public interface IInvalidChainTracker
 {
-    public ConcurrentDictionary<Keccak, Block> BlockCache { get; } = new();
-    public Keccak? ProcessDestination { get; set; }
-    public Keccak? SyncingHead { get; set; }
-    public Keccak FinalizedHash { get; set; } = Keccak.Zero;
+    /// <summary>
+    /// Suggest that these hash are child parent of each other. Used to determine if a hash is on an invalid chain
+    /// </summary>
+    /// <param name="child"></param>
+    /// <param name="parent"></param>
+    void SetChildParent(Keccak child, Keccak parent);
+
+    /// <summary>
+    /// Mark the block hash as a failed block.
+    /// </summary>
+    /// <param name="failedBlock"></param>
+    /// <param name="parent"></param>
+    void OnInvalidBlock(Keccak failedBlock, Keccak parent);
+    
+    /// <summary>
+    /// Return last valid hash if this block is known to be on an invalid chain.
+    /// Return null otherwise
+    /// </summary>
+    bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash);
 }

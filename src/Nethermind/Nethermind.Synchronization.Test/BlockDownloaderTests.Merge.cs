@@ -28,6 +28,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
@@ -71,6 +72,7 @@ public partial class BlockDownloaderTests
         MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
+            new InvalidChainTracker(posSwitcher, notSyncedTree, new TestErrorLogManager()),
             LimboLogs.Instance);
 
         Response responseOptions = Response.AllCorrect;
@@ -123,6 +125,7 @@ public partial class BlockDownloaderTests
         MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
+            new InvalidChainTracker(posSwitcher, notSyncedTree, new TestErrorLogManager()),
             LimboLogs.Instance);
 
         SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);

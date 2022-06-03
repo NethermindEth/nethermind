@@ -102,6 +102,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");
             builder.AppendLine($"{indent}BaseFeePerGas: {BaseFeePerGas}");
+            builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
+            builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
 
             return builder.ToString();
         }

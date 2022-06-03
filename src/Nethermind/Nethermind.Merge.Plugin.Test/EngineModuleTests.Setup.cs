@@ -25,13 +25,11 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
@@ -43,11 +41,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -65,11 +60,35 @@ namespace Nethermind.Merge.Plugin.Test
             
             chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), new MemDb(), chain.BlockTree, chain.LogManager);
             BlockCacheService blockCacheService = new();
+            InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(NoPoS.Instance, chain.BlockTree, new TestErrorLogManager());
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
-                new GetPayloadV1Handler(chain.PayloadPreparationService!, chain.LogManager),
-                new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, new InitConfig(), chain.PoSSwitcher, chain.BeaconSync, chain.BeaconPivot, blockCacheService, chain.BlockProcessingQueue, chain.BeaconSync, chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.PayloadPreparationService!, blockCacheService, chain.BeaconSync, peerRefresher, chain.LogManager),
+                new GetPayloadV1Handler(
+                    chain.PayloadPreparationService!,
+                    chain.LogManager),
+                new NewPayloadV1Handler(
+                    chain.BlockValidator,
+                    chain.BlockTree, 
+                    chain.BlockchainProcessor,
+                    new InitConfig(),
+                    chain.PoSSwitcher,
+                    chain.BeaconSync,
+                    chain.BeaconPivot,
+                    blockCacheService, 
+                    chain.BlockProcessingQueue, 
+                    invalidChainTracker,
+                    chain.BeaconSync, 
+                    chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(
+                    chain.BlockTree,
+                    chain.BlockFinalizationManager,
+                    chain.PoSSwitcher,
+                    chain.PayloadPreparationService!,
+                    blockCacheService,
+                    invalidChainTracker,
+                    chain.BeaconSync,
+                    peerRefresher,
+                    chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
