@@ -95,16 +95,22 @@ namespace Nethermind.Facade
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash != null)
             {
-                Block block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                Block? block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                bool isNotCanonical = block is null;
+                if (isNotCanonical)
+                {
+                    block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                }
                 TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
+                if (isNotCanonical && !txReceipt.Removed)
+                {
+                    return (null, null);
+                }
                 Transaction tx = block?.Transactions[txReceipt.Index];
                 bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
                 UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
                 
-                return txReceipt.Removed ||
-                       _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical) is not null
-                    ? (txReceipt, effectiveGasPrice)
-                    : (null, null);
+                return (txReceipt, effectiveGasPrice);
             }
 
             return (null, null);
