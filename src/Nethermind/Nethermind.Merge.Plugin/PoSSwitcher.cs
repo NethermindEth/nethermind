@@ -184,7 +184,8 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero || _blockCacheService.FinalizedHash != Keccak.Zero;
+        public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero; 
+                                                                       //|| _blockCacheService.FinalizedHash != Keccak.Zero; commented for hive experiment only
 
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {

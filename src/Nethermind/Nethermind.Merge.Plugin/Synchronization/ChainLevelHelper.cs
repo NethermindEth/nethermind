@@ -144,7 +144,7 @@ public class ChainLevelHelper : IChainLevelHelper
     private long? GetStartingPoint()
     {
         long startingPoint = _blockTree.BestKnownNumber + 1;
-        bool parentBlockExists;
+        bool foundNotBeaconBlock;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
         {
@@ -155,18 +155,19 @@ public class ChainLevelHelper : IChainLevelHelper
                 return null;
             }
 
-            Block? block = _blockTree.FindBlock(header.ParentHash ?? header.CalculateHash());
-            parentBlockExists = block != null;
+            BlockInfo blockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
+            // block info is not beacon block
+            foundNotBeaconBlock = !blockInfo.IsBeaconInfo;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, Block: {block?.ToString(Block.Format.FullHashAndNumber)}");
+                    $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {blockInfo?.ToString()}");
             --startingPoint;
             if (_syncConfig.FastSync && startingPoint <= _syncConfig.PivotNumberParsed)
             {
                 if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");
                 break;
             }
-        } while (!parentBlockExists);
+        } while (!foundNotBeaconBlock);
 
         return startingPoint;
     }

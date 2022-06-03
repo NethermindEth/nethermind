@@ -1740,6 +1740,7 @@ namespace Nethermind.Blockchain
                 return level;
             }
         }
+        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Keccak blockHash) => LoadInfo(number, blockHash, true);
 
         private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(long number, Keccak blockHash, bool forceLoad)
         {
