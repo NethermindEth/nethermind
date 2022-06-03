@@ -54,6 +54,7 @@ public partial class EngineModuleTests
                 payloadAttributes.SuggestedFeeRecipient = TestItem.AddressA;
                 payloadAttributes.PrevRandao = TestItem.KeccakA;
                 payloadAttributes.Timestamp += 1;
+                payloadAttributes.GasLimit = 10_000_000L;
                 return payloadAttributes;
             });
         
@@ -87,6 +88,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV1 executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
+        executionPayloadV1.GasLimit.Should().Be(10_000_000L);
         executionPayloadV1.Should().BeEquivalentTo(sentItem!.Block);
         sentItem.Profit.Should().Be(0);
     }
@@ -134,7 +136,51 @@ public partial class EngineModuleTests
         ExecutionPayloadV1 executionPayloadV1 = response.Data!;
         executionPayloadV1.FeeRecipient.Should().Be(TestItem.AddressA);
         executionPayloadV1.PrevRandao.Should().Be(TestItem.KeccakA);
-        
+
         mockHttp.VerifyNoOutstandingExpectation();
+    }
+    
+    [Test]
+    public async Task forkchoiceUpdatedV1_should_ignore_gas_limit([Values(false, true)] bool relay)
+    {
+        MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
+        using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+        IBlockImprovementContextFactory improvementContextFactory;
+        if (relay)
+        {
+            IBoostRelay boostRelay = Substitute.For<IBoostRelay>();
+            boostRelay.GetPayloadAttributes(Arg.Any<PayloadAttributes>(), Arg.Any<CancellationToken>())
+                .Returns(c => c.Arg<PayloadAttributes>());
+
+            improvementContextFactory = new BoostBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5), boostRelay, chain.StateReader);
+        }
+        else
+        {
+            improvementContextFactory = new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(5));
+        }
+        
+        TimeSpan timePerSlot = TimeSpan.FromSeconds(10);
+        chain.PayloadPreparationService = new PayloadPreparationService(
+            chain.PostMergeBlockProducer!,
+            improvementContextFactory,
+            chain.SealEngine, 
+            TimerFactory.Default, 
+            chain.LogManager, 
+            timePerSlot);
+            
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak startingHead = chain.BlockTree.HeadHash;
+        UInt256 timestamp = Timestamper.UnixTime.Seconds;
+        Keccak random = Keccak.Zero;
+        Address feeRecipient = Address.Zero;
+        
+        string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+                new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random, GasLimit = 10_000_000L}).Result.Data
+            .PayloadId!;
+
+        ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
+
+        ExecutionPayloadV1 executionPayloadV1 = response.Data!;
+        executionPayloadV1.GasLimit.Should().Be(4_000_000L);
     }
 }
