@@ -57,7 +57,7 @@ namespace Nethermind.Merge.Plugin
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService;
-        private InvalidChainTracker.InvalidChainTracker _invalidChainTracker;
+        private InvalidChainTracker.InvalidChainTracker? _invalidChainTracker;
         private IPeerRefresher _peerRefresher;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
@@ -320,7 +320,7 @@ namespace Nethermind.Merge.Plugin
         {
             return new ValueTask(Task.Run(() =>
             {
-                _invalidChainTracker.Dispose();
+                _invalidChainTracker?.Dispose();
             }));
         }
 
