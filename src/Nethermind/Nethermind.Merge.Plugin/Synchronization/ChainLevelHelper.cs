@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 
@@ -145,23 +146,32 @@ public class ChainLevelHelper : IChainLevelHelper
     {
         long startingPoint = _blockTree.BestKnownNumber + 1;
         bool foundNotBeaconBlock;
+        ChainLevelInfo? startingLevel = _blockTree.FindLevel(startingPoint);
+        BlockInfo? beaconMainChainBlock = startingLevel?.BeaconMainChainBlock;
+        if (beaconMainChainBlock == null)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Beacon main chain block for number {startingPoint} was not found");
+            return null;
+        }
+
+        Keccak currentHash = startingLevel?.BeaconMainChainBlock!.BlockHash!;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
         {
-            BlockHeader? header = _blockTree.FindHeader(startingPoint, BlockTreeLookupOptions.None);
+            BlockHeader? header = _blockTree.FindHeader(currentHash!, BlockTreeLookupOptions.None);
             if (header == null)
             {
                 if (_logger.IsTrace) _logger.Trace($"Header for number {startingPoint} was not found");
                 return null;
             }
-
+            
             BlockInfo blockInfo = (_blockTree.GetInfo( header.Number - 1, header.ParentHash!)).Info;
-            // block info is not beacon block
             foundNotBeaconBlock = !blockInfo.IsBeaconInfo;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {blockInfo?.ToString()}");
             --startingPoint;
+            currentHash = header.ParentHash!;
             if (_syncConfig.FastSync && startingPoint <= _syncConfig.PivotNumberParsed)
             {
                 if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");

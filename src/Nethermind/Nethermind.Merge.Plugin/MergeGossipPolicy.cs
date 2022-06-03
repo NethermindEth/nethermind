@@ -18,6 +18,8 @@
 using System;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -25,13 +27,16 @@ namespace Nethermind.Merge.Plugin
     {
         private readonly IGossipPolicy _preMergeGossipPolicy;
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IBlockCacheService _blockCacheService;
 
         public MergeGossipPolicy(
             IGossipPolicy? apiGossipPolicy,
-            IPoSSwitcher? poSSwitcher)
+            IPoSSwitcher? poSSwitcher,
+            IBlockCacheService blockCacheService)
         {
             _preMergeGossipPolicy = apiGossipPolicy ?? throw new ArgumentNullException(nameof(apiGossipPolicy));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+            _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         }
 
         // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
@@ -44,7 +49,9 @@ namespace Nethermind.Merge.Plugin
         
         // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
         // We MUST discard NewBlock/NewBlockHash messages after receiving FIRST_FINALIZED_BLOCK.
-        public bool ShouldDiscardBlocks => _poSSwitcher.TransitionFinished;
+        public bool ShouldDiscardBlocks => _poSSwitcher.TransitionFinished || 
+                                           _blockCacheService.FinalizedHash != Keccak.Zero; /* Transition was finished in network but our node could node reorg yet to the new chain. 
+                                                                                        We can't add this case _blockCacheService.FinalizedHash != Keccak.Zero to TransitionFinished because of edge case */
 
         // According to spec (https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#network)
         // We SHOULD start disconnecting gossiping peers after receiving next finalized block to FIRST_FINALIZED_BLOCK, so one block after we started discarding NewBlock/NewBlockHash messages.
