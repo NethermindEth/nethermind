@@ -21,20 +21,20 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public class InvalidHeaderInterceptor: IHeaderValidator
+public class InvalidBlockInterceptor: IBlockValidator
 {
-    private IHeaderValidator _baseValidator;
+    private IBlockValidator _baseValidator;
     private IInvalidChainTracker _invalidChainTracker;
     private ILogger _logger;
 
-    public InvalidHeaderInterceptor(
-        HeaderValidator headerValidator,
+    public InvalidBlockInterceptor(
+        IBlockValidator headerValidator,
         IInvalidChainTracker invalidChainTracker,
         ILogManager logManager)
     {
         _baseValidator = headerValidator;
         _invalidChainTracker = invalidChainTracker;
-        _logger = logManager.GetClassLogger(typeof(InvalidHeaderInterceptor));
+        _logger = logManager.GetClassLogger(typeof(InvalidBlockInterceptor));
     }
     
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
@@ -58,6 +58,32 @@ public class InvalidHeaderInterceptor: IHeaderValidator
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
             _invalidChainTracker.OnInvalidBlock(header.Hash, header.ParentHash);
         }
+        return result;
+    }
+
+    public bool ValidateSuggestedBlock(Block block)
+    {
+        _invalidChainTracker.SetChildParent(block.Hash, block.ParentHash);
+        bool result = _baseValidator.ValidateSuggestedBlock(block);
+        if (!result)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
+            _invalidChainTracker.OnInvalidBlock(block.Hash, block.ParentHash);
+        }
+
+        return result;
+    }
+
+    public bool ValidateProcessedBlock(Block block, TxReceipt[] receipts, Block suggestedBlock)
+    {
+        _invalidChainTracker.SetChildParent(block.Hash, block.ParentHash);
+        bool result = _baseValidator.ValidateProcessedBlock(block, receipts, suggestedBlock);
+        if (!result)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
+            _invalidChainTracker.OnInvalidBlock(block.Hash, block.ParentHash);
+        }
+
         return result;
     }
 }
