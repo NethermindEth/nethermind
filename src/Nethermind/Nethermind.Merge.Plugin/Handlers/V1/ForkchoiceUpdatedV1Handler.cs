@@ -188,6 +188,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             string? payloadId = null;
             if (payloadAttributes is not null)
             {
+                payloadAttributes.GasLimit = null;
                 if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}.");
