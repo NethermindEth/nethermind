@@ -20,19 +20,33 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data.V1
 {
+    /// <summary>
+    /// Result of engine_newPayloadV1 call.
+    /// 
+    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#PayloadStatusV1"/>
+    /// </summary>
     public class PayloadStatusV1
     {
-        public static PayloadStatusV1 InvalidBlockHash = new() { Status = PayloadStatus.InvalidBlockHash };
+        public static readonly PayloadStatusV1 InvalidBlockHash = new() { Status = PayloadStatus.InvalidBlockHash };
 
-        public static PayloadStatusV1 Syncing = new() { Status = PayloadStatus.Syncing };
+        public static readonly PayloadStatusV1 Syncing = new() { Status = PayloadStatus.Syncing };
         
-        public static PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
+        public static readonly PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
 
+        /// <summary>
+        /// One of <see cref="PayloadStatus"/>.
+        /// </summary>
         public string Status { get; set; }
 
+        /// <summary>
+        /// Hash of the most recent valid block in the branch defined by payload and its ancestors.
+        /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public Keccak? LatestValidHash { get; set; }
-
+        
+        /// <summary>
+        /// Message providing additional details on the validation error if the payload is classified as <see cref="PayloadStatus.Invalid"/> or <see cref="PayloadStatus.InvalidBlockHash"/>. 
+        /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string? ValidationError { get; set; }
     }

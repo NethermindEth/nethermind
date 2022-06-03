@@ -27,6 +27,8 @@ namespace Nethermind.Merge.Plugin.Data.V1
 {
     /// <summary>
     /// A data object representing a block as being sent from the execution layer to the consensus layer.
+    ///
+    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#executionpayloadv1"/>
     /// </summary>
     public class ExecutionPayloadV1
     {
@@ -52,7 +54,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
             BaseFeePerGas = block.BaseFeePerGas;
         }
 
-        public bool TryGetBlock(out Block? block)
+        public bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
         {
             try
             {
@@ -71,6 +73,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
                 Transaction[] transactions = GetTransactions();
                 header.TxRoot = new TxTrie(transactions).RootHash;
                 header.IsPostMerge = true;
+                header.TotalDifficulty = totalDifficulty;
                 block = new Block(header, transactions, Array.Empty<BlockHeader>());
                 return true;
             }
@@ -99,7 +102,11 @@ namespace Nethermind.Merge.Plugin.Data.V1
         public UInt256 BaseFeePerGas { get; set; }
         
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Keccak BlockHash { get; set; } = null!;
+        public Keccak? BlockHash { get; set; } = null!;
+        
+        /// <summary>
+        /// Array of transaction objects, each object is a byte list (DATA) representing TransactionType || TransactionPayload or LegacyTransaction as defined in EIP-2718
+        /// </summary>
         public byte[][] Transactions { get; set; } = Array.Empty<byte[]>();
 
         public override string ToString() => BlockHash == null ? $"{BlockNumber} null" : $"{BlockNumber} ({BlockHash})";

@@ -155,7 +155,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 return null;
             }
 
-            Block? block = _blockTree.FindBlock(header!.ParentHash ?? header.CalculateHash());
+            Block? block = _blockTree.FindBlock(header.ParentHash ?? header.CalculateHash());
             parentBlockExists = block != null;
             if (_logger.IsTrace)
                 _logger.Trace(

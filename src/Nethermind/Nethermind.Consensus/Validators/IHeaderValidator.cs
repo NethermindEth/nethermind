@@ -20,7 +20,6 @@ namespace Nethermind.Consensus.Validators
 {
     public interface IHeaderValidator
     {
-        bool ValidateHash(BlockHeader header);
         bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false);
         bool Validate(BlockHeader header, bool isUncle = false);
     }

@@ -31,14 +31,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
     public class BeaconPivot : IBeaconPivot
     {
         private readonly ISyncConfig _syncConfig;
-        private readonly IMergeConfig _mergeConfig;
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
-        private readonly IPeerRefresher _peerRefresher;
         private readonly ILogger _logger;
         private BlockHeader? _currentBeaconPivot;
-        private BlockHeader? _pivotParent;
-        private bool _pivotParentProcessed;
         
         private BlockHeader? CurrentBeaconPivot
         {
@@ -49,7 +45,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (value != null)
                 {
                     _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotHash,
-                        Rlp.Encode(value.Hash ?? value.CalculateHash()).Bytes);
+                        Rlp.Encode(value.GetOrCalculateHash()).Bytes);
                     _metadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber,
                         Rlp.Encode(value.Number).Bytes);
                 } else _metadataDb.Delete(MetadataDbKeys.BeaconSyncPivotHash);
@@ -59,17 +55,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public BeaconPivot(
             ISyncConfig syncConfig,
-            IMergeConfig mergeConfig,
             IDb metadataDb,
             IBlockTree blockTree,
-            IPeerRefresher peerRefresher,
             ILogManager logManager)
         {
             _syncConfig = syncConfig;
-            _mergeConfig = mergeConfig;
             _metadataDb = metadataDb;
             _blockTree = blockTree;
-            _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
             LoadBeaconPivot();
         }
@@ -90,8 +82,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             bool beaconPivotExists = BeaconPivotExists();
             if (blockHeader != null)
             {
-                _peerRefresher.RefreshPeers(blockHeader.Hash!);
-                
                 // ToDo Sarah in some cases this could be wrong
                 if (beaconPivotExists && (PivotNumber > blockHeader.Number || blockHeader.Hash == PivotHash))
                 {

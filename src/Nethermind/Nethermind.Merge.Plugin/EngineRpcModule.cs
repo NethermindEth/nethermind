@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IAsyncHandler<Keccak[], ExecutionPayloadBodyV1Result[]> _executionPayloadBodiesHandler;
         private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler;
         private readonly SemaphoreSlim _locker = new(1, 1);
-        private readonly TimeSpan Timeout = TimeSpan.FromSeconds(8);
+        private readonly TimeSpan _timeout = TimeSpan.FromSeconds(8);
         private readonly ILogger _logger;
 
         public EngineRpcModule(
@@ -68,10 +68,9 @@ namespace Nethermind.Merge.Plugin
             return await (_getPayloadHandlerV1.HandleAsync(payloadId));
         }
 
-
         public async Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayloadV1 executionPayload)
         {
-            if (await _locker.WaitAsync(Timeout))
+            if (await _locker.WaitAsync(_timeout))
             {
                 try
                 {
@@ -85,16 +84,14 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_newPayloadV1)} timeout.");
-                return ResultWrapper<PayloadStatusV1>.Fail($"{nameof(engine_newPayloadV1)} timeout.",
-                    ErrorCodes.Timeout);
+                return ResultWrapper<PayloadStatusV1>.Fail($"{nameof(engine_newPayloadV1)} timeout.", ErrorCodes.Timeout);
             }
         }
 
 
-        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(
-            ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
+        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         {
-            if (await _locker.WaitAsync(Timeout))
+            if (await _locker.WaitAsync(_timeout))
             {
                 try
                 {
@@ -108,8 +105,7 @@ namespace Nethermind.Merge.Plugin
             else
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(engine_forkchoiceUpdatedV1)} timeout.");
-                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdatedV1)} timeout.",
-                    ErrorCodes.Timeout);
+                return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail($"{nameof(engine_forkchoiceUpdatedV1)} timeout.", ErrorCodes.Timeout);
             }
         }
 

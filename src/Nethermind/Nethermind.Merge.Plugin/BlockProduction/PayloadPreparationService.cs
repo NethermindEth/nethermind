@@ -33,8 +33,10 @@ using Nethermind.Merge.Plugin.Handlers.V1;
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
     /// <summary>
-    /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation in engine_forkChoiceUpdate.
-    /// Each payload is assigned a payload ID which can be used by the consensus client to retrieve payload later by calling a engine_getPayload method through <see cref="GetPayloadV1Handler"/>.
+    /// A cache of pending payloads. A payload is created whenever a consensus client requests a payload creation in <see cref="ForkchoiceUpdatedV1Handler"/>.
+    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>
+    /// Each payload is assigned a payloadId which can be used by the consensus client to retrieve payload later by calling a <see cref="GetPayloadV1Handler"/>.
+    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_getpayloadv1"/>
     /// </summary>
     public class PayloadPreparationService : IPayloadPreparationService
     {
@@ -75,7 +77,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
-            string payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes).ToHexString(true);
+            string payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             if (!_payloadStorage.ContainsKey(payloadId))
             {
                 payloadAttributes.SuggestedFeeRecipient = _sealer.Address != Address.Zero
@@ -161,10 +163,9 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             return t.Result;
         }
 
-        public async ValueTask<Block?> GetPayload(byte[] payloadId)
+        public async ValueTask<Block?> GetPayload(string payloadId)
         {
-            string payloadStr = payloadId.ToHexString(true);
-            if (_payloadStorage.TryRemove(payloadStr, out IBlockImprovementContext? blockContext))
+            if (_payloadStorage.TryRemove(payloadId, out IBlockImprovementContext? blockContext))
             {
                 using (blockContext)
                 {
@@ -182,16 +183,15 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         public event EventHandler<BlockEventArgs>? BlockImproved;
 
-        private byte[] ComputeNextPayloadId(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
+        private string ComputeNextPayloadId(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
-            byte[] input = new byte[32 + 32 + 32 + 20];
-            Span<byte> inputSpan = input.AsSpan();
+            Span<byte> inputSpan = stackalloc byte[32 + 32 + 32 + 20];
             parentHeader.Hash!.Bytes.CopyTo(inputSpan.Slice(0, 32));
             payloadAttributes.Timestamp.ToBigEndian(inputSpan.Slice(32, 32));
             payloadAttributes.PrevRandao.Bytes.CopyTo(inputSpan.Slice(64, 32));
             payloadAttributes.SuggestedFeeRecipient.Bytes.CopyTo(inputSpan.Slice(96, 20));
-            Keccak inputHash = Keccak.Compute(input);
-            return inputHash.Bytes.Slice(0, 8);
+            ValueKeccak inputHash = ValueKeccak.Compute(inputSpan);
+            return inputHash.BytesAsSpan.Slice(0, 8).ToHexString(true);
         }
     }
 }

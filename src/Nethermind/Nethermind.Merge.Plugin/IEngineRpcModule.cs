@@ -38,39 +38,33 @@ namespace Nethermind.Merge.Plugin
         ResultWrapper<ExecutionStatusResult> engine_executionStatus();
         
         [JsonRpcMethod(
-            Description =
-                "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
+            Description = "Returns the most recent version of an execution payload with respect to the transaction set contained by the mempool.",
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<ExecutionPayloadV1?>> engine_getPayloadV1(byte[] payloadId);
         
         [JsonRpcMethod(
-            Description =
-                "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+            Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV1(ExecutionPayloadV1 executionPayload);
         
         [JsonRpcMethod(
-            Description =
-                "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
+            Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV1(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
         
         [JsonRpcMethod(
-            Description =
-                "Returns an array of execution payload bodies for the list of provided block hashes.",
+            Description = "Returns an array of execution payload bodies for the list of provided block hashes.",
             IsSharable = true,
             IsImplemented = true)]
         Task<ResultWrapper<ExecutionPayloadBodyV1Result[]>> engine_getPayloadBodiesV1(Keccak[] blockHashes);
 
         [JsonRpcMethod(
-            Description =
-                "Returns PoS transition configuration.",
+            Description = "Returns PoS transition configuration.",
             IsSharable = true,
             IsImplemented = true)]
-        ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(
-            TransitionConfigurationV1 beaconTransitionConfiguration);
+        ResultWrapper<TransitionConfigurationV1> engine_exchangeTransitionConfigurationV1(TransitionConfigurationV1 beaconTransitionConfiguration);
     }
 }

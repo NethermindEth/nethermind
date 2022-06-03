@@ -32,9 +32,10 @@ namespace Nethermind.Crypto
             return stream.GetHash();
         }
 
-        public static Keccak CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None)
-        {
-            return CalculateHash(block.Header, behaviors);
-        }
+        public static Keccak CalculateHash(this Block block, RlpBehaviors behaviors = RlpBehaviors.None) => CalculateHash(block.Header, behaviors);
+
+        public static Keccak GetOrCalculateHash(this BlockHeader header) => header.Hash ?? header.CalculateHash();
+        
+        public static Keccak GetOrCalculateHash(this Block block) => block.Hash ?? block.CalculateHash();
     }
 }
