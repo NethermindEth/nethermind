@@ -48,6 +48,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
         public const int SlotsPerOldPayloadCleanup = 6;
+        public const int GetPayloadWaitForFullBlockMillisecondsDelay = 500;
         private readonly TimeSpan _cleanupOldPayloadDelay;
 
         // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
@@ -170,7 +171,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 {
                     if (!blockContext.ImprovementTask.IsCompleted)
                     {
-                        await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(500));
+                        await Task.WhenAny(blockContext.ImprovementTask, Task.Delay(GetPayloadWaitForFullBlockMillisecondsDelay));
                     }
                     
                     return blockContext.CurrentBestBlock;
