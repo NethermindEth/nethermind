@@ -148,7 +148,7 @@ namespace Nethermind.Merge.Plugin.Test
                     SealEngine,
                     TimerFactory.Default, 
                     LogManager,
-                    MergeConfig.SecondsPerSlot);
+                    TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
                 return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
             }
             

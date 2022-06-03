@@ -47,8 +47,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private readonly List<string> _payloadsToRemove = new();
         
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
-        private const int SlotsPerOldPayloadCleanup = 6;
-        private readonly  ulong _cleanupOldPayloadDelay;
+        public const int SlotsPerOldPayloadCleanup = 6;
+        private readonly TimeSpan _cleanupOldPayloadDelay;
 
         // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
@@ -59,15 +59,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             ISealer sealer,
             ITimerFactory timerFactory,
             ILogManager logManager,
-            ulong secondsPerSlot,
+            TimeSpan timePerSlot,
             int slotsPerOldPayloadCleanup = SlotsPerOldPayloadCleanup)
         {
             _blockProducer = blockProducer;
             _blockImprovementContextFactory = blockImprovementContextFactory;
             _sealer = sealer;
-            TimeSpan timeout = TimeSpan.FromSeconds(secondsPerSlot);
-
-            _cleanupOldPayloadDelay = 2 * secondsPerSlot * 1000; // 2 * slots time * 1000 (converting seconds to milliseconds)
+            TimeSpan timeout = timePerSlot;
+            _cleanupOldPayloadDelay = 2 * timePerSlot; // 2 * slots time
             ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
             timer.Elapsed += CleanupOldPayloads;
             timer.Start();
@@ -113,11 +112,11 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private void CleanupOldPayloads(object? sender, EventArgs e)
         {
             if (_logger.IsTrace) _logger.Trace($"Started old payloads cleanup");
-            UnixTime utcNow = new(DateTime.Now);
+            UnixTime utcNow = new(DateTimeOffset.Now);
 
             foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
             {
-                if (payload.Value.CurrentBestBlock is not null && payload.Value.CurrentBestBlock.Timestamp + _cleanupOldPayloadDelay <= utcNow.Seconds)
+                if (payload.Value.CurrentBestBlock is not null && payload.Value.CurrentBestBlock.Timestamp + (uint)_cleanupOldPayloadDelay.Seconds <= utcNow.Seconds)
                 {
                     if (_logger.IsInfo) _logger.Info($"A new payload to remove: {payload.Key}, Current time {utcNow}, Payload timestamp: {payload.Value.CurrentBestBlock.Timestamp}");
                     _payloadsToRemove.Add(payload.Key);

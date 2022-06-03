@@ -167,7 +167,13 @@ namespace Nethermind.Merge.Plugin
                     improvementContextFactory = boostBlockImprovementContextFactory;
                 }
 
-                PayloadPreparationService payloadPreparationService = new(_postMergeBlockProducer, improvementContextFactory, _api.Sealer, TimerFactory.Default, _api.LogManager, _mergeConfig.SecondsPerSlot);
+                PayloadPreparationService payloadPreparationService = new(
+                    _postMergeBlockProducer, 
+                    improvementContextFactory, 
+                    _api.Sealer, 
+                    _api.TimerFactory,
+                    _api.LogManager, 
+                    TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),

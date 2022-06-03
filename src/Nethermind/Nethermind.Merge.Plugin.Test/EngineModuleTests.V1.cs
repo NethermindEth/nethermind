@@ -242,15 +242,22 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task getPayloadV1_should_return_error_if_called_after_timeout()
+        public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
         {
             const int timeout = 2000;
 
             MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
             using MergeTestBlockchain chain = await CreateBlockChain( mergeConfig);
-            var improvementContextFactory = new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(1));
-            chain.PayloadPreparationService = new PayloadPreparationService(chain.PostMergeBlockProducer!, improvementContextFactory, chain.SealEngine,
-                TimerFactory.Default, chain.LogManager, 1);
+            BlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(1));
+            TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
+            chain.PayloadPreparationService = new PayloadPreparationService(
+                chain.PostMergeBlockProducer!,
+                improvementContextFactory,
+                chain.SealEngine, 
+                TimerFactory.Default, 
+                chain.LogManager, 
+                timePerSlot);
+            
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
@@ -261,7 +268,7 @@ namespace Nethermind.Merge.Plugin.Test
                     new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
                 .PayloadId!;
 
-            Thread.Sleep(timeout);
+            await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
 
             ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
@@ -269,8 +276,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task
-            getPayloadBodiesV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_skip_unknown_hashes()
+        public async Task getPayloadBodiesV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_skip_unknown_hashes()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -282,8 +288,7 @@ namespace Nethermind.Merge.Plugin.Test
             Transaction[] txs = BuildTransactions(chain, executionPayloadV11.BlockHash, from, to, 3, 0, out _, out _);
             chain.AddTransactions(txs);
             ExecutionPayloadV1? executionPayloadV12 = await BuildAndSendNewBlockV1(rpc, chain, true);
-            Keccak[] blockHashes =
-                new[] { executionPayloadV11.BlockHash, TestItem.KeccakA, executionPayloadV12.BlockHash };
+            Keccak?[] blockHashes = { executionPayloadV11.BlockHash, TestItem.KeccakA, executionPayloadV12.BlockHash };
             ExecutionPayloadBodyV1Result[] payloadBodies = rpc.engine_getPayloadBodiesV1(blockHashes).Result.Data;
             ExecutionPayloadBodyV1Result[] expected = new[]
             {
