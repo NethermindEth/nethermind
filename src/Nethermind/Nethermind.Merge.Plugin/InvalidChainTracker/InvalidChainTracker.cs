@@ -15,13 +15,17 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
@@ -33,24 +37,40 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 public class InvalidChainTracker: IInvalidChainTracker
 {
     private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IBlockFinder? _blockFinder;
-    private readonly Logging.ILogger _logger;
+    private readonly IBlockFinder _blockFinder;
+    private readonly IBlockCacheService _blockCacheService;
+    private readonly ILogger _logger;
     private readonly object _opLock = new();
     private readonly LruCache<Keccak, Node> _tree;
+    
+    // CompositeDisposable only available on System.Reactive. So this will do for now. 
+    private readonly List<Action> _disposables = new();
 
-    public InvalidChainTracker(IPoSSwitcher poSSwitcher, IBlockFinder blockFinder, ILogManager logManager)
+    public InvalidChainTracker(
+        IPoSSwitcher poSSwitcher, 
+        IBlockFinder blockFinder,
+        IBlockCacheService blockCacheService,
+        ILogManager logManager)
     {
         _poSSwitcher = poSSwitcher;
         _blockFinder = blockFinder;
         _tree = new LruCache<Keccak, Node>(1024, nameof(InvalidChainTracker));
         _logger = logManager.GetClassLogger<InvalidChainTracker>();
+        _blockCacheService = blockCacheService;
     }
-    
-    public InvalidChainTracker(int maxKeyHandle, IPoSSwitcher poSSwitcher) {
-        _poSSwitcher = poSSwitcher;
-        _blockFinder = null;
-        _tree = new LruCache<Keccak, Node>(maxKeyHandle, nameof(InvalidChainTracker));
-        _logger = NullLogger.Instance;
+
+    public void SetupBlockchainProcessorInterceptor(IBlockchainProcessor blockchainProcessor)
+    {
+        blockchainProcessor.OnInvalidBlock += BlockchainProcessorOnOnInvalidBlock;
+        _disposables.Add(() =>
+        {
+            blockchainProcessor.OnInvalidBlock -= BlockchainProcessorOnOnInvalidBlock;
+        });
+    }
+
+    private void BlockchainProcessorOnOnInvalidBlock(object? sender, InvalidBlockException e)
+    {
+        OnInvalidBlock(e.InvalidBlockHash, null);
     }
 
     public void SetChildParent(Keccak child, Keccak parent)
@@ -59,7 +79,7 @@ public class InvalidChainTracker: IInvalidChainTracker
         {
             Node parentNode = GetNode(parent);
 
-            parentNode.Childs.Add(child);
+            parentNode.Children.Add(child);
             if (parentNode.LastValidHash != null)
             {
                 PropagateLastValidHash(parentNode);
@@ -80,7 +100,7 @@ public class InvalidChainTracker: IInvalidChainTracker
 
     private void PropagateLastValidHash(Node node)
     {
-        foreach (Keccak nodeChild in node.Childs)
+        foreach (Keccak nodeChild in node.Children)
         {
             Node childNode = GetNode(nodeChild);
             if (childNode.LastValidHash != node.LastValidHash)
@@ -91,24 +111,42 @@ public class InvalidChainTracker: IInvalidChainTracker
         }
     }
 
-    public void OnInvalidBlock(Keccak failedBlock, Keccak parent)
+    private BlockHeader? TryGetBlockHeader(Keccak hash)
     {
+        if (_blockCacheService.BlockCache.TryGetValue(hash, out Block block))
+        {
+            return block.Header;
+        }
+
+        return _blockFinder.FindHeader(hash);
+    }
+
+    public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)
+    {
+        if (parent == null)
+        {
+            BlockHeader? failedBlockHeader = TryGetBlockHeader(failedBlock);
+            if (failedBlockHeader == null)
+            {
+                if(_logger.IsWarn) _logger.Warn($"Unable to resolve block to determine parent. Block {failedBlock}");
+                return;
+            }
+
+            parent = failedBlockHeader.ParentHash;
+        }
+        
         Keccak effectiveParent = parent;
-        BlockHeader? parentHeader = _blockFinder?.FindHeader(parent);
+        BlockHeader? parentHeader = TryGetBlockHeader(parent);
         if (parentHeader != null)
         {
             if (!_poSSwitcher.IsPostMerge(parentHeader))
             {
                 effectiveParent = Keccak.Zero;
             }
-            else
-            {
-                _logger.Info("Parent is post merge");
-            }
         }
         else
         {
-            _logger.Info("Parent not found");
+            if(_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
         }
 
         lock (_opLock)
@@ -136,7 +174,15 @@ public class InvalidChainTracker: IInvalidChainTracker
 
     class Node
     {
-        public List<Keccak> Childs { get; set; } = new();
+        public HashSet<Keccak> Children { get; } = new();
         public Keccak? LastValidHash { get; set; }
+    }
+
+    public void Dispose()
+    {
+        foreach (Action action in _disposables)
+        {
+            action.Invoke();
+        }
     }
 }

@@ -44,6 +44,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Merge.Plugin.Test;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -357,7 +358,7 @@ namespace Nethermind.Synchronization.Test
                     syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
                 Pivot pivot = new (syncConfig);
 
-                InvalidChainTracker invalidChainTracker = new(poSSwitcher, BlockTree, _logManager);
+                IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
                 IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
                 {

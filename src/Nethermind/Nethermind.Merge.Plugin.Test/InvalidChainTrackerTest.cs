@@ -18,8 +18,14 @@
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -32,7 +38,10 @@ public class InvalidChainTrackerTest
     [SetUp]
     public void Setup()
     {
-        _tracker = new(256, NoPoS.Instance); // Small max section size, to make sure things propagate correctly
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        BlockCacheService blockCacheService = new();
+        
+        _tracker = new(NoPoS.Instance, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
     }
     
     private List<Keccak> MakeChain(int n, bool connectInReverse=false)
@@ -189,5 +198,50 @@ public class InvalidChainTrackerTest
         
         _tracker.IsOnKnownInvalidChain(mainChain[40], out lastValidHash).Should().BeTrue();
         _tracker.IsOnKnownInvalidChain(secondChain[40], out lastValidHash).Should().BeTrue();
+    }
+
+    [Test]
+    public void givenAnInvalidBlock_ifParentIsNotPostMerge_thenLastValidHashShouldBeZero()
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IBlockCacheService blockCacheService = new BlockCacheService();
+        
+        Keccak invalidBlock = Keccak.Compute("A"); 
+        BlockHeader parentBlockHeader = new BlockHeaderBuilder().TestObject;
+
+        blockCacheService.BlockCache[parentBlockHeader.Hash] = new Block(parentBlockHeader);
+
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.IsPostMerge(parentBlockHeader).Returns(false);
+        
+        _tracker = new(poSSwitcher, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
+        _tracker.OnInvalidBlock(invalidBlock, parentBlockHeader.Hash);
+
+        _tracker.IsOnKnownInvalidChain(invalidBlock, out Keccak? lastValidHash).Should().BeTrue();
+        lastValidHash.Should().BeEquivalentTo(Keccak.Zero);
+    }
+    
+    [Test]
+    public void givenAnInvalidBlock_WithUnknownParent_thenGetParentFromCache()
+    {
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IBlockCacheService blockCacheService = new BlockCacheService();
+        
+        BlockHeader parentBlockHeader = new BlockHeaderBuilder()
+            .TestObject;
+        BlockHeader blockHeader = new BlockHeaderBuilder()
+            .WithParentHash(parentBlockHeader.Hash).TestObject;
+
+        blockCacheService.BlockCache[blockHeader.Hash] = new Block(blockHeader);
+        blockCacheService.BlockCache[parentBlockHeader.Hash] = new Block(parentBlockHeader);
+
+        IPoSSwitcher alwaysPos = Substitute.For<IPoSSwitcher>();
+        alwaysPos.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
+
+        _tracker = new(alwaysPos, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
+        _tracker.OnInvalidBlock(blockHeader.Hash, null);
+
+        _tracker.IsOnKnownInvalidChain(blockHeader.Hash, out Keccak? lastValidHash).Should().BeTrue();
+        lastValidHash.Should().BeEquivalentTo(parentBlockHeader.Hash);
     }
 }

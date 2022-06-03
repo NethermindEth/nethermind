@@ -57,7 +57,7 @@ namespace Nethermind.Merge.Plugin
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService;
-        private IInvalidChainTracker _invalidChainTracker;
+        private InvalidChainTracker.InvalidChainTracker _invalidChainTracker;
         private IPeerRefresher _peerRefresher;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
@@ -90,7 +90,11 @@ namespace Nethermind.Merge.Plugin
                     _api.BlockTree, 
                     _api.SpecProvider, 
                     _api.LogManager);
-                _invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(_poSSwitcher, _api.BlockTree, _api.LogManager);
+                _invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(
+                    _poSSwitcher, 
+                    _api.BlockTree, 
+                    _blockCacheService,
+                    _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
@@ -129,6 +133,9 @@ namespace Nethermind.Merge.Plugin
                 _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
 
                 _api.FinalizationManager = new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
+                
+                // Need to do it here because blockprocessor is not available in init
+                _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor!);
             }
 
             return Task.CompletedTask;
@@ -306,7 +313,13 @@ namespace Nethermind.Merge.Plugin
             return Task.CompletedTask;
         }
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            return new ValueTask(Task.Run(() =>
+            {
+                _invalidChainTracker.Dispose();
+            }));
+        }
 
         public string SealEngineType => "Eth2Merge";
     }

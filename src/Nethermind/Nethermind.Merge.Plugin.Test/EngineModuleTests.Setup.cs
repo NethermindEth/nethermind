@@ -60,7 +60,11 @@ namespace Nethermind.Merge.Plugin.Test
             
             chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), new MemDb(), chain.BlockTree, chain.LogManager);
             BlockCacheService blockCacheService = new();
-            InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(NoPoS.Instance, chain.BlockTree, new TestErrorLogManager());
+            InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(
+                chain.PoSSwitcher,
+                chain.BlockTree,
+                blockCacheService,
+                new TestErrorLogManager());
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
                 new GetPayloadV1Handler(

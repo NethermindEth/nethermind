@@ -13,27 +13,30 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Evm.Tracing;
+using Nethermind.Core.Crypto;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 
-namespace Nethermind.Consensus.Processing
+namespace Nethermind.Merge.Plugin.Test;
+
+public class NoopInvalidChainTracker: IInvalidChainTracker
 {
-    public interface IBlockchainProcessor : IDisposable
+    public void Dispose()
     {
-        ITracerBag Tracers { get; }
+    }
 
-        void Start();
-        
-        Task StopAsync(bool processRemainingBlocks = false);
-        
-        Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer);
+    public void SetChildParent(Keccak child, Keccak parent)
+    {
+    }
 
-        bool IsProcessingBlocks(ulong? maxProcessingInterval);
-        
-        event EventHandler<InvalidBlockException> OnInvalidBlock;
+    public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)
+    {
+    }
+
+    public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
+    {
+        lastValidHash = null;
+        return false;
     }
 }

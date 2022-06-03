@@ -65,6 +65,8 @@ namespace Nethermind.Consensus.Processing
         private int _currentRecoveryQueueSize;
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
         private Stopwatch _stopwatch = new();
+        
+        public event EventHandler<InvalidBlockException> OnInvalidBlock;
 
         /// <summary>
         /// 
@@ -455,6 +457,8 @@ namespace Nethermind.Consensus.Processing
                     options,
                     new GethLikeBlockTracer(GethTraceOptions.Default),
                     DumpOptions.Geth);
+                
+                OnInvalidBlock?.Invoke(this, ex);
 
                 processedBlocks = null;
             }

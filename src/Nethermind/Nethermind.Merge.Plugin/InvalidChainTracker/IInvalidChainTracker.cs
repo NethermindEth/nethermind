@@ -15,11 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
-public interface IInvalidChainTracker
+public interface IInvalidChainTracker: IDisposable
 {
     /// <summary>
     /// Suggest that these hash are child parent of each other. Used to determine if a hash is on an invalid chain
@@ -33,7 +34,7 @@ public interface IInvalidChainTracker
     /// </summary>
     /// <param name="failedBlock"></param>
     /// <param name="parent"></param>
-    void OnInvalidBlock(Keccak failedBlock, Keccak parent);
+    void OnInvalidBlock(Keccak failedBlock, Keccak? parent);
     
     /// <summary>
     /// Return last valid hash if this block is known to be on an invalid chain.

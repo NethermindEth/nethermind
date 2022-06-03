@@ -72,7 +72,7 @@ public partial class BlockDownloaderTests
         MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
-            new InvalidChainTracker(posSwitcher, notSyncedTree, new TestErrorLogManager()),
+            new NoopInvalidChainTracker(),
             LimboLogs.Instance);
 
         Response responseOptions = Response.AllCorrect;
@@ -125,7 +125,7 @@ public partial class BlockDownloaderTests
         MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
-            new InvalidChainTracker(posSwitcher, notSyncedTree, new TestErrorLogManager()),
+            new NoopInvalidChainTracker(),
             LimboLogs.Instance);
 
         SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);
