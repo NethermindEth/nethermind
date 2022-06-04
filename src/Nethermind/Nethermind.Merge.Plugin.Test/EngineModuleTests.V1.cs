@@ -363,6 +363,74 @@ namespace Nethermind.Merge.Plugin.Test
             bestSuggestedHeaderHash.Should().NotBe(startingBestSuggestedHeader!.Hash!);
         }
 
+        [Test]
+        public async Task block_should_not_be_canonical_before_forkchoiceUpdatedV1()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            
+            ExecutionPayloadV1 getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
+            Keccak newHead = getPayloadResult.BlockHash!;
+
+            await rpc.engine_newPayloadV1(getPayloadResult);
+            chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.RequireCanonical).Should().BeNull();
+            chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None).Should().NotBeNull();
+
+            await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newHead, Keccak.Zero, Keccak.Zero));
+            chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull();
+            chain.BlockTree.FindBlock(newHead, BlockTreeLookupOptions.None).Should().NotBeNull();
+        }
+        
+        [Test]
+        public async Task block_should_not_be_canonical_after_reorg()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            Keccak finalizedHash = Keccak.Zero;
+            ulong timestamp = 30;
+            Keccak random = Keccak.Zero;
+            Address feeRecipientA = TestItem.AddressD;
+            Address feeRecipientB = TestItem.AddressE;
+            
+            ExecutionPayloadV1 getPayloadResultA = await BuildAndGetPayloadResult(rpc, chain, startingHead,
+                finalizedHash, startingHead, timestamp, random, feeRecipientA);
+            Keccak blochHashA = getPayloadResultA.BlockHash!;
+            
+            ExecutionPayloadV1 getPayloadResultB = await BuildAndGetPayloadResult(rpc, chain, startingHead,
+                finalizedHash, startingHead, timestamp, random, feeRecipientB);
+            Keccak blochHashB = getPayloadResultB.BlockHash!;
+            
+            await rpc.engine_newPayloadV1(getPayloadResultA);
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.RequireCanonical).Should().BeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.RequireCanonical).Should().BeNull();
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.None).Should().NotBeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.None).Should().BeNull();
+
+            await rpc.engine_newPayloadV1(getPayloadResultB);
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.RequireCanonical).Should().BeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.RequireCanonical).Should().BeNull();
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.None).Should().NotBeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.None).Should().NotBeNull();
+            
+            await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blochHashA, finalizedHash, startingHead));
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.RequireCanonical).Should().BeNull();
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.None).Should().NotBeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.None).Should().NotBeNull();
+            
+            await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blochHashB, finalizedHash, startingHead));
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.RequireCanonical).Should().BeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull();
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.None).Should().NotBeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.None).Should().NotBeNull();
+            
+            await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blochHashA, finalizedHash, startingHead));
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.RequireCanonical).Should().BeNull();
+            chain.BlockTree.FindBlock(blochHashA, BlockTreeLookupOptions.None).Should().NotBeNull();
+            chain.BlockTree.FindBlock(blochHashB, BlockTreeLookupOptions.None).Should().NotBeNull();
+        }
 
         private async Task<ExecutionPayloadV1> PrepareAndGetPayloadResultV1(MergeTestBlockchain chain,
             IEngineRpcModule rpc)
