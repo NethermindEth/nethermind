@@ -38,6 +38,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
@@ -199,7 +200,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak random = Keccak.Zero;
             Address feeRecipient = TestItem.AddressD;
 
-            ExecutionPayloadV1? blockRequestResult = await BuildAndGetPayloadResult(rpc, chain, startingHead,
+            ExecutionPayloadV1? executionPayloadV1 = await BuildAndGetPayloadResult(rpc, chain, startingHead,
                 Keccak.Zero, startingHead, timestamp, random, feeRecipient);
 
             ExecutionPayloadV1 expected = CreateParentBlockRequestOnHead(chain.BlockTree);
@@ -215,7 +216,7 @@ namespace Nethermind.Merge.Plugin.Test
             expected.PrevRandao = random;
             expected.ExtraData = Array.Empty<byte>();
 
-            blockRequestResult.Should().BeEquivalentTo(expected);
+            executionPayloadV1.Should().BeEquivalentTo(expected);
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(expected.BlockHash);
             actualHead.Should().Be(startingHead);
@@ -241,15 +242,20 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task getPayloadV1_should_return_error_if_called_after_timeout()
+        public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
         {
-            const int timeout = 2000;
-
             MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
-            using MergeTestBlockchain chain = await CreateBlockChain( mergeConfig);
-            chain.PayloadPreparationService = new PayloadPreparationService(chain.PostMergeBlockProducer!, chain.BlockProductionTrigger,
-                chain.SealEngine,
-                mergeConfig, TimerFactory.Default, chain.LogManager, 1);
+            using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
+            BlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(1));
+            TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
+            chain.PayloadPreparationService = new PayloadPreparationService(
+                chain.PostMergeBlockProducer!,
+                improvementContextFactory,
+                chain.SealEngine, 
+                TimerFactory.Default, 
+                chain.LogManager, 
+                timePerSlot);
+            
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
             UInt256 timestamp = Timestamper.UnixTime.Seconds;
@@ -260,7 +266,7 @@ namespace Nethermind.Merge.Plugin.Test
                     new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
                 .PayloadId!;
 
-            Thread.Sleep(timeout);
+            await Task.Delay(PayloadPreparationService.SlotsPerOldPayloadCleanup * 2 * timePerSlot + timePerSlot);
 
             ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
@@ -268,26 +274,21 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task
-            getPayloadBodiesV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_skip_unknown_hashes()
+        public async Task getPayloadBodiesV1_should_return_payload_bodies_in_order_of_request_block_hashes_and_skip_unknown_hashes()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
 
-            ExecutionPayloadV1 blockRequestResult1 = await SendNewBlockV1(rpc, chain);
+            ExecutionPayloadV1 executionPayloadV11 = await SendNewBlockV1(rpc, chain);
 
             PrivateKey from = TestItem.PrivateKeyA;
             Address to = TestItem.AddressB;
-            Transaction[] txs = BuildTransactions(chain, blockRequestResult1.BlockHash, from, to, 3, 0, out _, out _);
+            Transaction[] txs = BuildTransactions(chain, executionPayloadV11.BlockHash, from, to, 3, 0, out _, out _);
             chain.AddTransactions(txs);
-            ExecutionPayloadV1? blockRequestResult2 = await BuildAndSendNewBlockV1(rpc, chain, true);
-            Keccak[] blockHashes =
-                new[] { blockRequestResult1.BlockHash, TestItem.KeccakA, blockRequestResult2.BlockHash };
+            ExecutionPayloadV1 executionPayloadV12 = await BuildAndSendNewBlockV1(rpc, chain, true);
+            Keccak?[] blockHashes = { executionPayloadV11.BlockHash, TestItem.KeccakA, executionPayloadV12.BlockHash };
             ExecutionPayloadBodyV1Result[] payloadBodies = rpc.engine_getPayloadBodiesV1(blockHashes).Result.Data;
-            ExecutionPayloadBodyV1Result[] expected = new[]
-            {
-                new ExecutionPayloadBodyV1Result(Array.Empty<Transaction>()), new ExecutionPayloadBodyV1Result(txs)
-            };
+            ExecutionPayloadBodyV1Result[] expected = { new(Array.Empty<Transaction>()), new(txs) };
             payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
         }
 
@@ -330,8 +331,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             for (int i = 0; i < times; i++)
             {
-                ResultWrapper<PayloadStatusV1> executePayloadResult =
-                    await rpc.engine_newPayloadV1(getPayloadResult);
+                ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
                 executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
             }
 
@@ -353,8 +353,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             for (int i = 0; i < times; i++)
             {
-                ResultWrapper<PayloadStatusV1>? executePayloadResult =
-                    await rpc.engine_newPayloadV1(getPayloadResult);
+                ResultWrapper<PayloadStatusV1>? executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
                 executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
             }
 
@@ -450,8 +449,7 @@ namespace Nethermind.Merge.Plugin.Test
                 PrevRandao = random, SuggestedFeeRecipient = feeRecipient, Timestamp = timestamp
             };
             ForkchoiceStateV1? forkchoiceStateV1 = new(currentHead, currentHead, currentHead);
-            ResultWrapper<ForkchoiceUpdatedV1Result>? forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, payloadAttributes);
+            ResultWrapper<ForkchoiceUpdatedV1Result>? forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, payloadAttributes);
             byte[] payloadId = Bytes.FromHexString(forkchoiceUpdatedResult.Data.PayloadId);
             ResultWrapper<ExecutionPayloadV1?> getPayloadResult = await rpc.engine_getPayloadV1(payloadId);
             return getPayloadResult.Data!;
@@ -488,8 +486,7 @@ namespace Nethermind.Merge.Plugin.Test
                 getPayloadResult.BlockHash = hash;
             }
 
-            ResultWrapper<PayloadStatusV1>
-                executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
+            ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Accepted);
         }
 
@@ -505,8 +502,7 @@ namespace Nethermind.Merge.Plugin.Test
                 getPayloadResult.BlockHash = hash;
             }
 
-            ResultWrapper<PayloadStatusV1>
-                executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
+            ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
         }
 
@@ -518,8 +514,7 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayloadV1 getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
             getPayloadResult.BlockHash = TestItem.KeccakC;
 
-            ResultWrapper<PayloadStatusV1>
-                executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
+            ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
         }
 
@@ -536,8 +531,7 @@ namespace Nethermind.Merge.Plugin.Test
             block.Header.Hash = block.CalculateHash();
             await chain.BlockTree.SuggestBlockAsync(block!);
             ExecutionPayloadV1 blockRequest = new(block);
-            ResultWrapper<PayloadStatusV1> executePayloadResult =
-                await rpc.engine_newPayloadV1(blockRequest);
+            ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(blockRequest);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
         }
 
@@ -551,8 +545,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             Keccak newHeadHash = executionPayload.BlockHash;
             ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, Keccak.Zero, startingHead);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
 
@@ -573,8 +566,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             Keccak newHeadHash = executionPayload.BlockHash;
             ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
             
@@ -603,8 +595,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             Keccak newHeadHash = executionPayload.BlockHash;
             ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
             
@@ -632,8 +623,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             Keccak newHeadHash = executionPayload.BlockHash;
             ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, newHeadHash!, Keccak.Zero);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
 
@@ -653,8 +643,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             Keccak newHeadHash = executionPayload.BlockHash;
             ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
 
@@ -669,12 +658,9 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            ForkchoiceStateV1 forkchoiceStateV1 =
-                new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-            forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-                .Be(nameof(PayloadStatus.Syncing).ToUpper()); // ToDo wait for final PostMerge sync
+            ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+            forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(nameof(PayloadStatus.Syncing).ToUpper()); // ToDo wait for final PostMerge sync
             AssertExecutionStatusNotChangedV1(rpc, TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
         }
 
@@ -688,17 +674,15 @@ namespace Nethermind.Merge.Plugin.Test
 
             Keccak newHeadHash = executionPayload.BlockHash;
             ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, TestItem.KeccakF);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-            forkchoiceUpdatedResult.ErrorCode.Should()
-                .Be(MergeErrorCodes.InvalidForkchoiceState);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+            forkchoiceUpdatedResult.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
 
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(newHeadHash);
         }
 
         [Test]
-        public async Task forkChoiceUpdatedV1_no_common_branch_failsk()
+        public async Task forkChoiceUpdatedV1_no_common_branch_fails()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -709,18 +693,14 @@ namespace Nethermind.Merge.Plugin.Test
             await rpc.engine_newPayloadV1(new ExecutionPayloadV1(parent));
             
             ForkchoiceStateV1 forkchoiceStateV1 = new(parent.Hash!, startingHead, startingHead);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-            forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
-                .Be("SYNCING");
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+            forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be("SYNCING");
             
             await rpc.engine_newPayloadV1(new ExecutionPayloadV1(block));
             
-            ForkchoiceStateV1 forkchoiceStateV1_1 = new(parent.Hash!, startingHead, startingHead);
-            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult_1 =
-                await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1_1, null);
-            forkchoiceUpdatedResult_1.Data.PayloadStatus.Status.Should()
-                .Be("SYNCING");
+            ForkchoiceStateV1 forkchoiceStateV11 = new(parent.Hash!, startingHead, startingHead);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult_1 = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV11);
+            forkchoiceUpdatedResult_1.Data.PayloadStatus.Status.Should().Be("SYNCING");
             
             AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
 
@@ -756,8 +736,7 @@ namespace Nethermind.Merge.Plugin.Test
             Block? head = chain.BlockTree.Head;
             ExecutionPayloadV1 executionPayload = await SendNewBlockV1(rpc, chain);
             await rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash,
-                    executionPayload.BlockHash), null);
+                new ForkchoiceStateV1(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash));
             Assert.AreEqual(2, chain.BlockTree.Head!.Number);
         }
 
@@ -771,9 +750,7 @@ namespace Nethermind.Merge.Plugin.Test
                 Enabled = true, TerminalTotalDifficulty = $"{terminalTotalDifficulty}"
             });
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            ExecutionPayloadV1 executionPayload = CreateBlockRequest(
-                CreateParentBlockRequestOnHead(chain.BlockTree),
-                TestItem.AddressD);
+            ExecutionPayloadV1 executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Invalid);
             resultWrapper.Data.LatestValidHash.Should().Be(Keccak.Zero);
@@ -790,8 +767,7 @@ namespace Nethermind.Merge.Plugin.Test
             });
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak blockHash = chain.BlockTree.HeadHash;
-            ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper =
-                await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blockHash, blockHash, blockHash), null);
+            ResultWrapper<ForkchoiceUpdatedV1Result> resultWrapper = await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(blockHash, blockHash, blockHash), null);
             resultWrapper.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Invalid);
             resultWrapper.Data.PayloadStatus.LatestValidHash.Should().Be(Keccak.Zero);
         }
@@ -801,13 +777,10 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            ExecutionPayloadV1 executionPayload = CreateBlockRequest(
-                CreateParentBlockRequestOnHead(chain.BlockTree),
-                TestItem.AddressD);
+            ExecutionPayloadV1 executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-            new ExecutionPayloadV1(chain.BlockTree.BestSuggestedBody).Should()
-                .BeEquivalentTo(executionPayload);
+            new ExecutionPayloadV1(chain.BlockTree.BestSuggestedBody).Should().BeEquivalentTo(executionPayload);
         }
 
         [Test]
@@ -815,17 +788,13 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            ExecutionPayloadV1 executionPayload = CreateBlockRequest(
-                CreateParentBlockRequestOnHead(chain.BlockTree),
-                TestItem.AddressD);
+            ExecutionPayloadV1 executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-            ResultWrapper<PayloadStatusV1>
-                resultWrapper2 = await rpc.engine_newPayloadV1(executionPayload);
+            ResultWrapper<PayloadStatusV1> resultWrapper2 = await rpc.engine_newPayloadV1(executionPayload);
             resultWrapper2.Data.Status.Should().Be(PayloadStatus.Valid);
             executionPayload.ParentHash = executionPayload.BlockHash;
-            ResultWrapper<PayloadStatusV1> invalidBlockRequest =
-                await rpc.engine_newPayloadV1(executionPayload);
+            ResultWrapper<PayloadStatusV1> invalidBlockRequest = await rpc.engine_newPayloadV1(executionPayload);
             invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
         }
 
@@ -834,10 +803,8 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            Keccak lastHash = (await ProduceBranchV1(rpc, chain, count,
-                    CreateParentBlockRequestOnHead(chain.BlockTree), true))
-                .Last()
-                .BlockHash;
+            Keccak lastHash = (await ProduceBranchV1(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
+                .Last().BlockHash;
             chain.BlockTree.HeadHash.Should().Be(lastHash);
             Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
             last.Should().NotBeNull();
@@ -852,10 +819,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             async Task CanReorganizeToBlock(ExecutionPayloadV1 block, MergeTestBlockchain testChain)
             {
-                ForkchoiceStateV1 forkchoiceStateV1 =
-                    new(block.BlockHash, block.BlockHash, block.BlockHash);
-                ResultWrapper<ForkchoiceUpdatedV1Result> result =
-                    await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+                ForkchoiceStateV1 forkchoiceStateV1 = new(block.BlockHash, block.BlockHash, block.BlockHash);
+                ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
                 result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
                 result.Data.PayloadId.Should().Be(null);
                 testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
@@ -872,10 +837,8 @@ namespace Nethermind.Merge.Plugin.Test
                 }
             }
 
-            IReadOnlyList<ExecutionPayloadV1> branch1 =
-                await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
-            IReadOnlyList<ExecutionPayloadV1> branch2 =
-                await ProduceBranchV1(rpc, chain, 6, branch1[3], true, TestItem.KeccakC);
+            IReadOnlyList<ExecutionPayloadV1> branch1 = await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+            IReadOnlyList<ExecutionPayloadV1> branch2 = await ProduceBranchV1(rpc, chain, 6, branch1[3], true, TestItem.KeccakC);
 
             await CanReorganizeToLastBlock(chain, branch1, branch2);
         }
@@ -888,10 +851,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             async Task CanReorganizeToBlock(ExecutionPayloadV1 block, MergeTestBlockchain testChain)
             {
-                ForkchoiceStateV1 forkchoiceStateV1 =
-                    new(block.BlockHash, block.BlockHash, block.BlockHash);
-                ResultWrapper<ForkchoiceUpdatedV1Result> result =
-                    await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+                ForkchoiceStateV1 forkchoiceStateV1 = new(block.BlockHash, block.BlockHash, block.BlockHash);
+                ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
                 result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
                 result.Data.PayloadId.Should().Be(null);
                 testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
@@ -899,10 +860,8 @@ namespace Nethermind.Merge.Plugin.Test
                 testChain.State.StateRoot.Should().Be(testChain.BlockTree.Head!.StateRoot!);
             }
 
-            IReadOnlyList<ExecutionPayloadV1> branch1 =
-                await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
-            IReadOnlyList<ExecutionPayloadV1> branch2 =
-                await ProduceBranchV1(rpc, chain, 6, branch1[3], true, TestItem.KeccakC);
+            IReadOnlyList<ExecutionPayloadV1> branch1 = await ProduceBranchV1(rpc, chain, 10, CreateParentBlockRequestOnHead(chain.BlockTree), true);
+            IReadOnlyList<ExecutionPayloadV1> branch2 = await ProduceBranchV1(rpc, chain, 6, branch1[3], true, TestItem.KeccakC);
 
             await CanReorganizeToBlock(branch2.Last(), chain);
         }
@@ -912,13 +871,10 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            ExecutionPayloadV1 executionPayload = CreateBlockRequest(
-                CreateParentBlockRequestOnHead(chain.BlockTree),
-                TestItem.AddressD);
+            ExecutionPayloadV1 executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
             resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-            ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executionPayload.BlockHash,
-                executionPayload.BlockHash, executionPayload.BlockHash);
+            ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> fcu1 = (await rpc.engine_forkchoiceUpdatedV1(forkChoiceUpdatedRequest,
                 new PayloadAttributes()
                 {
@@ -935,9 +891,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            IReadOnlyList<ExecutionPayloadV1> branch =
-                await ProduceBranchV1(rpc, chain, 8, CreateParentBlockRequestOnHead(chain.BlockTree),
-                    moveHead);
+            IReadOnlyList<ExecutionPayloadV1> branch = await ProduceBranchV1(rpc, chain, 8, CreateParentBlockRequestOnHead(chain.BlockTree), moveHead);
 
             foreach (ExecutionPayloadV1 block in branch)
             {
@@ -945,8 +899,7 @@ namespace Nethermind.Merge.Plugin.Test
                 ExecutionPayloadV1 executePayloadRequest = CreateBlockRequest(block, TestItem.AddressA);
                 PrivateKey from = TestItem.PrivateKeyB;
                 Address to = TestItem.AddressD;
-                (_, UInt256 toBalanceAfter) = AddTransactions(chain, executePayloadRequest, from, to, count, 1,
-                    out BlockHeader? parentHeader);
+                (_, UInt256 toBalanceAfter) = AddTransactions(chain, executePayloadRequest, from, to, count, 1, out BlockHeader? parentHeader);
 
                 executePayloadRequest.GasUsed = GasCostOf.Transaction * count;
                 executePayloadRequest.StateRoot =
@@ -964,8 +917,7 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.StateReader.GetBalance(executePayloadRequest.StateRoot, to).Should().Be(toBalanceAfter);
                 if (moveHead)
                 {
-                    ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executePayloadRequest.BlockHash,
-                        executePayloadRequest.BlockHash, executePayloadRequest.BlockHash);
+                    ForkchoiceStateV1 forkChoiceUpdatedRequest = new(executePayloadRequest.BlockHash, executePayloadRequest.BlockHash, executePayloadRequest.BlockHash);
                     await rpc.engine_forkchoiceUpdatedV1(forkChoiceUpdatedRequest, null);
                     chain.State.StateRoot.Should().Be(executePayloadRequest.StateRoot);
                     chain.State.StateRoot.Should().NotBe(parentHeader.StateRoot!);
@@ -978,8 +930,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            IReadOnlyList<ExecutionPayloadV1> branch =
-                await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), false);
+            IReadOnlyList<ExecutionPayloadV1> branch = await ProduceBranchV1(rpc, chain, 1, CreateParentBlockRequestOnHead(chain.BlockTree), false);
 
             foreach (ExecutionPayloadV1 block in branch)
             {
@@ -987,8 +938,7 @@ namespace Nethermind.Merge.Plugin.Test
                 ExecutionPayloadV1 executionPayload = CreateBlockRequest(block, TestItem.AddressA);
                 PrivateKey from = TestItem.PrivateKeyB;
                 Address to = TestItem.AddressD;
-                (_, UInt256 toBalanceAfter) =
-                    AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
+                (_, UInt256 toBalanceAfter) = AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
 
                 UInt256 fromBalance = chain.StateReader.GetBalance(parentHeader.StateRoot!, from.Address);
                 executionPayload.GasUsed = GasCostOf.Transaction * count;
@@ -1025,39 +975,65 @@ namespace Nethermind.Merge.Plugin.Test
             int value = 10;
             Address recipient = TestItem.AddressF;
             PrivateKey sender = TestItem.PrivateKeyB;
-            Transaction[] transactions =
-                BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
+            Transaction[] transactions = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
             chain.AddTransactions(transactions);
-            chain.PayloadPreparationService!.BlockImproved += (s, e) =>
-            {
-                blockImprovementLock.Release(1);
-            };
+            chain.PayloadPreparationService!.BlockImproved += (_, _) => { blockImprovementLock.Release(1); };
             string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes()
-                {
-                    Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero
-                }).Result.Data.PayloadId!;
+                new PayloadAttributes() { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
+                .Result.Data.PayloadId!;
+            
             await blockImprovementLock.WaitAsync(10000);
-            ExecutionPayloadV1 getPayloadResult =
-                (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId!))).Data!;
+            ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
 
             getPayloadResult.StateRoot.Should().NotBe(chain.BlockTree.Genesis!.StateRoot!);
 
             Transaction[] transactionsInBlock = getPayloadResult.GetTransactions();
-            transactionsInBlock.Should().BeEquivalentTo(transactions,
-                o => o.Excluding(t => t.ChainId)
-                    .Excluding(t => t.SenderAddress)
-                    .Excluding(t => t.Timestamp)
-                    .Excluding(t => t.PoolIndex)
-                    .Excluding(t => t.GasBottleneck));
+            transactionsInBlock.Should().BeEquivalentTo(transactions, o => o
+                .Excluding(t => t.ChainId)
+                .Excluding(t => t.SenderAddress)
+                .Excluding(t => t.Timestamp)
+                .Excluding(t => t.PoolIndex)
+                .Excluding(t => t.GasBottleneck));
 
-            ResultWrapper<PayloadStatusV1> executePayloadResult =
-                await rpc.engine_newPayloadV1(getPayloadResult);
+            ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
 
             UInt256 totalValue = ((int)(count * value)).GWei();
             chain.StateReader.GetBalance(getPayloadResult.StateRoot, recipient).Should().Be(totalValue);
+        }
+        
+        [TestCase(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay / 10, ExpectedResult = 3)]
+        [TestCase(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay * 2, ExpectedResult = 0)]
+        public async Task<int> getPayloadV1_waits_for_block_production(int delay)
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            
+            DelayBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(10), delay);
+            chain.PayloadPreparationService = new PayloadPreparationService(
+                chain.PostMergeBlockProducer!,
+                improvementContextFactory,
+                chain.SealEngine, 
+                TimerFactory.Default, 
+                chain.LogManager, 
+                TimeSpan.FromSeconds(10));
+
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            uint count = 3;
+            int value = 10;
+            Address recipient = TestItem.AddressF;
+            PrivateKey sender = TestItem.PrivateKeyB;
+            Transaction[] transactions = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
+            chain.AddTransactions(transactions);
+            string payloadId = rpc.engine_forkchoiceUpdatedV1(
+                new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
+                .Result.Data.PayloadId!;
+            
+            ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
+
+            return getPayloadResult.Transactions.Length;
         }
 
         [Test]
@@ -1132,7 +1108,7 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public async Task blockRequestResult_set_and_get_transactions_roundtrip()
+        public async Task ExecutionPayloadV1_set_and_get_transactions_roundtrip()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             Keccak startingHead = chain.BlockTree.HeadHash;
@@ -1282,23 +1258,23 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc = CreateEngineModule(chain);
 
             // Correct new payload
-            ExecutionPayloadV1 blockRequestResult1 = CreateBlockRequest(
+            ExecutionPayloadV1 executionPayloadV11 = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressA);
-            ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(blockRequestResult1);
+            ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(executionPayloadV11);
             newPayloadResult1.Data.Status.Should().Be(PayloadStatus.Valid);
 
             // Fork choice updated with first np hash
-            ForkchoiceStateV1 forkChoiceState1 = new ForkchoiceStateV1(blockRequestResult1.BlockHash,
-                blockRequestResult1.BlockHash,
-                blockRequestResult1.BlockHash);
+            ForkchoiceStateV1 forkChoiceState1 = new ForkchoiceStateV1(executionPayloadV11.BlockHash,
+                executionPayloadV11.BlockHash,
+                executionPayloadV11.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult1 =
                 await rpc.engine_forkchoiceUpdatedV1(forkChoiceState1);
             forkchoiceUpdatedResult1.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             
-            ResultWrapper<PayloadStatusV1> newPayloadResult2 = await rpc.engine_newPayloadV1(blockRequestResult1);
+            ResultWrapper<PayloadStatusV1> newPayloadResult2 = await rpc.engine_newPayloadV1(executionPayloadV11);
             newPayloadResult2.Data.Status.Should().Be(PayloadStatus.Valid);
-            newPayloadResult2.Data.LatestValidHash.Should().Be(blockRequestResult1.BlockHash);
+            newPayloadResult2.Data.LatestValidHash.Should().Be(executionPayloadV11.BlockHash);
         }
 
         [Test]
@@ -1309,63 +1285,63 @@ namespace Nethermind.Merge.Plugin.Test
             IEngineRpcModule rpc = CreateEngineModule(chain);
 
             // Correct new payload
-            ExecutionPayloadV1 blockRequestResult1 = CreateBlockRequest(
+            ExecutionPayloadV1 executionPayloadV11 = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressA);
-            ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(blockRequestResult1);
+            ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(executionPayloadV11);
             newPayloadResult1.Data.Status.Should().Be(PayloadStatus.Valid);
 
             // Fork choice updated with first np hash
-            ForkchoiceStateV1 forkChoiceState1 = new ForkchoiceStateV1(blockRequestResult1.BlockHash, blockRequestResult1.BlockHash,
-                blockRequestResult1.BlockHash);
+            ForkchoiceStateV1 forkChoiceState1 = new ForkchoiceStateV1(executionPayloadV11.BlockHash, executionPayloadV11.BlockHash,
+                executionPayloadV11.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult1 = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState1);
             forkchoiceUpdatedResult1.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
             // New payload unknown parent hash
-            ExecutionPayloadV1 blockRequestResult2A = CreateBlockRequest(blockRequestResult1, TestItem.AddressA);
-            blockRequestResult2A.ParentHash = TestItem.KeccakB;
-            TryCalculateHash(blockRequestResult2A, out Keccak? hash);
-            blockRequestResult2A.BlockHash = hash;
-            ResultWrapper<PayloadStatusV1> newPayloadResult2A = await rpc.engine_newPayloadV1(blockRequestResult2A);
+            ExecutionPayloadV1 executionPayloadV12A = CreateBlockRequest(executionPayloadV11, TestItem.AddressA);
+            executionPayloadV12A.ParentHash = TestItem.KeccakB;
+            TryCalculateHash(executionPayloadV12A, out Keccak? hash);
+            executionPayloadV12A.BlockHash = hash;
+            ResultWrapper<PayloadStatusV1> newPayloadResult2A = await rpc.engine_newPayloadV1(executionPayloadV12A);
             newPayloadResult2A.Data.Status.Should().Be(PayloadStatus.Accepted);
 
             // Fork choice updated with unknown parent hash
-            ForkchoiceStateV1 forkChoiceState2A = new ForkchoiceStateV1(blockRequestResult2A.BlockHash,
-                blockRequestResult2A.BlockHash,
-                blockRequestResult2A.BlockHash);
+            ForkchoiceStateV1 forkChoiceState2A = new ForkchoiceStateV1(executionPayloadV12A.BlockHash,
+                executionPayloadV12A.BlockHash,
+                executionPayloadV12A.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult2A = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState2A);
             forkchoiceUpdatedResult2A.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Syncing);
 
             // New payload with correct parent hash
-            ExecutionPayloadV1 blockRequestResult2B = CreateBlockRequest(blockRequestResult1, TestItem.AddressA);
-            ResultWrapper<PayloadStatusV1> newPayloadResult2B = await rpc.engine_newPayloadV1(blockRequestResult2B);
+            ExecutionPayloadV1 executionPayloadV12B = CreateBlockRequest(executionPayloadV11, TestItem.AddressA);
+            ResultWrapper<PayloadStatusV1> newPayloadResult2B = await rpc.engine_newPayloadV1(executionPayloadV12B);
             newPayloadResult2B.Data.Status.Should().Be(PayloadStatus.Valid);
 
             // Fork choice updated with correct parent hash
-            ForkchoiceStateV1 forkChoiceState2B = new ForkchoiceStateV1(blockRequestResult2B.BlockHash, blockRequestResult2B.BlockHash,
-                blockRequestResult2B.BlockHash);
+            ForkchoiceStateV1 forkChoiceState2B = new ForkchoiceStateV1(executionPayloadV12B.BlockHash, executionPayloadV12B.BlockHash,
+                executionPayloadV12B.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult2B = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState2B);
             forkchoiceUpdatedResult2B.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             
             // New payload unknown parent hash
-            ExecutionPayloadV1 blockRequestResult3A = CreateBlockRequest(blockRequestResult2A, TestItem.AddressA);
-            ResultWrapper<PayloadStatusV1> newPayloadResult3A = await rpc.engine_newPayloadV1(blockRequestResult3A);
+            ExecutionPayloadV1 executionPayloadV13A = CreateBlockRequest(executionPayloadV12A, TestItem.AddressA);
+            ResultWrapper<PayloadStatusV1> newPayloadResult3A = await rpc.engine_newPayloadV1(executionPayloadV13A);
             newPayloadResult3A.Data.Status.Should().Be(PayloadStatus.Accepted);
 
             // Fork choice updated with unknown parent hash
-            ForkchoiceStateV1 forkChoiceState3A = new ForkchoiceStateV1(blockRequestResult3A.BlockHash,
-                blockRequestResult3A.BlockHash,
-                blockRequestResult3A.BlockHash);
+            ForkchoiceStateV1 forkChoiceState3A = new ForkchoiceStateV1(executionPayloadV13A.BlockHash,
+                executionPayloadV13A.BlockHash,
+                executionPayloadV13A.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult3A = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState3A);
             forkchoiceUpdatedResult3A.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Syncing);
             
-            ExecutionPayloadV1 blockRequestResult3B = CreateBlockRequest(blockRequestResult2B, TestItem.AddressA);
-            ResultWrapper<PayloadStatusV1> newPayloadResult3B = await rpc.engine_newPayloadV1(blockRequestResult3B);
+            ExecutionPayloadV1 executionPayloadV13B = CreateBlockRequest(executionPayloadV12B, TestItem.AddressA);
+            ResultWrapper<PayloadStatusV1> newPayloadResult3B = await rpc.engine_newPayloadV1(executionPayloadV13B);
             newPayloadResult3B.Data.Status.Should().Be(PayloadStatus.Valid);
 
             // Fork choice updated with correct parent hash
-            ForkchoiceStateV1 forkChoiceState3B = new ForkchoiceStateV1(blockRequestResult3B.BlockHash, blockRequestResult3B.BlockHash,
-                blockRequestResult3B.BlockHash);
+            ForkchoiceStateV1 forkChoiceState3B = new ForkchoiceStateV1(executionPayloadV13B.BlockHash, executionPayloadV13B.BlockHash,
+                executionPayloadV13B.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult3B = await rpc.engine_forkchoiceUpdatedV1(forkChoiceState3B);
             forkchoiceUpdatedResult3B.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         }
@@ -1469,19 +1445,19 @@ namespace Nethermind.Merge.Plugin.Test
             }
 
             // Add one block
-            ExecutionPayloadV1 blockRequestResult1 = CreateBlockRequest(
+            ExecutionPayloadV1 executionPayloadV11 = CreateBlockRequest(
                 CreateParentBlockRequestOnHead(chain.BlockTree),
                 TestItem.AddressA);
-            blockRequestResult1.PrevRandao = prevRandao1;
+            executionPayloadV11.PrevRandao = prevRandao1;
 
-            TryCalculateHash(blockRequestResult1, out Keccak? hash1);
-            blockRequestResult1.BlockHash = hash1;
+            TryCalculateHash(executionPayloadV11, out Keccak? hash1);
+            executionPayloadV11.BlockHash = hash1;
 
-            ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(blockRequestResult1);
+            ResultWrapper<PayloadStatusV1> newPayloadResult1 = await rpc.engine_newPayloadV1(executionPayloadV11);
             newPayloadResult1.Data.Status.Should().Be(PayloadStatus.Valid);
 
-            ForkchoiceStateV1 forkChoiceState1 = new(blockRequestResult1.BlockHash,
-                blockRequestResult1.BlockHash, blockRequestResult1.BlockHash);
+            ForkchoiceStateV1 forkChoiceState1 = new(executionPayloadV11.BlockHash,
+                executionPayloadV11.BlockHash, executionPayloadV11.BlockHash);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult1 =
                 await rpc.engine_forkchoiceUpdatedV1(forkChoiceState1,
                     new PayloadAttributes()
@@ -1494,44 +1470,44 @@ namespace Nethermind.Merge.Plugin.Test
 
 
             {
-                ExecutionPayloadV1 blockRequestResult2 = CreateBlockRequest(
-                    blockRequestResult1,
+                ExecutionPayloadV1 executionPayloadV12 = CreateBlockRequest(
+                    executionPayloadV11,
                     TestItem.AddressA);
 
-                blockRequestResult2.PrevRandao = prevRandao3;
+                executionPayloadV12.PrevRandao = prevRandao3;
 
-                TryCalculateHash(blockRequestResult2, out Keccak? hash);
-                blockRequestResult2.BlockHash = hash;
+                TryCalculateHash(executionPayloadV12, out Keccak? hash);
+                executionPayloadV12.BlockHash = hash;
 
-                ResultWrapper<PayloadStatusV1> newPayloadResult2 = await rpc.engine_newPayloadV1(blockRequestResult2);
+                ResultWrapper<PayloadStatusV1> newPayloadResult2 = await rpc.engine_newPayloadV1(executionPayloadV12);
                 newPayloadResult2.Data.Status.Should().Be(PayloadStatus.Valid);
 
-                ForkchoiceStateV1 forkChoiceState2 = new(blockRequestResult2.BlockHash,
-                    blockRequestResult1.BlockHash, blockRequestResult1.BlockHash);
+                ForkchoiceStateV1 forkChoiceState2 = new(executionPayloadV12.BlockHash,
+                    executionPayloadV11.BlockHash, executionPayloadV11.BlockHash);
                 ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult2 =
                     await rpc.engine_forkchoiceUpdatedV1(forkChoiceState2);
                 forkchoiceUpdatedResult2.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
                 Keccak currentBlockHash = chain.BlockTree.Head!.Hash!;
-                Assert.True(currentBlockHash == blockRequestResult2.BlockHash);
+                Assert.True(currentBlockHash == executionPayloadV12.BlockHash);
             }
 
             // re-org
             {
-                ExecutionPayloadV1 blockRequestResult3 = CreateBlockRequest(
-                    blockRequestResult1,
+                ExecutionPayloadV1 executionPayloadV13 = CreateBlockRequest(
+                    executionPayloadV11,
                     TestItem.AddressA);
 
-                blockRequestResult3.PrevRandao = prevRandao2;
+                executionPayloadV13.PrevRandao = prevRandao2;
 
-                TryCalculateHash(blockRequestResult3, out Keccak? hash);
-                blockRequestResult3.BlockHash = hash;
+                TryCalculateHash(executionPayloadV13, out Keccak? hash);
+                executionPayloadV13.BlockHash = hash;
 
-                ResultWrapper<PayloadStatusV1> newPayloadResult3 = await rpc.engine_newPayloadV1(blockRequestResult3);
+                ResultWrapper<PayloadStatusV1> newPayloadResult3 = await rpc.engine_newPayloadV1(executionPayloadV13);
                 newPayloadResult3.Data.Status.Should().Be(PayloadStatus.Valid);
 
-                ForkchoiceStateV1 forkChoiceState3 = new (blockRequestResult3.BlockHash,
-                    blockRequestResult1.BlockHash, blockRequestResult1.BlockHash);
+                ForkchoiceStateV1 forkChoiceState3 = new (executionPayloadV13.BlockHash,
+                    executionPayloadV11.BlockHash, executionPayloadV11.BlockHash);
                 ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult3 =
                     await rpc.engine_forkchoiceUpdatedV1(forkChoiceState3);
                 forkchoiceUpdatedResult3.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
