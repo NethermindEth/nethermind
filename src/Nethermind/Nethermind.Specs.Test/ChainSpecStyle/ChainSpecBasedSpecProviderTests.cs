@@ -239,6 +239,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             CompareSpecProviders(ropsten, provider, blockNumbersToTest, true);
+            Assert.AreEqual(RopstenSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(RopstenSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
 
