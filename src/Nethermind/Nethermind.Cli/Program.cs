@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,8 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
+using System.Text;
 using Jint.Native;
 using Nethermind.Cli.Console;
 using Nethermind.Cli.Modules;
@@ -24,6 +25,7 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
+[assembly: InternalsVisibleTo("Nethermind.Cli.Test")]
 namespace Nethermind.Cli
 {
     public static class Program
@@ -31,14 +33,14 @@ namespace Nethermind.Cli
         private static readonly ColorScheme ColorScheme = DraculaColorScheme.Instance;
         private static readonly CliConsole CliConsole = new CliConsole();
         private static readonly StatementHistoryManager HistoryManager = new StatementHistoryManager(CliConsole);
-        
+
         private static readonly ILogManager LogManager = new OneLoggerLogManager(new CliLogger(CliConsole));
         private static readonly IJsonSerializer Serializer = new EthereumJsonSerializer();
-        
+
         private static readonly Terminal Terminal = CliConsole.Init(DraculaColorScheme.Instance);
         private static readonly ICliEngine Engine = new CliEngine(CliConsole);
         private static readonly INodeManager NodeManager = new NodeManager(Engine, Serializer, CliConsole, LogManager);
-        
+
         private static readonly CliModuleLoader ModuleLoader = new CliModuleLoader(Engine, NodeManager, CliConsole);
 
         public static void Main()
@@ -49,10 +51,10 @@ namespace Nethermind.Cli
                 string text = Serializer.Serialize(v.ToObject(), true);
                 CliConsole.WriteGood(text);
             }));
-            
+
             ModuleLoader.DiscoverAndLoadModules();
             ReadLine.AutoCompletionHandler = new AutoCompletionHandler(ModuleLoader);
-            
+
             NodeManager.SwitchUri(new Uri("http://localhost:8545"));
             HistoryManager.Init();
             TestConnection();
@@ -70,22 +72,33 @@ namespace Nethermind.Cli
             }
         }
 
-        private static string RemoveDangerousCharacters(string statement)
+        internal static string RemoveDangerousCharacters(string statement)
         {
-            List<char> cleaned = new List<char>();
+            if (string.IsNullOrWhiteSpace(statement))
+            {
+                return "";
+            }
+
+            StringBuilder cleaned = new ();
             for (int i = 0; i < statement.Length; i++)
             {
-                if (statement[i] == 8)
+                switch (statement[i])
                 {
-                    cleaned.RemoveAt(cleaned.Count - 1);
-                }
-                else
-                {
-                    cleaned.Add(statement[i]);
+                    case '\x0008':
+                        if (cleaned.Length != 0)
+                        {
+                            cleaned.Remove(cleaned.Length - 1, 1);
+                        }
+                        break;
+                    case '\x0000':
+                        return cleaned.ToString();
+                    default:
+                        cleaned.Append(statement[i]);
+                        break;
                 }
             }
 
-            return statement;
+            return cleaned.ToString();
         }
 
         private static void RunEvalLoop()

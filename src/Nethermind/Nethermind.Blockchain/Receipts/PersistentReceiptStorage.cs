@@ -234,6 +234,11 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsCache.Clear();
         }
         
+        public bool HasBlock(Keccak hash)
+        {
+            return _receiptsCache.Contains(hash) || _blocksDb.KeyExists(hash);
+        }
+        
         public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 }

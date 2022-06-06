@@ -21,7 +21,6 @@ namespace Nethermind.Consensus.Producers
 {
     public interface IBlockTransactionsExecutorFactory
     {
-        // TODO: can we remove this?
         IBlockProcessor.IBlockTransactionsExecutor Create(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv);
     }
 }

@@ -413,15 +413,18 @@ namespace Nethermind.Blockchain
 
         private void LoadBeaconBestKnown()
         {
-            long left = Math.Max(Head?.Number ?? 0, (LowestInsertedBeaconHeader?.Number ?? 0) - 1);
+            long left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
             long right = Math.Max(0, left) + BestKnownSearchLimit;
-            
             long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
+
+            left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
+            right = Math.Max(0, left) + BestKnownSearchLimit;
             long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
             
             long? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeLong();
-            long bestBeaconBodyNumber = BinarySearchBlockNumber(
-                beaconPivotNumber.HasValue ? beaconPivotNumber.Value : left, right, BodyExists, findBeacon: true) ?? 0;
+            left = Math.Max(Head?.Number ?? 0, beaconPivotNumber ?? 0) - 1;
+            right = Math.Max(0, left) + BestKnownSearchLimit;
+            long bestBeaconBodyNumber = BinarySearchBlockNumber(left, right, BodyExists, findBeacon: true) ?? 0;
             
             if (_logger.IsInfo)
                 _logger.Info("Beacon Numbers resolved, " +
@@ -719,9 +722,10 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}");
+            
 #if DEBUG
-            /* this is just to make sure that we do not fall into this trap when creating tests */
-            if (header.StateRoot is null && !header.IsGenesis)
+        /* this is just to make sure that we do not fall into this trap when creating tests */
+        if (header.StateRoot is null && !header.IsGenesis)
             {
                 throw new InvalidDataException($"State root is null in {header.ToString(BlockHeader.Format.Short)}");
             }

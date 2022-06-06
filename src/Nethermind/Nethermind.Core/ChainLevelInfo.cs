@@ -36,6 +36,7 @@ namespace Nethermind.Core
         public BlockInfo[] BlockInfos { get; set; }
         public BlockInfo? MainChainBlock => HasBlockOnMainChain ? BlockInfos[0] : null;
 
+        // ToDo we need to rethink this code
         public BlockInfo? BeaconMainChainBlock
         {
             get
@@ -43,6 +44,9 @@ namespace Nethermind.Core
                 if (MainChainBlock != null)
                     return MainChainBlock;
 
+                if (BlockInfos.Length == 0)
+                    return null;
+                
                 for (int i = 0; i < BlockInfos.Length; ++i)
                 {
                     BlockInfo blockInfo = BlockInfos[i];
@@ -50,8 +54,8 @@ namespace Nethermind.Core
                     if (isBeaconChainMetadata)
                         return blockInfo;
                 }
-
-                return null;
+                
+                return BlockInfos[0];
             }
         }
     }

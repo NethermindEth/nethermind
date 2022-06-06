@@ -21,46 +21,34 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Merge.Plugin.Data.V1
 {
+    /// <summary>
+    /// Result of engine_forkChoiceUpdate call.
+    ///
+    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#response-1"/>
+    /// </summary>
     public class ForkchoiceUpdatedV1Result
     {
-        private static readonly ForkchoiceUpdatedV1Result _syncing = new()
-        {
-            PayloadId = null, PayloadStatus = PayloadStatusV1.Syncing
-        };
+        public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> Syncing = ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadId = null, PayloadStatus = PayloadStatusV1.Syncing });
 
-        public static readonly ResultWrapper<ForkchoiceUpdatedV1Result> Syncing =
-            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(_syncing);
+        public static ResultWrapper<ForkchoiceUpdatedV1Result> Valid(string? payloadId, Keccak? latestValidHash) => 
+            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result { PayloadId = payloadId, PayloadStatus = new PayloadStatusV1() { Status = Data.V1.PayloadStatus.Valid, LatestValidHash = latestValidHash } });
 
-        public static ResultWrapper<ForkchoiceUpdatedV1Result> Valid(string? payloadId, Keccak? latestValidHash)
-        {
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result()
+        public static ResultWrapper<ForkchoiceUpdatedV1Result> Invalid(Keccak? latestValidHash, string? validationError = null) =>
+            ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result
             {
-                PayloadId = payloadId,
-                PayloadStatus = new PayloadStatusV1()
-                {
-                    Status = Data.V1.PayloadStatus.Valid, LatestValidHash = latestValidHash
-                }
+                PayloadStatus = new PayloadStatusV1 { Status = Data.V1.PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError }
             });
-        }
-        
-        public static ResultWrapper<ForkchoiceUpdatedV1Result> Invalid(Keccak? latestValidHash, string? validationError = null)
-        {
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Success(new ForkchoiceUpdatedV1Result()
-            {
-                PayloadStatus = new PayloadStatusV1()
-                {
-                    Status = Data.V1.PayloadStatus.Invalid, LatestValidHash = latestValidHash, ValidationError = validationError
-                }
-            });
-        }
-        
-        public static ResultWrapper<ForkchoiceUpdatedV1Result> Error(string message, int errorCode)
-        {
-            return ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(message, errorCode);
-        }
 
-        public PayloadStatusV1 PayloadStatus { get; set; }
+        public static ResultWrapper<ForkchoiceUpdatedV1Result> Error(string message, int errorCode) => ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(message, errorCode);
 
+        /// <summary>
+        /// Status
+        /// </summary>
+        public PayloadStatusV1 PayloadStatus { get; set; } = PayloadStatusV1.Syncing;
+
+        /// <summary>
+        /// Identifier of the payload build process or null if there is none.
+        /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string? PayloadId { get; set; }
     }

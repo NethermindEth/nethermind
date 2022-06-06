@@ -25,11 +25,14 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
+using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -42,6 +45,7 @@ namespace Nethermind.Consensus.Processing
 
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockPreprocessorStep _recoveryStep;
+        private readonly IStateReader _stateReader;
         private readonly Options _options;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -68,12 +72,14 @@ namespace Nethermind.Consensus.Processing
         /// <param name="blockTree"></param>
         /// <param name="blockProcessor"></param>
         /// <param name="recoveryStep"></param>
+        /// <param name="stateReader"></param>
         /// <param name="logManager"></param>
         /// <param name="options"></param>
         public BlockchainProcessor(
             IBlockTree? blockTree,
             IBlockProcessor? blockProcessor,
             IBlockPreprocessorStep? recoveryStep,
+            IStateReader stateReader,
             ILogManager? logManager,
             Options options)
         {
@@ -81,6 +87,7 @@ namespace Nethermind.Consensus.Processing
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _options = options;
 
             _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
@@ -504,7 +511,6 @@ namespace Nethermind.Consensus.Processing
             List<Block> blocksToBeAddedToMain = new();
 
             bool preMergeFinishBranchingCondition;
-            bool postMergeFinishBranchingCondition;
             bool suggestedBlockIsPostMerge = suggestedBlock.IsPostMerge;
 
             Block toBeProcessed = suggestedBlock;
@@ -539,27 +545,32 @@ namespace Nethermind.Consensus.Processing
 
                 bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                 bool toBeProcessedIsNotBlockOne = toBeProcessed.Number > 1;
+                if (_logger.IsTrace)
+                    _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+                toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
+                if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
                 bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
-                if (!isFastSyncTransition)
+                if (toBeProcessed == null)
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
-                    toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
-                    if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
-
-                    if (toBeProcessed == null)
-                    {
-                        if (_logger.IsDebug)
-                            _logger.Debug(
-                                $"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
-                        break;
-                    }
-                }
-                else
-                {
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            $"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
                     break;
                 }
 
+                if (isFastSyncTransition)
+                {
+                    // if we have parent state it means that we don't need to go deeper
+                    if (toBeProcessed?.StateRoot == null || _stateReader.HasStateForBlock(toBeProcessed.Header))
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Found state for parent: {toBeProcessed}, StateRoot: {toBeProcessed?.StateRoot}");
+                        break;
+                    }
+                    else
+                    {
+                        if (_logger.IsInfo) _logger.Info($"A new block {toBeProcessed} in fast sync transition branch - state not found");
+                    }
+                }
 
                 // TODO: there is no test for the second condition
                 // generally if we finish fast sync at block, e.g. 8 and then have 6 blocks processed and close Neth
@@ -568,15 +579,11 @@ namespace Nethermind.Consensus.Processing
                 // otherwise some nodes would be missing
                 bool notFoundTheBranchingPointYet = !_blockTree.IsMainChain(branchingPoint.Hash!);
                 bool notReachedTheReorgBoundary = branchingPoint.Number > (_blockTree.Head?.Header.Number ?? 0);
-                preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary) &&
-                                                   !suggestedBlockIsPostMerge;
-                postMergeFinishBranchingCondition = suggestedBlockIsPostMerge &&
-                                                    _blockTree.WasProcessed(branchingPoint.Number,
-                                                        branchingPoint.Hash) == false;
+                preMergeFinishBranchingCondition = (notFoundTheBranchingPointYet || notReachedTheReorgBoundary);
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}, postMergeFinishBranchingCondition: {postMergeFinishBranchingCondition}");
-            } while (preMergeFinishBranchingCondition || postMergeFinishBranchingCondition);
+                        $" Current branching point: {branchingPoint.Number}, {branchingPoint.Hash} TD: {branchingPoint.TotalDifficulty} Processing conditions notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, notReachedTheReorgBoundary: {notReachedTheReorgBoundary}, suggestedBlockIsPostMerge {suggestedBlockIsPostMerge}");
+            } while (preMergeFinishBranchingCondition);
 
             if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
             {

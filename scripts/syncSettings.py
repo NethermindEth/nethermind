@@ -51,6 +51,11 @@ configs = {
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
+    "sepolia": {
+        "url": "api-sepolia.etherscan.io",
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
+    },
     "sokol": {
         "url": "https://sokol.poa.network",
         "blockReduced": 8192,
@@ -81,6 +86,22 @@ configs = {
         "url": "https://dai.poa.network",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
+    },
+    # aa section
+    "mainnet_aa": {
+        "url": "api.etherscan.io",
+        "blockReduced": 1000,
+        "multiplierRequirement": 1000
+    },
+    "goerli_aa": {
+        "url": "api-goerli.etherscan.io",
+        "blockReduced": 8192,
+        "multiplierRequirement": 30000 
+    },
+    "xdai_aa": {
+        "url": "https://dai.poa.network",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
     }
 }
 
@@ -95,13 +116,13 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
 
     baseBlock = latestBlock - blockReduced
     baseBlock = baseBlock - baseBlock % multiplierRequirement
-    
+
     if "etherscan" in apiUrl:
         pivot = json.loads(subprocess.getoutput(f'curl --silent "https://{apiUrl}/api?module=proxy&action=eth_getBlockByNumber&tag={hex(baseBlock)}&boolean=true&apikey={key}"'))
     else:
         data = '{"id":0,"jsonrpc":"2.0","method": "eth_getBlockByNumber","params": ["' +str(hex(baseBlock))+ '", false]}'
         pivot = json.loads(requests.post(apiUrl, headers=headers, data=data).text)
-         
+
     pivotHash = pivot['result']['hash']
     pivotTotalDifficulty = int(pivot['result']['totalDifficulty'],16)
     print(configuration + 'LatestBlock: ' + str(latestBlock))

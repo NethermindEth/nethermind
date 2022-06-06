@@ -122,14 +122,8 @@ namespace Nethermind.JsonRpc
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string?[] providedParameters = request.Params ?? Array.Empty<string>();
             
-            if (_logger.IsInfo && (_jsonRpcConfig.MethodsLoggingFiltering == null || !_jsonRpcConfig.MethodsLoggingFiltering.Contains(methodName)))
-            {
-                string paramStr = string.Join(',', providedParameters);
-                string paramStrAdjusted = paramStr[..Math.Min(paramStr.Length, _jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? paramStr.Length)];
-                if (paramStrAdjusted.Length < paramStr.Length) paramStrAdjusted += "...";
-                _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
-            }
-            
+            LogRequest(methodName, providedParameters);
+
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
             int explicitNullableParamsCount = 0;
 
@@ -249,6 +243,18 @@ namespace Nethermind.JsonRpc
             }
 
             return GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
+        }
+
+        private void LogRequest(string methodName, string?[] providedParameters)
+        {
+            //TODO: Move to a dictionary.
+            if (_logger.IsInfo && (_jsonRpcConfig.MethodsLoggingFiltering == null || !_jsonRpcConfig.MethodsLoggingFiltering.Contains(methodName)))
+            {
+                string paramStr = string.Join(',', providedParameters);
+                string paramStrAdjusted = paramStr[..Math.Min(paramStr.Length, _jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? paramStr.Length)];
+                if (paramStrAdjusted.Length < paramStr.Length) paramStrAdjusted += "...";
+                _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
+            }
         }
 
         private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, string?[] providedParameters, int missingParamsCount)

@@ -61,14 +61,14 @@ namespace Nethermind.Merge.Plugin.Test
         {
             IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
             
-            chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), chain.MergeConfig, new MemDb(), chain.BlockTree, peerRefresher, chain.LogManager);
+            chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), new MemDb(), chain.BlockTree, chain.LogManager);
             BlockCacheService blockCacheService = new();
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
                 new GetPayloadV1Handler(chain.PayloadPreparationService!, chain.LogManager),
                 new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, new InitConfig(), chain.PoSSwitcher, chain.BeaconSync, chain.BeaconPivot, blockCacheService, chain.BlockProcessingQueue, chain.BeaconSync, chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.BlockConfirmationManager, chain.PayloadPreparationService!, blockCacheService, chain.BeaconSync, peerRefresher, chain.LogManager),
-                new ExecutionStatusHandler(chain.BlockTree, chain.BlockConfirmationManager, chain.BlockFinalizationManager),
+                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.PayloadPreparationService!, blockCacheService, chain.BeaconSync, peerRefresher, chain.LogManager),
+                new ExecutionStatusHandler(chain.BlockTree),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
                 chain.LogManager);
@@ -94,7 +94,6 @@ namespace Nethermind.Merge.Plugin.Test
             {
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
                     .WithTimestamp(UInt256.One);
-                BlockConfirmationManager = new BlockConfirmationManager();
                 MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
                 PayloadPreparationService = mockedPayloadPreparationService;
             }

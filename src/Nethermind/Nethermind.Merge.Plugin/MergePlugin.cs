@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -37,6 +39,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -79,7 +82,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 
                 _blockCacheService = new BlockCacheService();
-                _poSSwitcher = new PoSSwitcher(_mergeConfig, new SyncConfig(),
+                _poSSwitcher = new PoSSwitcher(_mergeConfig, _syncConfig,
                     _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _blockCacheService, _api.LogManager);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
@@ -146,6 +149,13 @@ namespace Nethermind.Merge.Plugin
                 if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
                 if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
                 
+                // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
+                while (!_api.BlockProcessingQueue.IsEmpty)
+                {
+                    Thread.Sleep(100);
+                }
+                Thread.Sleep(5000);
+
                 PayloadPreparationService payloadPreparationService = new (_postMergeBlockProducer, _blockProductionTrigger, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
@@ -166,14 +176,12 @@ namespace Nethermind.Merge.Plugin
                         _api.BlockTree,
                         _blockFinalizationManager,
                         _poSSwitcher,
-                        _api.BlockConfirmationManager,
                         payloadPreparationService,
                         _blockCacheService,
                         _beaconSync,
                         _peerRefresher,
                         _api.LogManager),
-                    new ExecutionStatusHandler(_api.BlockTree, _api.BlockConfirmationManager,
-                        _blockFinalizationManager),
+                    new ExecutionStatusHandler(_api.BlockTree),
                     new GetPayloadBodiesV1Handler(_api.BlockTree, _api.LogManager),
                     new ExchangeTransitionConfigurationV1Handler(_poSSwitcher, _api.LogManager),
                     _api.LogManager);
@@ -201,11 +209,14 @@ namespace Nethermind.Merge.Plugin
                 if (_api.BetterPeerStrategy is null) throw new ArgumentNullException(nameof(_api.BetterPeerStrategy));
                 if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
+                if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
 
                 // ToDo strange place for validators initialization
-                _peerRefresher = new PeerRefresher(_api.SyncPeerPool);
-                _beaconPivot = new BeaconPivot(_syncConfig, _mergeConfig, _api.DbProvider.MetadataDb, _api.BlockTree, new PeerRefresher(_api.SyncPeerPool), _api.LogManager);
-                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.HeaderValidator, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
+                PeerRefresher peerRefresher = new(_api.SyncPeerPool, _api.TimerFactory);
+                _peerRefresher = peerRefresher;
+                _api.DisposeStack.Push(peerRefresher);
+                _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
+                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.HeaderValidator!, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
@@ -213,6 +224,7 @@ namespace Nethermind.Merge.Plugin
 
                 _api.BetterPeerStrategy =
                     new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _api.SyncProgressResolver, _poSSwitcher, _api.LogManager);
+                
                 _api.SyncModeSelector = new MultiSyncModeSelector(
                     _api.SyncProgressResolver,
                     _api.SyncPeerPool,
@@ -221,6 +233,9 @@ namespace Nethermind.Merge.Plugin
                     _api.BetterPeerStrategy!,
                     _api.LogManager);
                 _api.Pivot = _beaconPivot;
+
+                SyncReport syncReport = new(_api.SyncPeerPool, _api.NodeStatsManager, _api.SyncModeSelector, _syncConfig, _beaconPivot, _api.LogManager);
+                
                 _api.BlockDownloaderFactory = new MergeBlockDownloaderFactory(
                     _poSSwitcher, 
                     _beaconPivot, 
@@ -230,10 +245,9 @@ namespace Nethermind.Merge.Plugin
                     _api.BlockValidator!,
                     _api.SealValidator!,
                     _api.SyncPeerPool,
-                    _api.NodeStatsManager!,
-                    _api.SyncModeSelector!,
                     _syncConfig,
                     _api.BetterPeerStrategy!,
+                    syncReport,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(
                     _api.DbProvider, 
@@ -249,7 +263,8 @@ namespace Nethermind.Merge.Plugin
                     _api.Pivot,
                     _poSSwitcher,
                     _mergeConfig,
-                    _api.LogManager);
+                    _api.LogManager,
+                    syncReport);
             }
 
             return Task.CompletedTask;

@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IBlockCacheService _blockCacheService;
         private readonly ILogger _logger;
         private Keccak? _terminalBlockHash;
-        
+
         private long? _terminalBlockNumber;
         private long? _firstPoSBlockNumber;
         private bool _hasEverReachedTerminalDifficulty;
@@ -90,20 +90,17 @@ namespace Nethermind.Merge.Plugin
         {
             LoadTerminalBlock();
             LoadFinalizedBlockHash();
-            LoadFinalTotalDifficulty();
+            _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
             LoadFinalTotalDifficulty();
 
             if (_terminalBlockNumber != null || _finalTotalDifficulty != null)
                 _hasEverReachedTerminalDifficulty = true;
 
-            _specProvider.UpdateMergeTransitionInfo(_firstPoSBlockNumber, _mergeConfig.TerminalTotalDifficultyParsed);
-
             if (_terminalBlockNumber == null)
                 _blockTree.NewHeadBlock += CheckIfTerminalBlockReached;
 
             if (_logger.IsInfo)
-                _logger.Info(
-                    $"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {_hasEverReachedTerminalDifficulty}, Terminal Block Number {_terminalBlockNumber}, FinalTotalDifficulty: {FinalTotalDifficulty}");
+                _logger.Info($"Client started with TTD: {TerminalTotalDifficulty}, TTD reached: {_hasEverReachedTerminalDifficulty}, Terminal Block Number {_terminalBlockNumber}, FinalTotalDifficulty: {FinalTotalDifficulty}");
         }
 
         private void LoadFinalTotalDifficulty()
@@ -111,7 +108,7 @@ namespace Nethermind.Merge.Plugin
             _finalTotalDifficulty = _mergeConfig.FinalTotalDifficultyParsed;
 
             // pivot post TTD, so we know FinalTotalDifficulty
-            if (_syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
+            if (_syncConfig.PivotTotalDifficultyParsed != 0 && TerminalTotalDifficulty != null && _syncConfig.PivotTotalDifficultyParsed >= TerminalTotalDifficulty)
             {
                 _finalTotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
             }
@@ -135,10 +132,10 @@ namespace Nethermind.Merge.Plugin
             bool ttdRequirement = header.TotalDifficulty >= TerminalTotalDifficulty;
             if (ttdRequirement && header.IsGenesis)
                 return true;
-            
+
             if (ttdRequirement && header.Difficulty != 0)
             {
-                UInt256? parentTotalDifficulty = header.TotalDifficulty >= header.Difficulty ? header.TotalDifficulty - header.Difficulty : 0; 
+                UInt256? parentTotalDifficulty = header.TotalDifficulty >= header.Difficulty ? header.TotalDifficulty - header.Difficulty : 0;
                 isTerminalBlock = parentTotalDifficulty < TerminalTotalDifficulty;
             }
 
@@ -179,9 +176,7 @@ namespace Nethermind.Merge.Plugin
             {
                 if (_finalizedBlockHash == Keccak.Zero)
                 {
-                    if (_logger.IsInfo)
-                        _logger.Info(
-                            $"Reached the first finalized PoS block FinalizedHash: {finalizedHash}, NewHeadHash: {newHeadHash}");
+                    if (_logger.IsInfo) _logger.Info($"Reached the first finalized PoS block FinalizedHash: {finalizedHash}, NewHeadHash: {newHeadHash}");
                     _blockTree.NewHeadBlock -= CheckIfTerminalBlockReached;
                 }
 
@@ -196,7 +191,7 @@ namespace Nethermind.Merge.Plugin
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
-            
+
             bool isTerminal = false, isPostMerge;
             if (header.IsPostMerge) // block from Engine API, there is no need to check more cases
             {
@@ -257,7 +252,7 @@ namespace Nethermind.Merge.Plugin
         private void LoadTerminalBlock()
         {
             _terminalBlockNumber = _mergeConfig.TerminalBlockNumber ??
-                                         _specProvider.MergeBlockNumber - 1;
+                                   _specProvider.MergeBlockNumber - 1;
 
             _terminalBlockExplicitSpecified = _terminalBlockNumber != null;
             _terminalBlockNumber ??= LoadTerminalBlockNumberFromDb();
@@ -272,11 +267,18 @@ namespace Nethermind.Merge.Plugin
 
         private long? LoadTerminalBlockNumberFromDb()
         {
-            if (_metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber))
+            try
             {
-                byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.TerminalPoWNumber);
-                RlpStream stream = new(hashFromDb!);
-                return stream.DecodeLong();
+                if (_metadataDb.KeyExists(MetadataDbKeys.TerminalPoWNumber))
+                {
+                    byte[]? hashFromDb = _metadataDb.Get(MetadataDbKeys.TerminalPoWNumber);
+                    RlpStream stream = new(hashFromDb!);
+                    return stream.DecodeLong();
+                }
+            }
+            catch (RlpException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot decode terminal block number");
             }
 
             return null;
@@ -284,11 +286,18 @@ namespace Nethermind.Merge.Plugin
 
         private Keccak? LoadHashFromDb(int key)
         {
-            if (_metadataDb.KeyExists(key))
+            try
             {
-                byte[]? hashFromDb = _metadataDb.Get(key);
-                RlpStream stream = new(hashFromDb!);
-                return stream.DecodeKeccak();
+                if (_metadataDb.KeyExists(key))
+                {
+                    byte[]? hashFromDb = _metadataDb.Get(key);
+                    RlpStream stream = new(hashFromDb!);
+                    return stream.DecodeKeccak();
+                }
+            }
+            catch (RlpException)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Cannot decode hash with metadata key: {key}");
             }
 
             return null;

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,24 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Core.Crypto;
+using System;
+using System.Transactions;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Find;
+
+public class ResourceNotFoundException: ArgumentException
 {
-    public interface IBlockConfirmationManager
+    public ResourceNotFoundException(string message) : base(message)
     {
-        Keccak LastConfirmedHash { get; }
-
-        void Confirm(Keccak blockHash);
-    }
-    
-    public class NoBlockConfirmation : IBlockConfirmationManager
-    {
-        private NoBlockConfirmation() { }
-
-        public static NoBlockConfirmation Instance { get; } = new();
-        
-        public Keccak LastConfirmedHash { get; } = Keccak.Zero;
-        public void Confirm(Keccak blockHash) { }
     }
 }

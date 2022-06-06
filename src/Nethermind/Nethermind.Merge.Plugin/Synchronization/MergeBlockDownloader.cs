@@ -210,6 +210,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0,
                             _blockTree.SuggestBlock(currentBlock, suggestOptions)))
                     {
+                        if (shouldProcess == false)
+                            _blockTree.UpdateMainChain(new[] { currentBlock }, false);
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
 
                         if (downloadReceipts)

@@ -19,7 +19,6 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Producers
 {
-    // TODO: can we remove this?
     public interface IBlockProducerInfo
     {
         IBlockProducer BlockProducer { get; }

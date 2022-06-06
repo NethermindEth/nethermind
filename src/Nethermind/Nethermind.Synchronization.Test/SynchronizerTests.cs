@@ -47,6 +47,7 @@ using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -358,8 +359,9 @@ namespace Nethermind.Synchronization.Test
                 IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
                 {
-                    IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, mergeConfig, dbProvider.MetadataDb,
-                        BlockTree, new PeerRefresher(SyncPeerPool), _logManager);
+                    IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb,
+                        BlockTree, _logManager);
+                    SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, beaconPivot, _logManager);
                     blockDownloaderFactory = new MergeBlockDownloaderFactory(
                         poSSwitcher,
                         beaconPivot,
@@ -369,10 +371,9 @@ namespace Nethermind.Synchronization.Test
                         Always.Valid,
                         Always.Valid,
                         SyncPeerPool,
-                        stats,
-                        syncModeSelector,
                         syncConfig,
                         bestPeerStrategy,
+                        syncReport,
                         _logManager
                     );
                     Synchronizer = new MergeSynchronizer(
@@ -389,10 +390,12 @@ namespace Nethermind.Synchronization.Test
                         pivot,
                         poSSwitcher,
                         mergeConfig,
-                        _logManager);
+                        _logManager,
+                        syncReport);
                 }
                 else
                 {
+                    SyncReport syncReport = new(SyncPeerPool, stats, syncModeSelector, syncConfig, pivot, _logManager);
                     blockDownloaderFactory = new BlockDownloaderFactory(
                         MainnetSpecProvider.Instance,
                         BlockTree,
@@ -400,11 +403,8 @@ namespace Nethermind.Synchronization.Test
                         Always.Valid,
                         Always.Valid,
                         SyncPeerPool,
-                        stats,
-                        syncModeSelector,
-                        syncConfig,
-                        pivot,
                         new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, _logManager),
+                        syncReport,
                         _logManager);
                     
                     Synchronizer = new Synchronizer(
@@ -419,6 +419,7 @@ namespace Nethermind.Synchronization.Test
                         snapProvider,
                         blockDownloaderFactory,
                         pivot,
+                        syncReport,
                         _logManager);
                 }
 

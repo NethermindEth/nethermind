@@ -42,7 +42,6 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
 
-
         public BlockDownloaderFactory(
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -50,11 +49,8 @@ namespace Nethermind.Synchronization.Blocks
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
             ISyncPeerPool peerPool,
-            INodeStatsManager nodeStatsManager,
-            ISyncModeSelector syncModeSelector,
-            ISyncConfig syncConfig,
-            IPivot pivot,
             IBetterPeerStrategy betterPeerStrategy,
+            ISyncReport syncReport,
             ILogManager logManager)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -64,9 +60,9 @@ namespace Nethermind.Synchronization.Blocks
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
-            _logManager = logManager;
-
-            _syncReport = new SyncReport(_syncPeerPool, nodeStatsManager, syncModeSelector, syncConfig, pivot, logManager);
+            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            
         }
         
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)

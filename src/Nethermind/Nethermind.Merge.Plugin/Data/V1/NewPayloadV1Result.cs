@@ -20,6 +20,9 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.Merge.Plugin.Data.V1;
 
+/// <summary>
+/// Wraps <see cref="PayloadStatusV1"/> in <see cref="ResultWrapper{T}"/> for JSON RPC.
+/// </summary>
 public static class NewPayloadV1Result
 {
     public static ResultWrapper<PayloadStatusV1> Syncing = ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Syncing);

@@ -50,6 +50,7 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Init.Steps
@@ -133,7 +134,7 @@ namespace Nethermind.Init.Steps
             int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
             _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
             _api.DisposeStack.Push(_api.SyncPeerPool);
-
+            
             IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
             foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
             {
@@ -144,31 +145,36 @@ namespace Nethermind.Init.Steps
             _api.DisposeStack.Push(_api.SyncModeSelector!);
 
             _api.Pivot ??= new Pivot(_syncConfig);
-            _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(_api.SpecProvider!,
-                _api.BlockTree!,
-                _api.ReceiptStorage!,
-                _api.BlockValidator!,
-                _api.SealValidator!,
-                _api.SyncPeerPool!,
-                _api.NodeStatsManager!,
-                _api.SyncModeSelector!,
-                _syncConfig,
-                _api.Pivot,
-                _api.BetterPeerStrategy!,
-                _api.LogManager);
-            _api.Synchronizer ??= new Synchronizer(
-                _api.DbProvider,
-                _api.SpecProvider!,
-                _api.BlockTree!,
-                _api.ReceiptStorage!,
-                _api.SyncPeerPool,
-                _api.NodeStatsManager!,
-                _api.SyncModeSelector,
-                _syncConfig,
-                _api.SnapProvider,
-                _api.BlockDownloaderFactory,
-                _api.Pivot,
-                _api.LogManager);
+
+            if (_api.BlockDownloaderFactory is null || _api.Synchronizer is null)
+            {
+                SyncReport syncReport = new(_api.SyncPeerPool!, _api.NodeStatsManager!, _api.SyncModeSelector, _syncConfig, _api.Pivot, _api.LogManager);
+
+                _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(_api.SpecProvider!,
+                    _api.BlockTree!,
+                    _api.ReceiptStorage!,
+                    _api.BlockValidator!,
+                    _api.SealValidator!,
+                    _api.SyncPeerPool!,
+                    _api.BetterPeerStrategy!,
+                    syncReport,
+                    _api.LogManager);
+                _api.Synchronizer ??= new Synchronizer(
+                    _api.DbProvider!,
+                    _api.SpecProvider!,
+                    _api.BlockTree!,
+                    _api.ReceiptStorage!,
+                    _api.SyncPeerPool,
+                    _api.NodeStatsManager!,
+                    _api.SyncModeSelector,
+                    _syncConfig,
+                    _api.SnapProvider,
+                    _api.BlockDownloaderFactory,
+                    _api.Pivot,
+                    syncReport,
+                    _api.LogManager);
+            }
+
             _api.DisposeStack.Push(_api.Synchronizer);
             
             _api.SyncServer = new SyncServer(

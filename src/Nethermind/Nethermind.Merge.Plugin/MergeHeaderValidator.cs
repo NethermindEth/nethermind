@@ -49,14 +49,6 @@ namespace Nethermind.Merge.Plugin
             _preMergeHeaderValidator = preMergeHeaderValidator;
             _blockTree = blockTree;
         }
-
-        public override bool ValidateHash(BlockHeader header)
-        {
-            if (_poSSwitcher.IsPostMerge(header) || _preMergeHeaderValidator is null)
-                return base.ValidateHash(header); // should this be base? maybe it's enough with line bellow
-            return _preMergeHeaderValidator.ValidateHash(header);
-        }
-        
         
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {

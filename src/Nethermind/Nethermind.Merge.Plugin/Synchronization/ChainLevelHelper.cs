@@ -59,7 +59,7 @@ public class ChainLevelHelper : IChainLevelHelper
         while (i < maxCount)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
-            BlockInfo? beaconMainChainBlock = level.BeaconMainChainBlock;
+            BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
             if (level == null || beaconMainChainBlock == null)
             {
                 if (_logger.IsTrace)
@@ -110,24 +110,23 @@ public class ChainLevelHelper : IChainLevelHelper
         while (i < maxCount)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
-            if (level == null || level.MainChainBlock == null)
+            BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
+            if (level == null || beaconMainChainBlock == null)
             {
                 if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextBlocks - level {startingPoint} not found");
                 break;
             }
-
-            BlockInfo blockInfo = level.MainChainBlock;
-
-            Block? newBlock = _blockTree.FindBlock(blockInfo.BlockHash);
+            
+            Block? newBlock = _blockTree.FindBlock(beaconMainChainBlock.BlockHash);
             if (newBlock == null)
             {
                 if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - block {startingPoint} not found");
                 continue;
             }
 
-            newBlock.Header.TotalDifficulty = blockInfo.TotalDifficulty == 0
+            newBlock.Header.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0
                 ? null
-                : blockInfo.TotalDifficulty;
+                : beaconMainChainBlock.TotalDifficulty;
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"ChainLevelHelper - A new block block {newBlock.ToString(Block.Format.FullHashAndNumber)}");
@@ -156,7 +155,7 @@ public class ChainLevelHelper : IChainLevelHelper
                 return null;
             }
 
-            Block? block = _blockTree.FindBlock(header!.ParentHash ?? header.CalculateHash());
+            Block? block = _blockTree.FindBlock(header.ParentHash ?? header.CalculateHash());
             parentBlockExists = block != null;
             if (_logger.IsTrace)
                 _logger.Trace(

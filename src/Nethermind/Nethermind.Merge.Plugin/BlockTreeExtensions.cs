@@ -15,16 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.Core
+using Nethermind.Blockchain;
+using Nethermind.Core;
+
+namespace Nethermind.Merge.Plugin;
+
+public static class BlockTreeExtensions
 {
-    /// <summary>
-    /// Provides an implementation of an interface (or an instance of a class) depending on the block header context
-    /// within which the implementation should operate.
-    /// Created to support consensus switcher with IHeaderValidator implementations.
-    /// </summary>
-    /// <typeparam name="T">Type of the object for which to resolve implementations</typeparam>
-    public interface IHeaderDependent<out T>
-    {
-        T Resolve(BlockHeader header);
-    }
+    public static bool IsOnMainChainBehindOrEqualHead(this IBlockTree blockTree, Block block) => 
+        block.Number <= (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
+    
+    public static bool IsOnMainChainBehindHead(this IBlockTree blockTree, Block block) => 
+        block.Number < (blockTree.Head?.Number ?? 0) && blockTree.IsMainChain(block.Header);
 }
