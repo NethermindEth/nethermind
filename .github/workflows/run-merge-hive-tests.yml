@@ -23,7 +23,7 @@ jobs:
         with: 
           context: .
           file: ./Dockerfile
-          tags: nethermindeth:${{ github.sha }}
+          tags: test:${{ github.sha }}
           outputs: type=docker,dest=/tmp/image.tar
       - name: Installing Linux packages
         run: |
@@ -38,7 +38,7 @@ jobs:
         with:
           repository: 'ethereum/hive'
       - name: Change Hive configuration
-        run: sed -i 's/ARG branch=kiln_shadowfork/ARG branch=${{ github.sha }}/g' clients/merge-nethermind/Dockerfile 
+        run: sed -i 's#FROM nethermindeth/nethermind:$branch#FROM nethermindeth/test:${{ github.sha }}#g' clients/merge-nethermind/Dockerfile
       - name: Build Hive
         run: go build .
       - name: Load Docker Image
