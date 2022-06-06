@@ -23,7 +23,7 @@ jobs:
         with: 
           context: .
           file: ./Dockerfile
-          tags: test:${{ github.sha }}
+          tags: nethermind:test-${{ github.sha }}
           outputs: type=docker,dest=/tmp/image.tar
       - name: Installing Linux packages
         run: |
@@ -38,11 +38,11 @@ jobs:
         with:
           repository: 'ethereum/hive'
       - name: Change Hive configuration
-        run: sed -i 's#FROM nethermindeth/nethermind:$branch#FROM nethermindeth/test:${{ github.sha }}#g' clients/merge-nethermind/Dockerfile
+        run: sed -i 's#FROM nethermindeth/nethermind:$branch#FROM nethermind:test-:${{ github.sha }}#g' clients/merge-nethermind/Dockerfile
       - name: Build Hive
         run: go build .
-      - name: Import Docker Image
-        run: docker import /tmp/image.tar
+      - name: Load Docker Image
+        run: docker load --input /tmp/image.tar
       - name: Run Merge Hive
         run: |
          ./hive --client merge-nethermind --sim ethereum/engine
