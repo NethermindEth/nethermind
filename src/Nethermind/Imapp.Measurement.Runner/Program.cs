@@ -1,28 +1,20 @@
 using System;
 using System.Diagnostics;
+using System.CommandLine;
 
 namespace Imapp.Measurement.Runner
 {
     class Program
     {
-        static void Main(string[] args)
+        static int Main(string bytecode, int sampleSize = 1, bool printCSV = false)
         {
-            var bytecode = "62FFFFFF600020";
-            var sampleSize = 1;
-
-            if (args.Length >= 1)
+            if (String.IsNullOrEmpty(bytecode))
             {
-                bytecode = args[0];
-            }
-
-            if (args.Length >= 2)
-            {
-                int.TryParse(args[1], out sampleSize);
+                throw new Exception("Bytecode cannot be empty");
             }
 
             var runner = new EvmByteCodeBenchmark();
             runner.GlobalSetup(bytecode);
-
 
             //warmup
             for (int i = 0; i < 5; ++i)
@@ -36,7 +28,7 @@ namespace Imapp.Measurement.Runner
             sw.Start();
             var logger = new InstrumentationLogger();
 
-            for (int i = 0; i < sampleSize; ++i)
+            for (int i = 1; i <= sampleSize; ++i)
             {
                 var loggerItem = new InstrumentationLoggerItem() { SampleId = i };
                 runner.Setup();
@@ -51,6 +43,8 @@ namespace Imapp.Measurement.Runner
             sw.Stop();
 
             logger.PrintResults();
+
+            return 0;
         }
     }
 }

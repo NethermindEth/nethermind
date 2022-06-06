@@ -2,33 +2,31 @@ using System;
 using System.Linq;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Running;
+using System.CommandLine;
 
 namespace Imapp.Benchmark.Runner
 {
     class Program
     {
-        static void Main(string[] args)
+        static int Main(string bytecode, int sampleSize = 1, bool printCSV = false)
         {
             var config = new ManualConfig()
-                .WithOptions(ConfigOptions.DisableOptimizationsValidator)
+                //.WithOptions(ConfigOptions.DisableOptimizationsValidator)
                 .WithOptions(ConfigOptions.DisableLogFile)
-                //.AddValidator(JitOptimizationsValidator.DontFailOnError)
-                .AddLogger(new BenchmarkNullLogger())
-                //.AddLogger(BenchmarkDotNet.Loggers.ConsoleLogger.Default)
-                .AddExporter(new BenchmarkNullExporter())
-                ;
+                .AddExporter(new BenchmarkNullExporter());
 
-            var bytecode = "62FFFFFF600020";
-            var sampleSize = 1;
-
-            if (args.Length >= 1)
+            if (printCSV)
             {
-                bytecode = args[0];
+                config = config.AddLogger(new BenchmarkNullLogger());
+            }
+            else
+            {
+                config = config.AddLogger(BenchmarkDotNet.Loggers.ConsoleLogger.Default);
             }
 
-            if (args.Length >= 2)
+            if (String.IsNullOrEmpty(bytecode))
             {
-                int.TryParse(args[1], out sampleSize);
+                throw new Exception("Bytecode cannot be empty");
             }
 
             for (int i = 1; i <= sampleSize; ++i)
@@ -43,6 +41,8 @@ namespace Imapp.Benchmark.Runner
 
                 OutputOverheadResults(i, r1, r2);
             }
+
+            return 0;
         }
 
         private static void OutputOverheadResults(int sampleId, BenchmarkDotNet.Reports.Summary rEmpty, BenchmarkDotNet.Reports.Summary rActual)
@@ -51,8 +51,8 @@ namespace Imapp.Benchmark.Runner
             var reportActual = rActual.Reports[0];
             var overheadTime = reportEmpty.ResultStatistics.Mean;
 
-            var loopExecutionTime = Math.Max(reportActual.ResultStatistics.Mean - reportEmpty.ResultStatistics.Mean, 0);
-            var totalTime = Math.Max(reportActual.ResultStatistics.Mean, reportEmpty.ResultStatistics.Mean);
+            var loopExecutionTime = reportActual.ResultStatistics.Mean - reportEmpty.ResultStatistics.Mean;
+            var totalTime = reportActual.ResultStatistics.Mean;
 
             var memAllocPerOp = reportActual.GcStats.GetBytesAllocatedPerOperation(reportActual.BenchmarkCase);
 

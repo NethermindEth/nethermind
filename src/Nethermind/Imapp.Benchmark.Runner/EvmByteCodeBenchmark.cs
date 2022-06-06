@@ -76,6 +76,11 @@ namespace Imapp.Benchmark.Runner
         public void ExecuteCode()
         {
             _virtualMachine.Run(_evmState, _worldState, _txTracer);
+        }
+
+        [IterationCleanup]
+        public void Cleanup()
+        {
             _stateProvider.Reset();
             _storageProvider.Reset();
         }

@@ -16,17 +16,6 @@ namespace Imapp.Benchmark.Runner
         public IEnumerable<string> ExportToFiles(Summary summary, ILogger consoleLogger)
         {
             return Enumerable.Empty<string>();
-
-            // Debugging code
-
-            //Console.WriteLine("Exporter Code: " + Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE"));
-            //var s = summary.Reports.Select(r =>
-            //{
-            //    var a = $"Exporter N: {r.ResultStatistics.N}, Median: {r.ResultStatistics.Median}";
-            //    Console.WriteLine(a);
-            //    return a;
-            //});
-            //return s;
         }
 
         public void ExportToLog(Summary summary, ILogger logger)
