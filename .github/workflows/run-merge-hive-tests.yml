@@ -23,7 +23,7 @@ jobs:
         with: 
           context: .
           file: ./Dockerfile
-          tags: nethermind:test-test
+          tags: nethermind:kiln_shadowfork
           outputs: type=docker,dest=/tmp/image.tar
       - name: Installing Linux packages
         run: |
@@ -36,7 +36,7 @@ jobs:
       - name: Check out Hive
         uses: actions/checkout@v2
         with:
-          repository: 'DockBoss/hive'
+          repository: 'ethereum/hive'
       - name: Build Hive
         run: go build .
       - name: Load Docker Image
