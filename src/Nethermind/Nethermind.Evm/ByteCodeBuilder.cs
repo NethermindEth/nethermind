@@ -271,5 +271,35 @@ namespace Nethermind.Evm
 
             return this;
         }
+
+        public Prepare DataOnStackToMemory(int position)
+        {            
+            PushData(position);
+            Op(Instruction.MSTORE);
+            return this;
+        }
+
+        public Prepare StoreDataInTransientStorage(int key, int value)
+        {
+            PushData(value);
+            PushData(key);
+            Op(Instruction.TSTORE);
+            return this;
+        }
+
+        public Prepare LoadDataFromTransientStorage(int key)
+        {
+            PushData(key);
+            Op(Instruction.TLOAD);
+            return this;
+        }
+
+        public Prepare Return(int size, int position)
+        {            
+            PushData(size);
+            PushData(position);
+            Op(Instruction.RETURN);
+            return this;
+        }
     }
 }
