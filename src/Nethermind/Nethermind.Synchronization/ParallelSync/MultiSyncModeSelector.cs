@@ -48,8 +48,8 @@ namespace Nethermind.Synchronization.ParallelSync
         protected readonly ILogger _logger;
 
         private long PivotNumber;
-        private bool FastSyncEnabled => _syncConfig.FastSync;
-        private bool SnapSyncEnabled => FastSyncEnabled && _syncConfig.SnapSync;
+        private bool FastSyncEnabled => _syncConfig.FastSync || _syncConfig.SnapSync;   // SnapSync set to true automatically turns Fast Sync ON
+        private bool SnapSyncEnabled => _syncConfig.SnapSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
         private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;
