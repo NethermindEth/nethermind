@@ -16,6 +16,7 @@
 
 using System;
 using System.Text;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -24,7 +25,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -37,7 +37,10 @@ namespace Nethermind.Synchronization.ParallelSync
         // then we will never have to look 128 back again
         // note that we will be doing that every second or so
         private const int MaxLookupBack = 128;
-        public static readonly Keccak LatestBlockWithFullState = Keccak.Compute(Encoding.ASCII.GetBytes("LatestBlockWithFullStateKey"));
+
+        // Used as a key to store the latest block number with synced state in the state db
+        // We need this value to be cached to run SnapSync only if state is outdated or have never been synced
+        private static readonly Keccak LatestBlockWithFullState = Keccak.Compute(Encoding.ASCII.GetBytes("LatestBlockWithFullStateKey"));
 
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -52,7 +55,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly long _bodiesBarrier;
         private readonly long _receiptsBarrier;
 
-        private long bestStateCounter = -1;
+        private long _bestStateCounter = -1;
 
         public SyncProgressResolver(IBlockTree blockTree,
             IReceiptStorage receiptStorage,
@@ -123,20 +126,20 @@ namespace Nethermind.Synchronization.ParallelSync
 
             if (bestFullState == 0)
             {
-                if (bestStateCounter != -1)
+                if (_bestStateCounter != -1)
                 {
-                    return bestStateCounter;
+                    return _bestStateCounter;
                 }
                 byte[] bestStatePersistedCounter = _stateDb.Get(LatestBlockWithFullState);
-                bestStateCounter = bestStatePersistedCounter != null ? BitConverter.ToInt64(bestStatePersistedCounter) : 0;
-                return bestStateCounter;
+                Interlocked.Exchange(ref _bestStateCounter, bestStatePersistedCounter != null ? BitConverter.ToInt64(bestStatePersistedCounter) : 0);
+                return _bestStateCounter;
             }
             else
             {
-                if (bestFullState != bestStateCounter)
+                if (bestFullState != _bestStateCounter)
                 {
                     _stateDb.Set(LatestBlockWithFullState, BitConverter.GetBytes(bestFullState));
-                    bestStateCounter = bestFullState;
+                    Interlocked.Exchange(ref _bestStateCounter, bestFullState);
                 }
             }
 
