@@ -41,8 +41,8 @@ jobs:
         run: sed -i 's#FROM nethermindeth/nethermind:$branch#FROM nethermindeth/test:${{ github.sha }}#g' clients/merge-nethermind/Dockerfile
       - name: Build Hive
         run: go build .
-      - name: Load Docker Image
-        run: docker load --input /tmp/image.tar
+      - name: Import Docker Image
+        run: docker import /tmp/image.tar
       - name: Run Merge Hive
         run: |
          ./hive --client merge-nethermind --sim ethereum/engine
