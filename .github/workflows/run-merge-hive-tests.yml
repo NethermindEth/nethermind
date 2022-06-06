@@ -38,7 +38,7 @@ jobs:
         with:
           repository: 'ethereum/hive'
       - name: Change Hive configuration
-        run: sed -i 's#FROM nethermindeth/nethermind:$branch#FROM nethermind:test-:${{ github.sha }}#g' clients/merge-nethermind/Dockerfile
+        run: sed -i 's#FROM nethermindeth/nethermind:$branch#FROM nethermind:test-${{ github.sha }}#g' clients/merge-nethermind/Dockerfile
       - name: Build Hive
         run: go build .
       - name: Load Docker Image
