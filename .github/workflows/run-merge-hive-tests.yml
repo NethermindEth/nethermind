@@ -55,5 +55,7 @@ jobs:
         run: mv workspace /tmp
       - name: Set Up Python
         uses: actions/setup-python@v3
+      - name: Checking out Nethermind
+        uses: actions/checkout@v2        
       - name: Print Results
         run: python scripts/testing/hiveTestResultPrinter.py /tmp/workspace/logs/*.json
