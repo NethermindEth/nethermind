@@ -26,27 +26,18 @@ namespace Nethermind.Synchronization
         private No() { }
 
         public static No BeaconSync { get; } = new();
-        
-        public bool Enabled => false;
-            
+
         public bool ShouldBeInBeaconHeaders() => false;
 
         public bool ShouldBeInBeaconModeControl() => false;
 
-        public bool IsBeaconSyncHeadersFinished() => true;
-
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => true;
-        
-        public bool FastSyncEnabled => false;
     }
     
     public interface IBeaconSyncStrategy
     {
-        bool Enabled { get; }
         bool ShouldBeInBeaconHeaders();
         bool ShouldBeInBeaconModeControl();
-        bool IsBeaconSyncHeadersFinished();
         bool IsBeaconSyncFinished(BlockHeader? blockHeader);
-        bool FastSyncEnabled { get; }
     }
 }

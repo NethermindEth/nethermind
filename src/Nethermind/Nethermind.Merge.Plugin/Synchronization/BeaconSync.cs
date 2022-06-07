@@ -67,8 +67,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _beaconPivot.EnsurePivot(blockHeader);
         }
 
-        public bool Enabled => true;
-
         public bool ShouldBeInBeaconHeaders()
         {
             bool beaconPivotExists =  _beaconPivot.BeaconPivotExists();
@@ -86,8 +84,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public bool IsBeaconSyncHeadersFinished()
         {
             long lowestInsertedBeaconHeader = _blockTree.LowestInsertedBeaconHeader?.Number ?? 0;
-            bool finished = _blockTree.LowestInsertedBeaconHeader == null
-                            || lowestInsertedBeaconHeader <= _beaconPivot.PivotDestinationNumber;
+            bool finished = _blockTree.LowestInsertedBeaconHeader is null || lowestInsertedBeaconHeader <= _beaconPivot.PivotDestinationNumber;
                            // || lowestedBeaconHeaderNumber <= (_blockTree.BestSuggestedHeader?.Number ?? long.MaxValue); ToDo Sarah
             
             if (_logger.IsTrace) _logger.Trace($"IsBeaconSyncHeadersFinished: {finished}, BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
@@ -97,13 +94,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
         // At this point, beacon headers sync is finished and has found an ancestor that exists in the block tree
         // beacon sync moves forward from the ancestor and is finished when the block body gap is filled + processed
         // in the case of fast sync, this is the gap between the state sync head with beacon block head
-        public bool IsBeaconSyncFinished(BlockHeader? blockHeader)
-        {
-            return !_beaconPivot.BeaconPivotExists()
-                   || (blockHeader != null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.GetOrCalculateHash()));
-        }
-
-        public bool FastSyncEnabled => _syncConfig.FastSync;
+        /// <summary>
+        /// Tells if <see cref="blockHeader"/>
+        /// </summary>
+        /// <param name="blockHeader"></param>
+        /// <returns></returns>
+        public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => !_beaconPivot.BeaconPivotExists() || (blockHeader is not null && _blockTree.WasProcessed(blockHeader.Number, blockHeader.GetOrCalculateHash()));
     }
 
     public interface IMergeSyncController
