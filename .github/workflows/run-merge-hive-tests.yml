@@ -61,4 +61,5 @@ jobs:
         if: ${{ env.NUM_FAILED }} != 0
         uses: actions/github-script@v3
         with:
-          script: core.setFailed("${{ env.NUM_FAILED }} Tests Failed: see logs for more information")
+          script: |
+            core.setFailed("Some Tests Failed: see logs for more information")
