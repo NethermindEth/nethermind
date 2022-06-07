@@ -22,17 +22,17 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.Forks
 {
-    public class ArrowGlacier : IReleaseSpec
+    public class Shanghai : IReleaseSpec
     {
         private static IReleaseSpec _instance;
 
-        private ArrowGlacier()
+        private Shanghai()
         {
         }
 
-        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new ArrowGlacier());
+        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Shanghai());
 
-        public string Name => "ArrowGlacier";
+        public string Name => "Shanghai";
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;
         public long MinGasLimit => 5000;
@@ -83,6 +83,6 @@ namespace Nethermind.Specs.Forks
         public bool IsEip3607Enabled => true;
         public bool IsEip3675Enabled => false;
         public long Eip1559TransitionBlock => 12965000;
-        public bool IsEip1153Enabled => false;
+        public bool IsEip1153Enabled => true;
     }
 }

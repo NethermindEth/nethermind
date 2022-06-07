@@ -21,7 +21,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
