@@ -38,13 +38,13 @@ jobs:
         with:
           repository: 'ethereum/hive'
       - name: Change Hive configuration
-        run: sed -i 's#FROM nethermindeth/nethermind:$branch#FROM nethermind:test-${{ github.sha }}#g' clients/merge-nethermind/Dockerfile
+        run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' clients/nethermind/Dockerfile
       - name: Build Hive
         run: go build .
       - name: Load Docker Image
         run: docker load --input /tmp/image.tar
       - name: Run Merge Hive
-        run: ./hive --client merge-nethermind --sim ethereum/engine
+        run: ./hive --client nethermind --sim ethereum/engine
       - name: Upload Hive Results
         uses: actions/upload-artifact@v2
         with:
