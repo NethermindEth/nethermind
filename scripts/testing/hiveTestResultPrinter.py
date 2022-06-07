@@ -1,6 +1,7 @@
 import json
 import glob
 import os
+import sys
 
 env_file = os.getenv('GITHUB_ENV')
 results_name = glob.glob(sys.argv[0])
