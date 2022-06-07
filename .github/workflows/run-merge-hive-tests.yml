@@ -44,8 +44,7 @@ jobs:
       - name: Load Docker Image
         run: docker load --input /tmp/image.tar
       - name: Run Merge Hive
-        run: |
-         ./hive --client merge-nethermind --sim ethereum/engine
+        run: ./hive --client merge-nethermind --sim ethereum/engine
       - name: Upload Hive Results
         uses: actions/upload-artifact@v2
         with:
@@ -53,20 +52,13 @@ jobs:
           path: workspace
           retention-days: 7
       - name: Move Results
-        run: |
-          mv workspace /tmp
-      - name: Checkout Printer
-        uses: actions/checkout@v2
-        with: 
-          repository: DockBoss/hiveResults
+        run: mv workspace /tmp
       - name: Set Up Python
         uses: actions/setup-python@v3
-      - name: Total Results
-        run: |
-         python res.py
+      - name: Print Results
+        run: python scripts/testing/hiveTestResultPrinter.py /tmp/workspace/logs/*.json
       - name: Results
         if: ${{ env.NUM_FAILED }} != 0
         uses: actions/github-script@v3
         with:
-          script: |
-            core.setFailed("Some Tests Failed: see logs for more information")
+          script: core.setFailed("${{ env.NUM_FAILED }} Tests Failed: see logs for more information")
