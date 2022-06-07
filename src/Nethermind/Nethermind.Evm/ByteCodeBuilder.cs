@@ -115,12 +115,20 @@ namespace Nethermind.Evm
             return CallWithInput(address, gasLimit, Bytes.FromHexString(input));
         }
 
-        public Prepare CallWithInput(Address address, long gasLimit, byte[] input)
+        public Prepare CallWithInput(Address address, long gasLimit, byte[] input = null)
         {
-            StoreDataInMemory(0, input);
+            if (input != null)
+            {
+                StoreDataInMemory(0, input);
+            }
+            else
+            {
+                // Use top of stack as input
+                DataOnStackToMemory(0);
+            }
             PushData(0);
             PushData(0);
-            PushData(input.Length);
+            PushData(input != null ? input.Length : 32);
             PushData(0);
             PushData(0);
             PushData(address);
@@ -176,6 +184,34 @@ namespace Nethermind.Evm
             PushData(address);
             PushData(gasLimit);
             Op(Instruction.STATICCALL);
+            return this;
+        }
+
+        public Prepare DynamicCallWithInput(Instruction callType, Address address, long gasLimit, byte[] input = null)
+        {
+            if (callType != Instruction.CALL &&
+                callType != Instruction.STATICCALL &&
+                callType != Instruction.DELEGATECALL)
+            {
+                throw new Exception($"Unexpected call type {callType}");
+            }
+            if (input != null)
+            {
+                StoreDataInMemory(0, input);
+            }
+            else
+            {
+                // Use top of stack as input
+                DataOnStackToMemory(0);
+            }
+            PushData(0);
+            PushData(0);
+            PushData(input != null ? input.Length : 32);
+            PushData(0);
+            PushData(0);
+            PushData(address);
+            PushData(gasLimit);
+            Op(callType);
             return this;
         }
 

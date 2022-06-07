@@ -121,8 +121,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak selfDestructCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, selfDestructCodeHash, Spec);
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
 
             // Store 8 at index 1 and call contract from above
             // Return the result received from the contract
@@ -182,8 +182,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak selfDestructCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, selfDestructCodeHash, Spec);
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -241,8 +241,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak selfDestructCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, selfDestructCodeHash, Spec);
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -293,8 +293,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak selfDestructCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, selfDestructCodeHash, Spec);
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -346,8 +346,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak selfDestructCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, selfDestructCodeHash, Spec);
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -401,8 +401,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak selfDestructCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, selfDestructCodeHash, Spec);
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -463,15 +463,7 @@ namespace Nethermind.Evm.Test
                     .PushData(1)
                     .Op(Instruction.ADD)
 
-                    .DataOnStackToMemory(0)
-                    .PushData(0)
-                    .PushData(0)
-                    .PushData(32)
-                    .PushData(0)
-                    .PushData(0)
-                    .PushData(TestItem.AddressD)
-                    .PushData(50000)
-                    .Op(Instruction.CALL)
+                    .CallWithInput(TestItem.AddressD, 50000)
 
                 // TLOAD and return value
                 .LoadDataFromTransientStorage(1)
@@ -491,15 +483,7 @@ namespace Nethermind.Evm.Test
                     .PushData(1)
                     .Op(Instruction.ADD)
 
-                    .DataOnStackToMemory(0)
-                    .PushData(0)
-                    .PushData(0)
-                    .PushData(32)
-                    .PushData(0)
-                    .PushData(0)
-                    .PushData(TestItem.AddressD)
-                    .PushData(50000)
-                    .Op(Instruction.CALL)
+                    .CallWithInput(TestItem.AddressD, 50000)
 
                 .Op(Instruction.REVERT)
 
@@ -509,8 +493,8 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestState.CreateAccount(TestItem.AddressD, 1.Ether());
-            Keccak selfDestructCodeHash = TestState.UpdateCode(contractCode);
-            TestState.UpdateCodeHash(TestItem.AddressD, selfDestructCodeHash, Spec);
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
 
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
@@ -528,6 +512,263 @@ namespace Nethermind.Evm.Test
 
             // Should be original TSTORE value
             Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
+        }
+
+        /// <summary>
+        /// Transient storage cannot be manipulated in a static context
+        /// </summary>
+        [TestCase(Instruction.CALL, 1)]
+        [TestCase(Instruction.STATICCALL, 0)]
+        public void tstore_in_staticcall(Instruction callType, int expectedResult)
+        {
+            byte[] contractCode = Prepare.EvmCode
+                .StoreDataInTransientStorage(1, 8)
+                .PushData(1)
+                .DataOnStackToMemory(0)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+
+            // Return the result received from the contract (1 if successful)
+            byte[] code = Prepare.EvmCode
+                .StoreDataInTransientStorage(1, 7)
+                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])
+                    
+                .PushData(32)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.RETURNDATACOPY)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+
+            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+        }
+
+        /// <summary>
+        /// Transient storage cannot be manipulated in a static context when calling self
+        /// </summary>
+        [TestCase(Instruction.CALL, 9)]
+        [TestCase(Instruction.STATICCALL, 8)]
+        public void tstore_from_static_reentrant_call(Instruction callType, int expectedResult)
+        {
+            // If caller is self, TSTORE 9 and break recursion
+            // Else, TSTORE 8 and call self, return the result of TLOAD
+            byte[] contractCode = Prepare.EvmCode
+                // Check if caller is self
+                .Op(Instruction.CALLER)
+                .PushData(TestItem.AddressD)
+                .Op(Instruction.EQ)
+                .PushData(113)
+                .Op(Instruction.JUMPI)
+
+                // Non-reentrant, call self after TSTORE 8
+                .StoreDataInTransientStorage(1, 8)
+                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])
+                // Return the TLOAD value
+                // Should be 8 if call fails, 9 if success
+                .LoadDataFromTransientStorage(1)
+                .DataOnStackToMemory(0)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+
+                // Reentrant, TSTORE 9
+                .Op(Instruction.JUMPDEST) // PC = 113
+                .StoreDataInTransientStorage(1, 9)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+
+            // Return the result received from the contract
+            byte[] code = Prepare.EvmCode
+                .Call(TestItem.AddressD, 50000)
+                .PushData(32)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.RETURNDATACOPY)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+
+            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+        }
+
+        /// <summary>
+        /// Transient storage cannot be manipulated in a nested static context
+        /// </summary>
+        [TestCase(Instruction.CALL, 10)]
+        [TestCase(Instruction.STATICCALL, 8)]
+        public void tstore_from_nonstatic_reentrant_call_with_static_intermediary(Instruction callType, int expectedResult)
+        {
+            // If caller is self, TLOAD and return value (break recursion)
+            // Else, TSTORE and call self, return the response
+            byte[] contractCode = Prepare.EvmCode
+                // Check call depth
+                .PushData(0)
+                .Op(Instruction.CALLDATALOAD)
+                // Store input in mem and reload it to stack
+                .DataOnStackToMemory(5)
+                .PushData(5)
+                .Op(Instruction.MLOAD)
+
+                // See if we're at call depth 1
+                .PushData(1)
+                .Op(Instruction.EQ)
+                .PushData(84)
+                .Op(Instruction.JUMPI)
+
+                // See if we're at call depth 2
+                .PushData(5)
+                .Op(Instruction.MLOAD)
+                .PushData(2)
+                .Op(Instruction.EQ)
+                .PushData(140)
+                .Op(Instruction.JUMPI)
+
+                // Call depth = 0, call self after TSTORE 8
+                .StoreDataInTransientStorage(1, 8)
+
+                    // Recursive call with input
+                    // Depth++
+                    .PushData(5)
+                    .Op(Instruction.MLOAD)
+                    .PushData(1)
+                    .Op(Instruction.ADD)
+
+                    .DynamicCallWithInput(callType, TestItem.AddressD, 50000)
+
+                // TLOAD and return value
+                .LoadDataFromTransientStorage(1)
+                .DataOnStackToMemory(0)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+
+                // Call depth 1, TSTORE 9 but REVERT after recursion
+                .Op(Instruction.JUMPDEST) // PC = 84
+
+                    // Recursive call with input
+                    // Depth++
+                    .PushData(5)
+                    .Op(Instruction.MLOAD)
+                    .PushData(1)
+                    .Op(Instruction.ADD)
+                    .CallWithInput(TestItem.AddressD, 50000)
+
+                    // TLOAD and return value
+                    .LoadDataFromTransientStorage(1)
+                    .DataOnStackToMemory(0)
+                    .PushData(32)
+                    .PushData(0)
+                    .Op(Instruction.RETURN)
+
+                // Call depth 2, TSTORE 10 and complete
+                .Op(Instruction.JUMPDEST) // PC = 140
+                .StoreDataInTransientStorage(1, 10) // This will fail
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+
+            // Return the result received from the contract
+            byte[] code = Prepare.EvmCode
+                .CallWithInput(TestItem.AddressD, 50000, new byte[32])
+                .PushData(32)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.RETURNDATACOPY)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+
+            // Should be original TSTORE value
+            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+        }
+
+        /// <summary>
+        /// Delegatecall manipulates transient storage in the context of the current address
+        /// </summary>
+        [TestCase(Instruction.CALL, 7)]
+        [TestCase(Instruction.DELEGATECALL, 8)]
+        public void tstore_in_delegatecall(Instruction callType, int expectedResult)
+        {
+            byte[] contractCode = Prepare.EvmCode
+                .StoreDataInTransientStorage(1, 8)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .StoreDataInTransientStorage(1, 7)
+                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])
+                // TLOAD and return value
+                .LoadDataFromTransientStorage(1)
+                .DataOnStackToMemory(0)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+
+            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
+        }
+
+        /// <summary>
+        /// Delegatecall reads transient storage in the context of the current address
+        /// </summary>
+        [TestCase(Instruction.CALL, 0)]
+        [TestCase(Instruction.DELEGATECALL, 7)]
+        public void tload_in_delegatecall(Instruction callType, int expectedResult)
+        {
+            byte[] contractCode = Prepare.EvmCode
+                .LoadDataFromTransientStorage(1)
+                .DataOnStackToMemory(0)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+
+            byte[] code = Prepare.EvmCode
+                .StoreDataInTransientStorage(1, 7)
+                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])
+                // Return response from nested call
+                .PushData(32)
+                .PushData(0)
+                .PushData(0)
+                .Op(Instruction.RETURNDATACOPY)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+
+            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
         }
     }
 }
