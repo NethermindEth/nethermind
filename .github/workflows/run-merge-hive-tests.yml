@@ -57,9 +57,3 @@ jobs:
         uses: actions/setup-python@v3
       - name: Print Results
         run: python scripts/testing/hiveTestResultPrinter.py /tmp/workspace/logs/*.json
-      - name: Results
-        if: ${{ env.NUM_FAILED }} != 0
-        uses: actions/github-script@v3
-        with:
-          script: |
-            core.setFailed("Some Tests Failed: see logs for more information")

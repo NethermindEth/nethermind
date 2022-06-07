@@ -23,3 +23,7 @@ print("")
 print("Failed")
 for test in failed:
     print(f"\u274C {test}")
+    
+if len(failed) > 0:
+  exit(1)
+ 
