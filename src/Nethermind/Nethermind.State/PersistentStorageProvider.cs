@@ -26,182 +26,31 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class PersistentStorageProvider : IPartialStorageProvider
+    public class PersistentStorageProvider : PartialStorageProviderBase, IPartialStorageProvider
     {
-        private readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
 
-        /// <summary>
-        /// EIP-1283
-        /// </summary>
-        private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
-
-        private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
-
-        private readonly ILogger _logger;
-        
-        private readonly ITrieStore _trieStore;
-
-        private readonly IStateProvider _stateProvider;
-        private readonly ILogManager _logManager;
-
-        private readonly ResettableDictionary<Address, StorageTree> _storages = new();
-
-        private const int StartCapacity = Resettable.StartCapacity;
-        private int _capacity = StartCapacity;
-        private Change?[] _changes = new Change[StartCapacity];
-        private int _currentPosition = Resettable.EmptyPosition;
-
-        // stack of snapshot indexes on changes for start of each transaction
-        // this is needed for OriginalValues for new transactions
-        private readonly Stack<int> _transactionChangesSnapshots = new();
+        protected readonly ITrieStore _trieStore;
+        protected readonly IStateProvider _stateProvider;
 
         public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
+            : base(logManager)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = logManager.GetClassLogger<PersistentStorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }
 
-        public byte[] GetOriginal(StorageCell storageCell)
+        protected override byte[] GetCurrentValue(StorageCell storageCell)
         {
-            if (!_originalValues.ContainsKey(storageCell))
+            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
-                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+                int lastChangeIndex = stack.Peek();
+                return _changes[lastChangeIndex]!.Value;
             }
 
-            if (_transactionChangesSnapshots.TryPeek(out int snapshot))
-            {
-                if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
-                {
-                    if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
-                    {
-                        return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
-                    }
-                }
-            }
-
-            return _originalValues[storageCell];
+            return LoadFromTree(storageCell);
         }
 
-        public byte[] Get(StorageCell storageCell)
-        {
-            return GetCurrentValue(storageCell);
-        }
-
-        public void Set(StorageCell storageCell, byte[] newValue)
-        {
-            PushUpdate(storageCell, newValue);
-        }
-
-        private Keccak RecalculateRootHash(Address address)
-        {
-            StorageTree storageTree = GetOrCreateStorage(address);
-            storageTree.UpdateRootHash();
-            return storageTree.RootHash;
-        }
-
-        int IPartialStorageProvider.TakeSnapshot(bool newTransactionStart)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
-            if (newTransactionStart && _currentPosition != Resettable.EmptyPosition)
-            {
-                _transactionChangesSnapshots.Push(_currentPosition);
-            }
-
-            return _currentPosition;
-        }
-
-        public void Restore(int snapshot)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Restoring storage snapshot {snapshot}");
-
-            if (snapshot > _currentPosition)
-            {
-                throw new InvalidOperationException($"{nameof(PersistentStorageProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
-            }
-            
-            if (snapshot == _currentPosition)
-            {
-                return;
-            }
-
-            List<Change> keptInCache = new();
-
-            for (int i = 0; i < _currentPosition - snapshot; i++)
-            {
-                Change change = _changes[_currentPosition - i];
-                if (_intraBlockCache[change!.StorageCell].Count == 1)
-                {
-                    if (_changes[_intraBlockCache[change.StorageCell].Peek()]!.ChangeType == ChangeType.JustCache)
-                    {
-                        int actualPosition = _intraBlockCache[change.StorageCell].Pop();
-                        if (actualPosition != _currentPosition - i)
-                        {
-                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
-                        }
-
-                        keptInCache.Add(change);
-                        _changes[actualPosition] = null;
-                        continue;
-                    }
-                }
-
-                int forAssertion = _intraBlockCache[change.StorageCell].Pop();
-                if (forAssertion != _currentPosition - i)
-                {
-                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
-                }
-
-                _changes[_currentPosition - i] = null;
-
-                if (_intraBlockCache[change.StorageCell].Count == 0)
-                {
-                    _intraBlockCache.Remove(change.StorageCell);
-                }
-            }
-
-            _currentPosition = snapshot;
-            foreach (Change kept in keptInCache)
-            {
-                _currentPosition++;
-                _changes[_currentPosition] = kept;
-                _intraBlockCache[kept.StorageCell].Push(_currentPosition);
-            }
-            
-            while (_transactionChangesSnapshots.TryPeek(out int lastOriginalSnapshot) && lastOriginalSnapshot > snapshot)
-            {
-                _transactionChangesSnapshots.Pop();
-            }
-
-        }
-
-        public void Commit()
-        {
-            Commit(NullStorageTracer.Instance);
-        }
-
-        private static readonly byte[] _zeroValue = {0};
-
-        private readonly struct ChangeTrace
-        {
-            public ChangeTrace(byte[]? before, byte[]? after)
-            {
-                After = after ?? _zeroValue;
-                Before = before ?? _zeroValue;
-            }
-
-            public ChangeTrace(byte[]? after)
-            {
-                After = after ?? _zeroValue;
-                Before = _zeroValue;
-            }
-
-            public byte[] Before { get; }
-            public byte[] After { get; }
-        }
-
-        public void Commit(IStorageTracer tracer)
+        public override void Commit(IStorageTracer tracer)
         {
             if (_currentPosition == -1)
             {
@@ -213,12 +62,12 @@ namespace Nethermind.State
 
             if (_changes[_currentPosition] is null)
             {
-                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PersistentStorageProvider)}");
+                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
             }
 
             if (_changes[_currentPosition + 1] != null)
             {
-                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PersistentStorageProvider)}");
+                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
             }
 
             HashSet<Address> toUpdateRoots = new();
@@ -300,7 +149,7 @@ namespace Nethermind.State
                 if (_stateProvider.AccountExists(address))
                 {
                     Keccak root = RecalculateRootHash(address);
-                    
+
                     // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
                     _stateProvider.UpdateStorageRoot(address, root);
                 }
@@ -318,34 +167,7 @@ namespace Nethermind.State
             }
         }
 
-        private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
-        {
-            foreach ((StorageCell address, ChangeTrace change) in trace)
-            {
-                byte[] before = change.Before;
-                byte[] after = change.After;
-
-                if (!Bytes.AreEqual(before, after))
-                {
-                    tracer.ReportStorageChange(address, before, after);
-                }
-            }
-        }
-
-        public void Reset()
-        {
-            if (_logger.IsTrace) _logger.Trace("Resetting storage");
-
-            _intraBlockCache.Clear();
-            _originalValues.Clear();
-            _transactionChangesSnapshots.Clear();
-            _currentPosition = -1;
-            _committedThisRound.Clear();
-            Array.Clear(_changes, 0, _changes.Length);
-            _storages.Reset();
-        }
-
-        public void CommitTrees(long blockNumber)
+        public override void CommitTrees(long blockNumber)
         {
             // _logger.Warn($"Storage block commit {blockNumber}");
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)
@@ -370,17 +192,6 @@ namespace Nethermind.State
             return _storages[address];
         }
 
-        private byte[] GetCurrentValue(StorageCell storageCell)
-        {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
-            {
-                int lastChangeIndex = stack.Peek();
-                return _changes[lastChangeIndex]!.Value;
-            }
-
-            return LoadFromTree(storageCell);
-        }
-
         private byte[] LoadFromTree(StorageCell storageCell)
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
@@ -400,42 +211,28 @@ namespace Nethermind.State
             _changes[_currentPosition] = new Change(ChangeType.JustCache, cell, value);
         }
 
-        private void PushUpdate(StorageCell cell, byte[] value)
+        private static void ReportChanges(IStorageTracer tracer, Dictionary<StorageCell, ChangeTrace> trace)
         {
-            SetupRegistry(cell);
-            IncrementChangePosition();
-            _intraBlockCache[cell].Push(_currentPosition);
-            _changes[_currentPosition] = new Change(ChangeType.Update, cell, value);
-        }
-
-        private void IncrementChangePosition()
-        {
-            Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
-        }
-
-        private void SetupRegistry(StorageCell cell)
-        {
-            if (!_intraBlockCache.ContainsKey(cell))
+            foreach ((StorageCell address, ChangeTrace change) in trace)
             {
-                _intraBlockCache[cell] = new StackList<int>();
+                byte[] before = change.Before;
+                byte[] after = change.After;
+
+                if (!Bytes.AreEqual(before, after))
+                {
+                    tracer.ReportStorageChange(address, before, after);
+                }
             }
         }
 
-        private class Change
+        private Keccak RecalculateRootHash(Address address)
         {
-            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
-            {
-                StorageCell = storageCell;
-                Value = value;
-                ChangeType = changeType;
-            }
-
-            public ChangeType ChangeType { get; }
-            public StorageCell StorageCell { get; }
-            public byte[] Value { get; }
+            StorageTree storageTree = GetOrCreateStorage(address);
+            storageTree.UpdateRootHash();
+            return storageTree.RootHash;
         }
 
-        public void ClearStorage(Address address)
+        public override void ClearStorage(Address address)
         {
             /* we are setting cached values to zero so we do not use previously set values
                when the contract is revived with CREATE2 inside the same block */
@@ -452,13 +249,6 @@ namespace Nethermind.State
                touched in this block, hence were not zeroed above */
             // TODO: how does it work with pruning?
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
-        }
-
-        private enum ChangeType
-        {
-            JustCache,
-            Update,
-            Destroy,
         }
     }
 }
