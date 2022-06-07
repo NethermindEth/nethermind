@@ -14,14 +14,28 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading;
-using System.Threading.Tasks;
+using NUnit.Framework;
 
-namespace Nethermind.Facade.Proxy
+namespace Nethermind.Cli.Test
 {
-    public interface IHttpClient
+    public class SanitizeCliInputTests
     {
-        Task<T> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default);
-        Task<T> PostJsonAsync<T>(string endpoint, object? payload = null, CancellationToken cancellationToken = default);
+        [TestCase(null, "")]
+        [TestCase("", "")]
+        [TestCase("\t", "")]
+        [TestCase(" ", "")]
+        [TestCase("42", "42")]
+        [TestCase("42", "42")]
+        [TestCase("42\0", "42")]
+        [TestCase("42\042", "42")]
+        [TestCase("42\x0008", "4")]
+        [TestCase("42\x0008\x0008", "")]
+        [TestCase("42\x0008\x0008\x0008", "")]
+        [TestCase("4\x0008\x00082", "2")]
+        [TestCase("4\x00082\x0008", "")]
+        public void Cli_Input_Should_Be_Properly_Sanitized(string input, string expectedOutput)
+        {
+            Assert.AreEqual(expectedOutput, Program.RemoveDangerousCharacters(input));
+        }
     }
 }

@@ -16,18 +16,26 @@
 // 
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Org.BouncyCastle.Asn1.Cms;
 
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Merge.Plugin.BlockProduction;
+
+public class BlockImprovementContextFactory : IBlockImprovementContextFactory
 {
-    public interface IPayloadPreparationService
+    private readonly IManualBlockProductionTrigger _blockProductionTrigger;
+    private readonly TimeSpan _timeout;
+
+    public BlockImprovementContextFactory(IManualBlockProductionTrigger blockProductionTrigger, TimeSpan timeout)
     {
-        string? StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes);
-
-        Block? GetPayload(string payloadId);
-
-        event EventHandler<BlockEventArgs>? BlockImproved;
+        _blockProductionTrigger = blockProductionTrigger;
+        _timeout = timeout;
     }
+    
+    public IBlockImprovementContext StartBlockImprovementContext(
+        Block currentBestBlock, 
+        BlockHeader parentHeader, 
+        PayloadAttributes payloadAttributes) =>
+        new BlockImprovementContext(currentBestBlock, _blockProductionTrigger, _timeout, parentHeader, payloadAttributes);
 }
