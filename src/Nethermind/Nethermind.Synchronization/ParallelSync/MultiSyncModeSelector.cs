@@ -27,6 +27,24 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
+    /// <summary>
+    /// Chooses <see cref="Current"/> sync mode.
+    /// </summary>
+    /// <remarks>
+    /// Does an update of <see cref="Current"/> sync mode every 1s. Announcing <see cref="Changed"/> that anyone can  subscribe too.
+    /// Mostly <see cref="SyncFeed{T}"/> are listening to that update. 
+    /// 
+    /// New Beacon rules:
+    /// * <see cref="SyncMode.BeaconHeaders"/> and Beacon Mode (<see cref="SyncMode.WaitingForBlock"/> from beacon node) are exclusive:
+    ///     - Beacon modes have higher priority than conflicting modes.
+    ///     - Their are enabled based on <see cref="IBeaconSyncStrategy.ShouldBeInBeaconHeaders"/> and <see cref="IBeaconSyncStrategy.ShouldBeInBeaconModeControl"/>. 
+    /// * When <see cref="ISyncConfig.FastSync"/> is enabled:
+    ///     - Beacon modes are exclusive with <see cref="SyncMode.FastSync"/>, <see cref="SyncMode.Full"/>, <see cref="SyncMode.StateNodes"/> and <see cref="SyncMode.SnapSync"/>.
+    ///     - Beacon modes can run parallel with syncing old state (<see cref="SyncMode.FastHeaders"/>, <see cref="SyncMode.FastBlocks"/> and <see cref="SyncMode.FastReceipts"/>).
+    /// * When <see cref="ISyncConfig.FastSync"/> is disabled:
+    ///     - Beacon modes are allied directly.
+    ///     - If no Beacon mode is applied and we have good peers on the network we apply <see cref="SyncMode.Full"/>,.
+    /// </remarks>
     public class MultiSyncModeSelector : ISyncModeSelector, IDisposable
     {
         /// <summary>
