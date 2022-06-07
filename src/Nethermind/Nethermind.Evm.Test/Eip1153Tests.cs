@@ -770,5 +770,57 @@ namespace Nethermind.Evm.Test
 
             Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
         }
+
+        [Test]
+        public void Tstore_does_not_result_in_gasrefund()
+        {
+            byte[] code = Prepare.EvmCode
+                .StoreDataInTransientStorage(1, 7)
+                .StoreDataInTransientStorage(1, 0)
+                .Done;
+
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.TStore * 2, receipt.GasSpent, "gas");
+        }
+
+        /// <summary>
+        /// Transient storage does not persist beyond a single transaction
+        /// </summary>
+        [Test]
+        public void transient_state_not_persisted_across_txs()
+        {
+            // Return the result received from the contract
+            byte[] code = Prepare.EvmCode
+                .LoadDataFromTransientStorage(1)
+                // See if we're at call depth 1
+                .PushData(1)
+                .Op(Instruction.EQ)
+                .PushData(24)
+                .Op(Instruction.JUMPI)
+
+                // TSTORE 1 and Return 1
+                .StoreDataInTransientStorage(1, 1)
+                .PushData(1)
+                .DataOnStackToMemory(0)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+
+                // Return 0
+                .Op(Instruction.JUMPDEST) // PC = 24
+                .PushData(0)
+                .DataOnStackToMemory(0)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            Assert.AreEqual(1, (int)result.ReturnValue.ToUInt256());
+
+            // If transient state persisted across txs, calling again would return 0
+            result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            Assert.AreEqual(1, (int)result.ReturnValue.ToUInt256());
+        }
     }
 }
