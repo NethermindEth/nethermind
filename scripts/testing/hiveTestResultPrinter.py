@@ -1,9 +1,7 @@
 import json
 import glob
-import os
 import sys
 
-env_file = os.getenv('GITHUB_ENV')
 results_name = glob.glob(sys.argv[1])
 results = open(results_name[0], "rt")
 res_obj = json.loads(results.read())
@@ -16,12 +14,12 @@ for test in res_obj["testCases"].keys():
     else:
         failed.append(res_obj["testCases"][test]["name"])
 
-print("Passed")
+print(str(len(passed)) + " Tests Passed")
 for test in passed:
     print(f"\u2705 {test}")
     
 print("")
-print("Failed")
+print(str(len(failed)) + " Tests Failed")
 for test in failed:
     print(f"\u274C {test}")
     
