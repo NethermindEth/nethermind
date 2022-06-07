@@ -12,7 +12,7 @@ failed = []
 
 for test in res_obj["testCases"].keys():
     if res_obj["testCases"][test]["summaryResult"]["pass"]:
-        passed.append(test)
+        passed.append(res_obj["testCases"][test]["name"])
     else:
         failed.append(res_obj["testCases"][test]["name"])
 
