@@ -1,10 +1,22 @@
-name: '[RUN] Merge Hive Tests'
+name: '[RUN] Hive Tests'
    
 on: 
   push:
     tags:
     - '*'
   workflow_dispatch:
+    inputs:
+      testSuite:
+        description: 'Test suite'
+        required: false
+        default: 'ethereum/engine' 
+        type: choice
+        options:
+        - ethereum/engine
+        - ethereum/consensus
+        - ethereum/rpc
+        - devp2p
+        - ethereum/graphql
 
 jobs:
   build-dockers:
@@ -44,7 +56,11 @@ jobs:
       - name: Load Docker Image
         run: docker load --input /tmp/image.tar
       - name: Run Merge Hive
+        if: "${{ github.event.inputs.testSuite == '' }}"
         run: ./hive --client nethermind --sim ethereum/engine
+      - name: Run Selected Hive
+        if: "${{ github.event.inputs.testSuite != '' }}"
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }}    
       - name: Upload Hive Results
         uses: actions/upload-artifact@v2
         with:
