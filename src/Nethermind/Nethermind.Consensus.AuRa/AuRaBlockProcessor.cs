@@ -123,7 +123,7 @@ namespace Nethermind.Consensus.AuRa
             long? expectedGasLimit = null;
             if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out expectedGasLimit) == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {block.Number}, hash {block.Hash}, expected value from contract {expectedGasLimit}, but found {block.GasLimit}. {Environment.StackTrace}");
+                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {block.Number}, hash {block.Hash}, expected value from contract {expectedGasLimit}, but found {block.GasLimit}.");
                 throw new InvalidBlockException(block.Hash);
             }
         }
