@@ -167,7 +167,7 @@ public class BeaconHeadersSyncTests
         HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
         feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        measuredProgress.CurrentValue.Should().Be(2000);
+        measuredProgress.CurrentValue.Should().Be(1000);
     }
 
     [Test]
@@ -196,8 +196,7 @@ public class BeaconHeadersSyncTests
         blockTree.Insert(highestBlock, true);
         
         pivot.EnsurePivot(syncedBlockTree.FindHeader(999, BlockTreeLookupOptions.None));
-        // TODO: beaconsync lowest inserted beacon header should be known header + 1
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 501);
+        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 701);
     }
 
     private async void BuildAndProcessHeaderSyncBatches(
@@ -232,7 +231,7 @@ public class BeaconHeadersSyncTests
 
         HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
         result.Should().BeNull();
-        blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None));
+        blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash);
         blockTree.BestKnownNumber.Should().Be(bestPointer);
         blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
         ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);

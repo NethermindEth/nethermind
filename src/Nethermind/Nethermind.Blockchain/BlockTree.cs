@@ -619,12 +619,12 @@ namespace Nethermind.Blockchain
             bool addBeaconMetadata = (options & BlockTreeInsertOptions.AddBeaconMetadata) != 0;
             if (addBeaconMetadata)
             {
-                blockInfo.Metadata = blockInfo.Metadata | BlockMetadata.BeaconHeader;
+                blockInfo.Metadata |= BlockMetadata.BeaconHeader;
             }
             bool moveToBeaconMainChain = (options & BlockTreeInsertOptions.MoveToBeaconMainChain) != 0;
             if (moveToBeaconMainChain)
             {
-                blockInfo.Metadata = blockInfo.Metadata | BlockMetadata.BeaconMainChain;
+                blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
             }
             
             ChainLevelInfo chainLevel = new(isOnMainChain, blockInfo);
@@ -1565,8 +1565,9 @@ namespace Nethermind.Blockchain
                 return true;
             }
 
-            ChainLevelInfo level = LoadLevel(number);
-            return level is not null && FindIndex(blockHash, level).HasValue;
+            (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(number, blockHash, true);
+            if (level is null || blockInfo is null) return false;
+            return !blockInfo.IsBeaconInfo;
         }
 
         public bool IsKnownBeaconBlock(long number, Keccak blockHash)
@@ -1581,8 +1582,9 @@ namespace Nethermind.Blockchain
                 return true;
             }
 
-            ChainLevelInfo level = LoadLevel(number);
-            return level is not null && FindIndex(blockHash, level).HasValue;
+            (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(number, blockHash, true);
+            if (level is null || blockInfo is null) return false;
+            return blockInfo.IsBeaconInfo;
         }
 
         private void UpdateDeletePointer(Keccak? hash)
