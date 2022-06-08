@@ -111,8 +111,10 @@ namespace Nethermind.Synchronization.ParallelSync
 
                     SyncPeerAllocation allocation = await Allocate(request);
                     PeerInfo? allocatedPeer = allocation.Current;
+                    if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
                     if (allocatedPeer != null)
                     {
+                        if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
                         Task task = Dispatch(allocatedPeer, request, cancellationToken)
                             .ContinueWith(t =>
                         {

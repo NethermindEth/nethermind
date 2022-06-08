@@ -27,6 +27,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         long FindBestHeader();
         
+        long FindBestBeaconHeader();
+        
         long FindBestFullBlock();
         
         bool IsFastBlocksHeadersFinished();

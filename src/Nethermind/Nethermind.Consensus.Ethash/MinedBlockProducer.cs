@@ -19,8 +19,8 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,8 +33,6 @@ namespace Nethermind.Consensus.Ethash
 {
     public class MinedBlockProducer : BlockProducerBase
     {
-        private IManualBlockProductionTrigger _startTrigger;
-        
         public MinedBlockProducer(ITxSource txSource,
             IBlockchainProcessor processor,
             ISealer sealer,
@@ -44,9 +42,7 @@ namespace Nethermind.Consensus.Ethash
             IGasLimitCalculator gasLimitCalculator,
             ITimestamper timestamper,
             ISpecProvider specProvider,
-            ILogManager logManager,
-            IManualBlockProductionTrigger startTrigger
-            )
+            ILogManager logManager)
             : base(
                 txSource,
                 processor,
@@ -60,13 +56,6 @@ namespace Nethermind.Consensus.Ethash
                 logManager, 
                 new EthashDifficultyCalculator(specProvider))
         {
-            _startTrigger = startTrigger;
-        }
-        
-        public override void Start()
-        {
-            base.Start();
-            _startTrigger.BuildBlock();
         }
     }
 }

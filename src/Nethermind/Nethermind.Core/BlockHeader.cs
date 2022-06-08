@@ -20,7 +20,6 @@ using System.Text;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Core
@@ -70,6 +69,7 @@ namespace Nethermind.Core
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long)Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; } = Array.Empty<byte>();
         public Keccak? MixHash { get; set; }
+        public Keccak? Random => MixHash;
         public ulong Nonce { get; set; }
         public Keccak? Hash { get; set; }
         public UInt256? TotalDifficulty { get; set; }
@@ -79,6 +79,9 @@ namespace Nethermind.Core
 
         public bool HasBody => UnclesHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public string SealEngineType { get; set; } = Nethermind.Core.SealEngineType.Ethash;
+        
+        // ToDo we need to set this flag after reading block from db
+        public bool IsPostMerge { get; set; }
 
         public string ToString(string indent)
         {

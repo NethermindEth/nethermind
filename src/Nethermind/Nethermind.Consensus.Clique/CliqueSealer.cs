@@ -28,7 +28,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliqueSealer : ISealer
+    internal class CliqueSealer : ISealer
     {
         private readonly ILogger _logger;
         private readonly ISnapshotManager _snapshotManager;
@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.Clique
             Keccak headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature = _signer.Sign(headerHash);
             // Copy signature bytes (R and S)
-            var signatureBytes = signature.Bytes;
+            byte[] signatureBytes = signature.Bytes;
             Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;

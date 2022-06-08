@@ -139,6 +139,12 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         
         public UInt256? Eip1559BaseFeeMinValue  { get; set; }
 
+        public long? MergeForkIdTransition { get; set; }
+
+        public UInt256? TerminalTotalDifficulty { get; set; }
+
+        public long? TerminalPoWBlockNumber { get; set; }
+
         public long? Eip1153Transition { get; set; }
     }
 }

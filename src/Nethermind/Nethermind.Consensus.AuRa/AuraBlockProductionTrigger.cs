@@ -18,7 +18,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Producers;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa

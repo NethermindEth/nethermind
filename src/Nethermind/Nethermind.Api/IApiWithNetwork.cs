@@ -16,6 +16,7 @@
 // 
 
 using System.Collections.Generic;
+using Nethermind.Consensus;
 using Nethermind.Core.PubSub;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
@@ -28,6 +29,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Api
@@ -41,6 +43,7 @@ namespace Nethermind.Api
         IGrpcServer? GrpcServer { get; set; }
         IIPResolver? IpResolver { get; set; }
         IMessageSerializationService MessageSerializationService { get; }
+        IGossipPolicy GossipPolicy { get; set; }
         IMonitoringService MonitoringService { get; set; }
         INodeStatsManager? NodeStatsManager { get; set; }
         IPeerManager? PeerManager { get; set; }
@@ -53,6 +56,8 @@ namespace Nethermind.Api
         ISessionMonitor? SessionMonitor { get; set; }
         IStaticNodesManager? StaticNodesManager { get; set; }
         ISynchronizer? Synchronizer { get; set; }
+        IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
+        IPivot? Pivot { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }

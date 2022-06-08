@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -27,9 +28,11 @@ namespace Nethermind.Consensus.Transactions
         
         public static ITxFilterPipeline CreateStandardFilteringPipeline(
             ILogManager logManager,
-            ISpecProvider specProvider,
+            ISpecProvider? specProvider,
             IMiningConfig? miningConfig = null)
         {
+            if (specProvider == null) throw new ArgumentNullException(nameof(specProvider));
+            
             return new TxFilterPipelineBuilder(logManager)
                 .WithMinGasPriceFilter(miningConfig?.MinGasPrice ?? UInt256.Zero, specProvider)
                 .WithBaseFeeFilter(specProvider)

@@ -66,6 +66,12 @@ namespace Nethermind.JsonRpc.Data
                 case BlockParameterType.Pending:
                     writer.WriteValue("pending");
                     break;
+                case BlockParameterType.Finalized:
+                    writer.WriteValue("finalized");
+                    break;
+                case BlockParameterType.Safe:
+                    writer.WriteValue("safe");
+                    break;
                 case BlockParameterType.BlockNumber:
                     throw new InvalidOperationException("block number should be handled separately");
                 case BlockParameterType.BlockHash:
@@ -139,11 +145,15 @@ namespace Nethermind.JsonRpc.Data
                 case { } empty when string.IsNullOrWhiteSpace(empty):
                 case { } latest when latest.Equals("latest", StringComparison.InvariantCultureIgnoreCase):
                     return BlockParameter.Latest;
-                case { } latest when latest.Equals("earliest", StringComparison.InvariantCultureIgnoreCase):
+                case { } earliest when earliest.Equals("earliest", StringComparison.InvariantCultureIgnoreCase):
                     return BlockParameter.Earliest;
-                case { } latest when latest.Equals("pending", StringComparison.InvariantCultureIgnoreCase):
+                case { } pending when pending.Equals("pending", StringComparison.InvariantCultureIgnoreCase):
                     return BlockParameter.Pending;
-                case { } hash when hash.Length == 66 && hash.StartsWith("0x"):
+                case { } finalized when finalized.Equals("finalized", StringComparison.InvariantCultureIgnoreCase):
+                    return BlockParameter.Finalized;
+                case { } safe when safe.Equals("safe", StringComparison.InvariantCultureIgnoreCase):
+                    return BlockParameter.Safe;
+                case { Length: 66 } hash when hash.StartsWith("0x"):
                     return new BlockParameter(new Keccak(hash));
                 default:
                     return new BlockParameter(LongConverter.FromString(value));

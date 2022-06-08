@@ -239,6 +239,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             CompareSpecProviders(ropsten, provider, blockNumbersToTest, true);
+            Assert.AreEqual(RopstenSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(RopstenSpecProvider.LondonBlockNumber, provider.GenesisSpec.Eip1559TransitionBlock);
         }
 
@@ -432,7 +433,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                     Eip3198Transition = 31980L,
                     Eip3529Transition = 35290L,
                     Eip3541Transition = 35410L,
-                    Eip3675Transition = 36750L,
                     Eip1283ReenableTransition = 23000L,
                     ValidateChainIdTransition = 24000L,
                     ValidateReceiptsTransition = 24000L,
@@ -502,7 +502,6 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             TestTransitions(31980L, r => { r.IsEip3198Enabled = true; });
             TestTransitions(35290L, r => { r.IsEip3529Enabled = true; });
             TestTransitions(35410L, r => { r.IsEip3541Enabled = true; });
-            TestTransitions(36750L, r => { r.IsEip3675Enabled = true; });
         }
     }
 }

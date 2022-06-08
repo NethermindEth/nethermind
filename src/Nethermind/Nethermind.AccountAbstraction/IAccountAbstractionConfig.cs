@@ -51,12 +51,6 @@ namespace Nethermind.AccountAbstraction
         string EntryPointContractAddresses {get; set;}
 
         [ConfigItem(
-            Description =
-                "Defines the list of the hex string representation of the addresses of the create2Factory contract which was used to create the entryPoint",
-            DefaultValue = "")]
-        string Create2FactoryAddress { get; set; }
-
-        [ConfigItem(
             Description = "Defines the minimum gas price for a user operation to be accepted",
             DefaultValue = "1")]
         UInt256 MinimumGasPrice { get; set; }

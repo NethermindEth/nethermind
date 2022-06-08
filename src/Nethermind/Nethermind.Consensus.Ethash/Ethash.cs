@@ -28,10 +28,14 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Nethermind.Mining.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Ethash.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class Ethash : IEthash
+    internal class Ethash : IEthash
     {
         private HintBasedCache _hintBasedCache;
 
@@ -165,8 +169,7 @@ namespace Nethermind.Consensus.Ethash
             if (dataSet is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
-                _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
-                dataSet = _hintBasedCache.Get(epoch);
+                dataSet = BuildCache(epoch);
             }
 
             ulong fullSize = GetDataSize(epoch);

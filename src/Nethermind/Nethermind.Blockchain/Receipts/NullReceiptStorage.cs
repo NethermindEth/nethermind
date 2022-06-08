@@ -55,5 +55,10 @@ namespace Nethermind.Blockchain.Receipts
             add { }
             remove { }
         }
+
+        public bool HasBlock(Keccak hash)
+        {
+            return false;
+        }
     }
 }

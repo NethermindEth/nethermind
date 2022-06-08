@@ -23,5 +23,6 @@ namespace Nethermind.Core
         public static readonly string Clique = nameof(Clique);
         public static readonly string NethDev = nameof(NethDev);
         public static readonly string Ethash = nameof(Ethash);
+        public static readonly string BeaconChain = nameof(BeaconChain);
     }
 }

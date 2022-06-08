@@ -20,6 +20,10 @@
 
     <ItemGroup>
       <PackageReference Include="Microsoft.AspNetCore.Mvc.Formatters.Json" Version="2.2.0" />
+      <!-- Microsoft.AspNetCore.Mvc.Formatters.Json dependency, safe version -->
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+      <!-- Microsoft.AspNetCore.Mvc.Formatters.Json dependency, safe version -->
+      <PackageReference Include="System.Text.Encodings.Web" Version="6.0.0" />
     </ItemGroup>
 
     <ItemGroup>

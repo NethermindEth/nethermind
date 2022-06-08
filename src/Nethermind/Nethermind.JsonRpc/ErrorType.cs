@@ -99,5 +99,11 @@ namespace Nethermind.JsonRpc
         /// Request exceeds defined timeout limit
         /// </summary>
         public const int ModuleTimeout = -32017;
+
+        /// <summary>
+        /// Unknown block error
+        /// </summary>
+        public const int UnknownBlockError = -39001;
+        
     }
 }

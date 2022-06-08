@@ -118,6 +118,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Beneficiary = address;
             return this;
         }
+        
+        public BlockBuilder WithPostMergeFlag(bool postMergeFlag)
+        {
+            TestObjectInternal.Header.IsPostMerge = postMergeFlag;
+            return this;
+        }
 
         public BlockBuilder WithTotalDifficulty(long difficulty)
         {
@@ -198,6 +204,12 @@ namespace Nethermind.Core.Test.Builders
         {
             TestObjectInternal.Header.AuRaStep = step;
             TestObjectInternal.Header.AuRaSignature = signature;
+            return this;
+        }
+
+        public BlockBuilder WithAuthor(Address? author)
+        {
+            TestObjectInternal.Header.Author = author;
             return this;
         }
 

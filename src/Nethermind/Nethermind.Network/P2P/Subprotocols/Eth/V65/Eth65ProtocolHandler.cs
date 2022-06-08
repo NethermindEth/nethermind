@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -45,9 +46,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             ISyncServer syncServer,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
+            IGossipPolicy gossipPolicy,
             ISpecProvider specProvider,
             ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, specProvider, logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, specProvider, logManager)
         {
             _pooledTxsRequestor = pooledTxsRequestor;
         }

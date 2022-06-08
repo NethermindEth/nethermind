@@ -49,7 +49,7 @@ namespace Nethermind.Synchronization.FastBlocks
             IBlockTree blockTree)
         {
             IPeerAllocationStrategy strategy = _priority ? _fastest : _slowest;
-            peers = _minNumber == null ? peers : peers.Where(p => p.HeadNumber > _minNumber);
+            peers = _minNumber == null ? peers : peers.Where(p => p.HeadNumber >= _minNumber);
             PeerInfo? allocated = strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
             return allocated;
         }

@@ -20,6 +20,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -52,9 +53,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ISyncServer syncServer,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
+            IGossipPolicy gossipPolicy,
             ISpecProvider specProvider,
             ILogManager logManager)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, specProvider, logManager)
+            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, specProvider, logManager)
         {
             _headersRequests66 = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests66 = new MessageQueue<GetBlockBodiesMessage, BlockBody[]>(Send);

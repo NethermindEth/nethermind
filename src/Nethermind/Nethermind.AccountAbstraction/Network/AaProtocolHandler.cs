@@ -19,7 +19,6 @@ using System;
 using System.Collections.Generic;
 using DotNetty.Common.Utilities;
 using Nethermind.AccountAbstraction.Broadcaster;
-using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Core;
 using Nethermind.Core.Collections;

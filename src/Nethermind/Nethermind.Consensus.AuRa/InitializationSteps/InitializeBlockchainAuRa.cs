@@ -19,10 +19,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Data;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
@@ -30,7 +28,10 @@ using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
@@ -209,7 +210,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         //     _readOnlyTransactionProcessorSource ??= new ReadOnlyTxProcessorSource(
         //         _api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
 
-        protected override HeaderValidator CreateHeaderValidator()
+        protected override IHeaderValidator CreateHeaderValidator()
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             var blockGasLimitContractTransitions = _api.ChainSpec.AuRa.BlockGasLimitContractTransitions;

@@ -17,8 +17,8 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -100,6 +100,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 new SyncConfig(),
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
@@ -141,6 +142,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 new SyncConfig(),
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
@@ -181,13 +183,14 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 new SyncConfig(),
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             block.Header.TotalDifficulty *= 2;
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(localBlockTree.BestSuggestedHeader.Hash, block.Header.Hash);
+            Assert.AreEqual(localBlockTree.BestSuggestedHeader!.Hash, block.Header.Hash);
 
             Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
             Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, localBlockTree.BestSuggestedHeader.TotalDifficulty);
@@ -212,6 +215,7 @@ namespace Nethermind.Synchronization.Test
                 StaticSelector.Full,
                 new SyncConfig(),
                 NullWitnessCollector.Instance,
+                Policy.FullGossip,
                 LimboLogs.Instance);
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
@@ -242,6 +246,7 @@ namespace Nethermind.Synchronization.Test
                     selector,
                     new SyncConfig(),
                     NullWitnessCollector.Instance,
+                    Policy.FullGossip,
                     LimboLogs.Instance);
             }
 

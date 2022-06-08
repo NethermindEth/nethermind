@@ -19,6 +19,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Trie;
 
 namespace Nethermind.State
 {
@@ -48,5 +49,14 @@ namespace Nethermind.State
         {
             return stateReader.GetAccount(stateRoot, address)?.CodeHash ?? Keccak.OfAnEmptyString;
         }
+        
+        public static bool HasStateForBlock(this IStateReader stateReader, BlockHeader header)
+        {
+            RootCheckVisitor rootCheckVisitor = new();
+            stateReader.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
+            return rootCheckVisitor.HasRoot;
+        }
+
+        
     }
 }

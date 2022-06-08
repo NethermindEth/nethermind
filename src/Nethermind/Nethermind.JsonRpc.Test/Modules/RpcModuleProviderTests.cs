@@ -96,7 +96,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>(), true));
             _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), true));
 
-            JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http, new[] { "net" });
+            JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http,  false, new[] { "net" });
 
             ModuleResolution inScopeResolution = _moduleProvider.Check("net_version", JsonRpcContext.Http(url));
             Assert.AreEqual(ModuleResolution.Enabled, inScopeResolution);

@@ -22,7 +22,6 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Logging;
 

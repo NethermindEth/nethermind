@@ -84,6 +84,11 @@ namespace Nethermind.Db
             
             return db.KeyExists(key.Bytes);
         }
+
+        public static bool KeyExists(this IDb db, long key)
+        {
+            return db.KeyExists(key.ToBigEndianByteArrayWithoutLeadingZeros());
+        }
         
         public static void Delete(this IDb db, Keccak key)
         {

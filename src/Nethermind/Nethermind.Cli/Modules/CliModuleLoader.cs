@@ -197,7 +197,7 @@ namespace Nethermind.Cli.Modules
 
         private bool IsCliModule(Type type)
         {
-            bool isCliModule = typeof(CliModuleBase).IsAssignableFrom(type);
+            bool isCliModule = !type.IsAbstract && typeof(CliModuleBase).IsAssignableFrom(type);
             bool hasAttribute = type.GetCustomAttribute<CliModuleAttribute>() != null;
             if (isCliModule && !hasAttribute)
             {

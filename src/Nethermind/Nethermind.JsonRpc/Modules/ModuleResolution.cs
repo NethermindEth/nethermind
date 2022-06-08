@@ -21,6 +21,7 @@ namespace Nethermind.JsonRpc.Modules
         Enabled,
         Disabled,
         Unknown,
-        EndpointDisabled
+        EndpointDisabled,
+        NotAuthenticated
     }
 }

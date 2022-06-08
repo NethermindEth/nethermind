@@ -63,6 +63,11 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\wit.json = Chains\wit.json
 		Chains\yolo_v3x.json = Chains\yolo_v3x.json
 		Chains\catalyst.json = Chains\catalyst.json
+		Chains\themerge_devnet.json = Chains\themerge_devnet.json
+		Chains\themerge_testvectors.json = Chains\themerge_testvectors.json
+		Chains\hacknet_v2.json = Chains\hacknet_v2.json
+		Chains\themerge_kintsugi_testvectors.json = Chains\themerge_kintsugi_testvectors.json
+		Chains\themerge_kintsugi_mev.json = Chains\themerge_kintsugi_mev.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.State.Test", "Nethermind.State.Test\Nethermind.State.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"

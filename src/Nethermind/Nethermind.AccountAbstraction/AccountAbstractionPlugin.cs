@@ -11,7 +11,6 @@ using Nethermind.AccountAbstraction.Source;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Contracts.Json;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -27,8 +26,8 @@ using Nethermind.Mev;
 using Nethermind.AccountAbstraction.Bundler;
 using Nethermind.AccountAbstraction.Subscribe;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Network.Config;
+using Nethermind.Consensus.Producers;
 
 
 namespace Nethermind.AccountAbstraction
@@ -36,7 +35,6 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionPlugin : IConsensusWrapperPlugin
     {
         private IAccountAbstractionConfig _accountAbstractionConfig = null!;
-        private Address _create2FactoryAddress = null!;
         private AbiDefinition _entryPointContractAbi = null!;
         private ILogger _logger = null!;
 
@@ -100,6 +98,7 @@ namespace Nethermind.AccountAbstraction
                 _nethermindApi.LogFinder!,
                 _nethermindApi.EngineSigner!,
                 _nethermindApi.StateProvider!,
+                _nethermindApi.SpecProvider!,
                 _nethermindApi.Timestamper,
                 UserOperationSimulator(entryPoint),
                 userOperationSortedPool,
@@ -123,7 +122,6 @@ namespace Nethermind.AccountAbstraction
                 getFromApi.StateProvider!,
                 getFromApi.StateReader!,
                 _entryPointContractAbi,
-                _create2FactoryAddress,
                 entryPoint,
                 _whitelistedPaymasters.ToArray(),
                 getFromApi.SpecProvider!,
@@ -205,7 +203,8 @@ namespace Nethermind.AccountAbstraction
                 }
                 
                 IList<string> whitelistedPaymastersString = _accountAbstractionConfig.GetWhitelistedPaymasters().ToList();
-                foreach (string addressString in whitelistedPaymastersString){
+                foreach (string addressString in whitelistedPaymastersString)
+                {
                     bool parsed = Address.TryParse(
                         addressString,
                         out Address? whitelistedPaymaster);
@@ -218,19 +217,6 @@ namespace Nethermind.AccountAbstraction
                         if (_logger.IsInfo) _logger.Info($"Parsed Whitelisted Paymaster address: {whitelistedPaymaster}");
                         _whitelistedPaymasters.Add(whitelistedPaymaster!);
                     }
-                }
-
-                bool parsedCreate2Factory = Address.TryParse(
-                    _accountAbstractionConfig.Create2FactoryAddress,
-                    out Address? create2FactoryAddress);
-                if (!parsedCreate2Factory)
-                {
-                    if (_logger.IsError) _logger.Error("Account Abstraction Plugin: Create2Factory contract address could not be parsed");
-                }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info($"Parsed Create2Factory Address: {create2FactoryAddress}");
-                    _create2FactoryAddress = create2FactoryAddress!;
                 }
 
                 _entryPointContractAbi = LoadEntryPointContract();

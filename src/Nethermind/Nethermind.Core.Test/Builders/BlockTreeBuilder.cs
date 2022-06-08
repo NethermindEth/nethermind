@@ -57,6 +57,7 @@ namespace Nethermind.Core.Test.Builders
             BlocksDb = new MemDb();
             HeadersDb = new MemDb();
             BlockInfoDb = new MemDb();
+            MetadataDb = new MemDb();
             
             // so we automatically include in all tests my questionable decision of storing Head block header at 00...
             BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
@@ -70,6 +71,8 @@ namespace Nethermind.Core.Test.Builders
         public MemDb HeadersDb { get; set; }
 
         public MemDb BlockInfoDb { get; set; }
+        
+        public MemDb MetadataDb { get; set; }
 
         public ChainLevelInfoRepository ChainLevelInfoRepository { get; private set; }
 

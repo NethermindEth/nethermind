@@ -12,7 +12,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="DotNetty.Buffers" Version="0.6.0" />
+      <PackageReference Include="DotNetty.Buffers" Version="0.7.2" />
     </ItemGroup>
 
 </Project>

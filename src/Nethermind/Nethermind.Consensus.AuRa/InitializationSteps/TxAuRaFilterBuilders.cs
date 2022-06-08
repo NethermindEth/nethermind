@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             IDictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore,
             ISpecProvider specProvider)
         {
-            IMinGasPriceTxFilter minGasPriceTxFilter = Blockchain.TxFilterBuilders.CreateStandardMinGasPriceTxFilter(miningConfig, specProvider);
+            IMinGasPriceTxFilter minGasPriceTxFilter = TxFilterBuilders.CreateStandardMinGasPriceTxFilter(miningConfig, specProvider);
             ITxFilter gasPriceTxFilter = minGasPriceTxFilter;
             if (minGasPricesContractDataStore != null)
             {

@@ -18,7 +18,6 @@
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
-using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.AccountAbstraction.Network
