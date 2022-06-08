@@ -135,13 +135,7 @@ namespace Nethermind.Evm.Test
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 8)
                 .Call(TestItem.AddressD, 50000)
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -170,13 +164,7 @@ namespace Nethermind.Evm.Test
                 .StoreDataInTransientStorage(1, 8)
                 .Call(TestItem.AddressD, 50000)
                 // Return the response
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
 
                 // Reentrant, TLOAD and return value
                 .Op(Instruction.JUMPDEST)
@@ -194,13 +182,7 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressD, 50000)
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -228,13 +210,7 @@ namespace Nethermind.Evm.Test
                 .StoreDataInTransientStorage(1, 8)
                 .Call(TestItem.AddressD, 50000)
                 // Return the response
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
 
                 // Reentrant, TLOAD and return value
                 .Op(Instruction.JUMPDEST) // PC = 78
@@ -253,13 +229,7 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressD, 50000)
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -305,13 +275,7 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressD, 50000)
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -358,13 +322,7 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressD, 50000)
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -413,13 +371,7 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressD, 50000)
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -505,13 +457,7 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
                 .CallWithInput(TestItem.AddressD, 50000, new byte[32])
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -543,15 +489,8 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract (1 if successful)
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 7)
-                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])
-                    
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])                    
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -599,13 +538,7 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressD, 50000)
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -694,13 +627,7 @@ namespace Nethermind.Evm.Test
             // Return the result received from the contract
             byte[] code = Prepare.EvmCode
                 .CallWithInput(TestItem.AddressD, 50000, new byte[32])
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -763,13 +690,7 @@ namespace Nethermind.Evm.Test
                 .StoreDataInTransientStorage(1, 7)
                 .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])
                 // Return response from nested call
-                .PushData(32)
-                .PushData(0)
-                .PushData(0)
-                .Op(Instruction.RETURNDATACOPY)
-                .PushData(32)
-                .PushData(0)
-                .Op(Instruction.RETURN)
+                .ReturnInnerCallResult()
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
@@ -827,6 +748,53 @@ namespace Nethermind.Evm.Test
             // If transient state persisted across txs, calling again would return 0
             result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
             Assert.AreEqual(1, (int)result.ReturnValue.ToUInt256());
+        }
+
+
+        /// <summary>
+        /// Transient storage can be accessed in a static context when calling self
+        /// </summary>
+        [TestCase(Instruction.CALL, 8)]
+        [TestCase(Instruction.STATICCALL, 8)]
+        public void tload_from_static_reentrant_call(Instruction callType, int expectedResult)
+        {
+            // If caller is self, TLOAD and break recursion
+            // Else, TSTORE 8 and call self, return the result of the inner call
+            byte[] contractCode = Prepare.EvmCode
+                // Check if caller is self
+                .Op(Instruction.CALLER)
+                .PushData(TestItem.AddressD)
+                .Op(Instruction.EQ)
+                .PushData(114)
+                .Op(Instruction.JUMPI)
+
+                // Non-reentrant, call self after TSTORE 8
+                .StoreDataInTransientStorage(1, 8)
+                .DynamicCallWithInput(callType, TestItem.AddressD, 50000, new byte[32])
+                .ReturnInnerCallResult()
+
+                // Reentrant, TLOAD and return
+                .Op(Instruction.JUMPDEST) // PC = 114
+                .LoadDataFromTransientStorage(1)
+                .DataOnStackToMemory(0)
+                .PushData(32)
+                .PushData(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+            Keccak contractCodeHash = TestState.UpdateCode(contractCode);
+            TestState.UpdateCodeHash(TestItem.AddressD, contractCodeHash, Spec);
+
+            // Return the result received from the contract
+            byte[] code = Prepare.EvmCode
+                .Call(TestItem.AddressD, 50000)
+                .ReturnInnerCallResult()
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+
+            Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
         }
     }
 }

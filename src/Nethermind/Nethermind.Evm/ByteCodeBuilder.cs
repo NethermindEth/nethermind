@@ -337,5 +337,17 @@ namespace Nethermind.Evm
             Op(Instruction.RETURN);
             return this;
         }
+
+        public Prepare ReturnInnerCallResult()
+        {
+            PushData(32);
+            PushData(0);
+            PushData(0);
+            Op(Instruction.RETURNDATACOPY);
+            PushData(32);
+            PushData(0);
+            Op(Instruction.RETURN);
+            return this;
+        }
     }
 }
