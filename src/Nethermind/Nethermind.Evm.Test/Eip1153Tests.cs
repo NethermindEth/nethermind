@@ -45,10 +45,16 @@ namespace Nethermind.Evm.Test
         {
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 8)
-                .LoadDataFromTransientStorage(1)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber - 1, 100000, code);
+            Assert.AreEqual(StatusCode.Failure, result.StatusCode);
+
+            code = Prepare.EvmCode
+                .LoadDataFromTransientStorage(1)
+                .Done;
+
+            result = Execute(MainnetSpecProvider.ShanghaiBlockNumber - 1, 100000, code);
             Assert.AreEqual(StatusCode.Failure, result.StatusCode);
         }
 

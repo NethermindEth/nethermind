@@ -317,7 +317,7 @@ namespace Nethermind.Store.Test
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
-        public void Transient_state_restores_independed_of_permanent_state(int snapshot)
+        public void Transient_state_restores_independent_of_permanent_state(int snapshot)
         {
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
@@ -361,7 +361,7 @@ namespace Nethermind.Store.Test
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
-        public void Permanent_state_restores_independed_of_transient_state(int snapshot)
+        public void Permanent_state_restores_independent_of_transient_state(int snapshot)
         {
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
