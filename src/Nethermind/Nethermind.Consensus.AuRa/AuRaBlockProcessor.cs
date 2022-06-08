@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.AuRa
         }
 
         // HACK: workaround for not having static dispatch :(
-        protected TxReceipt[] BaseProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             return base.ProcessBlock(block, blockTracer, options);
         }
