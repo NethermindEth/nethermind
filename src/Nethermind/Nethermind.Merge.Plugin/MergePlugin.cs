@@ -95,6 +95,7 @@ namespace Nethermind.Merge.Plugin
                     _api.BlockTree, 
                     _blockCacheService,
                     _api.LogManager);
+                _api.DisposeStack.Push(_invalidChainTracker);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
@@ -316,13 +317,7 @@ namespace Nethermind.Merge.Plugin
             return Task.CompletedTask;
         }
 
-        public ValueTask DisposeAsync()
-        {
-            return new ValueTask(Task.Run(() =>
-            {
-                _invalidChainTracker?.Dispose();
-            }));
-        }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         public string SealEngineType => "Eth2Merge";
     }

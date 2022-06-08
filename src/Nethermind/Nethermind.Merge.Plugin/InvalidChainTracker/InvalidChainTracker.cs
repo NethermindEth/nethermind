@@ -30,8 +30,7 @@ using Nethermind.Merge.Plugin.Handlers;
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
 /// <summary>
-/// Something that tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to
-/// be invalid.
+/// Tracks if a given hash is on a known invalid chain, as one if it's ancestor have been reported to be invalid.
 /// 
 /// </summary>
 public class InvalidChainTracker: IInvalidChainTracker
@@ -40,7 +39,6 @@ public class InvalidChainTracker: IInvalidChainTracker
     private readonly IBlockFinder _blockFinder;
     private readonly IBlockCacheService _blockCacheService;
     private readonly ILogger _logger;
-    private readonly object _opLock = new();
     private readonly LruCache<Keccak, Node> _tree;
     
     // CompositeDisposable only available on System.Reactive. So this will do for now. 
@@ -68,22 +66,24 @@ public class InvalidChainTracker: IInvalidChainTracker
         });
     }
 
-    private void BlockchainProcessorOnOnInvalidBlock(object? sender, InvalidBlockException e)
+    private void BlockchainProcessorOnOnInvalidBlock(object? sender, IBlockchainProcessor.OnInvalidBlockArg onInvalidBlockArg)
     {
-        OnInvalidBlock(e.InvalidBlockHash, null);
+        OnInvalidBlock(onInvalidBlockArg.InvalidBlockHash, null);
     }
 
     public void SetChildParent(Keccak child, Keccak parent)
     {
-        lock (_opLock)
+        Node parentNode = GetNode(parent);
+        bool needPropagate = false;
+        lock (parentNode)
         {
-            Node parentNode = GetNode(parent);
-
             parentNode.Children.Add(child);
-            if (parentNode.LastValidHash != null)
-            {
-                PropagateLastValidHash(parentNode);
-            }
+            needPropagate = parentNode.LastValidHash != null;
+        }
+        
+        if (needPropagate)
+        {
+            PropagateLastValidHash(parentNode);
         }
     }
 
@@ -100,15 +100,32 @@ public class InvalidChainTracker: IInvalidChainTracker
 
     private void PropagateLastValidHash(Node node)
     {
-        foreach (Keccak nodeChild in node.Children)
+        Queue<Node> bfsQue = new();
+        bfsQue.Enqueue(node);
+        HashSet<Node> visited = new();
+        visited.Add(node);
+
+        while (bfsQue.Count > 0)
         {
-            Node childNode = GetNode(nodeChild);
-            if (childNode.LastValidHash != node.LastValidHash)
+            Node current = bfsQue.Dequeue();
+            lock (current)
             {
-                childNode.LastValidHash = node.LastValidHash;
-                PropagateLastValidHash(childNode);
+                foreach (Keccak nodeChild in current.Children)
+                {
+                    Node childNode = GetNode(nodeChild);
+                    if (childNode.LastValidHash != current.LastValidHash)
+                    {
+                        childNode.LastValidHash = current.LastValidHash;
+                        if (!visited.Contains(childNode))
+                        {
+                            visited.Add(childNode);
+                            bfsQue.Enqueue(childNode);
+                        }
+                    }
+                }
             }
         }
+        
     }
 
     private BlockHeader? TryGetBlockHeader(Keccak hash)
@@ -149,20 +166,20 @@ public class InvalidChainTracker: IInvalidChainTracker
             if(_logger.IsTrace) _logger.Trace($"Unable to resolve parent to determine if it is post merge. Assuming post merge. Block {parent}");
         }
 
-        lock (_opLock)
+        Node failedBlockNode = GetNode(failedBlock);
+        lock (failedBlockNode)
         {
-            Node failedBlockNode = GetNode(failedBlock);
             failedBlockNode.LastValidHash = effectiveParent;
-            PropagateLastValidHash(failedBlockNode);
         }
+        PropagateLastValidHash(failedBlockNode);
     }
 
     public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
     {
-        lock (_opLock)
+        lastValidHash = null;
+        Node node = GetNode(blockHash);
+        lock (node)
         {
-            lastValidHash = null;
-            Node node = GetNode(blockHash);
             if (node.LastValidHash != null)
             {
                 lastValidHash = node.LastValidHash;

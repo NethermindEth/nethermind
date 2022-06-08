@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Processing
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
         private Stopwatch _stopwatch = new();
         
-        public event EventHandler<InvalidBlockException> OnInvalidBlock;
+        public event EventHandler<IBlockchainProcessor.OnInvalidBlockArg> OnInvalidBlock;
 
         /// <summary>
         /// 
@@ -439,6 +439,11 @@ namespace Nethermind.Consensus.Processing
             }
             catch (InvalidBlockException ex)
             {
+                OnInvalidBlock?.Invoke(this, new IBlockchainProcessor.OnInvalidBlockArg
+                {
+                    InvalidBlockHash = ex.InvalidBlockHash
+                });
+                
                 invalidBlockHash = ex.InvalidBlockHash;
                 TraceFailingBranch(
                     processingBranch,
@@ -457,8 +462,6 @@ namespace Nethermind.Consensus.Processing
                     options,
                     new GethLikeBlockTracer(GethTraceOptions.Default),
                     DumpOptions.Geth);
-                
-                OnInvalidBlock?.Invoke(this, ex);
 
                 processedBlocks = null;
             }

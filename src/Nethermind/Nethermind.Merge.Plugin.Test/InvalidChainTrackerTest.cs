@@ -41,7 +41,7 @@ public class InvalidChainTrackerTest
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         BlockCacheService blockCacheService = new();
         
-        _tracker = new(NoPoS.Instance, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
+        _tracker = new(NoPoS.Instance, blockFinder, blockCacheService, new TestLogManager());
     }
     
     private List<Keccak> MakeChain(int n, bool connectInReverse=false)
@@ -77,46 +77,38 @@ public class InvalidChainTrackerTest
     public void given_aChainOfLength5_when_originBlockIsInvalid_then_otherBlockIsInvalid(bool connectInReverse)
     {
         List<Keccak> hashes = MakeChain(5, connectInReverse);
-        
-        Keccak? lastValidHash;
-        _tracker.IsOnKnownInvalidChain(hashes[1], out lastValidHash).Should().BeFalse();
-        _tracker.IsOnKnownInvalidChain(hashes[2], out lastValidHash).Should().BeFalse();
-        _tracker.IsOnKnownInvalidChain(hashes[3], out lastValidHash).Should().BeFalse();
-        _tracker.IsOnKnownInvalidChain(hashes[4], out lastValidHash).Should().BeFalse();
+        AssertValid(hashes[1]);
+        AssertValid(hashes[2]);
+        AssertValid(hashes[3]);
+        AssertValid(hashes[4]);
         
         _tracker.OnInvalidBlock(hashes[2], hashes[1]);
-        _tracker.IsOnKnownInvalidChain(hashes[1], out lastValidHash).Should().BeFalse();
-        _tracker.IsOnKnownInvalidChain(hashes[2], out lastValidHash).Should().BeTrue();
-        _tracker.IsOnKnownInvalidChain(hashes[3], out lastValidHash).Should().BeTrue();
-        _tracker.IsOnKnownInvalidChain(hashes[4], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(hashes[1]);
+        AssertValid(hashes[1]);
+        AssertInvalid(hashes[2]);
+        AssertInvalid(hashes[3]);
+        AssertInvalid(hashes[4], hashes[1]);
     }
     
     [TestCase(true)]
     [TestCase(false)]
     public void given_aChainOfLength5_when_aLastValidHashIsInvalidated_then_lastValidHashShouldBeForwarded(bool connectInReverse)
     {
-        Keccak? lastValidHash;
         List<Keccak> hashes = MakeChain(5, connectInReverse);
         
         _tracker.OnInvalidBlock(hashes[3], hashes[2]);
-        _tracker.IsOnKnownInvalidChain(hashes[3], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(hashes[2]);
+        AssertInvalid(hashes[3], hashes[2]);
         
         _tracker.OnInvalidBlock(hashes[2], hashes[1]);
-        _tracker.IsOnKnownInvalidChain(hashes[2], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(hashes[1]);
+        AssertInvalid(hashes[2], hashes[1]);
         
         // It should return 1 instead of 2 now
-        _tracker.IsOnKnownInvalidChain(hashes[3], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(hashes[1]);
+        AssertInvalid(hashes[3], hashes[1]);
     }
-    
+
     [TestCase(true)]
     [TestCase(false)]
     public void given_aTreeWith3Branch_trackerShouldDetectCorrectValidChain(bool connectInReverse)
     {
-        Keccak? lastValidHash;
         List<Keccak> mainChain = MakeChain(20, connectInReverse);
         List<Keccak> branchAt5 = MakeChain(10, connectInReverse);
         List<Keccak> branchAt10 = MakeChain(10, connectInReverse);
@@ -134,39 +126,31 @@ public class InvalidChainTrackerTest
         _tracker.SetChildParent(branchAt15_butConnectOnItem5[5], mainChain[15]);
         
         _tracker.OnInvalidBlock(mainChain[10], mainChain[9]);
-        
-        _tracker.IsOnKnownInvalidChain(branchAt5[5], out lastValidHash).Should().BeFalse();
-        
-        _tracker.IsOnKnownInvalidChain(branchAt10[0], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(mainChain[9]);
-        _tracker.IsOnKnownInvalidChain(branchAt10[5], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(mainChain[9]);
-        
-        _tracker.IsOnKnownInvalidChain(branchAt15[5], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(mainChain[9]);
-        _tracker.IsOnKnownInvalidChain(branchAt15[9], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(mainChain[9]);
-        
-        _tracker.IsOnKnownInvalidChain(branchAt15_butConnectOnItem5[9], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(mainChain[9]);
-        _tracker.IsOnKnownInvalidChain(branchAt15_butConnectOnItem5[5], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(mainChain[9]);
-        
-        _tracker.IsOnKnownInvalidChain(branchAt15_butConnectOnItem5[4], out lastValidHash).Should().BeFalse();
-        
+
         _tracker.SetChildParent(branchAt11_butConnectLater[0], mainChain[11]);
-        _tracker.IsOnKnownInvalidChain(branchAt11_butConnectLater[0], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(mainChain[9]);
-        _tracker.IsOnKnownInvalidChain(branchAt11_butConnectLater[9], out lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(mainChain[9]);
-        
         _tracker.SetChildParent(branchAt5_butConnectLater[0], mainChain[5]);
-        _tracker.IsOnKnownInvalidChain(branchAt5_butConnectLater[9], out lastValidHash).Should().BeFalse();
+        
+        AssertValid(branchAt5[5]);
+        
+        AssertInvalid(branchAt10[0], mainChain[9]);
+        AssertInvalid(branchAt10[5], mainChain[9]);
+        
+        AssertInvalid(branchAt15[5], mainChain[9]);
+        AssertInvalid(branchAt15[9], mainChain[9]);
+        
+        AssertInvalid(branchAt15_butConnectOnItem5[9], mainChain[9]);
+        AssertInvalid(branchAt15_butConnectOnItem5[5], mainChain[9]);
+
+        AssertValid(branchAt15_butConnectOnItem5[4]);
+        AssertInvalid(branchAt11_butConnectLater[0], mainChain[9]);
+        AssertInvalid(branchAt11_butConnectLater[9], mainChain[9]);
+        
+        AssertValid(branchAt5_butConnectLater[9]);
     }
 
     [TestCase(true)]
     [TestCase(false)]
-    public void whenCreatingACycle_itShouldResolveItByDetachingChild(bool connectInReverse)
+    public void whenCreatingACycle_itShouldNotThrow_whenSettingInvalidation(bool connectInReverse)
     {
         List<Keccak> chain1 = MakeChain(50, connectInReverse);
         List<Keccak> chain2 = MakeChain(50, connectInReverse);
@@ -175,6 +159,9 @@ public class InvalidChainTrackerTest
         _tracker.SetChildParent(chain2[0], chain1[5]);
         _tracker.SetChildParent(chain3[0], chain2[5]);
         _tracker.SetChildParent(chain1[0], chain2[40]);
+        
+        _tracker.OnInvalidBlock(chain2[40], Keccak.Zero);
+        AssertInvalid(chain1[3]);
     }
 
     [TestCase(true)]
@@ -188,16 +175,16 @@ public class InvalidChainTrackerTest
         Keccak invalidBlock = Keccak.Compute(Random.Shared.NextInt64().ToString());
         
         _tracker.OnInvalidBlock(invalidBlock, invalidBlockParent);
-        _tracker.IsOnKnownInvalidChain(invalidBlock, out lastValidHash).Should().BeTrue();
+        AssertInvalid(invalidBlock);
         
-        _tracker.IsOnKnownInvalidChain(mainChain[40], out lastValidHash).Should().BeFalse();
-        _tracker.IsOnKnownInvalidChain(secondChain[40], out lastValidHash).Should().BeFalse();
+        AssertValid(mainChain[40]);
+        AssertValid(secondChain[40]);
         
         _tracker.SetChildParent(mainChain[0], invalidBlock);
         _tracker.SetChildParent(secondChain[0], invalidBlock);
-        
-        _tracker.IsOnKnownInvalidChain(mainChain[40], out lastValidHash).Should().BeTrue();
-        _tracker.IsOnKnownInvalidChain(secondChain[40], out lastValidHash).Should().BeTrue();
+
+        AssertInvalid(mainChain[40]);
+        AssertInvalid(secondChain[40]);
     }
 
     [Test]
@@ -217,8 +204,7 @@ public class InvalidChainTrackerTest
         _tracker = new(poSSwitcher, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
         _tracker.OnInvalidBlock(invalidBlock, parentBlockHeader.Hash);
 
-        _tracker.IsOnKnownInvalidChain(invalidBlock, out Keccak? lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(Keccak.Zero);
+        AssertInvalid(invalidBlock, Keccak.Zero);
     }
     
     [Test]
@@ -241,7 +227,22 @@ public class InvalidChainTrackerTest
         _tracker = new(alwaysPos, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
         _tracker.OnInvalidBlock(blockHeader.Hash, null);
 
-        _tracker.IsOnKnownInvalidChain(blockHeader.Hash, out Keccak? lastValidHash).Should().BeTrue();
-        lastValidHash.Should().BeEquivalentTo(parentBlockHeader.Hash);
+        AssertInvalid(blockHeader.Hash, parentBlockHeader.Hash);
+    }
+    
+    private void AssertValid(Keccak hash)
+    {
+        Keccak? lastValidHash;
+        _tracker.IsOnKnownInvalidChain(hash, out lastValidHash).Should().BeFalse();
+    }
+    
+    private void AssertInvalid(Keccak hash, Keccak? expectedLsatValidHash = null)
+    {
+        Keccak? lastValidHash;
+        _tracker.IsOnKnownInvalidChain(hash, out lastValidHash).Should().BeTrue();
+        if (expectedLsatValidHash != null)
+        {
+            lastValidHash.Should().BeEquivalentTo(expectedLsatValidHash);
+        }
     }
 }

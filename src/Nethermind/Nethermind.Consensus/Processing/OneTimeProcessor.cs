@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Processing
 #pragma warning disable 67
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
         public event EventHandler<BlockProcessedEventArgs> BlockInvalid;
-        public event EventHandler<InvalidBlockException>? OnInvalidBlock;
+        public event EventHandler<IBlockchainProcessor.OnInvalidBlockArg>? OnInvalidBlock;
 #pragma warning restore 67
 
         public void Dispose()
