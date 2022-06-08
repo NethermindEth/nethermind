@@ -32,6 +32,12 @@ namespace Nethermind.Merge.Plugin.Data.V1
         public static readonly PayloadStatusV1 Syncing = new() { Status = PayloadStatus.Syncing };
         
         public static readonly PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
+        
+        public static PayloadStatusV1 Invalid (Keccak? latestValidHash) => new()
+        {
+            Status = PayloadStatus.Invalid,
+            LatestValidHash = latestValidHash
+        };
 
         /// <summary>
         /// One of <see cref="PayloadStatus"/>.
