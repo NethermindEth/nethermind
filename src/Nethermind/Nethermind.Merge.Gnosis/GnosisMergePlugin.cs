@@ -29,15 +29,13 @@ namespace Nethermind.Merge.Gnosis
             return variant != null && variant == "AuRa";
         }
 
-        public override Task Init(INethermindApi nethermindApi)
+        public override async Task Init(INethermindApi nethermindApi)
         {
-            return base.Init(nethermindApi).ContinueWith(t =>
+            await base.Init(nethermindApi);
+            if (_mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant))
             {
-                if (_mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant))
-                {
-                    ((AuRaNethermindApi)nethermindApi).PoSSwitcher = _poSSwitcher;
-                }
-            });
+                ((AuRaNethermindApi)nethermindApi).PoSSwitcher = _poSSwitcher;
+            }
         }
 
         protected override ITxSource? CreateTxSource(IStateProvider stateProvider)
