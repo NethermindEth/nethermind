@@ -109,8 +109,8 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Gnosis.*;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.*;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.*" />
-    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Gnosis.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.dll;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.dll" />
+    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Gnosis.*;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.*;&#xD;&#xA;$(OutputPath)\Nethermind.Init.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.*;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.*" />
+    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Gnosis.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Init.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.dll;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.dll" />
   </ItemGroup>
   <ItemGroup>
     <GitHash Include="git-hash" />
