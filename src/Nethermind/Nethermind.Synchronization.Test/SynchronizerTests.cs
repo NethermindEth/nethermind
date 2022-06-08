@@ -321,7 +321,7 @@ namespace Nethermind.Synchronization.Test
                     mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString();
                 }
                 IBlockCacheService blockCacheService = new BlockCacheService();
-                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), blockCacheService, _logManager);
+                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), _logManager);
 
                 ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
                 SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);

@@ -55,7 +55,6 @@ namespace Nethermind.Merge.Plugin
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
         private readonly ISpecProvider _specProvider;
-        private readonly IBlockCacheService _blockCacheService;
         private readonly ILogger _logger;
         private Keccak? _terminalBlockHash;
 
@@ -72,7 +71,6 @@ namespace Nethermind.Merge.Plugin
             IDb metadataDb,
             IBlockTree blockTree,
             ISpecProvider specProvider,
-            IBlockCacheService blockCacheService,
             ILogManager logManager)
         {
             _mergeConfig = mergeConfig;
@@ -80,7 +78,6 @@ namespace Nethermind.Merge.Plugin
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _specProvider = specProvider;
-            _blockCacheService = blockCacheService;
             _logger = logManager.GetClassLogger();
 
             Initialize();
@@ -184,7 +181,7 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero || _blockCacheService.FinalizedHash != Keccak.Zero;
+        public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
 
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {

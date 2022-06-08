@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -36,6 +37,7 @@ using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
@@ -140,8 +142,13 @@ namespace Nethermind.Merge.Plugin.Test
                 PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
                     blockProducerEnv, BlockProductionTrigger);
                 PostMergeBlockProducer = postMergeBlockProducer;
-                PayloadPreparationService ??= new PayloadPreparationService(postMergeBlockProducer, BlockProductionTrigger, SealEngine,
-                    MergeConfig, TimerFactory.Default, LogManager);
+                PayloadPreparationService ??= new PayloadPreparationService(
+                    postMergeBlockProducer, 
+                    new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
+                    SealEngine,
+                    TimerFactory.Default, 
+                    LogManager,
+                    TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
                 return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
             }
             

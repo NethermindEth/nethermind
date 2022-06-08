@@ -21,6 +21,7 @@
 
     <ItemGroup>
       <PackageReference Include="Microsoft.AspNetCore.WebSockets" Version="2.2.1" />
+      <PackageReference Include="System.Text.Encodings.Web" Version="6.0.0" />
     </ItemGroup>
 
 </Project>

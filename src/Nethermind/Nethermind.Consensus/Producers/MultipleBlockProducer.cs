@@ -85,8 +85,6 @@ namespace Nethermind.Consensus.Producers
             return false;
         }
         
-        public ITimestamper Timestamper => _blockProducers[0].BlockProducer.Timestamper;
-        
         public event EventHandler<BlockEventArgs>? BlockProduced;
         
         private void OnBlockProduction(object? sender, BlockProductionEventArgs e)

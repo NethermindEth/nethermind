@@ -65,7 +65,7 @@ public partial class BlockDownloaderTests
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
         IBlockCacheService blockCacheService = new BlockCacheService();
         PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, notSyncedTree,
-            RopstenSpecProvider.Instance, blockCacheService, LimboLogs.Instance);
+            RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
         MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
@@ -116,7 +116,7 @@ public partial class BlockDownloaderTests
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
         IBlockCacheService blockCacheService = new BlockCacheService();
         PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "10000000" }, new SyncConfig(), metadataDb, notSyncedTree,
-            RopstenSpecProvider.Instance, blockCacheService, LimboLogs.Instance);
+            RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         if (withBeaconPivot)
             beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));

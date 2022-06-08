@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 
@@ -52,11 +53,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         public async Task<ResultWrapper<ExecutionPayloadV1?>> HandleAsync(byte[] payloadId)
         {
             string payloadStr = payloadId.ToHexString(true);
-            
-            // Given the payloadId client software MUST return the most recent version of the payload that is available in the corresponding build process at the time of receiving the call.
-            Block? block = _payloadPreparationService.GetPayload(payloadStr);
-            
-            if (block is null)
+            Block? block = await _payloadPreparationService.GetPayload(payloadStr);
+
+            if (block == null)
             {
                 // The call MUST return -38001: Unknown payload error if the build process identified by the payloadId does not exist.
                 if (_logger.IsWarn) _logger.Warn($"Block production for payload with id={payloadId.ToHexString()} failed.");
