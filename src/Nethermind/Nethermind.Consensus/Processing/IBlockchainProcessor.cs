@@ -35,9 +35,9 @@ namespace Nethermind.Consensus.Processing
 
         bool IsProcessingBlocks(ulong? maxProcessingInterval);
         
-        event EventHandler<OnInvalidBlockArg> OnInvalidBlock;
+        event EventHandler<InvalidBlockEventArgs> InvalidBlock;
 
-        public class OnInvalidBlockArg: EventArgs
+        public class InvalidBlockEventArgs : EventArgs
         {
             public Keccak InvalidBlockHash { get; init; }
         }
