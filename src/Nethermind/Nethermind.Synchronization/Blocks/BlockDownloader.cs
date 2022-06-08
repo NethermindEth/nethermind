@@ -352,7 +352,11 @@ namespace Nethermind.Synchronization.Blocks
                     }
                     
                     if (_logger.IsTrace) _logger.Trace($"BlockDownloader - SuggestBlock {currentBlock}, ShouldProcess: {true}");
-                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None)))
+
+                    AddBlockResult addBlockResult = _blockTree.SuggestBlock(currentBlock,
+                        shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None);
+                    
+                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addBlockResult))
                     {
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
                         if (downloadReceipts)
@@ -362,13 +366,16 @@ namespace Nethermind.Synchronization.Blocks
                             {
                                 _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
                             }
-                            else
+                            else if (currentBlock.Header.HasBody)
                             {
                                 // this shouldn't now happen with new validation above, still lets keep this check 
-                                if (currentBlock.Header.HasBody)
-                                {
-                                    if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
-                                }
+                                if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
+                            }
+                            else
+                            {
+                                // Sometimes a block does not have a body and the receipt is not fetched for it
+                                // but we still need to keep track of it
+                                _receiptStorage.Insert(currentBlock);
                             }
                         }
 

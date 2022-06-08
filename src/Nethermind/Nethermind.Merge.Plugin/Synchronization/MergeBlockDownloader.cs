@@ -83,7 +83,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         {
             if (_beaconPivot.BeaconPivotExists() == false && _poSSwitcher.HasEverReachedTerminalBlock() == false)
                 return await base.DownloadBlocks(bestPeer, blocksRequest, cancellation);
-
             if (bestPeer == null)
             {
                 string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
@@ -212,13 +211,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             {
                                 _receiptStorage.Insert(currentBlock, contextReceiptsForBlock);
                             }
-                            else
+                            else if (currentBlock.Header.HasBody)
                             {
                                 // this shouldn't now happen with new validation above, still lets keep this check 
-                                if (currentBlock.Header.HasBody)
-                                {
-                                    if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
-                                }
+                                if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
+                            }
+                            else
+                            {
+                                // Sometimes a block does not have a body and the receipt is not fetched for it
+                                // but we still need to keep track of it
+                                _receiptStorage.Insert(currentBlock);
                             }
                         }
 

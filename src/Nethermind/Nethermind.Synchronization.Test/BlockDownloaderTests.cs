@@ -292,6 +292,8 @@ namespace Nethermind.Synchronization.Test
         public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(long headNumber)
         {
             Context ctx = new();
+            IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
+            ctx.ReceiptStorage = receiptStorage;
             BlockDownloader downloader = CreateBlockDownloader(ctx);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -305,10 +307,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.HeadNumber.Returns(headNumber);
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
 
-            Task task = downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
+            Task task = downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts), CancellationToken.None);
             await task.ContinueWith(t => Assert.False(t.IsFaulted));
 
             Assert.AreEqual(headNumber, ctx.BlockTree.BestSuggestedHeader.Number);
+            receiptStorage.Received().Insert(Arg.Any<Block>());
         }
 
         [Test]
@@ -825,8 +828,7 @@ namespace Nethermind.Synchronization.Test
 
         private BlockDownloader CreateBlockDownloader(Context ctx)
         {
-            InMemoryReceiptStorage receiptStorage = new();
-            return new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, new BlocksSyncPeerAllocationStrategyFactory(), CreatePeerChoiceStrategy(), LimboLogs.Instance);
+            return new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, ctx.ReceiptStorage, RopstenSpecProvider.Instance, new BlocksSyncPeerAllocationStrategyFactory(), CreatePeerChoiceStrategy(), LimboLogs.Instance);
         }
         
         private IBetterPeerStrategy CreatePeerChoiceStrategy()
@@ -856,6 +858,7 @@ namespace Nethermind.Synchronization.Test
             public ResponseBuilder ResponseBuilder;
             public Dictionary<long, Keccak> TestHeaderMapping;
             public ISyncModeSelector SyncModeSelector;
+            public IReceiptStorage ReceiptStorage;
 
             public Context(BlockTree? blockTree = null)
             {
@@ -887,6 +890,8 @@ namespace Nethermind.Synchronization.Test
                     new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, LimboLogs.Instance);
                 SyncModeSelector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
                 Feed = new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
+
+                ReceiptStorage = new InMemoryReceiptStorage();
 
                 ResponseBuilder = new ResponseBuilder(BlockTree, TestHeaderMapping);
             }
