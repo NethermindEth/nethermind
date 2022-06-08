@@ -122,7 +122,6 @@ public class ChainLevelHelper : IChainLevelHelper
 
             offset += hashesToRequest.Count;
         }
-
         return true;
     }
 

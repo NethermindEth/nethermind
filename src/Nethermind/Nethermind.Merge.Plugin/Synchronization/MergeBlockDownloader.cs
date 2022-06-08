@@ -114,6 +114,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
+
+                long upperDownloadBoundary = _blockTree.BestKnownBeaconNumber;
+                long blocksLeft = upperDownloadBoundary - currentNumber;
+                int headersToProcess = (int)Math.Min(blocksLeft + 1, _syncBatchSize.Current);
+                if (headersToProcess <= 1)
+                {
+                    break;
+                }
                 
                 int requestSize = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
 
@@ -193,14 +201,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
                     if (_logger.IsTrace)
                         _logger.Trace(
-                            $"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBlock: {isKnownBeaconBlock}");
+                            $"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
                     
                     if (isKnownBeaconBlock)
                         suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
                     
                     if (_logger.IsTrace)
                         _logger.Trace(
-                            $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBeaconBlock} ShouldProcess: {shouldProcess}");
+                            $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isKnownBeaconBlock} ShouldProcess: {shouldProcess}");
 
                     AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
                     if (addResult == AddBlockResult.InvalidBlock)
