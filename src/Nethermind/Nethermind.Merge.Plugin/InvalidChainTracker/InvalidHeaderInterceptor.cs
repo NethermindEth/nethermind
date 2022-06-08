@@ -28,7 +28,7 @@ public class InvalidHeaderInterceptor: IHeaderValidator
     private ILogger _logger;
 
     public InvalidHeaderInterceptor(
-        HeaderValidator headerValidator,
+        IHeaderValidator headerValidator,
         IInvalidChainTracker invalidChainTracker,
         ILogManager logManager)
     {
