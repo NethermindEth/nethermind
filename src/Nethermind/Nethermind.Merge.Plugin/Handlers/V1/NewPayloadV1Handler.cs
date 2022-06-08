@@ -171,9 +171,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (!isValid)
                 {
                     _invalidChainTracker.OnInvalidBlock(request.BlockHash, request.ParentHash);
+                    return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
                 }
 
-                return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, isValid, parentHeader, message));
+                return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = request.BlockHash });
             }
 
             if (result == ValidationResult.Syncing)
@@ -185,7 +186,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (processedBlock is null)
             {
                 if (_logger.IsInfo) _logger.Info($"Invalid block processed. Result of {requestStr}.");
-                return ResultWrapper<PayloadStatusV1>.Success(BuildExecutePayloadResult(request, false, parentHeader, $"Processed block is null, request {request}"));
+                return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, $"Processed block is null, request {request}"));
             }
 
             if (_logger.IsInfo) _logger.Info($"Valid. Result of {requestStr}.");
@@ -249,37 +250,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             return isValid;
         }
 
-        private PayloadStatusV1 BuildExecutePayloadResult(ExecutionPayloadV1 request, bool isValid, BlockHeader? parent, string? validationMessage)
-        {
-            PayloadStatusV1 payloadStatus = new();
-            if (isValid)
+        private PayloadStatusV1 BuildInvalidPayloadStatusV1(ExecutionPayloadV1 request, string? validationMessage) =>
+            new()
             {
-                payloadStatus.Status = PayloadStatus.Valid;
-                payloadStatus.LatestValidHash = request.BlockHash;
-            }
-            else
-            {
-                payloadStatus.ValidationError = validationMessage;
-                payloadStatus.Status = PayloadStatus.Invalid;
-                if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
-                {
-                    payloadStatus.LatestValidHash = lastValidHash;
-                }
-                else
-                {
-                    if (parent != null)
-                    {
-                        payloadStatus.LatestValidHash = request.ParentHash;
-                    }
-                    else
-                    {
-                        payloadStatus.LatestValidHash = _blockTree.HeadHash;
-                    }
-                }
-            }
-
-            return payloadStatus;
-        }
+                Status = PayloadStatus.Invalid,
+                ValidationError = validationMessage,
+                LatestValidHash = _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Keccak? lastValidHash) 
+                    ? lastValidHash 
+                    : request.ParentHash
+            };
 
         /// Pop blocks from cache up to ancestor on the beacon chain. Which is then inserted into the block tree
         /// which I assume will switch the canonical chain.
