@@ -18,25 +18,8 @@
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data.V1;
 
-<<<<<<<< HEAD:src/Nethermind/Nethermind.Synchronization/IPivot.cs
-namespace Nethermind.Synchronization
-{
-    public interface IPivot
-    {
-        long PivotNumber { get; }
-
-        Keccak? PivotHash { get; }
-
-        UInt256? PivotTotalDifficulty { get; }
-        
-        long PivotDestinationNumber { get; }
-    }
-========
-namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
-
 public class BoostExecutionPayloadV1
 {
     public ExecutionPayloadV1 Block { get; set; }
     public UInt256 Profit { get; set; }
->>>>>>>> master:src/Nethermind/Nethermind.Merge.Plugin/BlockProduction/Boost/BoostExecutionPayloadV1.cs
 }

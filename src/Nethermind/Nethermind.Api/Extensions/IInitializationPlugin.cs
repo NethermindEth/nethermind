@@ -15,20 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-<<<<<<<< HEAD:src/Nethermind/Nethermind.Api/Extensions/IInitializationPlugin.cs
 namespace Nethermind.Api.Extensions;
 
 public interface IInitializationPlugin : INethermindPlugin
 {
     bool ShouldRunSteps(INethermindApi api);
-========
-using System.Threading.Tasks;
-
-namespace Nethermind.Api.Extensions
-{
-    public interface ISynchronizationPlugin : INethermindPlugin
-    {
-        Task InitSynchronization();
-    }
->>>>>>>> master:src/Nethermind/Nethermind.Api/Extensions/ISynchronizationPlugin.cs
 }

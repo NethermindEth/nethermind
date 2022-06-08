@@ -170,7 +170,7 @@ namespace Nethermind.Merge.Plugin.Test
             private IBlockValidator CreateBlockValidator()
             {
                 IBlockCacheService blockCacheService = new BlockCacheService();
-                PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, blockCacheService, LogManager);
+                PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, LogManager);
                 SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
                 HeaderValidator preMergeHeaderValidator = new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager);
                 HeaderValidator = new MergeHeaderValidator(PoSSwitcher, preMergeHeaderValidator, BlockTree, SpecProvider, SealValidator, LogManager);

@@ -17,6 +17,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
