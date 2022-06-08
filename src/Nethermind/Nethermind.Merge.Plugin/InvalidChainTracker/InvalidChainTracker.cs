@@ -59,17 +59,14 @@ public class InvalidChainTracker: IInvalidChainTracker
 
     public void SetupBlockchainProcessorInterceptor(IBlockchainProcessor blockchainProcessor)
     {
-        blockchainProcessor.OnInvalidBlock += BlockchainProcessorOnOnInvalidBlock;
+        blockchainProcessor.InvalidBlock += OnBlockchainProcessorInvalidBlock;
         _disposables.Add(() =>
         {
-            blockchainProcessor.OnInvalidBlock -= BlockchainProcessorOnOnInvalidBlock;
+            blockchainProcessor.InvalidBlock -= OnBlockchainProcessorInvalidBlock;
         });
     }
 
-    private void BlockchainProcessorOnOnInvalidBlock(object? sender, IBlockchainProcessor.OnInvalidBlockArg onInvalidBlockArg)
-    {
-        OnInvalidBlock(onInvalidBlockArg.InvalidBlockHash, null);
-    }
+    private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockchainProcessor.InvalidBlockEventArgs args) => OnInvalidBlock(args.InvalidBlockHash, null);
 
     public void SetChildParent(Keccak child, Keccak parent)
     {
