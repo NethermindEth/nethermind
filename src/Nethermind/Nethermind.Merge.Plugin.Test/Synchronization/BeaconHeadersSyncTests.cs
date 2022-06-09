@@ -195,6 +195,11 @@ public class BeaconHeadersSyncTests
         Block highestBlock = syncedBlockTree.FindBlock(700, BlockTreeLookupOptions.None)!;
         blockTree.Insert(highestBlock, true);
         
+        pivot.EnsurePivot(syncedBlockTree.FindHeader(900, BlockTreeLookupOptions.None));
+        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 701);
+        
+        highestBlock = syncedBlockTree.FindBlock(900, BlockTreeLookupOptions.None)!;
+        blockTree.Insert(highestBlock, true);
         pivot.EnsurePivot(syncedBlockTree.FindHeader(999, BlockTreeLookupOptions.None));
         BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 701);
     }

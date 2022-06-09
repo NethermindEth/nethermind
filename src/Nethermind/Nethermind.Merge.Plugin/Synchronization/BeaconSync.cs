@@ -85,7 +85,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         }
 
         public bool ShouldBeInBeaconModeControl() => _isInBeaconModeControl;
-        
+
         public bool IsBeaconSyncHeadersFinished()
         {
             BlockHeader? lowestInsertedBeaconHeader = _blockTree.LowestInsertedBeaconHeader;
