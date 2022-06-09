@@ -129,7 +129,7 @@ namespace Nethermind.Merge.Plugin
             bool ttdRequirement = header.TotalDifficulty >= TerminalTotalDifficulty;
             if (ttdRequirement && header.IsGenesis)
                 return true;
-
+            
             if (ttdRequirement && header.Difficulty != 0)
             {
                 UInt256? parentTotalDifficulty = header.TotalDifficulty >= header.Difficulty ? header.TotalDifficulty - header.Difficulty : 0;

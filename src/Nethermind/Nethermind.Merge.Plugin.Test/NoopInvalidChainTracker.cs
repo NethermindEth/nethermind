@@ -15,16 +15,28 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using System.Collections.Concurrent;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 
-namespace Nethermind.Merge.Plugin.Handlers;
+namespace Nethermind.Merge.Plugin.Test;
 
-public class BlockCacheService : IBlockCacheService
+public class NoopInvalidChainTracker: IInvalidChainTracker
 {
-    public ConcurrentDictionary<Keccak, Block> BlockCache { get; } = new();
-    public Keccak? ProcessDestination { get; set; }
-    public Keccak? SyncingHead { get; set; }
-    public Keccak FinalizedHash { get; set; } = Keccak.Zero;
+    public void Dispose()
+    {
+    }
+
+    public void SetChildParent(Keccak child, Keccak parent)
+    {
+    }
+
+    public void OnInvalidBlock(Keccak failedBlock, Keccak? parent)
+    {
+    }
+
+    public bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash)
+    {
+        lastValidHash = null;
+        return false;
+    }
 }

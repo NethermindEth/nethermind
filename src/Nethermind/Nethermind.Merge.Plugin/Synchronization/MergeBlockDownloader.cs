@@ -23,9 +23,12 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -46,6 +49,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IReceiptStorage _receiptStorage;
         private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IInvalidChainTracker _invalidChainTracker;
         private int _sinceLastTimeout;
 
         public MergeBlockDownloader(
@@ -61,6 +65,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISpecProvider specProvider,
             IBetterPeerStrategy betterPeerStrategy,
             IChainLevelHelper chainLevelHelper,
+            IInvalidChainTracker invalidChainTracker,
             ILogManager logManager)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
                 specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, logManager),
@@ -75,6 +80,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _beaconPivot = beaconPivot;
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, logManager), specProvider);
+            _invalidChainTracker = invalidChainTracker;
             _logger = logManager.GetClassLogger();
         }
 
@@ -198,8 +204,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBlock} ShouldProcess: {shouldProcess}");
-                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0,
-                            _blockTree.SuggestBlock(currentBlock, suggestOptions)))
+
+                    AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
+                    if (addResult == AddBlockResult.InvalidBlock)
+                    {
+                        _invalidChainTracker.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
+                    }
+                    
+                    if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
                     {
                         if (shouldProcess == false)
                             _blockTree.UpdateMainChain(new[] { currentBlock }, false);

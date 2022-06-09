@@ -65,6 +65,8 @@ namespace Nethermind.Consensus.Processing
         private int _currentRecoveryQueueSize;
         private readonly CompositeBlockTracer _compositeBlockTracer = new();
         private Stopwatch _stopwatch = new();
+        
+        public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs> InvalidBlock;
 
         /// <summary>
         /// 
@@ -418,9 +420,7 @@ namespace Nethermind.Consensus.Processing
                     if (processingBranch.BlocksToProcess[i].Hash == invalidBlockHash)
                     {
                         _blockTree.DeleteInvalidBlock(processingBranch.BlocksToProcess[i]);
-                        if (_logger.IsDebug)
-                            _logger.Debug(
-                                $"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
+                        if (_logger.IsDebug) _logger.Debug($"Skipped processing of {processingBranch.BlocksToProcess[^1].ToString(Block.Format.FullHashAndNumber)} because of {processingBranch.BlocksToProcess[i].ToString(Block.Format.FullHashAndNumber)} is invalid");
                     }
                 }
             }
@@ -437,6 +437,11 @@ namespace Nethermind.Consensus.Processing
             }
             catch (InvalidBlockException ex)
             {
+                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs
+                {
+                    InvalidBlockHash = ex.InvalidBlockHash,
+                });
+                
                 invalidBlockHash = ex.InvalidBlockHash;
                 TraceFailingBranch(
                     processingBranch,
