@@ -15,59 +15,23 @@ namespace Nethermind.Merge.Gnosis.InitializationSteps
     {
         public InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : base(api) { }
 
-        protected override BlockProcessor CreateBlockProcessor()
+        protected override BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
         {
-            if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            if (_api.ChainHeadStateProvider == null) throw new StepDependencyException(nameof(_api.ChainHeadStateProvider));
-            if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
-            if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
-            if (_api.TransactionProcessor == null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
-            if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
-            if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
-            if (_api.StorageProvider == null) throw new StepDependencyException(nameof(_api.StorageProvider));
-            if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
-            if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
-            if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            if (_api.GasPriceOracle == null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
-            if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
-
-            var processingReadOnlyTransactionProcessorSource = CreateReadOnlyTransactionProcessorSource();
-            var txPermissionFilterOnlyTxProcessorSource = CreateReadOnlyTransactionProcessorSource();
-            ITxFilter auRaTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilter(
-                _api,
-                txPermissionFilterOnlyTxProcessorSource,
-                _api.SpecProvider,
-                new ServiceTxFilter(_api.SpecProvider));
-
-            IDictionary<long, IDictionary<Address, byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
-            ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
-
-            var processor = new AuRaMergeBlockProcessor(
+            return new AuRaMergeBlockProcessor(
                 _api.PoSSwitcher!,
-                _api.SpecProvider,
-                _api.BlockValidator,
+                _api.SpecProvider!,
+                _api.BlockValidator!,
                 _api.RewardCalculatorSource!.Get(_api.TransactionProcessor!),
                 new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor!, _api.StateProvider!),
-                _api.StateProvider,
-                _api.StorageProvider,
-                _api.ReceiptStorage,
+                _api.StateProvider!,
+                _api.StorageProvider!,
+                _api.ReceiptStorage!,
                 _api.LogManager,
-                _api.BlockTree,
-                auRaTxFilter,
+                _api.BlockTree!,
+                txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter
             );
-
-            var auRaValidator = CreateAuRaValidator(processor, processingReadOnlyTransactionProcessorSource);
-            processor.AuRaValidator = auRaValidator;
-            var reportingValidator = auRaValidator.GetReportingValidator();
-            _api.ReportingValidator = reportingValidator;
-            if (_sealValidator != null)
-            {
-                _sealValidator.ReportingValidator = reportingValidator;
-            }
-
-            return processor;
         }
 
         protected override void InitSealEngine()

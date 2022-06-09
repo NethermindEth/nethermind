@@ -83,19 +83,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             IDictionary<long,IDictionary<Address,byte[]>> rewriteBytecode = _api.ChainSpec.AuRa.RewriteBytecode;
             ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 ? new ContractRewriter(rewriteBytecode) : null;
             
-            var processor = new AuRaBlockProcessor(
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider),
-                _api.StateProvider,
-                _api.StorageProvider,
-                _api.ReceiptStorage,
-                _api.LogManager,
-                _api.BlockTree,
-                auRaTxFilter,
-                GetGasLimitCalculator(),
-                contractRewriter);
+            var processor = (AuRaBlockProcessor)NewBlockProcessor(_api, auRaTxFilter, contractRewriter);
             
             var auRaValidator = CreateAuRaValidator(processor, processingReadOnlyTransactionProcessorSource);
             processor.AuRaValidator = auRaValidator;
@@ -107,6 +95,24 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             }
 
             return processor;
+        }
+
+        protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
+        {
+            return new AuRaBlockProcessor(
+                _api.SpecProvider,
+                _api.BlockValidator,
+                _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
+                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.StateProvider),
+                _api.StateProvider,
+                _api.StorageProvider,
+                _api.ReceiptStorage,
+                _api.LogManager,
+                _api.BlockTree,
+                txFilter,
+                GetGasLimitCalculator(),
+                contractRewriter
+            );
         }
 
         protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() => 
