@@ -27,15 +27,17 @@ namespace Nethermind.Merge.AuRa
         private AuRaNethermindApi? _auraApi;
         private IAuRaMergeConfig? _auraMergeConfig;
 
+        public override bool MergeEnabled => _auraMergeConfig!.Enabled;
+
         public override async Task Init(INethermindApi nethermindApi)
         {
             _auraMergeConfig = nethermindApi.Config<IAuRaMergeConfig>();
             if (_auraMergeConfig.Enabled)
             {
+                _mergeConfig.Enabled = false; // set MergePlugin as disabled
                 await base.Init(nethermindApi);
                 _auraApi = (AuRaNethermindApi)nethermindApi;
                 _auraApi.PoSSwitcher = _poSSwitcher;
-                _mergeConfig.Enabled = false; // set MergePlugin as disabled
             }
         }
 

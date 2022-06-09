@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin
 
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            if (_mergeConfig.Enabled)
+            if (MergeEnabled)
             {
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
@@ -95,6 +95,8 @@ namespace Nethermind.Merge.Plugin
             return _api.BlockProducer;
         }
 
-        public bool Enabled => _mergeConfig.Enabled;
+        // this looks redundant but Enabled actually comes from IConsensusWrapperPlugin
+        // while MergeEnabled comes from merge config
+        public bool Enabled => MergeEnabled;
     }
 }
