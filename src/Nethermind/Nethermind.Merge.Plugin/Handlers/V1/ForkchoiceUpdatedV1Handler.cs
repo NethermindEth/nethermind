@@ -105,6 +105,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _peerRefresher.RefreshPeers(newHeadBlock.ParentHash);
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                // ToDo we should turn off BeaconModeControl, in edge case situation we could have a problem here
                 if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}."); }
 
                 return ForkchoiceUpdatedV1Result.Syncing;

@@ -1508,6 +1508,9 @@ namespace Nethermind.Blockchain
 
         private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
+            // ToDo we need unit tests for these cases
+            // ToDo if our Best -> PostMerge, we shouldn't reorganize to terminal block
+            // ToDo if PoW block TD > TTD we should check if it is terminal block
             bool ttdRequirementSatisfied =
                 TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
             bool preMergeRequirementSatisfied =
@@ -1533,25 +1536,6 @@ namespace Nethermind.Blockchain
                                                             header.TotalDifficulty >=
                                                             _specProvider.TerminalTotalDifficulty;
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
-        }
-
-        private bool IsTerminalBlock(BlockHeader header)
-        {
-            bool isTerminalBlock = false;
-            bool ttdRequirement = header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty;
-            if (ttdRequirement && header.IsGenesis)
-                return true;
-
-            if (ttdRequirement && header.IsPostMerge == false)
-            {
-                BlockHeader? parent = FindHeader(header.ParentHash, BlockTreeLookupOptions.None);
-                if (parent != null && parent.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
-                {
-                    isTerminalBlock = true;
-                }
-            }
-
-            return isTerminalBlock;
         }
 
         private void LoadStartBlock()
