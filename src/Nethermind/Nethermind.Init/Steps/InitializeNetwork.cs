@@ -189,6 +189,7 @@ namespace Nethermind.Init.Steps
                 _api.Config<ISyncConfig>(),
                 _api.WitnessRepository,
                 _api.GossipPolicy,
+                _api.SpecProvider!,
                 _api.LogManager,
                 cht);
 

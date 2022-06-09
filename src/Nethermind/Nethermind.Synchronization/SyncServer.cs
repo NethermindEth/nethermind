@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -57,6 +58,7 @@ namespace Nethermind.Synchronization
         private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
         private readonly IGossipPolicy _gossipPolicy;
+        private readonly ISpecProvider _specProvider;
         private readonly CanonicalHashTrie? _cht;
         private readonly object _dummyValue = new();
         private bool gossipStopped = false;
@@ -80,12 +82,14 @@ namespace Nethermind.Synchronization
             ISyncConfig syncConfig,
             IWitnessRepository? witnessRepository,
             IGossipPolicy gossipPolicy,
+            ISpecProvider specProvider,
             ILogManager logManager,
             CanonicalHashTrie? cht = null)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _witnessRepository = witnessRepository ?? throw new ArgumentNullException(nameof(witnessRepository));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
@@ -248,9 +252,9 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
-
-                // ToDo
-               // bool shouldSkipProcessing = _blockTree.BestSuggestedBody >= _specProvider.TerminalTotalDifficulty && (_blockTree.BestSuggestedBody.IsPostMerge || _blockTree.BestSuggestedBody.Difficulty == 0);
+                bool bestTdBetterThanTtd = _blockTree.BestSuggestedBody.TotalDifficulty >= (_specProvider.TerminalTotalDifficulty ?? 0);
+                bool bestIsPostMerge = _blockTree.BestSuggestedBody.IsPostMerge || _blockTree.BestSuggestedBody.Difficulty == 0;
+                bool shouldSkipProcessing = bestTdBetterThanTtd && bestIsPostMerge;
                 if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {syncPeer} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
                 AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.None : BlockTreeSuggestOptions.ShouldProcess);
                 if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
