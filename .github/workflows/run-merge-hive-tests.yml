@@ -17,6 +17,10 @@ on:
         required: true
         default: 'ethereum/hive'
         type: string
+      limit:
+        description: 'Limit for hive tests'
+        required: false
+        type: string
 
   workflow_dispatch:
     inputs:
@@ -36,7 +40,10 @@ on:
         required: true
         default: 'ethereum/hive'
         type: string
-        
+      limit:
+        description: 'Limit for hive tests'
+        required: false
+        type: string        
 
 jobs:
   build-dockers:
@@ -77,8 +84,12 @@ jobs:
         run: go build .
       - name: Load Docker Image
         run: docker load --input /tmp/image.tar
-      - name: Run Selected Hive
-        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }}    
+      - name: Run Hive
+        if: "${{ github.event.inputs.limit == '' }}"
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }}
+      - name: Run Hive With Limit
+        if: "${{ github.event.inputs.limit != '' }}"
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.limit ${{ github.event.inputs.limit }}
       - name: Upload Hive Results
         uses: actions/upload-artifact@v2
         with:
