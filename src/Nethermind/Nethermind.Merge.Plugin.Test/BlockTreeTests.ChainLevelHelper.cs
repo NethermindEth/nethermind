@@ -94,4 +94,17 @@ public partial class BlockTreeTests
             .AssertBestSuggestedBody(9, 10000000)
             .AssertChainLevel(0, 9);
     }
+
+    [Test]
+    public void  Correct_levels_with_chain_fork()
+    {
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .InsertBeaconBlocks(8, 9)
+            .AssertBestSuggestedBody(3)
+            .SuggestBlocksUsingChainLevels()
+            .AssertChainLevel(0, 9);
+    }
 }

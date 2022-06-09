@@ -16,6 +16,7 @@
 // 
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -257,7 +258,7 @@ public partial class BlockTreeTests
             Assert.AreEqual(AddBlockResult.Added, insertOutcome);
         }
         
-        for (int i = 10; i <14; ++i)
+        for (int i = 10; i < 14; ++i)
         {
             Block? block = syncedTree.FindBlock(i, BlockTreeLookupOptions.None);
             AddBlockResult insertOutcome = notSyncedTree.SuggestBlock(block!);
@@ -315,7 +316,7 @@ public partial class BlockTreeTests
                 {
                     NotSyncedTree.UpdateMainChain(new[] { e.Block! }, true);
                 }
-
+                
                 public ScenarioBuilder InsertBeaconPivot(long num)
                 {
                     Block? beaconBlock = SyncedTree.FindBlock(num, BlockTreeLookupOptions.None);
@@ -344,13 +345,13 @@ public partial class BlockTreeTests
                     }
                     return this;
                 }
-                
+
                 public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2)
                 {
                     BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount);
                     while (headers != null && headers.Length > 0)
                     {
-                        for (int i = 0; i < headers.Length; ++i)
+                        for (int i = 1; i < headers.Length; ++i)
                         {
                             Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
                             beaconBlock.Header.TotalDifficulty = null;
@@ -486,8 +487,9 @@ public partial class BlockTreeTests
                         {
                             Assert.True(blockInfo.TotalDifficulty != null && blockInfo.TotalDifficulty != 0);
                         }
-                        
-                        Assert.AreEqual(level.BlockInfos.Length, 1);
+
+                        ChainLevelInfo? syncedLevel = SyncedTree.FindLevel(i);
+                        Assert.True(level.BlockInfos.Any(b => b.BlockHash == syncedLevel?.BlockInfos[0].BlockHash));
                     }
 
                     return this;

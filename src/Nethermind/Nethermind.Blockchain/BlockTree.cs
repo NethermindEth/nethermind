@@ -301,15 +301,14 @@ namespace Nethermind.Blockchain
             foreach (BlockInfo blockInfo in level.BlockInfos)
             {
                 BlockHeader? header = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
-                bool isBeaconHeader = (blockInfo.Metadata & BlockMetadata.BeaconHeader) != 0;
                 if (header is not null)
                 {
-                    if (findBeacon && isBeaconHeader)
+                    if (findBeacon && blockInfo.IsBeaconHeader)
                     {
                         return true;
                     }
 
-                    if (!findBeacon && !isBeaconHeader)
+                    if (!findBeacon && !blockInfo.IsBeaconHeader)
                     {
                         return true;
                     }
@@ -330,15 +329,14 @@ namespace Nethermind.Blockchain
             foreach (BlockInfo blockInfo in level.BlockInfos)
             {
                 Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None);
-                bool isBeaconBody = (blockInfo.Metadata & BlockMetadata.BeaconBody) != 0;
                 if (block is not null)
                 {
-                    if (findBeacon && isBeaconBody)
+                    if (findBeacon && blockInfo.IsBeaconBody)
                     {
                         return true;
                     }
 
-                    if (!findBeacon && !isBeaconBody)
+                    if (!findBeacon && !blockInfo.IsBeaconBody)
                     {
                         return true;
                     }   
@@ -747,13 +745,15 @@ namespace Nethermind.Blockchain
             }
 
             bool isKnown = IsKnownBlock(header.Number, header.Hash);
-            if (!fillBeaconBlock && isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
+            if (isKnown && (BestSuggestedHeader?.Number ?? 0) >= header.Number)
             {
                 if (_logger.IsTrace) _logger.Trace($"Block {header.ToString(BlockHeader.Format.FullHashAndNumber)} already known.");
                 return AddBlockResult.AlreadyKnown;
             }
 
-            if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
+            bool parentExists = IsKnownBlock(header.Number - 1, header.ParentHash!) ||
+                                IsKnownBeaconBlock(header.Number - 1, header.ParentHash!);
+            if (!header.IsGenesis && !parentExists)
             {
                 if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
                 return AddBlockResult.UnknownParent;
