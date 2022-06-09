@@ -88,7 +88,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
-                    _mergeSyncController.InitSyncing(block.Header);
+                    _mergeSyncController.InitBeaconHeaderSync(block.Header);
                     _peerRefresher.RefreshPeers(block.ParentHash);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
@@ -111,6 +111,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _peerRefresher.RefreshPeers(newHeadBlock.ParentHash);
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                _mergeSyncController.StopBeaconModeControl();
                 if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}."); }
 
                 return ForkchoiceUpdatedV1Result.Syncing;

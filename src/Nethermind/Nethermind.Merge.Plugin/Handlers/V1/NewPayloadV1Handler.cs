@@ -221,6 +221,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     // processingQueue is empty so we can process the block in synchronous way
                     _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
+                    // ToDo this operation is not thread safe - we should modify it to use queue or make sure that nothing will be processed during execution of this method
                     processedBlock = _processor.Process(block, _processingOptions, NullBlockTracer.Instance);
                 }
                 else
