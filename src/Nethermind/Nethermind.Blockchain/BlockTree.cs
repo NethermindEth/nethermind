@@ -1518,10 +1518,10 @@ namespace Nethermind.Blockchain
             return preMergeRequirementSatisfied || postMergeRequirementSatisfied;
         }
 
-        private bool TotalDifficultyRequirementSatisfied(BlockHeader header, UInt256 totalDifficultyToCheck)
+        private bool TotalDifficultyRequirementSatisfied(BlockHeader header, UInt256 previousTotalDifficulty)
         {
             // before merge TD requirements are satisfied only if TD > block head
-            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > totalDifficultyToCheck
+            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > previousTotalDifficulty
                                                            && (header.TotalDifficulty <
                                                                _specProvider.TerminalTotalDifficulty
                                                                || _specProvider.TerminalTotalDifficulty == null);

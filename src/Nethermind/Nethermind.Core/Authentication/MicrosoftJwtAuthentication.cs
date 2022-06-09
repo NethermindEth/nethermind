@@ -21,7 +21,6 @@ using System.IO;
 using System.Linq;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Authentication;
 using Nethermind.Logging;
 
 namespace Nethermind.Core.Authentication;
