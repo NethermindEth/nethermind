@@ -199,6 +199,37 @@ public class BeaconHeadersSyncTests
         BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 701);
     }
 
+    [Test]
+    public async Task Feed_able_to_connect_to_existing_chain_through_block_hash()
+    {
+        BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
+        Block genesisBlock = syncedBlockTree.FindBlock(syncedBlockTree.GenesisHash, BlockTreeLookupOptions.None)!;
+        BlockTree blockTree = Build.A.BlockTree().TestObject;
+        blockTree.SuggestBlock(genesisBlock);
+        Block? firstBlock = syncedBlockTree.FindBlock(1, BlockTreeLookupOptions.None);
+        blockTree.SuggestBlock(firstBlock);
+        BlockHeader? pivotHeader = syncedBlockTree.FindHeader(500, BlockTreeLookupOptions.None);
+        IBeaconPivot pivot = PreparePivot(500, new SyncConfig(), blockTree, pivotHeader);
+        Context ctx = new (blockTree, new SyncConfig(), pivot);
+        // fork in chain
+        Block parent = firstBlock;
+        for (int i = 0; i < 5; i++)
+        {
+            Block block = Build.A.Block.WithParent(parent).WithNonce(1).TestObject;
+            blockTree.SuggestBlock(block);
+            parent = block;
+        }
+        
+        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
+        blockTree.BestKnownNumber.Should().Be(6);
+        BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 2);
+        HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
+        result.Should().BeNull();
+        blockTree.BestKnownNumber.Should().Be(6);
+        ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
+        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+    }
+    
     private async void BuildAndProcessHeaderSyncBatches(
         Context ctx,
         BlockTree blockTree,
@@ -208,13 +239,33 @@ public class BeaconHeadersSyncTests
         long endLowestBeaconHeader)
     {
         ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
-        ctx.Feed.InitializeFeed();
         blockTree.BestKnownNumber.Should().Be(bestPointer);
         BlockHeader? startBestHeader = syncedBlockTree.FindHeader(bestPointer, BlockTreeLookupOptions.None);
         blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
         blockTree.LowestInsertedBeaconHeader.Should().BeEquivalentTo(syncedBlockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.None));
+
+        BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, endLowestBeaconHeader);
+
+        HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
+        result.Should().BeNull();
+        // check headers are inserted into block tree during sync
+        blockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
+        blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash);
+        blockTree.BestKnownNumber.Should().Be(bestPointer);
+        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
+        ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
+        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+    }
+
+    private async void BuildHeadersSyncBatches(       
+        Context ctx,
+        BlockTree blockTree,
+        BlockTree syncedBlockTree,
+        IBeaconPivot pivot,
+        long endLowestBeaconHeader)
+    {
+        ctx.Feed.InitializeFeed();
         long lowestHeaderNumber = pivot.PivotNumber + 1;
-        
         while (lowestHeaderNumber > endLowestBeaconHeader)
         {
             HeadersSyncBatch batch = await ctx.Feed.PrepareRequest();
