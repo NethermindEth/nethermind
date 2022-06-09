@@ -21,6 +21,11 @@ on:
         description: 'Limit for hive tests'
         required: false
         type: string
+      branch:
+        description: 'Branch for hive tests'
+        default: 'master'
+        required: false
+        type: string
 
   workflow_dispatch:
     inputs:
@@ -44,6 +49,11 @@ on:
         description: 'Limit for hive tests'
         required: false
         type: string        
+      branch:
+        description: 'Branch for hive tests'
+        default: 'master'
+        required: false
+        type: string
 
 jobs:
   build-dockers:
@@ -77,7 +87,8 @@ jobs:
       - name: Check out Hive
         uses: actions/checkout@v2
         with:
-          repository: ${{ github.event.inputs.hive }} 
+          repository: ${{ github.event.inputs.hive }}
+          ref: ${{ github.event.inputs.branch }}
       - name: Change Hive configuration
         run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' clients/nethermind/Dockerfile
       - name: Build Hive
