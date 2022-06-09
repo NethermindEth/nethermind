@@ -24,6 +24,7 @@ namespace Nethermind.Merge.AuRa
 {
     public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
     {
+        private AuRaNethermindApi? _auraApi;
         private IAuRaMergeConfig? _auraMergeConfig;
 
         public override async Task Init(INethermindApi nethermindApi)
@@ -32,7 +33,8 @@ namespace Nethermind.Merge.AuRa
             if (_auraMergeConfig.Enabled)
             {
                 await base.Init(nethermindApi);
-                ((AuRaNethermindApi)nethermindApi).PoSSwitcher = _poSSwitcher;
+                _auraApi = (AuRaNethermindApi)nethermindApi;
+                _auraApi.PoSSwitcher = _poSSwitcher;
                 _mergeConfig.Enabled = false; // set MergePlugin as disabled
             }
         }
@@ -47,101 +49,19 @@ namespace Nethermind.Merge.AuRa
                 _api.LogManager
             );
 
-            // We need special one for TxPriority as its following Head separately with events and we want rules from Head, not produced block
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSourceForTxPriority =
-                new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+            ReadOnlyTxProcessingEnv constantContractsProcessingEnv = new(
+                _api.DbProvider!.AsReadOnly(false),
+                _api.ReadOnlyTrieStore,
+                _api.BlockTree!.AsReadOnly(),
+                _api.SpecProvider,
+                _api.LogManager
+            );
 
-            (TxPriorityContract? _txPriorityContract, TxPriorityContract.LocalDataSource? _localDataSource) =
-                TxAuRaFilterBuilders.CreateTxPrioritySources(
-                    _api.Config<IAuraConfig>(),
-                    (AuRaNethermindApi)_api,
-                    readOnlyTxProcessorSourceForTxPriority
-                );
-            DictionaryContractDataStore<TxPriorityContract.Destination>? minGasPricesContractDataStore = null;
-
-            if (_txPriorityContract != null || _localDataSource != null)
-            {
-                minGasPricesContractDataStore = TxAuRaFilterBuilders.CreateMinGasPricesDataStore(
-                    (AuRaNethermindApi)_api,
-                    _txPriorityContract,
-                    _localDataSource
-                );
-                _api.DisposeStack.Push(minGasPricesContractDataStore!);
-
-                ContractDataStore<Address> whitelistContractDataStore = new ContractDataStoreWithLocalData<Address>(
-                    new HashSetContractDataStoreCollection<Address>(),
-                    _txPriorityContract?.SendersWhitelist!,
-                    _api.BlockTree!,
-                    _api.ReceiptFinder!,
-                    _api.LogManager,
-                    _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>()
-                );
-
-                DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
-                    new DictionaryContractDataStore<TxPriorityContract.Destination>(
-                        new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
-                        _txPriorityContract?.Priorities!,
-                        _api.BlockTree!,
-                        _api.ReceiptFinder!,
-                        _api.LogManager,
-                        _localDataSource?.GetPrioritiesLocalDataSource()!
-                    );
-
-                _api.DisposeStack.Push(whitelistContractDataStore);
-                _api.DisposeStack.Push(prioritiesContractDataStore);
-
-                ITxFilter auraTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(
-                    _api.Config<IMiningConfig>(),
-                    (AuRaNethermindApi)_api,
-                    txProcessingEnv,
-                    minGasPricesContractDataStore,
-                    _api.SpecProvider!
-                );
-                ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
-                    .WithCustomTxFilter(auraTxFilter)
-                    .WithBaseFeeFilter(_api.SpecProvider!)
-                    .WithNullTxFilter()
-                    .Build;
-
-
-                return new TxPriorityTxSource(
-                    _api.TxPool!,
-                    _api.StateReader!,
-                    _api.LogManager,
-                    txFilterPipeline,
-                    whitelistContractDataStore,
-                    prioritiesContractDataStore,
-                    _api.SpecProvider!,
-                    _api.TransactionComparerProvider!
-                );
-            }
-            else
-            {
-                ITxFilter auraTxFilter = TxAuRaFilterBuilders.CreateAuRaTxFilterForProducer(
-                    _api.Config<IMiningConfig>(),
-                    (AuRaNethermindApi)_api,
-                    txProcessingEnv,
-                    minGasPricesContractDataStore,
-                    _api.SpecProvider!
-                );
-                ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_api.LogManager)
-                    .WithCustomTxFilter(auraTxFilter)
-                    .WithBaseFeeFilter(_api.SpecProvider!)
-                    .Build;
-                return new TxPoolTxSource(
-                    _api.TxPool,
-                    _api.SpecProvider,
-                    _api.TransactionComparerProvider,
-                    _api.LogManager,
-                    txFilterPipeline
-                );
-            }
+            return new StartBlockProducerAuRa(_auraApi!)
+                .CreateStandardTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv);
         }
 
-        public bool ShouldRunSteps(INethermindApi api)
-        {
-            var auraMergeConfig = api.Config<IAuRaMergeConfig>();
-            return auraMergeConfig.Enabled;
-        }
+        public bool ShouldRunSteps(INethermindApi api) =>
+            api.Config<IAuRaMergeConfig>().Enabled;
     }
 }
