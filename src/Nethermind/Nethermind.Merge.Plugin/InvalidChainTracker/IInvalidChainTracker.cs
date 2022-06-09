@@ -13,33 +13,32 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
 using System;
-using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing;
 
-namespace Nethermind.Consensus.Processing
+namespace Nethermind.Merge.Plugin.InvalidChainTracker;
+
+public interface IInvalidChainTracker: IDisposable
 {
-    public interface IBlockchainProcessor : IDisposable
-    {
-        ITracerBag Tracers { get; }
+    /// <summary>
+    /// Suggest that these hash are child parent of each other. Used to determine if a hash is on an invalid chain
+    /// </summary>
+    /// <param name="child"></param>
+    /// <param name="parent"></param>
+    void SetChildParent(Keccak child, Keccak parent);
 
-        void Start();
-        
-        Task StopAsync(bool processRemainingBlocks = false);
-        
-        Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer);
-
-        bool IsProcessingBlocks(ulong? maxProcessingInterval);
-        
-        event EventHandler<InvalidBlockEventArgs> InvalidBlock;
-
-        public class InvalidBlockEventArgs : EventArgs
-        {
-            public Keccak InvalidBlockHash { get; init; }
-        }
-    }
+    /// <summary>
+    /// Mark the block hash as a failed block.
+    /// </summary>
+    /// <param name="failedBlock"></param>
+    /// <param name="parent"></param>
+    void OnInvalidBlock(Keccak failedBlock, Keccak? parent);
+    
+    /// <summary>
+    /// Return last valid hash if this block is known to be on an invalid chain.
+    /// Return null otherwise
+    /// </summary>
+    bool IsOnKnownInvalidChain(Keccak blockHash, out Keccak? lastValidHash);
 }

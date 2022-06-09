@@ -24,15 +24,13 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data.V1;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin.Handlers.V1
 {
@@ -47,6 +45,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IPayloadPreparationService _payloadPreparationService;
         private readonly IBlockCacheService _blockCacheService;
+        private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private readonly IPeerRefresher _peerRefresher;
@@ -58,6 +57,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IPoSSwitcher poSSwitcher,
             IPayloadPreparationService payloadPreparationService,
             IBlockCacheService blockCacheService,
+            IInvalidChainTracker invalidChainTracker,
             IMergeSyncController mergeSyncController,
             IPeerRefresher peerRefresher,
             ILogManager logManager)
@@ -67,6 +67,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _payloadPreparationService = payloadPreparationService;
             _blockCacheService = blockCacheService;
+            _invalidChainTracker = invalidChainTracker;
             _mergeSyncController = mergeSyncController;
             _peerRefresher = peerRefresher;
             _logger = logManager.GetClassLogger();
@@ -75,7 +76,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
-            if (_logger.IsInfo) _logger.Info($"Received: {requestStr}.");
+            if (_logger.IsInfo) _logger.Info($"Received: {requestStr}");
+
+            if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak lastValidHash))
+            {
+                return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
+            }
             
             Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
             if (newHeadBlock is null) // if a head is unknown we are syncing
