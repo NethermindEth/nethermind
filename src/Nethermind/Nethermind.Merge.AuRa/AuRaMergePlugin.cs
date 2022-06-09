@@ -20,21 +20,20 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 
-namespace Nethermind.Merge.Gnosis
+namespace Nethermind.Merge.AuRa
 {
-    public class GnosisMergePlugin : MergePlugin, IInitializationPlugin
+    public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
     {
-        protected override bool MatchVariant(string? variant)
-        {
-            return variant != null && variant == "AuRa";
-        }
+        private IAuRaMergeConfig? _auraMergeConfig;
 
         public override async Task Init(INethermindApi nethermindApi)
         {
-            await base.Init(nethermindApi);
-            if (_mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant))
+            _auraMergeConfig = nethermindApi.Config<IAuRaMergeConfig>();
+            if (_auraMergeConfig.Enabled)
             {
+                await base.Init(nethermindApi);
                 ((AuRaNethermindApi)nethermindApi).PoSSwitcher = _poSSwitcher;
+                _mergeConfig.Enabled = false; // set MergePlugin as disabled
             }
         }
 
@@ -141,8 +140,8 @@ namespace Nethermind.Merge.Gnosis
 
         public bool ShouldRunSteps(INethermindApi api)
         {
-            var mergeConfig = api.Config<IMergeConfig>();
-            return mergeConfig.Enabled && MatchVariant(mergeConfig.Variant);
+            var auraMergeConfig = api.Config<IAuRaMergeConfig>();
+            return auraMergeConfig.Enabled;
         }
     }
 }

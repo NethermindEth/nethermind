@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
-    <RootNamespace>Nethermind.Merge.Gnosis</RootNamespace>
+    <RootNamespace>Nethermind.Merge.AuRa</RootNamespace>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 

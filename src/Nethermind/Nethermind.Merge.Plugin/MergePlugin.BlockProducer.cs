@@ -41,7 +41,7 @@ namespace Nethermind.Merge.Plugin
 
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            if (_mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant))
+            if (_mergeConfig.Enabled)
             {
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
@@ -95,6 +95,6 @@ namespace Nethermind.Merge.Plugin
             return _api.BlockProducer;
         }
 
-        public bool Enabled => _mergeConfig.Enabled && MatchVariant(_mergeConfig.Variant);
+        public bool Enabled => _mergeConfig.Enabled;
     }
 }

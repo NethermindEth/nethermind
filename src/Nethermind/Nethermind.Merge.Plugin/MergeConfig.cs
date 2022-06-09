@@ -24,8 +24,6 @@ namespace Nethermind.Merge.Plugin
     {
         public bool Enabled { get; set; }
 
-        public string? Variant { get; set; }
-
         public string? FeeRecipient { get; set; }
 
         public string? FinalTotalDifficulty { get; set; }

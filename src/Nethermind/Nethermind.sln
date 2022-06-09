@@ -234,11 +234,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Dns", "N
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Dns.Test", "Nethermind.Network.Dns.Test\Nethermind.Network.Dns.Test.csproj", "{0DD96857-0F06-42CA-B249-45B4AF4E81CA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Gnosis", "Nethermind.Merge.Gnosis\Nethermind.Merge.Gnosis.csproj", "{1980B129-2366-49C9-A74A-37D0B4A846E6}"
-EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.Gnosis.Test", "Nethermind.Merge.Gnosis.Test\Nethermind.Merge.Gnosis.Test.csproj", "{2B93DF63-1C1F-4C82-B5E4-C8A6DF50A31C}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Init", "Nethermind.Init\Nethermind.Init.csproj", "{7D7D6C9F-4DF9-4CAE-9AAA-76D79081B0AD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.AuRa.Test", "Nethermind.Merge.AuRa.Test\Nethermind.Merge.AuRa.Test.csproj", "{B5BE357D-69B3-4354-BC6C-F39182BE937E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Merge.AuRa", "Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj", "{F166365D-6E31-401B-9753-59EADB800E2A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -622,18 +622,18 @@ Global
 		{0DD96857-0F06-42CA-B249-45B4AF4E81CA}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0DD96857-0F06-42CA-B249-45B4AF4E81CA}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0DD96857-0F06-42CA-B249-45B4AF4E81CA}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1980B129-2366-49C9-A74A-37D0B4A846E6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1980B129-2366-49C9-A74A-37D0B4A846E6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1980B129-2366-49C9-A74A-37D0B4A846E6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1980B129-2366-49C9-A74A-37D0B4A846E6}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2B93DF63-1C1F-4C82-B5E4-C8A6DF50A31C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2B93DF63-1C1F-4C82-B5E4-C8A6DF50A31C}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2B93DF63-1C1F-4C82-B5E4-C8A6DF50A31C}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2B93DF63-1C1F-4C82-B5E4-C8A6DF50A31C}.Release|Any CPU.Build.0 = Release|Any CPU
 		{7D7D6C9F-4DF9-4CAE-9AAA-76D79081B0AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{7D7D6C9F-4DF9-4CAE-9AAA-76D79081B0AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7D7D6C9F-4DF9-4CAE-9AAA-76D79081B0AD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7D7D6C9F-4DF9-4CAE-9AAA-76D79081B0AD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B5BE357D-69B3-4354-BC6C-F39182BE937E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B5BE357D-69B3-4354-BC6C-F39182BE937E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B5BE357D-69B3-4354-BC6C-F39182BE937E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B5BE357D-69B3-4354-BC6C-F39182BE937E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F166365D-6E31-401B-9753-59EADB800E2A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F166365D-6E31-401B-9753-59EADB800E2A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F166365D-6E31-401B-9753-59EADB800E2A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F166365D-6E31-401B-9753-59EADB800E2A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

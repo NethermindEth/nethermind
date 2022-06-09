@@ -24,7 +24,7 @@ using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Merge.Gnosis.Tests
+namespace Nethermind.Merge.AuRa.Tests
 {
     class MergeAuRaTestBlockchain : EngineModuleTests.MergeTestBlockchain
     {
@@ -95,7 +95,7 @@ namespace Nethermind.Merge.Gnosis.Tests
 
     }
 
-    class GnosisMergeEngineModuleTests : EngineModuleTests
+    class AuRaMergeEngineModuleTests : EngineModuleTests
     {
         protected override async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
         {

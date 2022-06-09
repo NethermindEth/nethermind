@@ -9,7 +9,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Transactions;
 
-namespace Nethermind.Merge.Gnosis.InitializationSteps
+namespace Nethermind.Merge.AuRa.InitializationSteps
 {
     public class InitializeBlockchainAuRaMerge : InitializeBlockchainAuRa
     {

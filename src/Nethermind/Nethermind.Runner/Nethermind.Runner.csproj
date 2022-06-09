@@ -43,7 +43,7 @@
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
-    <ProjectReference Include="..\Nethermind.Merge.Gnosis\Nethermind.Merge.Gnosis.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
@@ -109,8 +109,8 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Gnosis.*;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.*;&#xD;&#xA;$(OutputPath)\Nethermind.Init.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.*;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.*" />
-    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Gnosis.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Init.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.dll;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.dll" />
+    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.*;&#xD;&#xA;$(OutputPath)\Nethermind.Init.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.*;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.*" />
+    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.AuRa.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Init.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.dll;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.dll" />
   </ItemGroup>
   <ItemGroup>
     <GitHash Include="git-hash" />

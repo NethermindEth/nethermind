@@ -29,7 +29,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 
-namespace Nethermind.Merge.Gnosis;
+namespace Nethermind.Merge.AuRa;
 
 public class AuRaMergeBlockProcessor : AuRaBlockProcessor
 {
