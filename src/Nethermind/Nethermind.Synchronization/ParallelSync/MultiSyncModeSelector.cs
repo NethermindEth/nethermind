@@ -225,7 +225,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         if (_logger.IsInfo) _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Best: {JsonConvert.SerializeObject(best, new JsonSerializerSettings { ReferenceLoopHandling = ReferenceLoopHandling.Serialize })}");
+                    if (_logger.IsTrace) _logger.Trace($"Best: {JsonConvert.SerializeObject(best, new JsonSerializerSettings { ReferenceLoopHandling = ReferenceLoopHandling.Ignore })}");
 
                     if ((newModes & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None
                         && (Current & (SyncMode.Full | SyncMode.WaitingForBlock)) == SyncMode.None)
