@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-namespace Nethermind.JsonRpc.Authentication;
+namespace Nethermind.Core.Authentication;
 
 public interface IRpcAuthentication
 {

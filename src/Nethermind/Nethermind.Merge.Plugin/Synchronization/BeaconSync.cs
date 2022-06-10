@@ -61,10 +61,15 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _isInBeaconModeControl = true;
         }
 
-        public void InitSyncing(BlockHeader? blockHeader)
+        public void InitBeaconHeaderSync(BlockHeader? blockHeader)
+        {
+            StopBeaconModeControl();
+            _beaconPivot.EnsurePivot(blockHeader);
+        }
+
+        public void StopBeaconModeControl()
         {
             _isInBeaconModeControl = false;
-            _beaconPivot.EnsurePivot(blockHeader);
         }
 
         public bool ShouldBeInBeaconHeaders()
@@ -106,6 +111,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         void StopSyncing();
 
-        void InitSyncing(BlockHeader? blockHeader);
+        void InitBeaconHeaderSync(BlockHeader? blockHeader);
+
+        void StopBeaconModeControl();
     }
 }

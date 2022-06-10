@@ -20,6 +20,7 @@ using System.Net.WebSockets;
 using System.Threading.Tasks;
 using System.Linq;
 using Microsoft.AspNetCore.Http;
+using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -37,6 +38,7 @@ namespace Nethermind.JsonRpc.WebSockets
         private readonly ILogManager _logManager;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
+        private readonly IRpcAuthentication _rpcAuthentication;
 
         public string Name { get; } = "json-rpc";
 
@@ -46,7 +48,8 @@ namespace Nethermind.JsonRpc.WebSockets
             IJsonRpcLocalStats jsonRpcLocalStats,
             ILogManager logManager,
             IJsonSerializer jsonSerializer,
-            IJsonRpcUrlCollection jsonRpcUrlCollection)
+            IJsonRpcUrlCollection jsonRpcUrlCollection,
+            IRpcAuthentication rpcAuthentication)
         {
             _jsonRpcProcessor = jsonRpcProcessor;
             _jsonRpcService = jsonRpcService;
@@ -54,20 +57,22 @@ namespace Nethermind.JsonRpc.WebSockets
             _logManager = logManager;
             _jsonSerializer = jsonSerializer;
             _jsonRpcUrlCollection = jsonRpcUrlCollection;
+            _rpcAuthentication = rpcAuthentication;
         }
 
-        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, int port, bool authenticated)
+        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, HttpContext context)
         {
+            int port = context.Connection.LocalPort;
             if (!_jsonRpcUrlCollection.TryGetValue(port, out JsonRpcUrl jsonRpcUrl) ||
                 !jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
                 throw new InvalidOperationException($"WebSocket-enabled url not defined for port {port}");
 
-            if (jsonRpcUrl.IsAuthenticated && !authenticated)
+            if (jsonRpcUrl.IsAuthenticated && !_rpcAuthentication.Authenticate(context.Request.Headers["Authorization"]))
             {
                 throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
             }
 
-            var socketsClient = new JsonRpcSocketsClient(
+            JsonRpcSocketsClient? socketsClient = new JsonRpcSocketsClient(
                 clientName, 
                 new WebSocketHandler(webSocket, _logManager), 
                 RpcEndpoint.Ws,
@@ -84,7 +89,7 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public void RemoveClient(string id)
         {
-            if (_clients.TryRemove(id, out var client) 
+            if (_clients.TryRemove(id, out ISocketsClient? client) 
                 && client is IDisposable disposableClient)
             {
                 disposableClient.Dispose();

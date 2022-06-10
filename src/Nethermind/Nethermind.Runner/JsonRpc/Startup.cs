@@ -38,12 +38,10 @@ using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
-using Newtonsoft.Json;
 
 namespace Nethermind.Runner.JsonRpc
 {
@@ -99,6 +97,8 @@ namespace Nethermind.Runner.JsonRpc
             app.UseResponseCompression();
 
             IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();
+            IRpcAuthentication? auth = app.ApplicationServices.GetService<IRpcAuthentication>();
+
             if (configProvider == null)
             {
                 throw new ApplicationException($"{nameof(IConfigProvider)} has not been loaded properly");
@@ -110,9 +110,6 @@ namespace Nethermind.Runner.JsonRpc
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();
             IHealthChecksConfig healthChecksConfig = configProvider.GetConfig<IHealthChecksConfig>();
-            IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication
-                ? NoAuthentication.Instance
-                : MicrosoftJwtAuthentication.CreateFromFileOrGenerate(jsonRpcConfig.JwtSecretFile, new ClockImpl(), logger);
 
             if (initConfig.WebSocketsEnabled)
             {
@@ -121,7 +118,7 @@ namespace Nethermind.Runner.JsonRpc
                     ctx.WebSockets.IsWebSocketRequest &&
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-                builder => builder.UseWebSocketsModules(auth));
+                builder => builder.UseWebSocketsModules());
             }
             
             app.UseEndpoints(endpoints =>

@@ -498,19 +498,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
         {
-            (TxReceipt Receipt, UInt256? EffectiveGasPrice) result = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
-            if (result.Receipt == null)
+            (TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart) = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
+            if (receipt == null)
             {
                 return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
             }
-
-            Keccak blockHash = result.Receipt.BlockHash;
-            TxReceipt[] receipts = _receiptFinder.Get(blockHash!);
-            int logIndexStart = receipts.GetBlockLogFirstIndex(result.Receipt.Index);
-            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, logIndexStart);
-
+            
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-            return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));
+            return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, effectiveGasPrice, logIndexStart)));
         }
 
         public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)
