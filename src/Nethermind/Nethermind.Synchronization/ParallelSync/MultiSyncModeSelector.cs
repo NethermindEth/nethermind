@@ -24,6 +24,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Peers;
+using Newtonsoft.Json;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -210,12 +211,6 @@ namespace Nethermind.Synchronization.ParallelSync
                             CheckAddFlag(best.IsInStateSync, canBeInSnapRangesPhase ? SyncMode.SnapSync : SyncMode.StateNodes, ref newModes);
                             CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
                             CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
-                            if (IsTheModeSwitchWorthMentioning(newModes))
-                            {
-                                string stateString = BuildStateString(best);
-                                if (_logger.IsInfo)
-                                    _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
-                            }
                         }
                         catch (InvalidAsynchronousStateException)
                         {
@@ -223,6 +218,14 @@ namespace Nethermind.Synchronization.ParallelSync
                             reason = "Snapshot Misalignment";
                         }
                     }
+                    
+                    if (IsTheModeSwitchWorthMentioning(newModes))
+                    {
+                        string stateString = BuildStateString(best);
+                        if (_logger.IsInfo) _logger.Info($"Changing state {Current} to {newModes} at {stateString}");
+                    }
+                    
+                    if (_logger.IsTrace) _logger.Trace($"Best: {JsonConvert.SerializeObject(best)}");
 
                     if ((newModes & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None
                         && (Current & (SyncMode.Full | SyncMode.WaitingForBlock)) == SyncMode.None)
@@ -279,8 +282,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
-        private static string BuildStateString(Snapshot best) =>
-            $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.PeerBlock}";
+        private static string BuildStateString(Snapshot best) => $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.PeerBlock}";
 
         private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
         {
@@ -637,7 +639,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
             => ISyncModeSelector.LogDetailedSyncModeChecks(_logger, syncType, checks);
 
-        private ref struct Snapshot
+        private struct Snapshot
         {
             public Snapshot(long processed, long state, long block, long header, long beaconHeader, long peerBlock, in UInt256 peerDifficulty, bool isInBeaconControl)
             {
