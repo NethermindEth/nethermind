@@ -52,9 +52,10 @@ namespace Nethermind.Synchronization.FastBlocks
             IBlockTree blockTree)
         {
             IPeerAllocationStrategy strategy = _priority ? _fastest : _slowest;
-            peers = _minNumber == null ? peers : peers.Where(p => p.HeadNumber >= _minNumber);
+            IEnumerable<PeerInfo>? originalPeers = peers;
+            peers = _minNumber == null ? originalPeers : originalPeers.Where(p => p.HeadNumber >= _minNumber);
             PeerInfo? allocated = strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
-            if (_logger.IsTrace) _logger.Trace($"FastBlocksAllocationStrategy allocated: {(allocated?.ToString() ?? "No peer")}, with {_minNumber}, max peer number {peers.Select(p => p.HeadNumber).MaxOrDefault()}");
+            if (_logger.IsTrace) _logger.Trace($"FastBlocksAllocationStrategy allocated: {(allocated?.ToString() ?? "No peer")}, with {_minNumber}, max peer number {originalPeers.Select(p => p.HeadNumber).MaxOrDefault()}");
             return allocated;
         }
 

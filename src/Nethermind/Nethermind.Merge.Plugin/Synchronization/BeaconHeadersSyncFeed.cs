@@ -77,10 +77,11 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         (_pivotNumber, Keccak? pivotHash) = GetPivotInfo(_pivot);
 
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
-        long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
-        Keccak? startHeaderHash = lowestInserted?.Hash ?? pivotHash;
-        UInt256? startTotalDifficulty =
-            lowestInserted?.TotalDifficulty ?? _poSSwitcher.FinalTotalDifficulty ?? null;
+        long startNumber = lowestInserted?.Number - 1 ?? _pivotNumber;
+        Keccak? startHeaderHash = lowestInserted?.ParentHash ?? pivotHash;
+        UInt256? startTotalDifficulty = lowestInserted is not null 
+            ? lowestInserted.TotalDifficulty - lowestInserted.Difficulty 
+            : _poSSwitcher.FinalTotalDifficulty ?? null;
 
         _nextHeaderHash = startHeaderHash;
         _nextHeaderDiff = startTotalDifficulty;
@@ -88,7 +89,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         _lowestRequestedHeaderNumber = startNumber + 1;
 
         _logger.Info($"Initialized beacon headers sync. lowestRequestedHeaderNumber: {_lowestRequestedHeaderNumber}," +
-                     $"lowestInsertedBlockHeader: {LowestInsertedBlockHeader?.ToString(BlockHeader.Format.FullHashAndNumber)}, pivotNumber: {_pivotNumber}, pivotDestination: {_pivot.PivotDestinationNumber}");
+                     $"lowestInsertedBlockHeader: {lowestInserted?.ToString(BlockHeader.Format.FullHashAndNumber)}, pivotNumber: {_pivotNumber}, pivotDestination: {_pivot.PivotDestinationNumber}");
     }
 
     protected override void FinishAndCleanUp()
