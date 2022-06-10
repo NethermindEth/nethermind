@@ -68,8 +68,17 @@ namespace Nethermind.Merge.AuRa.Tests
             PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
                 blockProducerEnv, ((EngineModuleTests.MergeTestBlockchain)this).BlockProductionTrigger);
             PostMergeBlockProducer = postMergeBlockProducer;
-            PayloadPreparationService ??= new PayloadPreparationService(postMergeBlockProducer, ((EngineModuleTests.MergeTestBlockchain)this).BlockProductionTrigger, SealEngine,
-                MergeConfig, TimerFactory.Default, LogManager);
+            PayloadPreparationService ??= new PayloadPreparationService(
+                postMergeBlockProducer,
+                new BlockImprovementContextFactory(
+                    ((EngineModuleTests.MergeTestBlockchain)this).BlockProductionTrigger,
+                    TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
+                ),
+                SealEngine,
+                TimerFactory.Default,
+                LogManager,
+                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
+            );
 
             IAuRaStepCalculator auraStepCalculator = Substitute.For<IAuRaStepCalculator>();
             auraStepCalculator.TimeToNextStep.Returns(TimeSpan.FromMilliseconds(0));
