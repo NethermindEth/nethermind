@@ -70,6 +70,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public Keccak PivotHash => CurrentBeaconPivot?.Hash ?? _syncConfig.PivotHashParsed;
 
+        public Keccak? PivotParentHash => CurrentBeaconPivot?.ParentHash;
+
         public UInt256? PivotTotalDifficulty => CurrentBeaconPivot is null ?
             _syncConfig.PivotTotalDifficultyParsed : CurrentBeaconPivot.TotalDifficulty;
 

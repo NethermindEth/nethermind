@@ -40,6 +40,8 @@ public class Pivot : IPivot
 
     public Keccak? PivotHash { get; }
 
+    public Keccak? PivotParentHash => null;
+
     public UInt256? PivotTotalDifficulty { get; }
         
     public long PivotDestinationNumber { get; }

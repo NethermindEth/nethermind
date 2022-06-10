@@ -35,7 +35,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 {
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IPivot _pivot;
-    private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
@@ -60,7 +59,6 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     {
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
-        _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
         _logger = logManager.GetClassLogger();
     }
 
@@ -73,11 +71,14 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
     public override void InitializeFeed()
     {
-        _pivotNumber = _pivot.PivotNumber;
+        (long number, Keccak? hash) GetPivotInfo(IPivot pivot) => 
+            pivot.PivotParentHash is null ? (pivot.PivotNumber, pivot.PivotHash) : (pivot.PivotNumber - 1, pivot.PivotParentHash);
+
+        (_pivotNumber, Keccak? pivotHash) = GetPivotInfo(_pivot);
 
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
-        Keccak? startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash;
+        Keccak? startHeaderHash = lowestInserted?.Hash ?? pivotHash;
         UInt256? startTotalDifficulty =
             lowestInserted?.TotalDifficulty ?? _poSSwitcher.FinalTotalDifficulty ?? null;
 

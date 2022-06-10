@@ -25,6 +25,8 @@ namespace Nethermind.Synchronization
         long PivotNumber { get; }
 
         Keccak? PivotHash { get; }
+        
+        Keccak? PivotParentHash { get; }
 
         UInt256? PivotTotalDifficulty { get; }
         
