@@ -101,8 +101,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
                    notFinishedBeaconHeaderSync;
         }
 
-        public bool ShouldBeInBeaconModeControl() => _isInBeaconModeControl;
-        
+        public bool ShouldBeInBeaconModeControl()
+        {
+            if (_logger.IsTrace) ISyncModeSelector.LogDetailedSyncModeChecks(_logger, "BEACONCONTROL", (nameof(_isInBeaconModeControl), _isInBeaconModeControl));
+            return _isInBeaconModeControl;
+        }
+
         public bool IsBeaconSyncHeadersFinished()
         {
             long lowestInsertedBeaconHeader = _blockTree.LowestInsertedBeaconHeader?.Number ?? 0;
