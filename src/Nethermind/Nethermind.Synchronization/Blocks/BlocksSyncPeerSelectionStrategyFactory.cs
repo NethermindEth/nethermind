@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
@@ -22,6 +23,13 @@ namespace Nethermind.Synchronization.Blocks
 {
     internal class BlocksSyncPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<BlocksRequest?>
     {
+        private readonly ILogManager _logManager;
+
+        public BlocksSyncPeerAllocationStrategyFactory(ILogManager logManager)
+        {
+            _logManager = logManager;
+        }
+        
         public IPeerAllocationStrategy Create(BlocksRequest? request)
         {
             // because of the way the generics cannot handle T / T?
@@ -31,7 +39,7 @@ namespace Nethermind.Synchronization.Blocks
                     $"NULL received for allocation in {nameof(BlocksSyncPeerAllocationStrategyFactory)}");
             }
             
-            IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored);
+            IPeerAllocationStrategy baseStrategy = new BlocksSyncPeerAllocationStrategy(request.NumberOfLatestBlocksToBeIgnored, _logManager);
 
             TotalDiffStrategy totalDiffStrategy = new(baseStrategy);
             return totalDiffStrategy;

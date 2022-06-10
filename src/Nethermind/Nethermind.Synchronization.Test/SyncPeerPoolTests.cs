@@ -385,7 +385,7 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.Start();
             ctx.Pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA, "A"));
             await WaitForPeersInitialization(ctx);
-            var allocation = await ctx.Pool.Allocate(new BlocksSyncPeerAllocationStrategy(null));
+            var allocation = await ctx.Pool.Allocate(new BlocksSyncPeerAllocationStrategy(null, LimboLogs.Instance));
             bool replaced = false;
             allocation.Replaced += (sender, args) => replaced = true;
             ctx.Pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyB, "B"));
@@ -603,7 +603,7 @@ namespace Nethermind.Synchronization.Test
             await using Context ctx = new();
             var peers = await SetupPeers(ctx, 1);
 
-            var allocation = await ctx.Pool.Allocate(new BlocksSyncPeerAllocationStrategy(null));
+            var allocation = await ctx.Pool.Allocate(new BlocksSyncPeerAllocationStrategy(null, LimboLogs.Instance));
             ctx.Pool.RemovePeer(peers[0]);
 
             Assert.Null(allocation.Current);

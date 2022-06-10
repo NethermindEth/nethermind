@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.Blocks
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new(syncFeed, _syncPeerPool, _blockTree, _blockValidator, _sealValidator, _syncReport,
-                _receiptStorage, _specProvider, new BlocksSyncPeerAllocationStrategyFactory(), _betterPeerStrategy, _logManager);
+                _receiptStorage, _specProvider, new BlocksSyncPeerAllocationStrategyFactory(_logManager), _betterPeerStrategy, _logManager);
         }
     }
     
