@@ -22,6 +22,7 @@ using Nethermind.Api.Extensions;
 
 namespace Nethermind.Merge.AuRa
 {
+    // IMPORTANT: this plugin should always come before MergePlugin
     public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _auraApi;
