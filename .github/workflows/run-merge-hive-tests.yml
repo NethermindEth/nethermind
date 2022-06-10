@@ -12,15 +12,15 @@ on:
         type: choice
         options:
         - ethereum/engine        
-      hive:
-        description: 'Repository for hive tests'
-        required: true
-        default: 'ethereum/hive'
-        type: string
       limit:
         description: 'Limit for hive tests'
         required: false
         type: string
+      hive:
+        description: 'Repository for hive tests'
+        required: true
+        default: 'ethereum/hive'
+        type: string        
       branch:
         description: 'Branch for hive tests'
         default: 'master'
@@ -40,14 +40,14 @@ on:
         - devp2p
         - ethereum/graphql
         - ethereum/consensus
+      limit:
+        description: 'Limit for hive tests'
+        required: false
+        type: string        
       hive:
         description: 'Repository for hive tests'
         required: true
         default: 'ethereum/hive'
-        type: string
-      limit:
-        description: 'Limit for hive tests'
-        required: false
         type: string        
       branch:
         description: 'Branch for hive tests'
