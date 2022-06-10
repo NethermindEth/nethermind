@@ -61,12 +61,18 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         public Block PrepareEmptyBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader blockHeader = PrepareBlockHeader(parent, payloadAttributes);
-            blockHeader.StateRoot = parent.StateRoot;
             blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
-            Block block = new (blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
-            block.Header.Hash = block.CalculateHash();
+            Block block = new(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
+
+            // processing is only done here to apply block rewards in AuRa
+            if (TrySetState(parent.StateRoot))
+            {
+                Block? processed = ProcessPreparedBlock(block, null);
+                if (processed != null)
+                    block = processed;
+            }
             return block;
         }
         
@@ -77,13 +83,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             // TODO: this seems to me that it should be done in the Eth2 seal engine?
             block.Header.ExtraData = Array.Empty<byte>();
             block.Header.IsPostMerge = true;
-
-            if (TrySetState(parent.StateRoot))
-            {
-                Block? processed = ProcessPreparedBlock(block, null);
-                if (processed != null)
-                    block = processed;
-            }
             return block;
         }
 
