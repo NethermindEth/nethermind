@@ -24,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Merge.Plugin.Synchronization
 {
@@ -74,11 +75,27 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool ShouldBeInBeaconHeaders()
         {
-            bool beaconPivotExists =  _beaconPivot.BeaconPivotExists();
+            bool beaconPivotExists = _beaconPivot.BeaconPivotExists();
             bool notInBeaconModeControl = !_isInBeaconModeControl;
-            bool notFinishedBeaconHeaderSync = !IsBeaconSyncHeadersFinished();
-            
-            if (_logger.IsTrace) _logger.Trace($"ShouldBeInBeaconHeaders: NotInBeaconModeControl: {notInBeaconModeControl}, BeaconPivotExists: {beaconPivotExists}, NotFinishedBeaconHeaderSync: {notFinishedBeaconHeaderSync} LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
+            // bool notFinishedBeaconHeaderSync = !IsBeaconSyncHeadersFinished();
+
+            long lowestInsertedBeaconHeader = _blockTree.LowestInsertedBeaconHeader?.Number ?? 0;
+            bool lowestInsertedBeaconHeaderNotExists = _blockTree.LowestInsertedBeaconHeader is null;
+            bool lowestInsertedBeaconHeaderBelowPivotDestination = lowestInsertedBeaconHeader <= _beaconPivot.PivotDestinationNumber;
+            bool notFinishedBeaconHeaderSync = !(lowestInsertedBeaconHeaderNotExists || lowestInsertedBeaconHeaderBelowPivotDestination);
+                // || lowestedBeaconHeaderNumber <= (_blockTree.BestSuggestedHeader?.Number ?? long.MaxValue); ToDo Sarah
+
+            if (_logger.IsTrace)
+            {
+                ISyncModeSelector.LogDetailedSyncModeChecks(_logger, "BEACONHEADERS",
+                    (nameof(beaconPivotExists), beaconPivotExists),
+                    (nameof(notInBeaconModeControl), notInBeaconModeControl),
+                    (nameof(notFinishedBeaconHeaderSync), notFinishedBeaconHeaderSync),
+                    (nameof(lowestInsertedBeaconHeaderNotExists), lowestInsertedBeaconHeaderNotExists),
+                    (nameof(lowestInsertedBeaconHeaderBelowPivotDestination), lowestInsertedBeaconHeaderBelowPivotDestination));
+                _logger.Trace($"BeaconPivotExists: {_beaconPivot.BeaconPivotExists()}, LowestInsertedBeaconHeaderNumber: {_blockTree.LowestInsertedBeaconHeader?.Number}, BeaconPivot: {_beaconPivot.PivotNumber}, BeaconPivotDestinationNumber: {_beaconPivot.PivotDestinationNumber}");
+            }
+
             return beaconPivotExists &&
                    notInBeaconModeControl &&
                    notFinishedBeaconHeaderSync;

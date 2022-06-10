@@ -15,6 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Logging;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
@@ -27,5 +30,27 @@ namespace Nethermind.Synchronization.ParallelSync
         event EventHandler<SyncModeChangedEventArgs> Changing;
         
         event EventHandler<SyncModeChangedEventArgs> Changed;
+        
+        public static void LogDetailedSyncModeChecks(ILogger logger, string syncType, params (string Name, bool IsSatisfied)[] checks)
+        {
+            List<string> matched = new();
+            List<string> failed = new();
+
+            foreach ((string Name, bool IsSatisfied) check in checks)
+            {
+                if (check.IsSatisfied)
+                {
+                    matched.Add(check.Name);
+                }
+                else
+                {
+                    failed.Add(check.Name);
+                }
+            }
+
+            bool result = checks.All(c => c.IsSatisfied);
+            string text = $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
+            logger.Trace(text);
+        }
     }
 }
