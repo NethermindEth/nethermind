@@ -4,24 +4,63 @@ on:
   push:
     tags:
     - '*'
+    inputs:
+      testSuite:
+        description: 'Test suite'
+        required: true
+        default: 'ethereum/engine' 
+        type: choice
+        options:
+        - ethereum/engine        
+      hive:
+        description: 'Repository for hive tests'
+        required: true
+        default: 'ethereum/hive'
+        type: string
+      limit:
+        description: 'Limit for hive tests'
+        required: false
+        type: string
+      branch:
+        description: 'Branch for hive tests'
+        default: 'master'
+        required: false
+        type: string
+
   workflow_dispatch:
     inputs:
       testSuite:
         description: 'Test suite'
-        required: false
+        required: true
         default: 'ethereum/engine' 
         type: choice
         options:
-        - ethereum/engine
-        - ethereum/consensus
+        - ethereum/engine        
         - ethereum/rpc
         - devp2p
         - ethereum/graphql
+        - ethereum/consensus
+      hive:
+        description: 'Repository for hive tests'
+        required: true
+        default: 'ethereum/hive'
+        type: string
+      limit:
+        description: 'Limit for hive tests'
+        required: false
+        type: string        
+      branch:
+        description: 'Branch for hive tests'
+        default: 'master'
+        required: false
+        type: string
 
 jobs:
   build-dockers:
     runs-on: ubuntu-latest
     steps:
+      - name: Output Inputs
+        run: echo "${{ toJSON(github.event.inputs) }}"
       - name: Checking out Nethermind
         uses: actions/checkout@v2
       - name: Unshallow fetching
@@ -48,19 +87,20 @@ jobs:
       - name: Check out Hive
         uses: actions/checkout@v2
         with:
-          repository: 'ethereum/hive'
+          repository: ${{ github.event.inputs.hive }}
+          ref: ${{ github.event.inputs.branch }}
       - name: Change Hive configuration
         run: sed -i 's#FROM nethermindeth/hive:$branch#FROM nethermind:test-${{ github.sha }}#g' clients/nethermind/Dockerfile
       - name: Build Hive
         run: go build .
       - name: Load Docker Image
         run: docker load --input /tmp/image.tar
-      - name: Run Merge Hive
-        if: "${{ github.event.inputs.testSuite == '' }}"
-        run: ./hive --client nethermind --sim ethereum/engine
-      - name: Run Selected Hive
-        if: "${{ github.event.inputs.testSuite != '' }}"
-        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }}    
+      - name: Run Hive
+        if: "${{ github.event.inputs.limit == '' }}"
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }}
+      - name: Run Hive With Limit
+        if: "${{ github.event.inputs.limit != '' }}"
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.limit ${{ github.event.inputs.limit }}
       - name: Upload Hive Results
         uses: actions/upload-artifact@v2
         with:
