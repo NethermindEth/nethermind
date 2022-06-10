@@ -161,6 +161,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     
                     if (!FastSyncEnabled)
                     {
+                        best.IsInWaitingForBlock = ShouldBeInFullSyncMode(best);
                         best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
                         
                         if (best.IsInWaitingForBlock)
@@ -634,26 +635,7 @@ namespace Nethermind.Synchronization.ParallelSync
         }
 
         private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
-        {
-            List<string> matched = new();
-            List<string> failed = new();
-
-            foreach ((string Name, bool IsSatisfied) check in checks)
-            {
-                if (check.IsSatisfied)
-                {
-                    matched.Add(check.Name);
-                }
-                else
-                {
-                    failed.Add(check.Name);
-                }
-            }
-
-            bool result = checks.All(c => c.IsSatisfied);
-            string text = $"{(result ? " * " : "   ")}{syncType.PadRight(20)}: yes({string.Join(", ", matched)}), no({string.Join(", ", failed)})";
-            _logger.Trace(text);
-        }
+            => ISyncModeSelector.LogDetailedSyncModeChecks(_logger, syncType, checks);
 
         private ref struct Snapshot
         {
