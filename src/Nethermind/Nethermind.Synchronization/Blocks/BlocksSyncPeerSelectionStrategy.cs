@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
@@ -28,13 +29,15 @@ namespace Nethermind.Synchronization.Blocks
     public class BlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
     {
         private readonly long? _minBlocksAhead;
+        private readonly ILogger _logger;
 
         private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
         private const int MinDiffForSpeedSwitch = 10;
 
-        public BlocksSyncPeerAllocationStrategy(long? minBlocksAhead)
+        public BlocksSyncPeerAllocationStrategy(long? minBlocksAhead, ILogManager logManager)
         {
             _minBlocksAhead = minBlocksAhead;
+            _logger = logManager.GetClassLogger<BlocksSyncPeerAllocationStrategy>();
         }
 
         public bool CanBeReplaced => true;
@@ -56,6 +59,7 @@ namespace Nethermind.Synchronization.Blocks
             int nullSpeed = -1;
             decimal averageSpeed = 0M;
             int peersCount = 0;
+            int consideredPeersCount = 0;
 
             bool wasNull = currentPeer == null;
 
@@ -69,7 +73,7 @@ namespace Nethermind.Synchronization.Blocks
 
             foreach (PeerInfo info in peers)
             {
-                (this as IPeerAllocationStrategy).CheckAsyncState(info);
+                this.CheckAsyncState(info);
                 peersCount++;
 
                 if (_minBlocksAhead != null)
@@ -81,7 +85,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
-                // TODO: this is not needed -> always wtapped
+                // TODO: this is not needed -> always wrapped
                 // if (info.TotalDifficulty <= localTotalDiff)
                 // {
                 //     // if we require higher difficulty then we need to discard peers with same diff as ours
@@ -95,6 +99,8 @@ namespace Nethermind.Synchronization.Blocks
                     // note this is only 2 difficulty difference which means that is just for the POA / Clique chains
                     continue;
                 }
+
+                consideredPeersCount++;
 
                 long averageTransferSpeed = GetSpeed(nodeStatsManager, info) ?? 0;
 
@@ -111,35 +117,40 @@ namespace Nethermind.Synchronization.Blocks
                 }
             }
 
+            PeerInfo? result;
             if (peersCount == 0)
             {
-                return currentPeer;
+                result = currentPeer;
             }
-
-            if (bestDiffPeer.Info == null)
+            else if (bestDiffPeer.Info == null)
             {
-                return fastestPeer.Info;
+                result = fastestPeer.Info;
             }
-
-            averageSpeed /= peersCount;
-            UInt256 difficultyDifference = bestDiffPeer.Info.TotalDifficulty - localTotalDiff;
-
-            // at least 1 diff times 16 blocks of diff
-            if (difficultyDifference > 0
-                && difficultyDifference < ((blockTree.Head?.Difficulty ?? 0) + 1) * 16
-                && bestDiffPeer.TransferSpeed > averageSpeed)
+            else
             {
-                return bestDiffPeer.Info;
-            }
+                averageSpeed /= peersCount;
+                UInt256 difficultyDifference = bestDiffPeer.Info.TotalDifficulty - localTotalDiff;
 
-            decimal speedRatio = fastestPeer.TransferSpeed / (decimal) Math.Max(1L, currentSpeed);
-            if (speedRatio > 1m + MinDiffPercentageForSpeedSwitch
-                && fastestPeer.TransferSpeed - currentSpeed > MinDiffForSpeedSwitch)
-            {
-                return fastestPeer.Info;
+                // at least 1 diff times 16 blocks of diff
+                if (difficultyDifference > 0
+                    && difficultyDifference < ((blockTree.Head?.Difficulty ?? 0) + 1) * 16
+                    && bestDiffPeer.TransferSpeed > averageSpeed)
+                {
+                    result = bestDiffPeer.Info;
+                }
+                else
+                {
+                    decimal speedRatio = fastestPeer.TransferSpeed / (decimal) Math.Max(1L, currentSpeed);
+                    result = speedRatio > 1m + MinDiffPercentageForSpeedSwitch && fastestPeer.TransferSpeed - currentSpeed > MinDiffForSpeedSwitch
+                        ? fastestPeer.Info
+                        : currentPeer ?? fastestPeer.Info;
+                }
             }
-
-            return currentPeer ?? fastestPeer.Info;
+            
+            if (_logger.IsTrace) _logger.Trace($"{nameof(BlocksSyncPeerAllocationStrategy)}: Result of peer allocation {result} from {peersCount} peers {consideredPeersCount} were considered.");
+            return result;
         }
+
+        public override string ToString() => $"{nameof(BlocksSyncPeerAllocationStrategy)} ({_minBlocksAhead})";
     }
 }

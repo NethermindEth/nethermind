@@ -41,7 +41,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
             foreach (PeerInfo info in peers)
             {
-                (this as IPeerAllocationStrategy).CheckAsyncState(info);
+                this.CheckAsyncState(info);
 
                 long averageTransferSpeed = nodeStatsManager.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed(_speedType) ?? 0;
                 if (_priority ? averageTransferSpeed > bestPeer.TransferSpeed : averageTransferSpeed < bestPeer.TransferSpeed)
@@ -52,5 +52,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
             return bestPeer.Info;
         }
+
+        public override string ToString() => $"{nameof(BySpeedStrategy)} ({_speedType}, {_priority})";
     }
 }

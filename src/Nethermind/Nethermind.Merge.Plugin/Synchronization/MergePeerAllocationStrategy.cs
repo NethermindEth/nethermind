@@ -50,16 +50,19 @@ public class MergePeerAllocationStrategy : IPeerAllocationStrategy
     public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
     {
         UInt256? terminalTotalDifficulty = _poSSwitcher.TerminalTotalDifficulty;
-        bool isPostMerge = _poSSwitcher.HasEverReachedTerminalBlock() || _poSSwitcher.TransitionFinished;
+        bool isPostMerge = IsPostMerge;
         bool anyPostMergePeers = peers.Any(p => p.TotalDifficulty >= terminalTotalDifficulty);
         PeerInfo? peerInfo = currentPeer; 
-        if (_logger.IsTrace) _logger.Trace($"MergePeerAllocationStrategy: IsPostMerge: {isPostMerge} AnyPostMergePeers: {anyPostMergePeers}, CurrentPeer: {currentPeer} Peers: {string.Join(",", peers?.Select(peer => peer.ToString()))}");
-        if (isPostMerge || anyPostMergePeers)
-            peerInfo = _postMergeAllocationStrategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= terminalTotalDifficulty), nodeStatsManager, blockTree);
-        else
-            peerInfo = _preMergeAllocationStrategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
+        if (_logger.IsTrace) _logger.Trace($"{nameof(MergePeerAllocationStrategy)}: IsPostMerge: {isPostMerge} AnyPostMergePeers: {anyPostMergePeers}, CurrentPeer: {currentPeer} Peers: {string.Join(",", peers)}");
+        peerInfo = isPostMerge || anyPostMergePeers
+            ? _postMergeAllocationStrategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= terminalTotalDifficulty), nodeStatsManager, blockTree)
+            : _preMergeAllocationStrategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
 
-        if (_logger.IsTrace) _logger.Trace($"MergePeerAllocationStrategy: Result of peer allocation {peerInfo}");
+        if (_logger.IsTrace) _logger.Trace($"{nameof(MergePeerAllocationStrategy)}: Result of peer allocation {peerInfo}");
         return peerInfo;
     }
+
+    private bool IsPostMerge => _poSSwitcher.HasEverReachedTerminalBlock() || _poSSwitcher.TransitionFinished;
+
+    public override string ToString() => $"{nameof(MergePeerAllocationStrategy)} ({(IsPostMerge ? _postMergeAllocationStrategy.ToString() : _preMergeAllocationStrategy.ToString())})";
 }

@@ -55,19 +55,17 @@ namespace Nethermind.Synchronization.Peers
         {
             PeerInfo? current = Current;
             PeerInfo? selected = _peerAllocationStrategy.Allocate(Current, peers, nodeStatsManager, blockTree);
-            if (selected == current)
+            if (selected != current)
             {
-                return;
-            }
-
-            lock (_allocationLock)
-            {
-                if (selected != null && selected.TryAllocate(Contexts))
+                lock (_allocationLock)
                 {
-                    Current = selected;
-                    AllocationChangeEventArgs args = new(current, selected);
-                    current?.Free(Contexts);
-                    Replaced?.Invoke(this, args);
+                    if (selected != null && selected.TryAllocate(Contexts))
+                    {
+                        Current = selected;
+                        AllocationChangeEventArgs args = new(current, selected);
+                        current?.Free(Contexts);
+                        Replaced?.Invoke(this, args);
+                    }
                 }
             }
         }

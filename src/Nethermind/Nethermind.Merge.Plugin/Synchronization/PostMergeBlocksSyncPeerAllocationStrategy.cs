@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -27,34 +28,27 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
 {
     private readonly long? _minBlocksAhead;
+    private readonly ILogger _logger;
 
     private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
     private const int MinDiffForSpeedSwitch = 10;
 
-    public PostMergeBlocksSyncPeerAllocationStrategy(long? minBlocksAhead)
+    public PostMergeBlocksSyncPeerAllocationStrategy(long? minBlocksAhead, ILogManager logManager)
     {
         _minBlocksAhead = minBlocksAhead;
+        _logger = logManager.GetClassLogger<PostMergeBlocksSyncPeerAllocationStrategy>();
     }
 
     public bool CanBeReplaced => true;
 
-    private long? GetSpeed(INodeStatsManager nodeStatsManager, PeerInfo peerInfo)
-    {
-        long? bodiesSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node)
-            .GetAverageTransferSpeed(TransferSpeedType.Bodies);
-        if (bodiesSpeed == null)
-        {
-            return null;
-        }
+    private long? GetSpeed(INodeStatsManager nodeStatsManager, PeerInfo peerInfo) =>
+        nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Bodies);
 
-        return bodiesSpeed ?? 0;
-    }
-
-    public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager,
-        IBlockTree blockTree)
+    public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
     {
         int nullSpeed = -1;
         int peersCount = 0;
+        int consideredPeersCount = 0;
 
         bool wasNull = currentPeer == null;
 
@@ -65,7 +59,7 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
 
         foreach (PeerInfo info in peers)
         {
-            (this as IPeerAllocationStrategy).CheckAsyncState(info);
+            this.CheckAsyncState(info);
             peersCount++;
             
             if (info.HeadNumber < (blockTree.BestSuggestedBody?.Number ?? 0) + (_minBlocksAhead ?? 1))
@@ -74,6 +68,8 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
                 continue;
             }
 
+            consideredPeersCount++;
+
             long averageTransferSpeed = GetSpeed(nodeStatsManager, info) ?? 0;
             if (averageTransferSpeed > fastestPeer.TransferSpeed)
             {
@@ -81,18 +77,23 @@ public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
             }
         }
 
+        PeerInfo? result;
         if (peersCount == 0)
         {
-            return currentPeer;
+            result = currentPeer;
         }
-
-        decimal speedRatio = fastestPeer.TransferSpeed / (decimal)Math.Max(1L, currentSpeed);
-        if (speedRatio > 1m + MinDiffPercentageForSpeedSwitch
-            && fastestPeer.TransferSpeed - currentSpeed > MinDiffForSpeedSwitch)
+        else
         {
-            return fastestPeer.Info;
+            decimal speedRatio = fastestPeer.TransferSpeed / (decimal)Math.Max(1L, currentSpeed);
+            result = speedRatio > 1m + MinDiffPercentageForSpeedSwitch && fastestPeer.TransferSpeed - currentSpeed > MinDiffForSpeedSwitch 
+                ? fastestPeer.Info 
+                : currentPeer ?? fastestPeer.Info;
         }
+        
+        if (_logger.IsTrace) _logger.Trace($"{nameof(PostMergeBlocksSyncPeerAllocationStrategy)}: Result of peer allocation {result} from {peersCount} peers {consideredPeersCount} were considered.");
 
-        return currentPeer ?? fastestPeer.Info;
+        return result;
     }
+
+    public override string ToString() => $"{nameof(PostMergeBlocksSyncPeerAllocationStrategy)} ({_minBlocksAhead})";
 }

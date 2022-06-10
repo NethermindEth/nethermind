@@ -46,7 +46,7 @@ public class ClientTypeStrategy : IPeerAllocationStrategy
     public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
     {
         IEnumerable<PeerInfo> originalPeers = peers;
-        peers = peers.Where(p => _supportedClientTypes.Contains(p.PeerClientType));
+        peers = originalPeers.Where(p => _supportedClientTypes.Contains(p.PeerClientType));
         
         if (_allowOtherIfNone)
         {
@@ -57,4 +57,6 @@ public class ClientTypeStrategy : IPeerAllocationStrategy
         }
         return _strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
     }
+
+    public override string ToString() => $"{nameof(ClientTypeStrategy)} ({_strategy}, {_allowOtherIfNone}, [{string.Join(", ", _supportedClientTypes)}])";
 }

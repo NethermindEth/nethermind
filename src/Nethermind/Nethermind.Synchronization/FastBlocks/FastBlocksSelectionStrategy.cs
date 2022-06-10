@@ -53,5 +53,7 @@ namespace Nethermind.Synchronization.FastBlocks
             PeerInfo? allocated = strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
             return allocated;
         }
+
+        public override string ToString() => $"{nameof(FastBlocksAllocationStrategy)} ({_fastest}, {_slowest})";
     }
 }

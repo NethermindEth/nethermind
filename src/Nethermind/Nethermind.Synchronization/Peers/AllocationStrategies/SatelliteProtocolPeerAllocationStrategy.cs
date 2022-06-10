@@ -35,9 +35,9 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             _protocol = protocol;
         }
 
-        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
-        {
-            return _strategy.Allocate(currentPeer, peers.Where(p => p.SyncPeer.TryGetSatelliteProtocol<T>(_protocol, out _)), nodeStatsManager, blockTree);
-        }
+        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree) => 
+            _strategy.Allocate(currentPeer, peers.Where(p => p.SyncPeer.TryGetSatelliteProtocol<T>(_protocol, out _)), nodeStatsManager, blockTree);
+
+        public override string ToString() => $"{nameof(SatelliteProtocolPeerAllocationStrategy<T>)}.{typeof(T).FullName} ({_strategy}, {_protocol})";
     }
 }

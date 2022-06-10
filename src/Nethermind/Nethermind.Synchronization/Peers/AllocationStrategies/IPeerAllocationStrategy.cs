@@ -34,12 +34,15 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             IEnumerable<PeerInfo> peers,
             INodeStatsManager nodeStatsManager,
             IBlockTree blockTree);
+    }
 
-        public void CheckAsyncState(PeerInfo info)
+    public static class PeerAllocationStrategyExtensions
+    {
+        public static void CheckAsyncState(this IPeerAllocationStrategy strategy, PeerInfo info)
         {
             if (!info.IsInitialized)
             {
-                throw new InvalidAsynchronousStateException($"{GetType().Name} found an initialized peer - {info}");
+                throw new InvalidAsynchronousStateException($"{strategy.GetType().Name} found an initialized peer - {info}");
             }
         }
     }

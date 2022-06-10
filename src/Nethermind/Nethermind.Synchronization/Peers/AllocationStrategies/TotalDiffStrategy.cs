@@ -75,5 +75,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
             
             return _strategy.Allocate(currentPeer, peers.Where(p => p.TotalDifficulty >= currentDiff), nodeStatsManager, blockTree);
         }
+
+        public override string ToString() => $"{nameof(TotalDiffStrategy)} ({_strategy}, {_selectionType})";
     }
 }

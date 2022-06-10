@@ -30,9 +30,9 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
         }
 
         public bool CanBeReplaced => false;
-        public PeerInfo Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
-        {
-            return _peerInfo;
-        }
+        
+        public PeerInfo Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree) => _peerInfo;
+
+        public override string ToString() => $"{nameof(StaticStrategy)} ({_peerInfo})";
     }
 }

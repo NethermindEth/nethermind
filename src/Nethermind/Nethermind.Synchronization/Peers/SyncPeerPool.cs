@@ -362,7 +362,9 @@ namespace Nethermind.Synchronization.Peers
             {
                 lock (_isAllocatedChecks)
                 {
-                    allocation.AllocateBestPeer(InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts)), _stats, _blockTree);
+                    IEnumerable<PeerInfo> peerInfos = InitializedPeers.Where(p => p.CanBeAllocated(allocationContexts));
+                    allocation.AllocateBestPeer(peerInfos, _stats, _blockTree);
+                    if (_logger.IsTrace) _logger.Trace($"Allocating from InitializedPeers {InitializedPeers.Count()}, CanBeAllocated {peerInfos.Count()}, WasAllocated {allocation.HasPeer}, Peer {allocation.Current}");
                     if (allocation.HasPeer)
                     {
                         if (peerAllocationStrategy.CanBeReplaced)
@@ -374,9 +376,11 @@ namespace Nethermind.Synchronization.Peers
                     }
                 }
 
-                bool timeoutReached = timeoutMilliseconds == 0
-                                      || (DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMilliseconds;
-                if (timeoutReached) return SyncPeerAllocation.FailedAllocation;
+                bool timeoutReached = timeoutMilliseconds == 0 || (DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMilliseconds;
+                if (timeoutReached)
+                {
+                    return SyncPeerAllocation.FailedAllocation;
+                }
 
                 int waitTime = 10 * tryCount++;
                 
