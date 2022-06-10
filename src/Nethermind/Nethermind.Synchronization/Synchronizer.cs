@@ -193,7 +193,7 @@ namespace Nethermind.Synchronization
         
         private void StartFastBlocksComponents()
         {
-            FastBlocksPeerAllocationStrategyFactory fastFactory = new();
+            FastBlocksPeerAllocationStrategyFactory fastFactory = new(_logManager);
 
             _headersFeed = new HeadersSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
             HeadersSyncDispatcher headersDispatcher = new(_headersFeed!, _syncPeerPool, fastFactory, _logManager);

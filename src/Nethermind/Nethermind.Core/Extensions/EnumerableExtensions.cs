@@ -24,6 +24,11 @@ namespace Nethermind.Core.Extensions
     public static class EnumerableExtensions
     {
         public static ISet<T> AsSet<T>(this IEnumerable<T> enumerable) => 
-            enumerable is ISet<T> set ? set : enumerable.ToHashSet();
+            enumerable as ISet<T> ?? enumerable.ToHashSet();
+
+        public static T MaxOrDefault<T>(this IEnumerable<T> enumerable, T @default = default) where T : struct
+        {
+            return enumerable.DefaultIfEmpty(@default).Max();
+        }
     }
 }

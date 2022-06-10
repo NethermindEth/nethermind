@@ -17,6 +17,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -27,18 +29,19 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         private readonly long? _minNumber;
         private readonly bool _priority;
+        private readonly IPeerAllocationStrategy _slowest;
+        private readonly IPeerAllocationStrategy _fastest;
+        private readonly ILogger _logger;
 
-        public FastBlocksAllocationStrategy(TransferSpeedType speedType, long? minNumber, bool priority)
+        public FastBlocksAllocationStrategy(TransferSpeedType speedType, long? minNumber, bool priority, ILogManager logManager)
         {
             _minNumber = minNumber;
             _priority = priority;
+            _logger = logManager.GetClassLogger<FastBlocksAllocationStrategy>();
 
             _slowest = new BySpeedStrategy(speedType, false);
             _fastest = new BySpeedStrategy(speedType, true);
         }
-
-        private IPeerAllocationStrategy _slowest;
-        private IPeerAllocationStrategy _fastest;
 
         public bool CanBeReplaced => false;
 
@@ -51,6 +54,7 @@ namespace Nethermind.Synchronization.FastBlocks
             IPeerAllocationStrategy strategy = _priority ? _fastest : _slowest;
             peers = _minNumber == null ? peers : peers.Where(p => p.HeadNumber >= _minNumber);
             PeerInfo? allocated = strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
+            if (_logger.IsTrace) _logger.Trace($"FastBlocksAllocationStrategy allocated: {(allocated?.ToString() ?? "No peer")}, with {_minNumber}, max peer number {peers.Select(p => p.HeadNumber).MaxOrDefault()}");
             return allocated;
         }
 

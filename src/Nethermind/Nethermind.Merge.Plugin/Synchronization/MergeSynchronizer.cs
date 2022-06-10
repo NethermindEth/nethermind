@@ -89,7 +89,7 @@ public class MergeSynchronizer : Synchronizer
 
     private void StartBeaconHeadersComponents()
     {
-        FastBlocksPeerAllocationStrategyFactory fastFactory = new();
+        FastBlocksPeerAllocationStrategyFactory fastFactory = new(_logManager);
         BeaconHeadersSyncFeed beaconHeadersFeed =
             new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _logManager);
         BeaconHeadersSyncDispatcher beaconHeadersDispatcher =

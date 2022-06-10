@@ -88,10 +88,12 @@ namespace Nethermind.Init.Steps.Migrations
             private readonly ISyncPeerPool _syncPeerPool;
             private readonly CancellationToken _cancellationToken;
             private readonly TimeSpan _delay;
+            private readonly ILogManager _logManager;
 
             public MissingReceiptsFixVisitor(long startLevel, long endLevel, IReceiptStorage receiptStorage, ILogManager logManager, ISyncPeerPool syncPeerPool, CancellationToken cancellationToken) 
                 : base(startLevel, endLevel, receiptStorage, logManager)
             {
+                _logManager = logManager;
                 _receiptStorage = receiptStorage;
                 _syncPeerPool = syncPeerPool;
                 _cancellationToken = cancellationToken;
@@ -114,7 +116,7 @@ namespace Nethermind.Init.Steps.Migrations
                     throw new ArgumentException("Cannot download receipts for a block without a known hash.");
                 }
                 
-                FastBlocksAllocationStrategy strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true);
+                FastBlocksAllocationStrategy strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true, _logManager);
                 SyncPeerAllocation peer = await _syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
                 ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
                 if (currentSyncPeer != null)
