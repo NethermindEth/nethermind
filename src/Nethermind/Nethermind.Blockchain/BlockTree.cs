@@ -1504,7 +1504,7 @@ namespace Nethermind.Blockchain
         private bool HeadImprovementRequirementsSatisfied(BlockHeader header)
         {
             // before merge TD requirements are satisfied only if TD > block head
-            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > header.TotalDifficulty!
+            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > (Head?.TotalDifficulty ?? 0)
                                                            && (header.TotalDifficulty <
                                                                _specProvider.TerminalTotalDifficulty
                                                                || _specProvider.TerminalTotalDifficulty == null);
@@ -1521,27 +1521,35 @@ namespace Nethermind.Blockchain
         private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
             // ToDo we need unit tests for these cases
-            // ToDo if our Best -> PostMerge, we shouldn't reorganize to terminal block
-            // ToDo if PoW block TD > TTD we should check if it is terminal block
-            // before merge TD requirements are satisfied only if TD > block head
-            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > header.TotalDifficulty!
-                                                           && (header.TotalDifficulty <
-                                                               _specProvider.TerminalTotalDifficulty
-                                                               || _specProvider.TerminalTotalDifficulty == null);
+            
+            bool reachedTtd = _specProvider.TerminalTotalDifficulty != null &&
+                              header.TotalDifficulty >=
+                              _specProvider.TerminalTotalDifficulty;
+            bool bestIsPostMerge = BestSuggestedBody !=null && (BestSuggestedBody.IsPostMerge || BestSuggestedBody.Difficulty == 0);
+            bool isPostMerge = (header.IsPostMerge || header.Difficulty == 0);
+            bool tdImproved = header.TotalDifficulty > (BestSuggestedBody?.TotalDifficulty ?? 0);
+            bool preMergeImprovementRequirementSatisfied = tdImproved && !reachedTtd;
+            bool terminalBlockRequirementSatisfied = tdImproved && reachedTtd && IsTerminalBlock(header) && !bestIsPostMerge;
+            bool postMergeImprovementRequirementSatisfied = reachedTtd && (BestSuggestedBody?.Number ?? 0) <= header.Number && isPostMerge; 
+            
+            return preMergeImprovementRequirementSatisfied || terminalBlockRequirementSatisfied || postMergeImprovementRequirementSatisfied;
+        }
 
-            // after the merge, we will accept only the blocks with Difficulty = 0. However, during the transition process
-            // we can have terminal PoW blocks with Difficulty > 0. That is why we accept everything greater or equal
-            // than current head and header.TD >= TTD.
-            bool postMergeImprovementRequirementSatisfied = _specProvider.TerminalTotalDifficulty != null &&
-                                                            header.TotalDifficulty >=
-                                                            _specProvider.TerminalTotalDifficulty;
+        // ToDo bad - duplicated with PosSwitcher
+        private bool IsTerminalBlock(BlockHeader header)
+        {
+            bool isTerminalBlock = false;
+            bool ttdRequirement = header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty;
+            if (ttdRequirement && header.IsGenesis)
+                return true;
+            
+            if (ttdRequirement && header.Difficulty != 0)
+            {
+                UInt256? parentTotalDifficulty = header.TotalDifficulty >= header.Difficulty ? header.TotalDifficulty - header.Difficulty : 0;
+                isTerminalBlock = parentTotalDifficulty < _specProvider.TerminalTotalDifficulty;
+            }
 
-            bool preMergeRequirementSatisfied =
-                preMergeImprovementRequirementSatisfied && (!header.IsPostMerge && header.Difficulty != 0);
-            bool postMergeRequirementSatisfied = postMergeImprovementRequirementSatisfied &&
-                                                 BestSuggestedBody?.Number <= header.Number &&
-                                                 (header.IsPostMerge || header.Difficulty == 0);
-            return preMergeRequirementSatisfied || postMergeRequirementSatisfied;
+            return isTerminalBlock;
         }
 
         private void LoadStartBlock()

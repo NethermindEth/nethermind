@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -36,7 +37,10 @@ public partial class BlockTreeTests
     private (BlockTree notSyncedTree, BlockTree syncedTree) BuildBlockTrees(
         int notSyncedTreeSize, int syncedTreeSize)
     {
-        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize);
+        Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = 0;;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(notSyncedTreeSize);
         BlockTree notSyncedTree = new(
             treeBuilder.BlocksDb,
             treeBuilder.HeadersDb,
@@ -54,7 +58,7 @@ public partial class BlockTreeTests
             treeBuilder.BlockInfoDb,
             treeBuilder.MetadataDb,
             treeBuilder.ChainLevelInfoRepository,
-            MainnetSpecProvider.Instance,
+            specProvider,
             NullBloomStorage.Instance,
             new SyncConfig(),
             LimboLogs.Instance);
@@ -75,7 +79,10 @@ public partial class BlockTreeTests
     [Test]
     public void Can_build_correct_block_tree()
     {
-        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
+        Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = 0;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(10);
         BlockTree tree = new(
             treeBuilder.BlocksDb,
             treeBuilder.HeadersDb,

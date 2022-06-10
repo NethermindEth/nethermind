@@ -14,11 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Specs;
+
 namespace Nethermind.Core.Test.Builders
 {
     public partial class Build
     {
         public BlockTreeBuilder BlockTree() => new();
-        public BlockTreeBuilder BlockTree(Block genesisBlock) => new(genesisBlock);
+        public BlockTreeBuilder BlockTree(Block genesisBlock, ISpecProvider? specProvider = null) => new(genesisBlock, specProvider);
     }
 }
