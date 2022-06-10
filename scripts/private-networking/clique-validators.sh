@@ -7,23 +7,26 @@ DEBIAN_FRONTEND=noninteractive
 #sudo apt-get install -y docker-compose docker.io jq pwgen
 
 main() {
-mkdir private-networking
+mkdir -p private-networking
 cd private-networking
 
 read -p "Enter number of Validators you wish to run: " validators
 
+# Clean up folders from previous runs
+clearDbs
+
 # Create folder for each node
-for i in $(seq 1 $validators); do mkdir node_$i; done
+for i in $(seq 1 $validators); do mkdir -p node_$i; done
 
 # Create genesis folder that will store chainspec file
-mkdir genesis
+mkdir -p genesis
 
 echo "Downloading goerli chainspec from Nethermind GitHub repository"
 # Download chainspec file with clique engine and place it in genesis folder (we will be using goerli chainspec in this example)
 wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/master/src/Nethermind/Chains/goerli.json
 cp goerli.json genesis/goerli.json
 
-for i in $(seq 1 $validators); do mkdir node_$i/configs node_$i/staticNodes; done
+for i in $(seq 1 $validators); do mkdir -p node_$i/configs node_$i/staticNodes; done
 
 writeEmptyStaticNodesFile $i
 
@@ -98,11 +101,7 @@ docker-compose down
 writeExtraData $validators
 
 # Clear db's
-for i in $(seq 1 $validators); 
-do
-    printf "Clearing db of node_$i\n"
-    rm -rf node_$i/db/clique
-done
+clearDbs
 
 mv static-nodes-updated.json static-nodes.json
 docker-compose up
@@ -202,6 +201,15 @@ function writeExtraData() {
     EXTRA_DATA=${EXTRA_VANITY}${SIGNERS}${EXTRA_SEAL}
     echo "EXTRA_DATA: $EXTRA_DATA"
     cat goerli.json | jq '.genesis.extraData = '\"$EXTRA_DATA\"'' > genesis/goerli.json
+}
+
+function clearDbs() {
+    for i in $(seq 1 $validators); 
+    do
+        printf "Clearing db of node_$i\n"
+        # sudo because they are created by docker
+        sudo rm -rf node_$i/db/clique
+    done
 }
 
 main
