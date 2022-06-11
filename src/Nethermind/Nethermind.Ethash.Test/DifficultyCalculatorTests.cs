@@ -17,7 +17,6 @@
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -85,6 +84,7 @@ namespace Nethermind.Ethash.Test
                 London.Instance, ArrowGlacier.Instance);
         }
         
+        // TODO: placeholder values - modify when finalized - previous difficulty bomb (previous difficulty bomb)
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
