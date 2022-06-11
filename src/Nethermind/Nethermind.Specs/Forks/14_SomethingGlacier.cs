@@ -22,20 +22,24 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.Forks
 {
+    // TODO: placeholder values - modify when finalized
     public class SomethingGlacier : IReleaseSpec
     {
         private static IReleaseSpec _instance;
 
+        // TODO: placeholder values - modify when finalized - name of the class
         private SomethingGlacier() { }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new SomethingGlacier());
 
+        // TODO: placeholder values - modify when finalized - Name
         public string Name => "Something Glacier";
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;
         public long MinGasLimit => 5000;
         public long GasLimitBoundDivisor => 0x0400;
         public UInt256 BlockReward { get; } = UInt256.Parse("2000000000000000000");
+        // TODO: placeholder values - modify when finalized - DifficultyBombDelay
         public long DifficultyBombDelay => 11200000L;
         public long DifficultyBoundDivisor => 0x0800;
         public long? FixedDifficulty => null;
