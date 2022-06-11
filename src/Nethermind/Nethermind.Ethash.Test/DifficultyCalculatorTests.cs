@@ -17,6 +17,7 @@
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -82,6 +83,16 @@ namespace Nethermind.Ethash.Test
         {
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
                 London.Instance, ArrowGlacier.Instance);
+        }
+        
+        // previous difficulty bomb +  InitialDifficultyBombBlock + offset
+        [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
+        [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
+        [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
+        public void SomethingGlacier_calculation_should_not_be_equal_to_ArrowGlacier(long blocksAbove)
+        {
+            Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
+                ArrowGlacier.Instance, SomethingGlacier.Instance);
         }
 
         private void Calculation_should_not_be_equal_on_different_difficulty_hard_forks(
