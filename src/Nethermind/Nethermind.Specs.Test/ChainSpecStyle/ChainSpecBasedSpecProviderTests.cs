@@ -148,8 +148,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 MainnetSpecProvider.LondonBlockNumber,
                 MainnetSpecProvider.ArrowGlacierBlockNumber - 1,
                 MainnetSpecProvider.ArrowGlacierBlockNumber,
-                MainnetSpecProvider.SomethingGlacierBlockNumber - 1,
-                MainnetSpecProvider.SomethingGlacierBlockNumber,
+                MainnetSpecProvider.GrayGlacierBlockNumber - 1,
+                MainnetSpecProvider.GrayGlacierBlockNumber,
                 99_000_000, // far in the future
             };
 

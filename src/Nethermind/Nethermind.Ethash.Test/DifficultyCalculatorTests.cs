@@ -84,15 +84,15 @@ namespace Nethermind.Ethash.Test
                 London.Instance, ArrowGlacier.Instance);
         }
         
-        // TODO: placeholder values - modify when finalized - previous difficulty bomb (previous difficulty bomb)
+        // TODO: placeholder values - modify when finalized - previous difficulty bomb
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 730000)]
-        public void SomethingGlacier_calculation_should_not_be_equal_to_ArrowGlacier(long blocksAbove)
+        public void GrayGlacier_calculation_should_not_be_equal_to_ArrowGlacier(long blocksAbove)
         {
             Calculation_should_not_be_equal_on_different_difficulty_hard_forks(blocksAbove,
-                ArrowGlacier.Instance, SomethingGlacier.Instance);
+                ArrowGlacier.Instance, GrayGlacier.Instance);
         }
 
         private void Calculation_should_not_be_equal_on_different_difficulty_hard_forks(
