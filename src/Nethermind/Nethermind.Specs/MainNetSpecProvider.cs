@@ -93,12 +93,12 @@ namespace Nethermind.Specs
                 return London.Instance;
             }
             
-            if (blockNumber < SomethingGlacierBlockNumber)
+            if (blockNumber < GrayGlacierBlockNumber)
             {
                 return ArrowGlacier.Instance;
             }
 
-            return SomethingGlacier.Instance;
+            return GrayGlacier.Instance;
         }
 
         public const long HomesteadBlockNumber = 1_150_000;
@@ -113,8 +113,7 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 12_244_000;
         public const long LondonBlockNumber = 12_965_000;
         public const long ArrowGlacierBlockNumber = 13_773_000;
-        // TODO: placeholder values - modify when finalized - SomethingGlacierBlockNumber - also in the foundation.json file
-        public const long SomethingGlacierBlockNumber = 28_383_000;
+        public const long GrayGlacierBlockNumber = 28_383_000;
         public const long ShanghaiBlockNumber = long.MaxValue - 4;
         public const long CancunBlockNumber = long.MaxValue - 3;
         public const long PragueBlockNumber = long.MaxValue - 2;
@@ -126,7 +125,7 @@ namespace Nethermind.Specs
         {
             HomesteadBlockNumber, DaoBlockNumberConst, TangerineWhistleBlockNumber, SpuriousDragonBlockNumber,
             ByzantiumBlockNumber, ConstantinopleFixBlockNumber, IstanbulBlockNumber, MuirGlacierBlockNumber,
-            BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber, SomethingGlacierBlockNumber
+            BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber, GrayGlacierBlockNumber
         };
 
         private MainnetSpecProvider() { }

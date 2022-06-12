@@ -22,18 +22,15 @@ using Nethermind.Int256;
 
 namespace Nethermind.Specs.Forks
 {
-    // TODO: placeholder values - modify when finalized
-    public class SomethingGlacier : IReleaseSpec
+    public class GrayGlacier : IReleaseSpec
     {
         private static IReleaseSpec _instance;
 
-        // TODO: placeholder values - modify when finalized - name of the class
-        private SomethingGlacier() { }
+        private GrayGlacier() { }
 
-        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new SomethingGlacier());
+        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new GrayGlacier());
 
-        // TODO: placeholder values - modify when finalized - Name
-        public string Name => "Something Glacier";
+        public string Name => "Gray Glacier";
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;
         public long MinGasLimit => 5000;

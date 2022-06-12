@@ -80,7 +80,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         
         public long? ArrowGlacierBlockNumber { get; set; }
         
-        public long? SomethingGlacierBlockNumber { get; set; }
+        public long? GrayGlacierBlockNumber { get; set; }
         
         public long? MergeForkIdBlockNumber { get; set; }
         

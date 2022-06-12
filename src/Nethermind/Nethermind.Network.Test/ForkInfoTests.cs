@@ -54,15 +54,15 @@ namespace Nethermind.Network.Test
         // TODO: placeholder values - modify when finalized - testcase parameters
         [TestCase(13_773_000, "0x20c327fc", 28_383_000L, "First Arrow Glacier")]
         [TestCase(28_382_999, "0x20c327fc", 28_383_000L, "Last Arrow Glacier")]
-        [TestCase(28_383_000, "0xfb8e75e2", 0L, "First Something Glacier")]
-        [TestCase(30_000_000, "0xfb8e75e2", 0L, "Future Something Glacier")]
+        [TestCase(28_383_000, "0xfb8e75e2", 0L, "First Gray Glacier")]
+        [TestCase(30_000_000, "0xfb8e75e2", 0L, "Future Gray Glacier")]
         public void Fork_id_and_hash_as_expected(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
         }
         
         // TODO: placeholder values - modify when finalized - testcase parameters
-        [TestCase(28_383_000, "0xfb8e75e2", 31_000_000L, "First Something Glacier")]
+        [TestCase(28_383_000, "0xfb8e75e2", 31_000_000L, "First Gray Glacier")]
         [TestCase(31_000_000, "0xdd2e4932", 0L, "First Merge Fork Id test")]
         [TestCase(31_811_000, "0xdd2e4932", 0L, "Future Merge Fork Id test")]
         public void Fork_id_and_hash_as_expected_with_merge_fork_id(long head, string forkHashHex, long next, string description)
