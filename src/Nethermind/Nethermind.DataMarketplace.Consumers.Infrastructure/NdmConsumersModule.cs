@@ -17,7 +17,6 @@
 using System;
 using MongoDB.Driver;
 using Nethermind.Abi;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -62,6 +61,7 @@ using Nethermind.DataMarketplace.Infrastructure.Updaters;
 using System.Threading.Tasks;
 using Nethermind.Db;
 using Nethermind.Api;
+using Nethermind.Consensus.Processing;
 using Nethermind.Sockets;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure

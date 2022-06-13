@@ -17,13 +17,13 @@
 
 using System.Threading;
 using FluentAssertions;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -53,6 +53,7 @@ namespace Nethermind.Blockchain.Test.Producers
             dbProvider.RegisterDb(DbNames.Headers, new MemDb());
             dbProvider.RegisterDb(DbNames.State, new MemDb());
             dbProvider.RegisterDb(DbNames.Code, new MemDb());
+            dbProvider.RegisterDb(DbNames.Metadata, new MemDb());
 
             BlockTree blockTree = new(
                 dbProvider,
@@ -69,6 +70,7 @@ namespace Nethermind.Blockchain.Test.Producers
                 trieStore,
                 dbProvider.RegisteredDbs[DbNames.Code],
                 LimboLogs.Instance);
+            StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(
@@ -95,10 +97,11 @@ namespace Nethermind.Blockchain.Test.Producers
                 blockTree,
                 blockProcessor,
                 NullRecoveryStep.Instance,
+                stateReader,
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.Default);
             BuildBlocksWhenRequested trigger = new();
-            var timestamper = new ManualTimestamper();
+            ManualTimestamper timestamper = new ManualTimestamper();
             DevBlockProducer devBlockProducer = new(
                 EmptyTxSource.Instance,
                 blockchainProcessor,
@@ -111,9 +114,9 @@ namespace Nethermind.Blockchain.Test.Producers
                 LimboLogs.Instance);
 
             blockchainProcessor.Start();
-            var suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
             devBlockProducer.Start();
-
+            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, devBlockProducer);
+            
             AutoResetEvent autoResetEvent = new(false);
 
             blockTree.NewHeadBlock += (s, e) => autoResetEvent.Set();

@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private object _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
 
-        private IPeerAllocationStrategyFactory<T> PeerAllocationStrategy { get; }
+        private IPeerAllocationStrategyFactory<T> PeerAllocationStrategyFactory { get; }
 
         protected ILogger Logger { get; }
         protected ISyncFeed<T> Feed { get; }
@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.ParallelSync
             Logger = logManager?.GetClassLogger<SyncDispatcher<T>>() ?? throw new ArgumentNullException(nameof(logManager));
             Feed = syncFeed ?? throw new ArgumentNullException(nameof(syncFeed));
             SyncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            PeerAllocationStrategy = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
+            PeerAllocationStrategyFactory = peerAllocationStrategy ?? throw new ArgumentNullException(nameof(peerAllocationStrategy));
 
             syncFeed.StateChanged += SyncFeedOnStateChanged;
         }
@@ -86,14 +86,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
                 if (currentStateLocal == SyncFeedState.Dormant)
                 {
-                    if(Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
+                    if (Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
                     if (dormantTaskLocal == null)
                     {
                         if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
                     }
 
                     await (dormantTaskLocal?.Task ?? Task.CompletedTask);
-                    if(Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
+                    if (Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
                 }
                 else if (currentStateLocal == SyncFeedState.Active)
                 {
@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     {
                         if (!Feed.IsMultiFeed)
                         {
-                            if(Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
+                            if (Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
                         }
 
                         await Task.Delay(10, cancellationToken);
@@ -111,9 +111,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
                     SyncPeerAllocation allocation = await Allocate(request);
                     PeerInfo? allocatedPeer = allocation.Current;
+                    if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
                     if (allocatedPeer != null)
                     {
-                        Task task = Dispatch(allocatedPeer, request, cancellationToken).ContinueWith(t =>
+                        if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
+                        Task task = Dispatch(allocatedPeer, request, cancellationToken)
+                            .ContinueWith(t =>
                         {
                             if (t.IsFaulted)
                             {
@@ -122,7 +125,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
                             try
                             {
-                                SyncResponseHandlingResult result = Feed.HandleResponse(request);
+                                SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
                                 ReactToHandlingResult(request, result, allocatedPeer);
                             }
                             catch (ObjectDisposedException)
@@ -140,23 +143,24 @@ namespace Nethermind.Synchronization.ParallelSync
                                 Free(allocation);
                             }
                         }, cancellationToken);
-                        
+
                         if (!Feed.IsMultiFeed)
                         {
-                            if(Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
+                            if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
                             await task;
-                            if(Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
+                            if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
                         }
                     }
                     else
                     {
+                        Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
                         SyncResponseHandlingResult result = Feed.HandleResponse(request);
                         ReactToHandlingResult(request, result, null);
                     }
                 }
                 else if (currentStateLocal == SyncFeedState.Finished)
                 {
-                    if(Logger.IsInfo) Logger.Info($"{GetType().Name} has finished work.");
+                    if (Logger.IsInfo) Logger.Info($"{GetType().Name} has finished work.");
                     break;
                 }
             }
@@ -169,7 +173,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected virtual async Task<SyncPeerAllocation> Allocate(T request)
         {
-            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategy.Create(request), Feed.Contexts, 1000);
+            SyncPeerAllocation allocation = await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, 1000);
             return allocation;
         }
 

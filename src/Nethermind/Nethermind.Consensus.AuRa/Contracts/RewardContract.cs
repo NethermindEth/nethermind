@@ -20,7 +20,6 @@ using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Contracts.Json;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Evm;

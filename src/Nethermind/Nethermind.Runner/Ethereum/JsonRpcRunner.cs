@@ -27,6 +27,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
@@ -41,6 +42,7 @@ namespace Nethermind.Runner.Ethereum
     {
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
+        private readonly IRpcAuthentication _rpcAuthentication;
         private readonly ILogManager _logManager;
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
         private readonly IJsonRpcUrlCollection _jsonRpcUrlCollection;
@@ -55,12 +57,14 @@ namespace Nethermind.Runner.Ethereum
             IJsonRpcUrlCollection jsonRpcUrlCollection,
             IWebSocketsManager webSocketsManager,
             IConfigProvider configurationProvider,
+            IRpcAuthentication rpcAuthentication,
             ILogManager logManager,
             INethermindApi api)
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _configurationProvider = configurationProvider;
+            _rpcAuthentication = rpcAuthentication;
             _jsonRpcUrlCollection = jsonRpcUrlCollection;
             _logManager = logManager;
             _jsonRpcProcessor = jsonRpcProcessor;
@@ -80,6 +84,7 @@ namespace Nethermind.Runner.Ethereum
                     s.AddSingleton(_jsonRpcProcessor);
                     s.AddSingleton(_jsonRpcUrlCollection);
                     s.AddSingleton(_webSocketsManager);
+                    s.AddSingleton(_rpcAuthentication);
                     foreach(var plugin in _api.Plugins.OfType<INethermindServicesPlugin>()) 
                     {
                         plugin.AddServices(s);
@@ -96,6 +101,7 @@ namespace Nethermind.Runner.Ethereum
                 .Build();
             
             string urlsString = string.Join(" ; ", urls);
+            // TODO: replace http with ws where relevant
             
             ThisNodeInfo.AddInfo("JSON RPC     :", $"{urlsString}");
 

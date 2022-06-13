@@ -35,9 +35,9 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Trie.Pruning;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -193,6 +193,37 @@ namespace Nethermind.Facade.Test
                 false);
 
             _blockchainBridge.HeadBlock.Should().Be(head);
+        }
+
+        [TestCase(true, true)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        [TestCase(false, false)]
+        public void GetReceiptAndEffectiveGasPrice_returns_correct_results(bool isCanonical, bool isRemoved)
+        {
+            Keccak txHash = TestItem.KeccakA;
+            Keccak blockHash = TestItem.KeccakB;
+            UInt256 effectiveGasPrice = 123;
+            
+            Transaction tx = Build.A.Transaction
+                .WithGasPrice(effectiveGasPrice)
+                .TestObject;
+            Block block = Build.A.Block
+                .WithTransactions(tx)
+                .TestObject;
+            TxReceipt receipt = Build.A.Receipt
+                .WithBlockHash(blockHash)
+                .WithTransactionHash(txHash)
+                .WithRemoved(isRemoved)
+                .TestObject;
+
+            _blockTree.FindBlock(blockHash, Arg.Is(BlockTreeLookupOptions.RequireCanonical)).Returns(isCanonical ? block : null);
+            _blockTree.FindBlock(blockHash, Arg.Is(BlockTreeLookupOptions.TotalDifficultyNotNeeded)).Returns(block);
+            _receiptStorage.FindBlockHash(txHash).Returns(blockHash);
+            _receiptStorage.Get(block).Returns(new[] {receipt});
+
+            (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) result = isCanonical ? (receipt, effectiveGasPrice, 0) : (null, null, 0);
+            _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash).Should().BeEquivalentTo(result);
         }
     }
 }

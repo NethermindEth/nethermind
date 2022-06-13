@@ -18,10 +18,10 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -101,6 +101,7 @@ namespace Nethermind.JsonRpc.Benchmark
                     NullTxPool.Instance,
                     specProvider,
                     LimboLogs.Instance),
+                stateReader,
                 LimboLogs.Instance,
                 BlockchainProcessor.Options.NoReceipts);
 

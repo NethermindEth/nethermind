@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;

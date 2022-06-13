@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Common.Utilities;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -41,7 +40,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class SyncPeerProtocolHandlerBase : ProtocolHandlerBase, ISyncPeer
+    public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
         public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong) 2.MB();
         public Node Node => Session?.Node;
@@ -80,7 +79,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public void Disconnect(DisconnectReason reason, string details)
         {
-            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node:c} because of the {details}");
+            if (Logger.IsTrace) Logger.Trace($"Disconnecting {Node:c} because of the {details}");
             Session.InitiateDisconnect(reason, details);
         }
 
@@ -253,22 +252,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             TransactionsMessage msg = new(txsToSend);
             Send(msg);
         }
-
-        public override void HandleMessage(Packet message)
-        {
-            ZeroPacket zeroPacket = new(message);
-            try
-            {
-                HandleMessage(zeroPacket);
-            }
-            finally
-            {
-                zeroPacket.SafeRelease();
-            }
-        }
-
-        public abstract void HandleMessage(ZeroPacket message);
-
+        
         protected void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
             Metrics.Eth62GetBlockHeadersReceived++;

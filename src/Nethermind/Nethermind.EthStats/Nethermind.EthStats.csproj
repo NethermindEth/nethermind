@@ -13,7 +13,7 @@
 
     <ItemGroup>
       <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
-      <PackageReference Include="Websocket.Client" Version="4.3.38" />
+      <PackageReference Include="Websocket.Client" Version="4.4.43" />
     </ItemGroup>
 
     <ItemGroup>

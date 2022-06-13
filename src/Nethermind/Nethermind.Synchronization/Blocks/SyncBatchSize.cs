@@ -21,7 +21,7 @@ using Nethermind.Logging;
 namespace Nethermind.Synchronization.Blocks
 {
     [DebuggerDisplay("{Current}")]
-    internal struct SyncBatchSize
+    public struct SyncBatchSize
     {
         private ILogger _logger;
         

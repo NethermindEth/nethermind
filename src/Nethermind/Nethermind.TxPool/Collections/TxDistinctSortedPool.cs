@@ -41,27 +41,8 @@ namespace Nethermind.TxPool.Collections
         
         protected override Address? MapToGroup(Transaction value) => value.MapTxToGroup();
         protected override Keccak GetKey(Transaction value) => value.Hash!;
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdatePool(Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
-        {
-            foreach ((Address groupKey, SortedSet<Transaction> bucket) in _buckets)
-            {
-                UpdateGroup(groupKey, bucket, changingElements);
-            }
-        }
         
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdateGroup(Address groupKey, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
-        {
-            if (groupKey == null) throw new ArgumentNullException(nameof(groupKey));
-            if (_buckets.TryGetValue(groupKey, out SortedSet<Transaction> bucket))
-            {
-                UpdateGroup(groupKey, bucket, changingElements);
-            }
-        }
-        
-        private void UpdateGroup(Address groupKey, SortedSet<Transaction> bucket, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
+        protected override void UpdateGroup(Address groupKey, SortedSet<Transaction> bucket, Func<Address, ICollection<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;

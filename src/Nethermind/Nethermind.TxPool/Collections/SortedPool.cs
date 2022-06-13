@@ -372,5 +372,33 @@ namespace Nethermind.TxPool.Collections
             items = Array.Empty<TValue>();
             return false;
         }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void UpdatePool(Func<TGroupKey, ICollection<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
+        {
+            foreach ((TGroupKey groupKey, SortedSet<TValue> bucket) in _buckets)
+            {
+                changingElements(groupKey, bucket);
+                UpdateGroup(groupKey, bucket, changingElements);
+            }
+        }
+        
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void UpdateGroup(TGroupKey groupKey, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
+        {
+            if (groupKey == null) throw new ArgumentNullException(nameof(groupKey));
+            if (_buckets.TryGetValue(groupKey, out SortedSet<TValue> bucket))
+            {
+                UpdateGroup(groupKey, bucket, changingElements);
+            }
+        }
+
+        protected virtual void UpdateGroup(TGroupKey groupKey, SortedSet<TValue> bucket, Func<TGroupKey, ICollection<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
+        {
+            foreach ((TValue value, Action<TValue>? change) in changingElements(groupKey, bucket))
+            {
+                change(value);
+            }
+        }
     }
 }

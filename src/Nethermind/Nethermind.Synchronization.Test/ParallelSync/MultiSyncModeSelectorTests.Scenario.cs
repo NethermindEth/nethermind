@@ -15,7 +15,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
 {
-    public partial class MultiSyncModeSelectorTests
+    public partial class MultiSyncModeSelectorTestsBase
     {
         public static class Scenario
         {
@@ -100,10 +100,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 public ISyncProgressResolver SyncProgressResolver { get; set; }
 
                 public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
-
-                public ScenarioBuilder()
-                {
-                }
+                
+                public IBeaconSyncStrategy BeaconSyncStrategy { get; set; } = No.BeaconSync;
 
                 private void SetDefaults()
                 {
@@ -671,6 +669,32 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder WhenSnapSyncWithFastBlocksIsConfigured()
+                {
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.SnapSync = true;
+                        SyncConfig.FastBlocks = true;
+                        return "snap sync with fast blocks";
+                    });
+
+                    return this;
+                }
+
+                public ScenarioBuilder WhenSnapSyncWithoutFastBlocksIsConfigured()
+                {
+                    _configActions.Add(() =>
+                    {
+                        SyncConfig.FastSync = true;
+                        SyncConfig.SnapSync = true;
+                        SyncConfig.FastBlocks = false;
+                        return "snap sync without fast blocks";
+                    });
+
+                    return this;
+                }
+
                 public ScenarioBuilder WhenFullArchiveSyncIsConfigured()
                 {
                     _configActions.Add(() =>
@@ -679,6 +703,21 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         SyncConfig.FastBlocks = false;
                         return "full archive";
                     });
+
+                    return this;
+                }
+                
+                public ScenarioBuilder WhenInBeaconSyncMode(BeaconSync mode = BeaconSync.None)
+                {
+                    BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+                    if (mode == BeaconSync.Headers)
+                    {
+                        BeaconSyncStrategy.ShouldBeInBeaconHeaders().Returns(true);
+                    }
+                    else if (mode == BeaconSync.ControlMode)
+                    {
+                        BeaconSyncStrategy.ShouldBeInBeaconModeControl().Returns(true);
+                    }
 
                     return this;
                 }
@@ -691,8 +730,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             overwrite.Invoke();
                         }
-
-                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, LimboLogs.Instance, _needToWaitForHeaders);
+                        
+                        TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(SyncProgressResolver, LimboLogs.Instance);
+                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance, _needToWaitForHeaders);
                         selector.DisableTimer();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);
@@ -732,6 +772,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public static ScenarioBuilder GoesLikeThis(bool needToWaitForHeaders) =>
                 new ScenarioBuilder().WhenConsensusRequiresToWaitForHeaders(needToWaitForHeaders);
+        }
+        
+        public enum BeaconSync
+        {
+            None,
+            Headers,
+            ControlMode
         }
     }
 }

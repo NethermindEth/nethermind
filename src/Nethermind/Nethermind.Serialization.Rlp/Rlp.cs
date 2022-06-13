@@ -124,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
             return Decode<T>(oldRlp.Bytes.AsRlpStream(), rlpBehaviors);
         }
 
-        public static T Decode<T>(byte[] bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T Decode<T>(byte[]? bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return Decode<T>(bytes.AsRlpStream(), rlpBehaviors);
         }
@@ -140,17 +140,22 @@ namespace Nethermind.Serialization.Rlp
             var rlpDecoder = GetStreamDecoder<T>();
             if (rlpDecoder != null)
             {
-                int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-                T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPosition)];
-                for (int i = 0; i < result.Length; i++)
-                {
-                    result[i] = rlpDecoder.Decode(rlpStream, rlpBehaviors);
-                }
-
-                return result;
+                return DecodeArray(rlpStream, rlpDecoder, rlpBehaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+        }
+
+        public static T[] DecodeArray<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
+            T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPosition)];
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i] = rlpDecoder.Decode(rlpStream, rlpBehaviors);
+            }
+
+            return result;
         }
 
         public static IRlpValueDecoder<T>? GetValueDecoder<T>() => Decoders.ContainsKey(typeof(T)) ? Decoders[typeof(T)] as IRlpValueDecoder<T> : null;
@@ -573,7 +578,7 @@ namespace Nethermind.Serialization.Rlp
             return position + 4;
         }
 
-        internal static int LengthOfLength(int value)
+        public static int LengthOfLength(int value)
         {
             if (value < 1 << 8)
             {
@@ -1555,6 +1560,18 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? 1 : 33;
         }
 
+        public static int LengthOf(Keccak[] keccaks, bool includeLengthOfSequenceStart = false)
+        {
+            int value = keccaks?.Length * LengthOfKeccakRlp ?? 0;
+            
+            if (includeLengthOfSequenceStart)
+            {
+                value = LengthOfSequence(value);
+            }
+
+            return value;
+        }
+        
         public static int LengthOf(Address? item)
         {
             return item is null ? 1 : 21;

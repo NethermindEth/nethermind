@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -34,7 +34,7 @@ namespace Nethermind.Core.Extensions
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
 
-        public static readonly IComparer<byte[]> Comparer = new BytesComparer();
+        public static readonly BytesComparer Comparer = new();
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
         {
@@ -49,7 +49,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        private class BytesComparer : Comparer<byte[]>
+        public class BytesComparer : Comparer<byte[]>
         {
             public override int Compare(byte[]? x, byte[]? y)
             {
@@ -63,6 +63,30 @@ namespace Nethermind.Core.Extensions
                     return -1;
                 }
 
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : 1;
+                }
+
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (y.Length <= i)
+                    {
+                        return -1;
+                    }
+
+                    int result = x[i].CompareTo(y[i]);
+                    if (result != 0)
+                    {
+                        return result;
+                    }
+                }
+
+                return y.Length > x.Length ? 1 : 0;
+            }
+            
+            public int Compare(Span<byte> x, Span<byte> y)
+            {
                 if (x.Length == 0)
                 {
                     return y.Length == 0 ? 0 : 1;

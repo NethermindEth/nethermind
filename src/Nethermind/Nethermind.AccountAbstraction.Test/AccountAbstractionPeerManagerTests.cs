@@ -18,6 +18,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
@@ -38,6 +39,7 @@ namespace Nethermind.AccountAbstraction.Test
         private ILogger _logger = Substitute.For<ILogger>();
         private ILogFinder _logFinder = Substitute.For<ILogFinder>();
         private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
+        private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly string[] _entryPointContractAddress = {"0x8595dd9e0438640b5e1254f9df579ac12a86865f", "0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e"};
         private static Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
@@ -138,7 +140,8 @@ namespace Nethermind.AccountAbstraction.Test
                 paymasterThrottler, 
                 _logFinder, 
                 _signer, 
-                _stateProvider, 
+                _stateProvider,
+                _specProvider,
                 Substitute.For<ITimestamper>(), 
                 _simulator, 
                 userOperationSortedPool,

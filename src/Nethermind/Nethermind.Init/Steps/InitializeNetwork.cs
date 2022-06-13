@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,17 +38,20 @@ using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
+using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Init.Steps
 {
@@ -106,41 +110,73 @@ namespace Nethermind.Init.Steps
                 NetworkDiagTracer.Start(_api.LogManager);
             }
 
-            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder", _networkConfig.NettyArenaOrder.ToString());
+            Environment.SetEnvironmentVariable("io.netty.allocator.maxOrder",
+                _networkConfig.NettyArenaOrder.ToString());
 
             CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-            int maxPeersCount = _networkConfig.ActivePeersMaxCount;
-            int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
-            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
-            _api.DisposeStack.Push(_api.SyncPeerPool);
+            ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager);
+            _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
             SyncProgressResolver syncProgressResolver = new(
                 _api.BlockTree!,
                 _api.ReceiptStorage!,
                 _api.DbProvider.StateDb,
                 _api.ReadOnlyTrieStore!,
+                progressTracker,
                 _syncConfig,
                 _api.LogManager);
             
-            MultiSyncModeSelector syncModeSelector = CreateMultiSyncModeSelector(syncProgressResolver);
-            _api.SyncModeSelector = syncModeSelector;
-            _api.DisposeStack.Push(syncModeSelector);
+            _api.SyncProgressResolver = syncProgressResolver;
+            _api.BetterPeerStrategy = new TotalDifficultyBasedBetterPeerStrategy(_api.SyncProgressResolver, _api.LogManager);
+            
+            int maxPeersCount = _networkConfig.ActivePeersMaxCount;
+            int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
+            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
+            _api.DisposeStack.Push(_api.SyncPeerPool);
+            
+            IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
+            foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
+            {
+                await plugin.InitSynchronization();
+            }
+            
+            _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
+            _api.DisposeStack.Push(_api.SyncModeSelector!);
 
-            _api.Synchronizer = new Synchronizer(
-                _api.DbProvider,
-                _api.SpecProvider!,
-                _api.BlockTree!,
-                _api.ReceiptStorage!,
-                _api.BlockValidator!,
-                _api.SealValidator!,
-                _api.SyncPeerPool,
-                _api.NodeStatsManager!,
-                _api.SyncModeSelector,
-                _syncConfig,
-                _api.LogManager);
+            _api.Pivot ??= new Pivot(_syncConfig);
+
+            if (_api.BlockDownloaderFactory is null || _api.Synchronizer is null)
+            {
+                SyncReport syncReport = new(_api.SyncPeerPool!, _api.NodeStatsManager!, _api.SyncModeSelector, _syncConfig, _api.Pivot, _api.LogManager);
+
+                _api.BlockDownloaderFactory ??= new BlockDownloaderFactory(_api.SpecProvider!,
+                    _api.BlockTree!,
+                    _api.ReceiptStorage!,
+                    _api.BlockValidator!,
+                    _api.SealValidator!,
+                    _api.SyncPeerPool!,
+                    _api.BetterPeerStrategy!,
+                    syncReport,
+                    _api.LogManager);
+                _api.Synchronizer ??= new Synchronizer(
+                    _api.DbProvider!,
+                    _api.SpecProvider!,
+                    _api.BlockTree!,
+                    _api.ReceiptStorage!,
+                    _api.SyncPeerPool,
+                    _api.NodeStatsManager!,
+                    _api.SyncModeSelector,
+                    _syncConfig,
+                    _api.SnapProvider,
+                    _api.BlockDownloaderFactory,
+                    _api.Pivot,
+                    syncReport,
+                    _api.LogManager);
+            }
+
             _api.DisposeStack.Push(_api.Synchronizer);
-
+            
             _api.SyncServer = new SyncServer(
                 _api.DbProvider.StateDb,
                 _api.DbProvider.CodeDb,
@@ -152,11 +188,13 @@ namespace Nethermind.Init.Steps
                 _api.SyncModeSelector,
                 _api.Config<ISyncConfig>(),
                 _api.WitnessRepository,
+                _api.GossipPolicy,
                 _api.LogManager,
                 cht);
 
             _ = _api.SyncServer.BuildCHT();
-
+            
+            
             _api.DisposeStack.Push(_api.SyncServer);
 
             InitDiscovery();
@@ -172,6 +210,12 @@ namespace Nethermind.Init.Steps
                     _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
+
+            if (_syncConfig.SnapSync)
+            {
+                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, progressTracker);
+                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            }
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -219,13 +263,14 @@ namespace Nethermind.Init.Steps
             }
 
             ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_api.Enode.HostIp}:{_api.Enode.Port}");
-            ThisNodeInfo.AddInfo("Version      :", $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
+            ThisNodeInfo.AddInfo("Version      :",
+                $"{ClientVersion.Description.Replace("Nethermind/v", string.Empty)}");
             ThisNodeInfo.AddInfo("This node    :", $"{_api.Enode.Info}");
             ThisNodeInfo.AddInfo("Node address :", $"{_api.Enode.Address} (do not use as an account)");
         }
 
         protected virtual MultiSyncModeSelector CreateMultiSyncModeSelector(SyncProgressResolver syncProgressResolver)
-            => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
+            => new(syncProgressResolver, _api.SyncPeerPool!, _syncConfig, No.BeaconSync, _api.BetterPeerStrategy!, _api.LogManager, _api.ChainSpec?.SealEngineType == SealEngineType.Clique);
 
         private Task StartDiscovery()
         {
@@ -233,7 +278,8 @@ namespace Nethermind.Init.Steps
 
             if (!_api.Config<IInitConfig>().DiscoveryEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
+                if (_logger.IsWarn)
+                    _logger.Warn($"Skipping discovery init due to {nameof(IInitConfig.DiscoveryEnabled)} set to false");
                 return Task.CompletedTask;
             }
 
@@ -250,7 +296,9 @@ namespace Nethermind.Init.Steps
 
             if (!_api.Config<IInitConfig>().PeerManagerEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false");
             }
 
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
@@ -372,17 +420,23 @@ namespace Nethermind.Init.Steps
 
                 if (syncConfig.SynchronizationEnabled)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            $"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
                     _api.Synchronizer!.Start();
                 }
                 else
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
+                    if (_logger.IsWarn)
+                        _logger.Warn(
+                            $"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
                 }
             }
-            else if (_logger.IsWarn) _logger.Warn($"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
+            else if (_logger.IsWarn)
+                _logger.Warn(
+                    $"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
 
-            
+
             return Task.CompletedTask;
         }
 
@@ -404,7 +458,8 @@ namespace Nethermind.Init.Steps
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
-            if (_api.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
+            if (_api.EthereumJsonSerializer == null)
+                throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
 
             /* rlpx */
             EciesCipher eciesCipher = new(_api.CryptoRandom);
@@ -414,8 +469,9 @@ namespace Nethermind.Init.Steps
             _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
             ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
             _api.MessageSerializationService.Register(receiptsMessageSerializer);
-            _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
-            
+            _api.MessageSerializationService.Register(
+                new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
+
             HandshakeService encryptionHandshakeServiceA = new(
                 _api.MessageSerializationService,
                 eciesCipher,
@@ -450,7 +506,8 @@ namespace Nethermind.Init.Steps
             string dbName = "PeersDB";
             IFullDb peersDb = initConfig.DiagnosticMode == DiagnosticMode.MemDb
                 ? new MemDb(dbName)
-                : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath), _api.LogManager);
+                : new SimpleFilePublicKeyDb(dbName, PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath),
+                    _api.LogManager);
 
             NetworkStorage peerStorage = new(peersDb, _api.LogManager);
 
@@ -468,6 +525,7 @@ namespace Nethermind.Init.Steps
                 protocolValidator,
                 peerStorage,
                 _api.SpecProvider!,
+                _api.GossipPolicy,
                 _api.LogManager);
             
             if (_syncConfig.WitnessProtocolEnabled)
@@ -500,7 +558,6 @@ namespace Nethermind.Init.Steps
                 if (t.IsFaulted)
                 {
                     _logger.Error($"ENR discovery failed: {t.Exception}");
-                    
                 }
             });
             

@@ -15,12 +15,25 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs
 {
     public class MainnetSpecProvider : ISpecProvider
     {
+        private long? _theMergeBlock = null;
+
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        {
+            if (blockNumber != null)
+                _theMergeBlock = blockNumber;
+            if (terminalTotalDifficulty != null)
+                TerminalTotalDifficulty = terminalTotalDifficulty;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
+        public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber)
@@ -64,7 +77,7 @@ namespace Nethermind.Specs
             {
                 return Istanbul.Instance;
             }
-            
+
             if (blockNumber < BerlinBlockNumber)
             {
                 return MuirGlacier.Instance;
@@ -74,7 +87,7 @@ namespace Nethermind.Specs
             {
                 return Berlin.Instance;
             }
-            
+
             if (blockNumber < ArrowGlacierBlockNumber)
             {
                 return London.Instance;
@@ -95,26 +108,18 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 12_244_000;
         public const long LondonBlockNumber = 12_965_000;
         public const long ArrowGlacierBlockNumber = 13_773_000;
-        public const long ShanghaiBlockNumber = long.MaxValue -4;
-        public const long CancunBlockNumber = long.MaxValue -3;
-        public const long PragueBlockNumber = long.MaxValue -2;
-        public const long OsakaBlockNumber = long.MaxValue -1;
+        public const long ShanghaiBlockNumber = long.MaxValue - 4;
+        public const long CancunBlockNumber = long.MaxValue - 3;
+        public const long PragueBlockNumber = long.MaxValue - 2;
+        public const long OsakaBlockNumber = long.MaxValue - 1;
 
         public ulong ChainId => Core.ChainId.Mainnet;
 
         public long[] TransitionBlocks { get; } =
         {
-            HomesteadBlockNumber,
-            DaoBlockNumberConst,
-            TangerineWhistleBlockNumber,
-            SpuriousDragonBlockNumber,
-            ByzantiumBlockNumber,
-            ConstantinopleFixBlockNumber,
-            IstanbulBlockNumber,
-            MuirGlacierBlockNumber,
-            BerlinBlockNumber,
-            LondonBlockNumber,
-            ArrowGlacierBlockNumber
+            HomesteadBlockNumber, DaoBlockNumberConst, TangerineWhistleBlockNumber, SpuriousDragonBlockNumber,
+            ByzantiumBlockNumber, ConstantinopleFixBlockNumber, IstanbulBlockNumber, MuirGlacierBlockNumber,
+            BerlinBlockNumber, LondonBlockNumber, ArrowGlacierBlockNumber
         };
 
         private MainnetSpecProvider() { }

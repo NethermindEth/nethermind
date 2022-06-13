@@ -31,7 +31,6 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -47,7 +46,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            Assert.Throws<InvalidOperationException>(() => new HeadersSyncFeed(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig(), Substitute.For<ISyncReport>(), LimboLogs.Instance));
+            Assert.Throws<InvalidOperationException>(() => new HeadersSyncFeed(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig(), Substitute.For<ISyncReport>(), LimboLogs.Instance));
         }
         
         [Test]
@@ -55,7 +54,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, Substitute.For<ISyncReport>(), LimboLogs.Instance);
+            HeadersSyncFeed feed = new( Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, Substitute.For<ISyncReport>(), LimboLogs.Instance);
             HeadersSyncBatch batch1 = await feed.PrepareRequest();
             HeadersSyncBatch batch2 = await feed.PrepareRequest();
             HeadersSyncBatch batch3 = await feed.PrepareRequest();
@@ -66,7 +65,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             IDbProvider memDbProvider = await TestMemDbProvider.InitAsync();
             BlockTree blockTree = new(memDbProvider.BlocksDb, memDbProvider.HeadersDb, memDbProvider.BlockInfosDb, new ChainLevelInfoRepository(memDbProvider.BlockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, Substitute.For<ISyncReport>(), LimboLogs.Instance);
+            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, Substitute.For<ISyncReport>(), LimboLogs.Instance);
             for (int i = 0; i < 10; i++)
             {
                 await feed.PrepareRequest();
@@ -85,7 +84,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             report.HeadersInQueue.Returns(new MeasuredProgress());
             MeasuredProgress measuredProgress = new();
             report.FastBlocksHeaders.Returns(measuredProgress);
-            HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, report, LimboLogs.Instance);
+            HeadersSyncFeed feed = new(Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig{FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000"}, report, LimboLogs.Instance);
             await feed.PrepareRequest();
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
             var result = await feed.PrepareRequest();

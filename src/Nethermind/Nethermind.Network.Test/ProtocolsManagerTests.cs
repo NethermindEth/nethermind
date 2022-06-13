@@ -21,6 +21,7 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -29,6 +30,8 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
@@ -77,6 +80,7 @@ namespace Nethermind.Network.Test
             private IChannelPipeline _pipeline;
             private IPacketSender _packetSender;
             private IBlockTree _blockTree;
+            private IGossipPolicy _gossipPolicy;
 
             public Context()
             {
@@ -106,6 +110,7 @@ namespace Nethermind.Network.Test
                 _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _syncPeerPool = Substitute.For<ISyncPeerPool>();
+                _gossipPolicy = Substitute.For<IGossipPolicy>();
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
@@ -117,7 +122,8 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
-                    MainnetSpecProvider.Instance, 
+                    MainnetSpecProvider.Instance,
+                    _gossipPolicy,
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());

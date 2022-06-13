@@ -22,7 +22,8 @@ namespace Nethermind.Blockchain.Synchronization
     public class SyncConfig : ISyncConfig
     {
         private bool _synchronizationEnabled = true;
-        
+        private bool _fastSync;
+
         public static ISyncConfig Default { get; } = new SyncConfig();
         public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig {FastSync = false, FastBlocks = false};
         public static ISyncConfig WithFastSync { get; } = new SyncConfig {FastSync = true};
@@ -40,7 +41,7 @@ namespace Nethermind.Blockchain.Synchronization
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
-        public bool FastSync { get; set; }
+        public bool FastSync { get => _fastSync || SnapSync; set => _fastSync = value; }
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
@@ -50,6 +51,7 @@ namespace Nethermind.Blockchain.Synchronization
         public string PivotNumber { get; set; }
         public string PivotHash { get; set; }
         public bool WitnessProtocolEnabled { get; set; } = false;
+        public bool SnapSync { get; set; } = false;
         public bool FixReceipts { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
     }

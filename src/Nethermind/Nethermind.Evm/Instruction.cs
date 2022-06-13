@@ -72,7 +72,7 @@ namespace Nethermind.Evm
         COINBASE = 0x41,
         TIMESTAMP = 0x42,
         NUMBER = 0x43,
-        DIFFICULTY = 0x44,
+        PREVRANDAO = 0x44,
         GASLIMIT = 0x45,
         CHAINID = 0x46,
         SELFBALANCE = 0x47,
@@ -178,4 +178,15 @@ namespace Nethermind.Evm
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
     }
+    
+    public static class InstructionExtensions
+    {
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false)
+        {
+            return (instruction == Instruction.PREVRANDAO && !isPostMerge)
+                ? "DIFFICULTY"
+                : System.Enum.GetName(typeof(Instruction), instruction); //TODO: This is slow! Generate switch?
+        }
+    }
 }
+

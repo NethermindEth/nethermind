@@ -17,7 +17,6 @@
 
 using System.Linq;
 using System.Text;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;

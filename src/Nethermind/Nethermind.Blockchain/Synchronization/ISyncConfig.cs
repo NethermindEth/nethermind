@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.Synchronization
         // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
         [ConfigItem(Description = "Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. In normal usage we do not recommend setting this to less than 32 as this can cause issues with chain reorgs. Please note that last 2 blocks will always be processed in FullSync, so setting it to less than 2 will have no effect.", DefaultValue = "8192")]
         long? FastSyncCatchUpHeightDelta { get; set; }
-        
+
         [ConfigItem(Description = "If set to 'true' then in the Fast Sync mode blocks will be first downloaded from the provided PivotNumber downwards. This allows for parallelization of requests with many sync peers and with no need to worry about syncing a valid branch (syncing downwards to 0). You need to enter the pivot block number, hash and total difficulty from a trusted source (you can use etherscan and confirm with other sources if you wan to change it).", DefaultValue = "false")]
         bool FastBlocks { get; set; }
         
@@ -88,11 +88,11 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Enables witness protocol.", DefaultValue = "false")]
         public bool WitnessProtocolEnabled { get; set; }
         
+        [ConfigItem(Description = "Enables SNAP sync protocol.", DefaultValue = "false")]
+        public bool SnapSync { get; set; }
+        
         [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]
         public bool FixReceipts { get; set; }
-        
-        [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "true")]
-        public bool BlockGossipEnabled { get; set; }
     }
 }

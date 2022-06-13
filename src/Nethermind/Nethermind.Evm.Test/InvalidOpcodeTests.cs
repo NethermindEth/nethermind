@@ -40,7 +40,7 @@ namespace Nethermind.Evm.Test
             Instruction.CALLER, Instruction.CALLVALUE, Instruction.CALLDATALOAD, Instruction.CALLDATASIZE,
             Instruction.CALLDATACOPY, Instruction.CODESIZE, Instruction.CODECOPY, Instruction.GASPRICE,
             Instruction.EXTCODESIZE, Instruction.EXTCODECOPY, Instruction.BLOCKHASH, Instruction.COINBASE,
-            Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.DIFFICULTY, Instruction.GASLIMIT,
+            Instruction.TIMESTAMP, Instruction.NUMBER, Instruction.PREVRANDAO, Instruction.GASLIMIT,
             Instruction.POP, Instruction.MLOAD, Instruction.MSTORE, Instruction.MSTORE8, Instruction.SLOAD,
             Instruction.SSTORE, Instruction.JUMP, Instruction.JUMPI, Instruction.PC, Instruction.MSIZE,
             Instruction.GAS, Instruction.JUMPDEST, Instruction.PUSH1, Instruction.PUSH2, Instruction.PUSH3,

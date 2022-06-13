@@ -18,7 +18,7 @@
 using System;
 using System.Threading;
 using FluentAssertions;
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Producers;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers

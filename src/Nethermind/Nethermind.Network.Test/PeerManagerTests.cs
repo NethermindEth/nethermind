@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test
         public async Task Will_accept_static_connection()
         {
             await using Context ctx = new();
-            ctx.NetworkConfig.ActivePeersMaxCount = 1;
+            ctx.NetworkConfig.MaxActivePeers = 1;
             ctx.StaticNodesManager.IsStatic(enode2String).Returns(true);
 
             ctx.PeerPool.Start();
@@ -463,7 +463,7 @@ namespace Nethermind.Network.Test
                 Storage = new InMemoryStorage();
                 NodesLoader = new NodesLoader(new NetworkConfig(), Stats, Storage, RlpxPeer, LimboLogs.Instance);
                 NetworkConfig = new NetworkConfig();
-                NetworkConfig.ActivePeersMaxCount = 25;
+                NetworkConfig.MaxActivePeers = 25;
                 NetworkConfig.PeersPersistenceInterval = 50;
                 StaticNodesManager = Substitute.For<IStaticNodesManager>();
                 StaticNodesManager.LoadInitialList().Returns(new List<Node>());

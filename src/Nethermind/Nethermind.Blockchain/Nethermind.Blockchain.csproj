@@ -13,7 +13,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
-    <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj" />
@@ -23,7 +22,7 @@
     <ProjectReference Include="..\Nethermind.TxPool\Nethermind.TxPool.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Polly" Version="7.2.2" />
-    <PackageReference Include="System.IO.Abstractions" Version="16.0.1" />
+    <PackageReference Include="Polly" Version="7.2.3" />
+    <PackageReference Include="System.IO.Abstractions" Version="17.0.15" />
   </ItemGroup>
 </Project>

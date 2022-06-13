@@ -17,6 +17,9 @@
 
 namespace Nethermind.Core.Specs
 {
+    /// <summary>
+    /// Provides the spec (list of enabled EIPs) at the current chain head.
+    /// </summary>
     public interface IChainHeadSpecProvider : ISpecProvider
     {
         IReleaseSpec GetCurrentHeadSpec();

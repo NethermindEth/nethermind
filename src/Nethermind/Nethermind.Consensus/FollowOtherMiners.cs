@@ -23,6 +23,7 @@ namespace Nethermind.Consensus
     public class FollowOtherMiners : IGasLimitCalculator
     {
         private readonly ISpecProvider _specProvider;
+        
         public FollowOtherMiners(ISpecProvider specProvider) 
         {
             _specProvider = specProvider;

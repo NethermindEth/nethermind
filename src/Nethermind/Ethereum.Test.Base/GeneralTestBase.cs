@@ -19,8 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -34,6 +33,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
