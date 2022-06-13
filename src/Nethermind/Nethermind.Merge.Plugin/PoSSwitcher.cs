@@ -167,6 +167,30 @@ namespace Nethermind.Merge.Plugin
                 _finalizedBlockHash = finalizedHash;
             }
         }
+        
+        private void PrintPoSBanner(BlockHeader header)
+        {
+            if (!_logger.IsInfo) return;
+
+            _logger.Info("┌──────────────────────────────────────────────────────────────────────────────────────────┐");
+            _logger.Info("│ You have now reached...                                                                  │");
+            _logger.Info("│                   ,,,         ,,,                                                        │");
+            _logger.Info("│                 ;\"   ^;     ;'   \",                                                      │");
+            _logger.Info("│                 ;    s$$$$$$$s     ;   ████████╗             ████████╗                   │");
+            _logger.Info("│                 ,  ss$$$$$$$$$$s  ,'   ██╔════██╗            ██╔═════╝                   │");
+            _logger.Info("│                 ;s$$$$$$$$$$$$$$$      ██║    ██║            ██║                         │");
+            _logger.Info("│                 $$$$$$$$$$$$$$$$$$     ██║    ██║  ███████╗  ██║                         │");
+            _logger.Info("│                $$$$P\"\"Y$$$Y\"\"W$$$$$    ████████╔╝ ██╔════██╗ ████████╗                   │");
+            _logger.Info("│                $$$$  p\"$$$\"q  $$$$$    ██╔═════╝  ██║    ██║ ╚═════██║                   │");
+            _logger.Info("│                $$$$  .$$$$$.  $$$$     ██║        ██║    ██║       ██║                   │");
+            _logger.Info("│                 $$DcaU$$$$$$$$$$       ██║        ██║    ██║       ██║                   │");
+            _logger.Info("│                   \"Y$$$\"*\"$$$Y\"        ██║        ╚███████╔╝ ████████║                   │");
+            _logger.Info("│                       \"$b.$$\"          ╚═╝         ╚══════╝  ╚═══════╝                   │");
+            _logger.Info("│                                                                                          │");
+            _logger.Info($"│ Terminal block number: {header.Number,-33}                                 │");
+            _logger.Info($"│ Terminal block hash: {header.Hash,-65} │");
+            _logger.Info("└──────────────────────────────────────────────────────────────────────────────────────────┘");
+        }
 
         public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
         
