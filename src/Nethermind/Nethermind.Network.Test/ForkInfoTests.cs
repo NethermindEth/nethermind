@@ -51,7 +51,6 @@ namespace Nethermind.Network.Test
         [TestCase(12_964_999, "0x0eb440f6", 12_965_000, "Last Berlin")]
         [TestCase(12_965_000, "0xb715077d", 13_773_000L, "First London")]
         [TestCase(13_772_999, "0xb715077d", 13_773_000L, "Last London")]
-        // TODO: placeholder values - modify when finalized - testcase parameters
         [TestCase(13_773_000, "0x20c327fc", 15_050_000L, "First Arrow Glacier")]
         [TestCase(15_049_999, "0x20c327fc", 15_050_000L, "Last Arrow Glacier")]
         [TestCase(15_050_000, "0xf0afd0e3", 0L, "First Gray Glacier")]
@@ -61,7 +60,6 @@ namespace Nethermind.Network.Test
             Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
         }
         
-        // TODO: placeholder values - modify when finalized - testcase parameters
         [TestCase(15_050_000, "0xf0afd0e3", 21_000_000L, "First Gray Glacier")]
         [TestCase(21_000_000, "0x3f5fd195", 0L, "First Merge Fork Id test")]
         [TestCase(21_811_000, "0x3f5fd195", 0L, "Future Merge Fork Id test")]
@@ -69,7 +67,6 @@ namespace Nethermind.Network.Test
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "foundation.json")));
-            // TODO: placeholder values - modify when finalized - MergeForkIdTransition and MergeForkIdBlockNumber
             spec.Parameters.MergeForkIdTransition = 21_000_000L;
             spec.MergeForkIdBlockNumber = 21_000_000L;
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
