@@ -51,8 +51,7 @@ namespace Nethermind.Merge.Plugin.Test
     {
         protected virtual async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
             => await new MergeTestBlockchain(mergeConfig, mockedPayloadService)
-                .Build(
-                    new SingleReleaseSpecProvider(London.Instance, 1));
+                .Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
         {
@@ -117,8 +116,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             {
-                GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
-                    .WithTimestamp(UInt256.One);
+                GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(UInt256.One);
                 MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
                 PayloadPreparationService = mockedPayloadPreparationService;
             }

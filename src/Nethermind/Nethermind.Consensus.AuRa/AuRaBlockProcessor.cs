@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly AuRaContractGasLimitOverride? _gasLimitOverride;
-        protected readonly ContractRewriter? _contractRewriter;
+        private readonly ContractRewriter? _contractRewriter;
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
         private IAuRaValidator? _auRaValidator;
@@ -98,7 +98,7 @@ namespace Nethermind.Consensus.AuRa
             return receipts;
         }
 
-        // HACK: workaround for not having static dispatch :(
+        // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
         protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             return base.ProcessBlock(block, blockTracer, options);

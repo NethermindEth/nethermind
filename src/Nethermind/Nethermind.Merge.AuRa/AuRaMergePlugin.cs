@@ -12,6 +12,7 @@ using Nethermind.Db;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Data;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.State;
@@ -22,7 +23,10 @@ using Nethermind.Api.Extensions;
 
 namespace Nethermind.Merge.AuRa
 {
-    // IMPORTANT: this plugin should always come before MergePlugin
+    /// <summary>
+    /// Plugin for AuRa -> PoS migration
+    /// </summary>
+    /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
     public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _auraApi;
@@ -64,7 +68,6 @@ namespace Nethermind.Merge.AuRa
                 .CreateStandardTxSourceForProducer(txProcessingEnv, constantContractsProcessingEnv);
         }
 
-        public bool ShouldRunSteps(INethermindApi api) =>
-            api.Config<IAuRaMergeConfig>().Enabled;
+        public bool ShouldRunSteps(INethermindApi api) => api.Config<IAuRaMergeConfig>().Enabled;
     }
 }

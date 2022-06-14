@@ -278,7 +278,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return _blockProducerContext ??= Create();
         }
 
-        public ITxSource CreateStandardTxSourceForProducer(
+        internal ITxSource CreateStandardTxSourceForProducer(
             ReadOnlyTxProcessingEnv processingEnv,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource) =>
             CreateTxPoolTxSource(processingEnv, readOnlyTxProcessorSource);

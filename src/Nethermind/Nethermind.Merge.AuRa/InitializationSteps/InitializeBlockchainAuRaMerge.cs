@@ -13,7 +13,12 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
 {
     public class InitializeBlockchainAuRaMerge : InitializeBlockchainAuRa
     {
-        public InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : base(api) { }
+        private readonly AuRaNethermindApi _api;
+        
+        public InitializeBlockchainAuRaMerge(AuRaNethermindApi api) : base(api)
+        {
+            _api = api;
+        }
 
         protected override BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
         {
@@ -41,7 +46,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
             if (_api.PoSSwitcher is null) throw new StepDependencyException(nameof(_api.PoSSwitcher));
             if (_api.SealValidator is null) throw new StepDependencyException(nameof(_api.SealValidator));
 
-            _api.SealValidator = new Merge.Plugin.MergeSealValidator(_api.PoSSwitcher!, _api.SealValidator!);
+            _api.SealValidator = new Plugin.MergeSealValidator(_api.PoSSwitcher!, _api.SealValidator!);
         }
     }
 }

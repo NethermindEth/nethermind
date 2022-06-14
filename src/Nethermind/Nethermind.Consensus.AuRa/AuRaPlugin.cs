@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
@@ -22,8 +23,13 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 
+[assembly:InternalsVisibleTo("Nethermind.Merge.AuRa")]
+
 namespace Nethermind.Consensus.AuRa
 {
+    /// <summary>
+    /// Consensus plugin for AuRa setup.
+    /// </summary>
     public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
     {
         private AuRaNethermindApi? _nethermindApi;

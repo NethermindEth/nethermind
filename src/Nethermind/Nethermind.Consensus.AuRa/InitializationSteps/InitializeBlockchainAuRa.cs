@@ -43,12 +43,12 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public class InitializeBlockchainAuRa : InitializeBlockchain
     {
-        protected readonly AuRaNethermindApi _api;
-        protected INethermindApi NethermindApi => _api;
+        private readonly AuRaNethermindApi _api;
+        private INethermindApi NethermindApi => _api;
         
-        protected AuRaSealValidator? _sealValidator;
-        protected IAuRaStepCalculator? _auRaStepCalculator;
-        protected readonly IAuraConfig _auraConfig;
+        private AuRaSealValidator? _sealValidator;
+        private IAuRaStepCalculator? _auRaStepCalculator;
+        private readonly IAuraConfig _auraConfig;
         
         public InitializeBlockchainAuRa(AuRaNethermindApi api) : base(api)
         {
@@ -97,9 +97,8 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             return processor;
         }
 
-        protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter)
-        {
-            return new AuRaBlockProcessor(
+        protected virtual BlockProcessor NewBlockProcessor(AuRaNethermindApi api, ITxFilter txFilter, ContractRewriter contractRewriter) =>
+            new AuRaBlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
                 _api.RewardCalculatorSource.Get(_api.TransactionProcessor),
@@ -113,7 +112,6 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                 GetGasLimitCalculator(),
                 contractRewriter
             );
-        }
 
         protected ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() => 
             new ReadOnlyTxProcessingEnv(_api.DbProvider, _api.ReadOnlyTrieStore, _api.BlockTree, _api.SpecProvider, _api.LogManager);
@@ -122,7 +120,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             new AuraHealthHintService(_auRaStepCalculator, _api.ValidatorStore);
 
 
-        protected IAuRaValidator CreateAuRaValidator(IBlockProcessor processor, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
+        private IAuRaValidator CreateAuRaValidator(IBlockProcessor processor, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
         {
             if (_api.ChainSpec == null) throw new StepDependencyException(nameof(_api.ChainSpec));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));

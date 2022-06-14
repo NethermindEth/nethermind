@@ -121,6 +121,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
                 if (_api.BlockProductionPolicy == null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
+                if (_api.HeaderValidator == null) throw new ArgumentException(nameof(_api.HeaderValidator));
 
                 var headerValidator = new MergeHeaderValidator(
                         _poSSwitcher,
@@ -261,6 +262,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
                 if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
+                if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
 
                 // ToDo strange place for validators initialization
                 PeerRefresher peerRefresher = new(_api.SyncPeerPool, _api.TimerFactory);

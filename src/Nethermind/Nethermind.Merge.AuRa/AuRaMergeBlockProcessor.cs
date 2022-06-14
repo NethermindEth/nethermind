@@ -67,10 +67,8 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         _poSSwitcher = poSSwitcher;
     }
 
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
-    {
-        if (_poSSwitcher.IsPostMerge(block.Header))
-            return base.PostMergeProcessBlock(block, blockTracer, options);
-        return base.ProcessBlock(block, blockTracer, options);
-    }
+    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>
+        _poSSwitcher.IsPostMerge(block.Header) 
+            ? PostMergeProcessBlock(block, blockTracer, options) 
+            : base.ProcessBlock(block, blockTracer, options);
 }

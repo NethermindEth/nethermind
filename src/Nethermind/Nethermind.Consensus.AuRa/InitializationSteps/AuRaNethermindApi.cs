@@ -50,9 +50,10 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 
         public ReportingContractBasedValidator.Cache ReportingContractValidatorCache { get; } = new ReportingContractBasedValidator.Cache();
         public TxPriorityContract.LocalDataSource? TxPriorityContractLocalDataSource { get; set; }
-
-        // Merge
-        // TODO: move to NethermindApi(?)
+        
+        /// <summary>
+        /// PoS switcher for The Merge
+        /// </summary>
         public IPoSSwitcher? PoSSwitcher { get; set; }
     }
 }
