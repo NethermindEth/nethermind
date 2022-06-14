@@ -41,7 +41,7 @@ namespace Nethermind.TxPool.Comparison
             if (ReferenceEquals(null, x)) return -1;
 
             // always allow replacement of zero fee txs (in legacy txs MaxFeePerGas equals GasPrice)
-            if (y.MaxFeePerGas == UInt256.Zero) return -1;
+            if (y.MaxFeePerGas.IsZero) return -1;
 
             if (!x.IsEip1559 && !y.IsEip1559)
             {
