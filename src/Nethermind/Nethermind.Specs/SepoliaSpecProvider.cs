@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -37,19 +38,14 @@ public class SepoliaSpecProvider : ISpecProvider
     public UInt256? TerminalTotalDifficulty { get; private set; }
     public IReleaseSpec GenesisSpec => London.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            return London.Instance;
-        }
+        public IReleaseSpec GetSpec(long blockNumber) => London.Instance;
 
         public long? DaoBlockNumber => null;
         
 
         public ulong ChainId => Core.ChainId.Rinkeby;
 
-        public long[] TransitionBlocks { get; } =
-        {
-        };
+        public long[] TransitionBlocks { get; } = Array.Empty<long>();
 
         private SepoliaSpecProvider() { }
 

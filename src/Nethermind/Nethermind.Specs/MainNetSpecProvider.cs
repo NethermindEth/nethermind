@@ -36,70 +36,23 @@ namespace Nethermind.Specs
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            if (blockNumber < HomesteadBlockNumber)
+        public IReleaseSpec GetSpec(long blockNumber) =>
+            blockNumber switch
             {
-                return Frontier.Instance;
-            }
-
-            if (blockNumber < DaoBlockNumber)
-            {
-                return Homestead.Instance;
-            }
-
-            if (blockNumber < TangerineWhistleBlockNumber)
-            {
-                return Dao.Instance;
-            }
-
-            if (blockNumber < SpuriousDragonBlockNumber)
-            {
-                return TangerineWhistle.Instance;
-            }
-
-            if (blockNumber < ByzantiumBlockNumber)
-            {
-                return SpuriousDragon.Instance;
-            }
-
-            if (blockNumber < ConstantinopleFixBlockNumber)
-            {
-                return Byzantium.Instance;
-            }
-
-            if (blockNumber < IstanbulBlockNumber)
-            {
-                return ConstantinopleFix.Instance;
-            }
-
-            if (blockNumber < MuirGlacierBlockNumber)
-            {
-                return Istanbul.Instance;
-            }
-
-            if (blockNumber < BerlinBlockNumber)
-            {
-                return MuirGlacier.Instance;
-            }
-
-            if (blockNumber < LondonBlockNumber)
-            {
-                return Berlin.Instance;
-            }
-
-            if (blockNumber < ArrowGlacierBlockNumber)
-            {
-                return London.Instance;
-            }
-            
-            if (blockNumber < GrayGlacierBlockNumber)
-            {
-                return ArrowGlacier.Instance;
-            }
-
-            return GrayGlacier.Instance;
-        }
+                < HomesteadBlockNumber => Frontier.Instance,
+                < DaoBlockNumberConst => Homestead.Instance,
+                < TangerineWhistleBlockNumber => Dao.Instance,
+                < SpuriousDragonBlockNumber => TangerineWhistle.Instance,
+                < ByzantiumBlockNumber => SpuriousDragon.Instance,
+                < ConstantinopleFixBlockNumber => Byzantium.Instance,
+                < IstanbulBlockNumber => ConstantinopleFix.Instance,
+                < MuirGlacierBlockNumber => Istanbul.Instance,
+                < BerlinBlockNumber => MuirGlacier.Instance,
+                < LondonBlockNumber => Berlin.Instance,
+                < ArrowGlacierBlockNumber => London.Instance,
+                < GrayGlacierBlockNumber => ArrowGlacier.Instance,
+                _ => GrayGlacier.Instance
+            };
 
         public const long HomesteadBlockNumber = 1_150_000;
         public long? DaoBlockNumber => DaoBlockNumberConst;

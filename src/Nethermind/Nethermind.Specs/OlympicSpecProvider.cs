@@ -36,10 +36,7 @@ namespace Nethermind.Specs
         public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec => Olympic.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            return Olympic.Instance;
-        }
+        public IReleaseSpec GetSpec(long blockNumber) => Olympic.Instance;
 
         public long? DaoBlockNumber => 0L;
 

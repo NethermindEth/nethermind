@@ -46,30 +46,19 @@ namespace Nethermind.Specs
         
         private IReleaseSpec LondonNoBomb { get; } = London.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            if (blockNumber < IstanbulBlockNumber)
+        public IReleaseSpec GetSpec(long blockNumber) =>
+            blockNumber switch
             {
-                return GenesisSpec;
-            }
-            
-            if (blockNumber < BerlinBlockNumber)
-            {
-                return IstanbulNoBomb;
-            }
-
-            if (blockNumber < LondonBlockNumber)
-            {
-                return BerlinNoBomb;
-            }
-
-            return LondonNoBomb;
-        }
+                < IstanbulBlockNumber => GenesisSpec,
+                < BerlinBlockNumber => IstanbulNoBomb,
+                < LondonBlockNumber => BerlinNoBomb,
+                _ => LondonNoBomb
+            };
 
         public long? DaoBlockNumber => null;
-        public static long IstanbulBlockNumber => 1_561_651;
-        public static long BerlinBlockNumber => 4_460_644;
-        public static long LondonBlockNumber => 5_062_605;
+        public const long IstanbulBlockNumber = 1_561_651;
+        public const long BerlinBlockNumber = 4_460_644;
+        public const long LondonBlockNumber = 5_062_605;
         public ulong ChainId => Core.ChainId.Goerli;
 
         public long[] TransitionBlocks { get; } =
