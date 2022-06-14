@@ -33,10 +33,12 @@ namespace Nethermind.Merge.Plugin
         private const int MaxExtraDataBytes = 32;
         
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly IHeaderValidator _preMergeHeaderValidator;
         private readonly IBlockTree _blockTree;
 
         public MergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
+            IHeaderValidator preMergeHeaderValidator,
             IBlockTree blockTree,
             ISpecProvider specProvider,
             ISealValidator sealValidator,
@@ -44,25 +46,23 @@ namespace Nethermind.Merge.Plugin
             : base(blockTree, sealValidator, specProvider, logManager)
         {
             _poSSwitcher = poSSwitcher;
+            _preMergeHeaderValidator = preMergeHeaderValidator;
             _blockTree = blockTree;
         }
         
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
-            bool theMergeValid = ValidateTheMergeChecks(header);
-            return base.Validate(header, parent, isUncle) && theMergeValid;
+            return _poSSwitcher.IsPostMerge(header)
+                ? ValidateTheMergeChecks(header) && base.Validate(header, parent, isUncle)
+                : _preMergeHeaderValidator.Validate(header, parent, isUncle);
         }
 
-        public override bool Validate(BlockHeader header, bool isUncle = false)
-        {
-            BlockHeader? parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
-            return Validate(header, parent, isUncle);
-        }
+        public override bool Validate(BlockHeader header, bool isUncle = false) => 
+            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None), isUncle);
 
-        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header)
-        {
-            return _poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(parent, header);
-        }
+        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header) => 
+            _poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(parent, header);
+
         private bool ValidateTheMergeChecks(BlockHeader header)
         {
             bool validDifficulty = true, validNonce = true, validUncles = true;
@@ -70,11 +70,9 @@ namespace Nethermind.Merge.Plugin
             bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, switchInfo.IsTerminal);
             if (switchInfo.IsPostMerge)
             {
-                validDifficulty =
-                    ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
+                validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
                 validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
-                validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp,
-                    nameof(header.UnclesHash));
+                validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
             }
 
             return terminalTotalDifficultyChecks
@@ -87,38 +85,42 @@ namespace Nethermind.Merge.Plugin
         {
             if (_poSSwitcher.IsPostMerge(header))
             {
-                if (header.ExtraData.Length <= MaxExtraDataBytes) return true;
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {nameof(header.MixHash)} exceeded max length of {MaxExtraDataBytes}.");
-                return false;
+                if (header.ExtraData.Length > MaxExtraDataBytes)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {nameof(header.MixHash)} exceeded max length of {MaxExtraDataBytes}.");
+                    return false;
+                }
+
+                return true;
             }
+            
             return base.ValidateExtraData(header, parent, spec, isUncle);
         }
 
         private bool ValidateTerminalTotalDifficultyChecks(BlockHeader header, bool isTerminal)
         {
-            if (header.TotalDifficulty == null || header.TotalDifficulty == 0 || _poSSwitcher.TerminalTotalDifficulty == null)
+            if ((header.TotalDifficulty ?? 0) == 0 || _poSSwitcher.TerminalTotalDifficulty is null)
+            {
                 return true;
+            }
 
             bool isValid = true;
             bool isPostMerge = header.IsPostMerge;
-            if (isPostMerge == false && isTerminal == false)
+            if (!isPostMerge && !isTerminal)
             {
                 if (header.TotalDifficulty >= _poSSwitcher.TerminalTotalDifficulty)
+                {
                     isValid = false;
+                }
             }
-            else
+            else if (header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
             {
-                if (header.TotalDifficulty < _poSSwitcher.TerminalTotalDifficulty)
-                    isValid = false;
+                isValid = false;
             }
-
-            if (isValid == false)
+            
+            if (!isValid)
             {
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - total difficulty is incorrect because of TTD, TerminalTotalDifficulty: {_poSSwitcher.TerminalTotalDifficulty}, IsPostMerge {header.IsPostMerge} IsTerminalBlock: {isTerminal}");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - total difficulty is incorrect because of TTD, TerminalTotalDifficulty: {_poSSwitcher.TerminalTotalDifficulty}, IsPostMerge {header.IsPostMerge} IsTerminalBlock: {isTerminal}");
             }
 
             return isValid;
@@ -126,11 +128,13 @@ namespace Nethermind.Merge.Plugin
 
         private bool ValidateHeaderField<T>(BlockHeader header, T value, T expected, string name)
         {
-            if (Equals(value, expected)) return true;
-            if (_logger.IsWarn)
-                _logger.Warn(
-                    $"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
-            return false;
+            if (!Equals(value, expected))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
+                return false;
+            }
+
+            return true;
         }
     }
 }

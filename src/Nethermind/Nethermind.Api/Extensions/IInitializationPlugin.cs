@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,12 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Config;
-
 namespace Nethermind.Api.Extensions;
 
-public interface IPluginConfig : IConfig
+/// <summary>
+/// Assemblies containing instances of this interface will be the ones
+/// used to load custom initialization steps.
+/// </summary>
+public interface IInitializationPlugin : INethermindPlugin
 {
-    [ConfigItem(Description = "Order of plugin initialization", DefaultValue = "[Clique, Aura, Ethash, AuRaMerge, Merge, MEV, HealthChecks, Hive]")]
-    string[] PluginOrder { get; set; }
+    /// <summary>
+    /// This method will be called on the plugin instance
+    /// decide whether or not we need to run initialization steps
+    /// defined in its assembly. It receives the api to be able to
+    /// look at the config.
+    /// </summary>
+    bool ShouldRunSteps(INethermindApi api);
 }

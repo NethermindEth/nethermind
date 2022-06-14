@@ -49,10 +49,9 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) 
+        protected virtual async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
             => await new MergeTestBlockchain(mergeConfig, mockedPayloadService)
-                .Build(
-                    new SingleReleaseSpecProvider(London.Instance, 1));
+                .Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
         {
@@ -99,7 +98,7 @@ namespace Nethermind.Merge.Plugin.Test
                 chain.LogManager);
         }
 
-        private class MergeTestBlockchain : TestBlockchain
+        public class MergeTestBlockchain : TestBlockchain
         {
             public IMergeConfig MergeConfig { get; set; }
             
@@ -117,8 +116,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             {
-                GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
-                    .WithTimestamp(UInt256.One);
+                GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(UInt256.One);
                 MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
                 PayloadPreparationService = mockedPayloadPreparationService;
             }
@@ -127,7 +125,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
             
-            public IEthSyncingInfo EthSyncingInfo { get; private set; }
+            public IEthSyncingInfo EthSyncingInfo { get; protected set; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
@@ -195,7 +193,8 @@ namespace Nethermind.Merge.Plugin.Test
                 IBlockCacheService blockCacheService = new BlockCacheService();
                 PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, LogManager);
                 SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
-                HeaderValidator = new MergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealValidator, LogManager);
+                HeaderValidator preMergeHeaderValidator = new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager);
+                HeaderValidator = new MergeHeaderValidator(PoSSwitcher, preMergeHeaderValidator, BlockTree, SpecProvider, SealValidator, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
