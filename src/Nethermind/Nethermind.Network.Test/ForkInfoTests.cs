@@ -54,17 +54,17 @@ namespace Nethermind.Network.Test
         // TODO: placeholder values - modify when finalized - testcase parameters
         [TestCase(13_773_000, "0x20c327fc", 15_050_000L, "First Arrow Glacier")]
         [TestCase(15_049_999, "0x20c327fc", 15_050_000L, "Last Arrow Glacier")]
-        [TestCase(15_050_000, "0xfb8e75e2", 0L, "First Gray Glacier")]
-        [TestCase(20_000_000, "0xfb8e75e2", 0L, "Future Gray Glacier")]
+        [TestCase(15_050_000, "0xf0afd0e3", 0L, "First Gray Glacier")]
+        [TestCase(20_000_000, "0xf0afd0e3", 0L, "Future Gray Glacier")]
         public void Fork_id_and_hash_as_expected(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
         }
         
         // TODO: placeholder values - modify when finalized - testcase parameters
-        [TestCase(15_050_000, "0xfb8e75e2", 21_000_000L, "First Gray Glacier")]
-        [TestCase(21_000_000, "0xdd2e4932", 0L, "First Merge Fork Id test")]
-        [TestCase(21_811_000, "0xdd2e4932", 0L, "Future Merge Fork Id test")]
+        [TestCase(15_050_000, "0xf0afd0e3", 21_000_000L, "First Gray Glacier")]
+        [TestCase(21_000_000, "0x3f5fd195", 0L, "First Merge Fork Id test")]
+        [TestCase(21_811_000, "0x3f5fd195", 0L, "Future Merge Fork Id test")]
         public void Fork_id_and_hash_as_expected_with_merge_fork_id(long head, string forkHashHex, long next, string description)
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
