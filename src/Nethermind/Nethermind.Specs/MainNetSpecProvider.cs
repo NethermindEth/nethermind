@@ -113,6 +113,7 @@ namespace Nethermind.Specs
         public const long BerlinBlockNumber = 12_244_000;
         public const long LondonBlockNumber = 12_965_000;
         public const long ArrowGlacierBlockNumber = 13_773_000;
+        // TODO: modify when finalized
         public const long GrayGlacierBlockNumber = 15_050_000;
         public const long ShanghaiBlockNumber = long.MaxValue - 4;
         public const long CancunBlockNumber = long.MaxValue - 3;
