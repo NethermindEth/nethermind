@@ -37,7 +37,7 @@ namespace Nethermind.Specs.Forks
         public long GasLimitBoundDivisor => 0x0400;
         public UInt256 BlockReward { get; } = UInt256.Parse("2000000000000000000");
         // TODO: placeholder values - modify when finalized - DifficultyBombDelay
-        public long DifficultyBombDelay => 11200000L;
+        public long DifficultyBombDelay => 11400000L;
         public long DifficultyBoundDivisor => 0x0800;
         public long? FixedDifficulty => null;
         public int MaximumUncleCount => 2;

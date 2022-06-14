@@ -169,9 +169,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(9_700_000, provider.GetSpec(13_772_999).DifficultyBombDelay);
             Assert.AreEqual(10_700_000, provider.GetSpec(13_773_000).DifficultyBombDelay);
             // TODO: placeholder values - modify when finalized
-            Assert.AreEqual(10_700_000, provider.GetSpec(28_382_999).DifficultyBombDelay);
-            Assert.AreEqual(11_200_000, provider.GetSpec(28_383_000).DifficultyBombDelay);
-            Assert.AreEqual(11_200_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
+            Assert.AreEqual(10_700_000, provider.GetSpec(15_049_999).DifficultyBombDelay);
+            Assert.AreEqual(11_400_000, provider.GetSpec(15_050_000).DifficultyBombDelay);
+            Assert.AreEqual(11_400_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
         }
 
         private static void CompareSpecProviders(

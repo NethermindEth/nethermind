@@ -84,7 +84,6 @@ namespace Nethermind.Ethash.Test
                 London.Instance, ArrowGlacier.Instance);
         }
         
-        // TODO: placeholder values - modify when finalized - previous difficulty bomb
         // previous difficulty bomb +  InitialDifficultyBombBlock + offset
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 1)]
         [TestCase(10700000 + EthashDifficultyCalculator.InitialDifficultyBombBlock + 3)]
