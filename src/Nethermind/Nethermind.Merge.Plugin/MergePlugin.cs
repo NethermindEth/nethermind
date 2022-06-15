@@ -148,7 +148,8 @@ namespace Nethermind.Merge.Plugin
         {
             JsonRpcUrlCollection urlCollection = new(_api.LogManager, _api.Config<IJsonRpcConfig>(), false);
             bool hasEngineApiConfigured = urlCollection
-                .Any((pair => pair.Value.EnabledModules.Contains("engine")));
+                .Values
+                .Any(rpcUrl => rpcUrl.EnabledModules.Contains("engine"));
 
             if (!hasEngineApiConfigured)
             {
