@@ -138,7 +138,7 @@ namespace Nethermind.Merge.Plugin.Test
             
             await _plugin.Invoking((plugin) => plugin.Init(_context))
                 .Should()
-                .ThrowAsync<ArgumentException>();
+                .ThrowAsync<InvalidOperationException>();
         }
         
         [Test]

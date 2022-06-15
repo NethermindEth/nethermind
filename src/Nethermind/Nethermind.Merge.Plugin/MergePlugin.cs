@@ -153,7 +153,7 @@ namespace Nethermind.Merge.Plugin
 
             if (!hasEngineApiConfigured)
             {
-                throw new ArgumentException("No RPC module for engine api configured");
+                throw new InvalidOperationException("No RPC module for engine api configured");
             }
         }
 
