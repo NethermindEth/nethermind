@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -24,12 +26,14 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 using NSubstitute;
+using NUnit.Framework.Constraints;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
 
 namespace Nethermind.Merge.Plugin.Test
@@ -46,11 +50,14 @@ namespace Nethermind.Merge.Plugin.Test
         {
             _mergeConfig = new MergeConfig() {Enabled = true, FeeRecipient = TestItem.AddressA.ToString()};
             MiningConfig? miningConfig = new() {Enabled = true};
+            IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
+            
             _context = Build.ContextWithMocks();
             _context.SealEngineType = SealEngineType.Clique;
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
             _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
             _context.ConfigProvider.GetConfig<IMiningConfig>().Returns(miningConfig);
+            _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
             _context.BlockProcessingQueue?.IsEmpty.Returns(true);
             _context.MemDbFactory = new MemDbFactory();
             _context.BlockProducerEnvFactory = new BlockProducerEnvFactory(
@@ -105,6 +112,58 @@ namespace Nethermind.Merge.Plugin.Test
             await _plugin.InitRpcModules();
             _context.RpcModuleProvider.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));
             await _plugin.DisposeAsync();
+        }
+
+        [TestCase(true, true)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(false, false)]
+        public async Task InitThrowsWhenNoEngineApiUrlsConfigured(bool jsonRpcEnabled, bool configuredViaAdditionalUrls)
+        {
+            if (configuredViaAdditionalUrls)
+            {
+                _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig()
+                {
+                    Enabled = jsonRpcEnabled,
+                    AdditionalRpcUrls = new []{"http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth"}
+                });
+            }
+            else
+            {
+                _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig()
+                {
+                    Enabled = jsonRpcEnabled
+                });
+            }
+            
+            await _plugin.Invoking((plugin) => plugin.Init(_context))
+                .Should()
+                .ThrowAsync<InvalidOperationException>();
+        }
+        
+        [Test]
+        public async Task InitDisableJsonRpcUrlWithNoEngineUrl()
+        {
+            JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+            {
+                Enabled = false,
+                EnabledModules = new string[] { "eth", "subscribe" },
+                AdditionalRpcUrls = new []
+                {
+                    "http://localhost:8550|http;ws|net;eth;subscribe;web3;client|no-auth",
+                    "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client",
+                }
+            };
+            _context.ConfigProvider.GetConfig<IJsonRpcConfig>().Returns(jsonRpcConfig);
+
+            await _plugin.Init(_context);
+
+            jsonRpcConfig.Enabled.Should().BeTrue();
+            jsonRpcConfig.EnabledModules.Should().BeEquivalentTo(new string[] { });
+            jsonRpcConfig.AdditionalRpcUrls.Should().BeEquivalentTo(new string[]
+            {
+                "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"
+            });
         }
     }
 }
