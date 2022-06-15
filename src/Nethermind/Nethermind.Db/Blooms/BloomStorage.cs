@@ -286,6 +286,7 @@ namespace Nethermind.Db.Blooms
                 catch (InvalidOperationException e)
                 {
                     e.Data.Add("Bucket", bucket);
+                    throw;
                 }
             }
             
