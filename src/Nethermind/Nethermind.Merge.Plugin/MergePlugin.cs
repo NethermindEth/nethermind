@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -83,6 +85,8 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
+
+                EnsureJsonRpcUrl();
                 
                 _blockCacheService = new BlockCacheService();
                 _poSSwitcher = new PoSSwitcher(
@@ -110,6 +114,46 @@ namespace Nethermind.Merge.Plugin
             }
 
             return Task.CompletedTask;
+        }
+
+        private void EnsureJsonRpcUrl()
+        {
+            IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
+            if (!jsonRpcConfig.Enabled)
+            {
+                if (_logger.IsInfo)
+                    _logger.Info("JsonRpc not enabled. Turning on JsonRpc URL with engine API.");
+
+                jsonRpcConfig.Enabled = true;
+                
+                EnsureEngineModuleIsConfigured();
+
+                if (!jsonRpcConfig.EnabledModules.Contains("engine"))
+                {
+                    // Disable it
+                    jsonRpcConfig.EnabledModules = new string[] { };
+                }
+
+                jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
+                    .Where((url) => JsonRpcUrl.Parse(url).EnabledModules.Contains("engine"))
+                    .ToArray();
+            }
+            else
+            {
+                EnsureEngineModuleIsConfigured();
+            }
+        }
+
+        private void EnsureEngineModuleIsConfigured()
+        {
+            JsonRpcUrlCollection urlCollection = new(_api.LogManager, _api.Config<IJsonRpcConfig>(), false);
+            bool hasEngineApiConfigured = urlCollection
+                .Any((pair => pair.Value.EnabledModules.Contains("engine")));
+
+            if (!hasEngineApiConfigured)
+            {
+                throw new ArgumentException("No RPC module for engine api configured");
+            }
         }
 
         public Task InitNetworkProtocol()
