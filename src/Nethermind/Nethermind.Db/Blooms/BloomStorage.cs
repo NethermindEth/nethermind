@@ -289,11 +289,6 @@ namespace Nethermind.Db.Blooms
                     {
                         Data = { { "Bucket", bucket }, { "Block", blockNumber } }
                     };
-
-                    foreach (DictionaryEntry entry in e.Data)
-                    {
-                        exception.Data.Add(entry.Key, entry.Value);
-                    }
                     
                     throw exception;
                 }
