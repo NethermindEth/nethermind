@@ -285,8 +285,17 @@ namespace Nethermind.Db.Blooms
                 }
                 catch (InvalidOperationException e)
                 {
-                    e.Data.Add("Bucket", bucket);
-                    throw;
+                    InvalidOperationException exception = new(e.Message + $" Trying to write bloom index for block {blockNumber} at bucket {bucket}", e)
+                    {
+                        Data = { { "Bucket", bucket }, { "Block", blockNumber } }
+                    };
+
+                    foreach (DictionaryEntry entry in e.Data)
+                    {
+                        exception.Data.Add(entry.Key, entry.Value);
+                    }
+                    
+                    throw exception;
                 }
             }
             
