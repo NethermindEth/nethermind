@@ -42,12 +42,30 @@ namespace Nethermind.Db.Blooms
             {
                 throw new ArgumentException($"Element size incorrect. Only elements of length {_elementSize} are acceptable.");
             }
-            
-            lock (_fileWrite)
+
+            try
             {
-                SeekIndex(_fileWrite, index);
-                _fileWrite.Write(element);
-                Interlocked.Exchange(ref _needsFlush, 1);
+                lock (_fileWrite)
+                {
+                    SeekIndex(_fileWrite, index);
+                    _fileWrite.Write(element);
+                    Interlocked.Exchange(ref _needsFlush, 1);
+                }
+            }
+            catch (ArgumentOutOfRangeException e)
+            {
+                long position = GetPosition(index);
+                throw new InvalidOperationException($"Bloom storage tried to write a file that is too big for file system. " +
+                                                    $"Trying to write data at index {index} with size {_elementSize} at file position {position} to file {_path}", e)
+                {
+                    Data =
+                    {
+                        {"Index", index},
+                        {"Size", _elementSize},
+                        {"Position", position},
+                        {"Path", _path}
+                    }
+                };
             }
         }
 
@@ -81,17 +99,19 @@ namespace Nethermind.Db.Blooms
 
         private void SeekIndex(Stream file, long index)
         {
-            long seekPosition = index * _elementSize;
+            long seekPosition = GetPosition(index);
             if (file.Position != seekPosition)
             {
                 file.Position = seekPosition;
             }
         }
 
+        private long GetPosition(long index) => index * _elementSize;
+
         public void Dispose()
         {
-            _fileWrite?.Dispose();
-            _fileRead?.Dispose();
+            _fileWrite.Dispose();
+            _fileRead.Dispose();
         }
     }
 }
