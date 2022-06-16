@@ -133,26 +133,15 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         {
             options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
         }
-        
+
         // Found existing block in the block tree
         if (_blockTree.IsKnownBlock(header.Number, header.Hash))
         {
-            if (_blockTree.LowestInsertedBeaconHeader?.ParentHash == header.Hash)
-            {
-                _chainMerged = true;
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Found header to join dangling beacon chain {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
-                return AddBlockResult.AlreadyKnown;
-            }
-
-            if (header.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"LowestInsertedBeaconHeader AlreadyKnown changed, old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
-                _blockTree.LowestInsertedBeaconHeader = header;
-            }
+            _chainMerged = true;
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"Found header to join dangling beacon chain {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+            return AddBlockResult.AlreadyKnown;
         }
 
         AddBlockResult insertOutcome = _blockTree.Insert(header, options);
