@@ -56,15 +56,26 @@ jobs:
       run: |
         cd posdao-test-setup
         npm run all-nethermind-no-watcher
-    - name: Stopping and compressing logs      
+    - name: Stopping and compressing logs
       run: |
         cd posdao-test-setup
         npm run stop-test-setup
-        zip -r node-logs.zip data/node0/log data/node1/log data/node2/log \
-          data/node3/log data/node4/log data/node5/log data/node6/log data/node1/checkRandomSeed.log
-    - uses: actions/upload-artifact@master      
+
+        mkdir -p posdao-logs
+
+        cp "./data/node0/nethermind.logs.txt" "posdao-logs/node0.logs.txt"
+        cp "./data/node1/nethermind.logs.txt" "posdao-logs/node1.logs.txt"
+        cp "./data/node2/nethermind.logs.txt" "posdao-logs/node2.logs.txt"
+        cp "./data/node3/nethermind.logs.txt" "posdao-logs/node3.logs.txt"
+
+        (cd "./bc/launcher" && docker-compose logs node > "posdao-logs/cl-node.logs.txt")
+        (cd "./bc/launcher" && docker-compose logs node2 > "posdao-logs/cl-node2.logs.txt")
+        (cd "./bc/launcher" && docker-compose logs validator > "posdao-logs/cl-validator.logs.txt")
+
+        zip -r posdao-logs.zip posdao-logs
+    - uses: actions/upload-artifact@master
       name: Upload nodes logs
       with:
         name: posdao-tests-logs
         path: |
-          posdao-test-setup/node-logs.zip
+          posdao-test-setup/posdao-logs.zip
