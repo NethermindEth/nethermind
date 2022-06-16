@@ -180,24 +180,24 @@ namespace Nethermind.Db.Blooms
             long i = 0;
             long lastBlockNumber = -1;
             
-            foreach (var blockHeader in headers)
+            foreach (BlockHeader blockHeader in headers)
             {
                 i++;
 
-                var blockHeaderBloom = blockHeader.Bloom ?? Bloom.Empty;
+                Bloom blockHeaderBloom = blockHeader.Bloom ?? Bloom.Empty;
                 lastLevel.Migrate(blockHeader.Number, blockHeaderBloom);
                 
-                for (var index = 0; index < levelBlooms.Length; index++)
+                for (int index = 0; index < levelBlooms.Length; index++)
                 {
-                    var levelBloom = levelBlooms[index];
-                    levelBloom.Bloom.Accumulate(blockHeaderBloom);
+                    (BloomStorageLevel level, Bloom bloom) = levelBlooms[index];
+                    bloom.Accumulate(blockHeaderBloom);
                     
-                    if (i % levelBloom.Level.LevelElementSize == 0)
+                    if (i % level.LevelElementSize == 0)
                     {
-                        levelBloom.Level.Migrate(blockHeader.Number, levelBloom.Bloom);
-                        levelBlooms[index] = (levelBloom.Level, new Bloom());
+                        level.Migrate(blockHeader.Number, bloom);
+                        levelBlooms[index] = (level, new Bloom());
 
-                        if (levelBloom.Level.LevelElementSize == batchSize)
+                        if (level.LevelElementSize == batchSize)
                         {
                             MigratedBlockNumber += batchSize;
                         }
@@ -211,8 +211,8 @@ namespace Nethermind.Db.Blooms
             {
                 for (int index = 0; index < levelBlooms.Length; index++)
                 {
-                    (BloomStorageLevel Level, Bloom Bloom) levelBloom = levelBlooms[index];
-                    levelBloom.Level.Store(lastBlockNumber, levelBloom.Bloom);
+                    (BloomStorageLevel level, Bloom bloom) = levelBlooms[index];
+                    level.Store(lastBlockNumber, bloom);
                 }
                 
                 MigratedBlockNumber += i;
@@ -379,12 +379,12 @@ namespace Nethermind.Db.Blooms
                 IList<BloomStorageLevel> levels = new List<BloomStorageLevel>(storageLevels.Length);
                 for (int i = 0; i < storageLevels.Length; i++)
                 {
-                    var level = storageLevels[i];
+                    BloomStorageLevel level = storageLevels[i];
 
                     if (i != storageLevels.Length - 1)
                     {
-                        var fromBucket = level.GetBucket(fromBlock);
-                        var toBucket = level.GetBucket(toBlock);
+                        long fromBucket = level.GetBucket(fromBlock);
+                        long toBucket = level.GetBucket(toBlock);
                         if (toBucket - fromBucket + 1 <= 2)
                         {
                             continue;
@@ -409,7 +409,7 @@ namespace Nethermind.Db.Blooms
             {
                 if (_currentLevelRead)
                 {
-                    var currentStorageLevel = _storageLevels[CurrentLevel].Storage;
+                    BloomStorageLevel currentStorageLevel = _storageLevels[CurrentLevel].Storage;
                     _currentPosition += _currentPosition == _fromBlock
                         ? currentStorageLevel.LevelElementSize - _currentPosition % currentStorageLevel.LevelElementSize
                         : currentStorageLevel.LevelElementSize;
@@ -445,8 +445,8 @@ namespace Nethermind.Db.Blooms
             {
                 get
                 {
-                    var level = _storageLevels[_currentLevel].Storage;
-                    var bucket = level.GetBucket(_currentPosition);
+                    BloomStorageLevel level = _storageLevels[_currentLevel].Storage;
+                    long bucket = level.GetBucket(_currentPosition);
                     return (bucket * level.LevelElementSize, (bucket + 1) * level.LevelElementSize - 1);
                 }
             }
@@ -473,7 +473,7 @@ namespace Nethermind.Db.Blooms
 
             public override string ToString()
             {
-                var indices = CurrentIndices;
+                (long FromBlock, long ToBlock) indices = CurrentIndices;
                 return $"From: {_fromBlock}, To: {_toBlock}, MaxLevel {_maxLevel}, CurrentBloom {indices.FromBlock}...{indices.ToBlock}, CurrentLevelSize {indices.ToBlock - indices.FromBlock + 1} CurrentLevel {CurrentLevel}, LevelRead {_currentLevelRead}";
             }
         }
