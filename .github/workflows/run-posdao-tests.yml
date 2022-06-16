@@ -65,6 +65,6 @@ jobs:
     - uses: actions/upload-artifact@master      
       name: Upload post-failure nodes logs
       with:
-        name: posdao-tests-failure-logs
+        name: posdao-tests-logs
         path: |
           posdao-test-setup/node-logs.zip
