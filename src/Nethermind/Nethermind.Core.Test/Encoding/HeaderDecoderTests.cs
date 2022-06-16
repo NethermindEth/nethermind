@@ -119,5 +119,22 @@ namespace Nethermind.Core.Test.Encoding
                 HeaderDecoder.Eip1559TransitionBlock = long.MaxValue;
             }
         }
+        
+        [TestCase(-1)]
+        [TestCase(long.MinValue)]
+        public void Can_encode_decode_with_negative_long_fields(long negativeLong)
+        {
+            BlockHeader header = Build.A.BlockHeader.
+                WithNumber(negativeLong).
+                WithGasUsed(negativeLong).
+                WithGasLimit(negativeLong).TestObject;
+            
+            Rlp rlp = Rlp.Encode(header);
+            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp);
+            
+            blockHeader.GasUsed.Should().Be(negativeLong);
+            blockHeader.Number.Should().Be(negativeLong);
+            blockHeader.GasLimit.Should().Be(negativeLong);
+        }
     }
 }
