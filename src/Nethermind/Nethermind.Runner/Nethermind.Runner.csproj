@@ -121,14 +121,14 @@
 
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" />
+    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue"/>
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" ContinueOnError="WarnAndContinue"/>
   </Target>
 
   <Target Name="StoreGitHashBeforePublish" BeforeTargets="BeforePublish">
     <Message Text="---&gt; Generating Git Hash file Before Publish" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" />
+    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue"/>
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" ContinueOnError="WarnAndContinue"/>
   </Target>
 
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild">
