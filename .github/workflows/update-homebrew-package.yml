@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  Update homebrew:
+  update-homebrew:
     name: Update Homebrew to latest version
     runs-on: ubuntu-latest
     steps:
@@ -12,32 +12,10 @@ jobs:
         uses: actions/checkout@master
         with: 
           repository: NethermindEth/homebrew-nethermind
+          path: homebrew-nethermind
 
       - name: Update Homebrew file with new version, commit and date
-        run: |
-          curl -sS https://api.github.com/repos/NethermindEth/nethermind/releases/latest | jq -r '.assets[] | select(.name | contains("darwin-amd64")) | .browser_download_url' | xargs wget -O darwin-amd64.zip && darwin_amd64_hash="$(shasum -a 256 darwin-amd64.zip | awk '{ print $1}')"
-          darwin_zip="$(curl -s https://api.github.com/repos/NethermindEth/nethermind/releases/latest | jq -r '.assets[] | select(.name | contains("darwin-amd64")) | .name')"
-          version=$(echo $darwin_zip | awk -F- '{ print $4}')
-          commit=$(echo $darwin_zip | awk -F- '{ print $5}')
-          date=$(echo $darwin_zip | awk -F- '{ print substr($6,1,8)}')
-      - name: Update Homebrew file and amd64 sha256
-        run: |
-          sed -i "s/app_version =.*/app_version = '"$version"'/" nethermind.rb
-          sed -i "s/commit =.*/commit = '"$commit"'/" nethermind.rb
-          sed -i "s/date =.*/date = '"$date"'/" nethermind.rb
-          awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$darwin_amd64_hash'\""); } 1' nethermind.rb
-
-      - name: Update Homebrew file arm64 sha256
-        run: |
-          curl -sS https://api.github.com/repos/NethermindEth/nethermind/releases/latest | jq -r '.assets[] | select(.name | contains("darwin-arm64")) | .browser_download_url' | xargs wget -O darwin-arm64.zip && darwin_arm64_hash="$(shasum -a 256 darwin-arm64.zip | awk '{ print $1}')"
-          awk -i inplace -v n=1 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$darwin_amd64_hash'\""); } 1' nethermind.rb
-          awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$darwin_arm64_hash'\""); } 1' nethermind.rb
-          awk -i inplace -v n=2 '/sha256/ { if (++count == n) sub(/sha256.*/, "sha256 \"'$darwin_arm64_hash'\""); } 1' nethermind.rb
-
-      - name: Cleanup
-        run: |
-          rm darwin-amd64.zip
-          rm darwin-arm64.zip
+        run: ./nethermind/scripts/deployment/update-homebrew.sh
 
       - name: Commit and push changes
         run: |
