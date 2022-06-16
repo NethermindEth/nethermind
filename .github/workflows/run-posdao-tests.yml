@@ -68,9 +68,9 @@ jobs:
         cp "./data/node2/nethermind.logs.txt" "posdao-logs/node2.logs.txt"
         cp "./data/node3/nethermind.logs.txt" "posdao-logs/node3.logs.txt"
 
-        (cd "./bc/launcher" && docker-compose logs node > "posdao-logs/cl-node.logs.txt")
-        (cd "./bc/launcher" && docker-compose logs node2 > "posdao-logs/cl-node2.logs.txt")
-        (cd "./bc/launcher" && docker-compose logs validator > "posdao-logs/cl-validator.logs.txt")
+        (cd "./bc/launcher" && docker-compose logs node > "../../posdao-logs/cl-node.logs.txt" || true)
+        (cd "./bc/launcher" && docker-compose logs node2 > "../../posdao-logs/cl-node2.logs.txt" || true)
+        (cd "./bc/launcher" && docker-compose logs validator > "../../posdao-logs/cl-validator.logs.txt" || true)
 
         zip -r posdao-logs.zip posdao-logs
     - uses: actions/upload-artifact@master
