@@ -18,6 +18,7 @@ using System;
 using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing
@@ -72,6 +73,8 @@ namespace Nethermind.Consensus.Processing
             Metrics.Mgas += block.GasUsed / 1_000_000m;
             Metrics.Transactions += block.Transactions.Length;
             Metrics.Blocks = block.Number;
+            Metrics.TotalDifficulty = block.TotalDifficulty ?? UInt256.Zero;
+            Metrics.LastDifficulty = block.Difficulty;
             Metrics.RecoveryQueueSize = recoveryQueueSize;
             Metrics.ProcessingQueueSize = blockQueueSize;
 
