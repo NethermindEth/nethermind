@@ -276,8 +276,7 @@ namespace Nethermind.Consensus.Processing
                     
                     if (processedBlock == null)
                     {
-                        if (_logger.IsTrace)
-                            _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                        if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
                     }
                     else
                     {
