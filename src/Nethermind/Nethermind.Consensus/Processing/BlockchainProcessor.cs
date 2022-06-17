@@ -119,28 +119,32 @@ namespace Nethermind.Consensus.Processing
 
         public void Enqueue(Block block, ProcessingOptions processingOptions)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
+            if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
             int currentRecoveryQueueSize = Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
             BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
                 ? new BlockRef(block.Hash!, processingOptions)
                 : new BlockRef(block, processingOptions);
+            
             if (!_recoveryQueue.IsAddingCompleted)
             {
+                Interlocked.Increment(ref _queueCount);
                 try
                 {
                     _recoveryQueue.Add(blockRef);
-                    Interlocked.Increment(ref _queueCount);
-                    if (_logger.IsTrace)
-                        _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
+                    if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
                 }
                 catch (InvalidOperationException)
                 {
+                    Interlocked.Decrement(ref _queueCount);
                     if (!_recoveryQueue.IsAddingCompleted)
                     {
                         throw;
                     }
+                }
+                catch
+                {
+                    Interlocked.Decrement(ref _queueCount);
                 }
             }
         }
@@ -156,8 +160,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (t.IsFaulted)
                 {
-                    if (_logger.IsError)
-                        _logger.Error("Sender address recovery encountered an exception.", t.Exception);
+                    if (_logger.IsError) _logger.Error("Sender address recovery encountered an exception.", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
@@ -177,8 +180,7 @@ namespace Nethermind.Consensus.Processing
             {
                 if (t.IsFaulted)
                 {
-                    if (_logger.IsError)
-                        _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
+                    if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
@@ -207,43 +209,45 @@ namespace Nethermind.Consensus.Processing
             }
 
             await Task.WhenAll((_recoveryTask ?? Task.CompletedTask), (_processorTask ?? Task.CompletedTask));
-            if (_logger.IsInfo)
-                _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
+            if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
         }
 
         private void RunRecoveryLoop()
         {
-            if (_logger.IsDebug)
-                _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
+            if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
             _lastProcessedBlock = DateTime.UtcNow;
             foreach (BlockRef blockRef in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
-                if (blockRef.Resolve(_blockTree))
+                try
                 {
-                    Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Recovering addresses for block {blockRef.BlockHash?.ToString() ?? blockRef.Block.ToString(Block.Format.Short)}.");
-                    _recoveryStep.RecoverData(blockRef.Block);
-
-                    try
+                    if (blockRef.Resolve(_blockTree))
                     {
-                        _blockQueue.Add(blockRef);
+                        Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
+                        if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash?.ToString() ?? blockRef.Block.ToString(Block.Format.Short)}.");
+                        _recoveryStep.RecoverData(blockRef.Block);
+
+                        try
+                        {
+                            _blockQueue.Add(blockRef);
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            Interlocked.Decrement(ref _queueCount);
+                            if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
+                            return;
+                        }
                     }
-                    catch (InvalidOperationException)
+                    else
                     {
                         Interlocked.Decrement(ref _queueCount);
-                        if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
-                        return;
+                        if (_logger.IsTrace) _logger.Trace("Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
+                        FireProcessingQueueEmpty();
                     }
                 }
-                else
+                catch
                 {
                     Interlocked.Decrement(ref _queueCount);
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            "Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
-                    FireProcessingQueueEmpty();
+                    throw;
                 }
             }
         }
