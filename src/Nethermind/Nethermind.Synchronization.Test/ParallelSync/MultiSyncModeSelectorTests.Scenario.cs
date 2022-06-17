@@ -100,10 +100,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 public ISyncProgressResolver SyncProgressResolver { get; set; }
 
                 public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
-
-                public ScenarioBuilder()
-                {
-                }
+                
+                public IBeaconSyncStrategy BeaconSyncStrategy { get; set; } = No.BeaconSync;
 
                 private void SetDefaults()
                 {
@@ -708,6 +706,21 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                     return this;
                 }
+                
+                public ScenarioBuilder WhenInBeaconSyncMode(BeaconSync mode = BeaconSync.None)
+                {
+                    BeaconSyncStrategy = Substitute.For<IBeaconSyncStrategy>();
+                    if (mode == BeaconSync.Headers)
+                    {
+                        BeaconSyncStrategy.ShouldBeInBeaconHeaders().Returns(true);
+                    }
+                    else if (mode == BeaconSync.ControlMode)
+                    {
+                        BeaconSyncStrategy.ShouldBeInBeaconModeControl().Returns(true);
+                    }
+
+                    return this;
+                }
 
                 public void TheSyncModeShouldBe(SyncMode syncMode)
                 {
@@ -719,7 +732,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         }
                         
                         TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(SyncProgressResolver, LimboLogs.Instance);
-                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance, _needToWaitForHeaders);
+                        MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance, _needToWaitForHeaders);
                         selector.DisableTimer();
                         selector.Update();
                         selector.Current.Should().Be(syncMode);
@@ -759,6 +772,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public static ScenarioBuilder GoesLikeThis(bool needToWaitForHeaders) =>
                 new ScenarioBuilder().WhenConsensusRequiresToWaitForHeaders(needToWaitForHeaders);
+        }
+        
+        public enum BeaconSync
+        {
+            None,
+            Headers,
+            ControlMode
         }
     }
 }

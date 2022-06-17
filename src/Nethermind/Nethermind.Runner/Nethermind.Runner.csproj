@@ -13,18 +13,18 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.9.3" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.1-rc2.4" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.1-rc2.4" />
-    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.1-rc2.4" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.0" />
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.0" />
+    <PackageReference Include="Antlr4.Runtime.Standard" Version="4.10.1" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI" Version="6.0.4" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.Client" Version="6.0.4" />
+    <PackageReference Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="6.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="6.0.5" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.5" />
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="6.0.0" />
-    <PackageReference Include="NLog.Targets.Seq" Version="2.0.0" />
-    <PackageReference Include="NLog" Version="4.7.12" />
-    <PackageReference Include="Seq.Api" Version="2021.3.1" />
-    <PackageReference Include="System.IO.Abstractions" Version="16.0.1" />
+    <PackageReference Include="NLog.Targets.Seq" Version="2.1.0" />
+    <PackageReference Include="NLog" Version="5.0.0" />
+    <PackageReference Include="Seq.Api" Version="2022.1.0" />
+    <PackageReference Include="System.IO.Abstractions" Version="17.0.15" />
     <PackageReference Include="YamlDotNet" Version="11.2.1" />
   </ItemGroup>
   <ItemGroup>
@@ -43,6 +43,7 @@
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\Nethermind.Merge.AuRa\Nethermind.Merge.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Mev\Nethermind.Mev.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
@@ -108,8 +109,8 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <ItemGroup>
-    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.*;&#xD;&#xA;$(OutputPath)\Nethermind.Init.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.*;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.*" />
-    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Init.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.dll;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.dll" />
+    <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.*;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.*;&#xD;&#xA;$(OutputPath)\Nethermind.Init.*;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.*;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.*;&#xD;&#xA;$(OutputPath)\Nethermind.Api.*;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.*;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.*" />
+    <PluginsForPublish Include="$(OutputPath)\Nethermind.Merge.AuRa.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Merge.Plugin.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Consensus.AuRa.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Init.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Mev.dll;&#xD;&#xA;$(OutputPath)\Nethermind.HealthChecks.dll;&#xD;&#xA;$(OutputPath)\Nethermind.Api.dll;&#xD;&#xA;$(OutputPath)\Nethermind.AccountAbstraction.dll;&#xD;&#xA;$(OutputPath)\Nethermind.EthStats.dll" />
   </ItemGroup>
   <ItemGroup>
     <GitHash Include="git-hash" />
@@ -120,14 +121,14 @@
 
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" />
+    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue"/>
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" ContinueOnError="WarnAndContinue"/>
   </Target>
 
   <Target Name="StoreGitHashBeforePublish" BeforeTargets="BeforePublish">
     <Message Text="---&gt; Generating Git Hash file Before Publish" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" />
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" />
+    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue"/>
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" ContinueOnError="WarnAndContinue"/>
   </Target>
 
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild">

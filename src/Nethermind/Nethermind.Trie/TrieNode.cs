@@ -271,8 +271,7 @@ namespace Nethermind.Trie
                 _rlpStream = FullRlp.AsRlpStream();
                 if (_rlpStream is null)
                 {
-                    throw new InvalidAsynchronousStateException(
-                        $"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
+                    throw new InvalidAsynchronousStateException($"{nameof(_rlpStream)} is null when {nameof(NodeType)} is {NodeType}");
                 }
 
                 Metrics.TreeNodeRlpDecodings++;

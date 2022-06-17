@@ -42,7 +42,9 @@ using Nethermind.Stats.Model;
 using Nethermind.Db.Blooms;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Merge.Plugin.Test;
 using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -321,7 +323,7 @@ namespace Nethermind.Synchronization.Test
                     mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString();
                 }
                 IBlockCacheService blockCacheService = new BlockCacheService();
-                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), blockCacheService, _logManager);
+                PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new SingleReleaseSpecProvider(Constantinople.Instance, 1), _logManager);
 
                 ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
                 SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
@@ -356,6 +358,7 @@ namespace Nethermind.Synchronization.Test
                     syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
                 Pivot pivot = new (syncConfig);
 
+                IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
                 IBlockDownloaderFactory blockDownloaderFactory;
                 if (IsMerge(synchronizerType))
                 {
@@ -374,6 +377,7 @@ namespace Nethermind.Synchronization.Test
                         syncConfig,
                         bestPeerStrategy,
                         syncReport,
+                        invalidChainTracker,
                         _logManager
                     );
                     Synchronizer = new MergeSynchronizer(

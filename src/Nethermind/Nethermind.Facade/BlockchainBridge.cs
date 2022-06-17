@@ -90,21 +90,25 @@ namespace Nethermind.Facade
 
         public bool IsMining { get; }
 
-        public (TxReceipt Receipt, UInt256? EffectiveGasPrice) GetReceiptAndEffectiveGasPrice(Keccak txHash)
+        public (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) GetReceiptAndEffectiveGasPrice(Keccak txHash)
         {
             Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash != null)
             {
-                Block block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-                Transaction tx = block?.Transactions[txReceipt.Index];
-                bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
-                UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
-                
-                return (txReceipt, effectiveGasPrice);
+                Block? block = _processingEnv.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+                if (block is not null)
+                {
+                    TxReceipt[] txReceipts = _receiptFinder.Get(block);
+                    TxReceipt txReceipt = txReceipts.ForTransaction(txHash);
+                    int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
+                    Transaction tx = block.Transactions[txReceipt.Index];
+                    bool is1559Enabled = _specProvider.GetSpec(block.Number).IsEip1559Enabled;
+                    UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(is1559Enabled, block.Header.BaseFeePerGas);
+                    return (txReceipt, effectiveGasPrice, logIndexStart);
+                }
             }
 
-            return (null, null);
+            return (null, null, 0);
         }
 
         public (TxReceipt Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Keccak txHash)

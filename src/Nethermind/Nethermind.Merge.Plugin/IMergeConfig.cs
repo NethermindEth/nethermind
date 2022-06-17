@@ -28,7 +28,7 @@ namespace Nethermind.Merge.Plugin
             Description = "Defines whether the Merge plugin is enabled bundles are allowed.",
             DefaultValue = "false")]
         bool Enabled { get; set; }
-        
+
         [ConfigItem(Description = "Account to be used by the block author. If it is not specified the address zero will be used.", DefaultValue = "null")]
         public string? FeeRecipient { get; set; }
 
@@ -55,5 +55,8 @@ namespace Nethermind.Merge.Plugin
         
         [ConfigItem(DisabledForCli = true, HiddenFromDocs = true)]
         Keccak TerminalBlockHashParsed => string.IsNullOrWhiteSpace(TerminalBlockHash) ? Keccak.Zero : new Keccak(Bytes.FromHexString(TerminalBlockHash));
+        
+        [ConfigItem(Description = "URL to Builder Relay. If set when building blocks nethermind will send them to the relay.", DefaultValue = "null")]
+        string? BuilderRelayUrl { get; set; }
     }
 }

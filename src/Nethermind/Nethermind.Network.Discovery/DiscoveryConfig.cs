@@ -20,7 +20,7 @@ namespace Nethermind.Network.Discovery;
 
 public class DiscoveryConfig : IDiscoveryConfig
 {
-    public int BucketSize { get; set; } = 16;
+    public int BucketSize { get; set; } = 12;
 
     public int BucketsCount { get; set; } = 256;
 

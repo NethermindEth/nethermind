@@ -293,6 +293,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.BerlinBlockNumber.Should().Be(MainnetSpecProvider.BerlinBlockNumber);
             chainSpec.LondonBlockNumber.Should().Be(MainnetSpecProvider.LondonBlockNumber);
             chainSpec.ArrowGlacierBlockNumber.Should().Be(MainnetSpecProvider.ArrowGlacierBlockNumber);
+            chainSpec.GrayGlacierBlockNumber.Should().Be(MainnetSpecProvider.GrayGlacierBlockNumber);
         }
         
         [Test]
@@ -363,6 +364,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.BerlinBlockNumber.Should().Be(0L);
             chainSpec.LondonBlockNumber.Should().Be(0L);
             chainSpec.ArrowGlacierBlockNumber.Should().Be(null);
+            chainSpec.GrayGlacierBlockNumber.Should().Be(null);
         }
         
         [Test]

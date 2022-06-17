@@ -49,7 +49,7 @@ namespace Nethermind.Consensus.Producers
     {
         private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
-        public ITimestamper Timestamper { get; }
+        private ITimestamper Timestamper { get; }
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
         private ISealer Sealer { get; }
@@ -238,7 +238,7 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private bool TrySetState(Keccak? parentStateRoot)
+        protected bool TrySetState(Keccak? parentStateRoot)
         {
             bool HasState(Keccak stateRoot)
             {
@@ -282,8 +282,7 @@ namespace Nethermind.Consensus.Producers
         protected virtual BlockHeader PrepareBlockHeader(BlockHeader parent,
             PayloadAttributes? payloadAttributes = null)
         {
-            UInt256 timestamp = payloadAttributes?.Timestamp ??
-                                UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
+            UInt256 timestamp = payloadAttributes?.Timestamp ?? UInt256.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
             Address blockAuthor = payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address;
             BlockHeader header = new(
                 parent.Hash!,
@@ -291,7 +290,7 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero, 
                 parent.Number + 1,
-                _gasLimitCalculator.GetGasLimit(parent),
+                payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 GetExtraData())
             {

@@ -15,16 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 
-namespace Nethermind.Merge.Plugin.Handlers
+namespace Nethermind.Merge.Plugin.BlockProduction
 {
     public class PostMergeBlockProducerFactory
     {

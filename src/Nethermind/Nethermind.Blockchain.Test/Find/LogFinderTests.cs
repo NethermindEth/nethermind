@@ -27,6 +27,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -40,10 +41,12 @@ namespace Nethermind.Blockchain.Test.Find
     public class LogFinderTests
     {
         private IBlockTree _blockTree;
+        private BlockTree _rawBlockTree;
         private IReceiptStorage _receiptStorage;
         private LogFinder _logFinder;
         private IBloomStorage _bloomStorage;
         private IReceiptsRecovery _receiptsRecovery;
+        private Block headTestBlock;
 
         [SetUp]
         public void SetUp()
@@ -56,10 +59,24 @@ namespace Nethermind.Blockchain.Test.Find
             var specProvider = Substitute.For<ISpecProvider>();
             specProvider.GetSpec(Arg.Any<long>()).IsEip155Enabled.Returns(true);
             _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
-            _blockTree = Build.A.BlockTree().WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder).OfChainLength(5).TestObject;
+            _rawBlockTree = Build.A.BlockTree()
+                .WithTransactions(_receiptStorage, specProvider, LogsForBlockBuilder)
+                .OfChainLength(out headTestBlock, 5)
+                .TestObject;
+            _blockTree = _rawBlockTree;
             _bloomStorage = new BloomStorage(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             _receiptsRecovery = Substitute.For<IReceiptsRecovery>();
             _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+        }
+
+        private void SetupHeadWithNoTransaction()
+        {
+            Block blockWithNoTransaction = Build.A.Block
+                .WithParent(headTestBlock)
+                .TestObject;
+            _rawBlockTree.SuggestBlock(blockWithNoTransaction)
+                .Should().Be(AddBlockResult.Added);
+            _rawBlockTree.UpdateMainChain(blockWithNoTransaction);
         }
 
         private IEnumerable<LogEntry> LogsForBlockBuilder(Block block, Transaction transaction)
@@ -144,6 +161,21 @@ namespace Nethermind.Blockchain.Test.Find
             _logFinder.Invoking(it => it.FindLogs(logFilter))
                 .Should()
                 .Throw<ResourceNotFoundException>();
+        }
+        
+        [Test]
+        public void when_receipts_are_missing_and_header_has_no_receipt_root_do_not_throw_exception_()
+        {
+            _receiptStorage = NullReceiptStorage.Instance;
+            _logFinder = new LogFinder(_blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+            
+            SetupHeadWithNoTransaction();
+            
+            var logFilter = AllBlockFilter().Build();
+
+            _logFinder.Invoking(it => it.FindLogs(logFilter))
+                .Should()
+                .NotThrow<ResourceNotFoundException>();
         }
         
         [Test]

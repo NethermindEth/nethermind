@@ -413,15 +413,18 @@ namespace Nethermind.Blockchain
 
         private void LoadBeaconBestKnown()
         {
-            long left = Math.Max(Head?.Number ?? 0, (LowestInsertedBeaconHeader?.Number ?? 0) - 1);
+            long left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
             long right = Math.Max(0, left) + BestKnownSearchLimit;
-            
             long bestKnownNumberFound = BinarySearchBlockNumber(left, right, LevelExists, findBeacon: true) ?? 0;
+
+            left = Math.Max(Head?.Number ?? 0, LowestInsertedBeaconHeader?.Number ?? 0) - 1;
+            right = Math.Max(0, left) + BestKnownSearchLimit;
             long bestBeaconHeaderNumber = BinarySearchBlockNumber(left, right, HeaderExists, findBeacon: true) ?? 0;
             
             long? beaconPivotNumber = _metadataDb.Get(MetadataDbKeys.BeaconSyncPivotNumber)?.AsRlpValueContext().DecodeLong();
-            long bestBeaconBodyNumber = BinarySearchBlockNumber(
-                beaconPivotNumber.HasValue ? beaconPivotNumber.Value : left, right, BodyExists, findBeacon: true) ?? 0;
+            left = Math.Max(Head?.Number ?? 0, beaconPivotNumber ?? 0) - 1;
+            right = Math.Max(0, left) + BestKnownSearchLimit;
+            long bestBeaconBodyNumber = BinarySearchBlockNumber(left, right, BodyExists, findBeacon: true) ?? 0;
             
             if (_logger.IsInfo)
                 _logger.Info("Beacon Numbers resolved, " +
@@ -1505,6 +1508,9 @@ namespace Nethermind.Blockchain
 
         private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
+            // ToDo we need unit tests for these cases
+            // ToDo if our Best -> PostMerge, we shouldn't reorganize to terminal block
+            // ToDo if PoW block TD > TTD we should check if it is terminal block
             bool ttdRequirementSatisfied =
                 TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
             bool preMergeRequirementSatisfied =
@@ -1515,10 +1521,10 @@ namespace Nethermind.Blockchain
             return preMergeRequirementSatisfied || postMergeRequirementSatisfied;
         }
 
-        private bool TotalDifficultyRequirementSatisfied(BlockHeader header, UInt256 totalDifficultyToCheck)
+        private bool TotalDifficultyRequirementSatisfied(BlockHeader header, UInt256 previousTotalDifficulty)
         {
             // before merge TD requirements are satisfied only if TD > block head
-            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > totalDifficultyToCheck
+            bool preMergeImprovementRequirementSatisfied = header.TotalDifficulty > previousTotalDifficulty
                                                            && (header.TotalDifficulty <
                                                                _specProvider.TerminalTotalDifficulty
                                                                || _specProvider.TerminalTotalDifficulty == null);
@@ -1530,25 +1536,6 @@ namespace Nethermind.Blockchain
                                                             header.TotalDifficulty >=
                                                             _specProvider.TerminalTotalDifficulty;
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
-        }
-
-        private bool IsTerminalBlock(BlockHeader header)
-        {
-            bool isTerminalBlock = false;
-            bool ttdRequirement = header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty;
-            if (ttdRequirement && header.IsGenesis)
-                return true;
-
-            if (ttdRequirement && header.IsPostMerge == false)
-            {
-                BlockHeader? parent = FindHeader(header.ParentHash, BlockTreeLookupOptions.None);
-                if (parent != null && parent.TotalDifficulty < _specProvider.TerminalTotalDifficulty)
-                {
-                    isTerminalBlock = true;
-                }
-            }
-
-            return isTerminalBlock;
         }
 
         private void LoadStartBlock()
@@ -1740,6 +1727,7 @@ namespace Nethermind.Blockchain
                 return level;
             }
         }
+        public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Keccak blockHash) => LoadInfo(number, blockHash, true);
 
         private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(long number, Keccak blockHash, bool forceLoad)
         {

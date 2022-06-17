@@ -15,6 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -29,12 +32,16 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
+using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Merge.Plugin.BlockProduction.Boost;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -44,14 +51,15 @@ namespace Nethermind.Merge.Plugin
 {
     public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlugin
     {
-        private INethermindApi _api = null!;
+        protected INethermindApi _api = null!;
         private ILogger _logger = null!;
-        private IMergeConfig _mergeConfig = null!;
+        protected IMergeConfig _mergeConfig = null!;
         private ISyncConfig _syncConfig = null!;
-        private IPoSSwitcher _poSSwitcher = NoPoS.Instance;
+        protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService;
+        private InvalidChainTracker.InvalidChainTracker? _invalidChainTracker;
         private IPeerRefresher _peerRefresher;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
@@ -61,31 +69,46 @@ namespace Nethermind.Merge.Plugin
         public string Description => "Merge plugin for ETH1-ETH2";
         public string Author => "Nethermind";
 
-        public Task Init(INethermindApi nethermindApi)
+        public virtual bool MergeEnabled => _mergeConfig.Enabled;
+
+        public virtual Task Init(INethermindApi nethermindApi)
         {
             _api = nethermindApi;
             _mergeConfig = nethermindApi.Config<IMergeConfig>();
             _syncConfig = nethermindApi.Config<ISyncConfig>();
             _logger = _api.LogManager.GetClassLogger();
 
-            if (_mergeConfig.Enabled)
+            if (MergeEnabled)
             {
                 if (_api.DbProvider == null) throw new ArgumentException(nameof(_api.DbProvider));
                 if (_api.BlockTree == null) throw new ArgumentException(nameof(_api.BlockTree));
                 if (_api.SpecProvider == null) throw new ArgumentException(nameof(_api.SpecProvider));
                 if (_api.ChainSpec == null) throw new ArgumentException(nameof(_api.ChainSpec));
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
+
+                EnsureJsonRpcUrl();
                 
                 _blockCacheService = new BlockCacheService();
-                _poSSwitcher = new PoSSwitcher(_mergeConfig, _syncConfig,
-                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata), _api.BlockTree, _api.SpecProvider, _blockCacheService, _api.LogManager);
+                _poSSwitcher = new PoSSwitcher(
+                    _mergeConfig,
+                    _syncConfig,
+                    _api.DbProvider.GetDb<IDb>(DbNames.Metadata),
+                    _api.BlockTree, 
+                    _api.SpecProvider, 
+                    _api.LogManager);
+                _invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(
+                    _poSSwitcher, 
+                    _api.BlockTree, 
+                    _blockCacheService,
+                    _api.LogManager);
+                _api.DisposeStack.Push(_invalidChainTracker);
                 _blockFinalizationManager = new ManualBlockFinalizationManager();
 
                 _api.RewardCalculatorSource = new MergeRewardCalculatorSource(
                    _api.RewardCalculatorSource ?? NoBlockRewards.Instance,  _poSSwitcher);
                 _api.SealValidator = new MergeSealValidator(_poSSwitcher, _api.SealValidator);
 
-                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher);
+                _api.GossipPolicy = new MergeGossipPolicy(_api.GossipPolicy, _poSSwitcher, _blockCacheService);
                 
                 _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_poSSwitcher));
             }
@@ -93,26 +116,85 @@ namespace Nethermind.Merge.Plugin
             return Task.CompletedTask;
         }
 
+        private void EnsureJsonRpcUrl()
+        {
+            IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();
+            if (!jsonRpcConfig.Enabled)
+            {
+                if (_logger.IsInfo)
+                    _logger.Info("JsonRpc not enabled. Turning on JsonRpc URL with engine API.");
+
+                jsonRpcConfig.Enabled = true;
+                
+                EnsureEngineModuleIsConfigured();
+
+                if (!jsonRpcConfig.EnabledModules.Contains("engine"))
+                {
+                    // Disable it
+                    jsonRpcConfig.EnabledModules = new string[] { };
+                }
+
+                jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
+                    .Where((url) => JsonRpcUrl.Parse(url).EnabledModules.Contains("engine"))
+                    .ToArray();
+            }
+            else
+            {
+                EnsureEngineModuleIsConfigured();
+            }
+        }
+
+        private void EnsureEngineModuleIsConfigured()
+        {
+            JsonRpcUrlCollection urlCollection = new(_api.LogManager, _api.Config<IJsonRpcConfig>(), false);
+            bool hasEngineApiConfigured = urlCollection
+                .Values
+                .Any(rpcUrl => rpcUrl.EnabledModules.Contains("engine"));
+
+            if (!hasEngineApiConfigured)
+            {
+                throw new InvalidOperationException("No RPC module for engine api configured");
+            }
+        }
+
         public Task InitNetworkProtocol()
         {
-            if (_mergeConfig.Enabled)
+            if (MergeEnabled)
             {
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
                 if (_api.BlockProductionPolicy == null) throw new ArgumentException(nameof(_api.BlockProductionPolicy));
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
-                
-                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
+                if (_api.HeaderValidator == null) throw new ArgumentException(nameof(_api.HeaderValidator));
+
+                var headerValidator = new MergeHeaderValidator(
+                        _poSSwitcher,
+                        _api.HeaderValidator,
+                        _api.BlockTree,
+                        _api.SpecProvider,
+                        _api.SealValidator,
+                        _api.LogManager);
+                _api.HeaderValidator = new InvalidHeaderInterceptor(
+                    headerValidator,
+                    _invalidChainTracker,
+                    _api.LogManager);
+
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
-                _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
-                    _api.SpecProvider, _api.LogManager);
+                _api.BlockValidator = new InvalidBlockInterceptor(
+                    new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
+                        _api.SpecProvider, _api.LogManager),
+                    _invalidChainTracker,
+                    _api.LogManager);
                 _api.HealthHintService =
                     new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
                 _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
                 _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
 
                 _api.FinalizationManager = new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
+                
+                // Need to do it here because blockprocessor is not available in init
+                _invalidChainTracker.SetupBlockchainProcessorInterceptor(_api.BlockchainProcessor!);
             }
 
             return Task.CompletedTask;
@@ -120,7 +202,7 @@ namespace Nethermind.Merge.Plugin
 
         public Task InitRpcModules()
         {
-            if (_mergeConfig.Enabled)
+            if (MergeEnabled)
             {
                 if (_api.RpcModuleProvider is null) throw new ArgumentNullException(nameof(_api.RpcModuleProvider));
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
@@ -130,11 +212,10 @@ namespace Nethermind.Merge.Plugin
                 if (_api.EthSyncingInfo is null) throw new ArgumentNullException(nameof(_api.EthSyncingInfo));
                 if (_api.Sealer is null) throw new ArgumentNullException(nameof(_api.Sealer));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
-                if (_api.BlockProcessingQueue is null)
-                    throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_api.SyncProgressResolver is null)
-                    throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
+                if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_api.SyncProgressResolver is null) throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
+                if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
                 if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
                 if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
                 if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
@@ -151,7 +232,26 @@ namespace Nethermind.Merge.Plugin
                 }
                 Thread.Sleep(5000);
 
-                PayloadPreparationService payloadPreparationService = new (_postMergeBlockProducer, _blockProductionTrigger, _api.Sealer, _mergeConfig, TimerFactory.Default, _api.LogManager);
+                IBlockImprovementContextFactory improvementContextFactory;
+                if (string.IsNullOrEmpty(_mergeConfig.BuilderRelayUrl))
+                {
+                    improvementContextFactory = new BlockImprovementContextFactory(_blockProductionTrigger, TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
+                }
+                else
+                {
+                    DefaultHttpClient httpClient = new(new HttpClient(), _api.EthereumJsonSerializer, _api.LogManager, retryDelayMilliseconds: 100);
+                    IBoostRelay boostRelay = new BoostRelay(httpClient, _mergeConfig.BuilderRelayUrl);
+                    BoostBlockImprovementContextFactory boostBlockImprovementContextFactory = new(_blockProductionTrigger, TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot), boostRelay, _api.StateReader);
+                    improvementContextFactory = boostBlockImprovementContextFactory;
+                }
+
+                PayloadPreparationService payloadPreparationService = new(
+                    _postMergeBlockProducer, 
+                    improvementContextFactory, 
+                    _api.Sealer, 
+                    _api.TimerFactory,
+                    _api.LogManager, 
+                    TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(
                     new GetPayloadV1Handler(payloadPreparationService, _api.LogManager),
@@ -165,6 +265,7 @@ namespace Nethermind.Merge.Plugin
                         _beaconPivot,
                         _blockCacheService,         
                         _api.BlockProcessingQueue,
+                        _invalidChainTracker,
                         _beaconSync,
                         _api.LogManager),
                     new ForkchoiceUpdatedV1Handler(
@@ -173,6 +274,7 @@ namespace Nethermind.Merge.Plugin
                         _poSSwitcher,
                         payloadPreparationService,
                         _blockCacheService,
+                        _invalidChainTracker,
                         _beaconSync,
                         _peerRefresher,
                         _api.LogManager),
@@ -190,7 +292,7 @@ namespace Nethermind.Merge.Plugin
 
         public Task InitSynchronization()
         {
-            if (_mergeConfig.Enabled)
+            if (MergeEnabled)
             {
                 if (_api.SpecProvider is null) throw new ArgumentNullException(nameof(_api.SpecProvider));
                 if (_api.SyncPeerPool is null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
@@ -205,13 +307,26 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
                 if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
+                if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
 
                 // ToDo strange place for validators initialization
                 PeerRefresher peerRefresher = new(_api.SyncPeerPool, _api.TimerFactory);
                 _peerRefresher = peerRefresher;
                 _api.DisposeStack.Push(peerRefresher);
                 _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
-                _api.HeaderValidator = new MergeHeaderValidator(_poSSwitcher, _api.BlockTree, _api.SpecProvider, _api.SealValidator, _api.LogManager);
+
+                var headerValidator = new MergeHeaderValidator(
+                        _poSSwitcher,
+                        _api.HeaderValidator,
+                        _api.BlockTree,
+                        _api.SpecProvider,
+                        _api.SealValidator,
+                        _api.LogManager);
+                _api.HeaderValidator = new InvalidHeaderInterceptor(
+                    headerValidator,
+                    _invalidChainTracker,
+                    _api.LogManager);
+
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
                 _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
                     _api.SpecProvider, _api.LogManager);
@@ -243,6 +358,7 @@ namespace Nethermind.Merge.Plugin
                     _syncConfig,
                     _api.BetterPeerStrategy!,
                     syncReport,
+                    _invalidChainTracker,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(
                     _api.DbProvider, 

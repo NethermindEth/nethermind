@@ -67,24 +67,13 @@ namespace Nethermind.Synchronization.ParallelSync
         /// Stage of snap sync that state is being downloaded (accounts, storages, code, proofs)
         /// </summary>
         SnapSync = 2048,
-        
-        /// <summary>
-        /// Everything is in a beacon node control. There is no need to do any sync action
-        /// </summary>
-        BeaconControlMode = 2048,
-        
         /// <summary>
         /// Reverse download of headers from beacon pivot to genesis
         /// </summary> 
         BeaconHeaders = 4096,
-        
-        /// <summary>
-        /// Forward processing of blocks received during beacon sync
-        /// </summary>
-        BeaconFullSync = 8192,
-        
+
         All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | StateNodes | Full | DbLoad | 
-              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconControlMode | BeaconHeaders
+              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders
     }
     
     public static class SyncModeExtensions

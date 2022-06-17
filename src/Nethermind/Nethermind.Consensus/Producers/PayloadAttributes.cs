@@ -29,6 +29,14 @@ namespace Nethermind.Consensus.Producers
         
         public Address SuggestedFeeRecipient { get; set; }
         
+        /// <summary>
+        /// GasLimit
+        /// </summary>
+        /// <remarks>
+        /// Only used for MEV-Boost
+        /// </remarks>
+        public long? GasLimit { get; set; }
+        
         public override string ToString()
         {
             return $"PayloadAttributes: ({nameof(Timestamp)}: {Timestamp}, {nameof(PrevRandao)}: {PrevRandao}, {nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient})";

@@ -18,7 +18,6 @@
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Authentication;
 using NSubstitute;
 using NUnit.Framework;
 

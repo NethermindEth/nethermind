@@ -14,13 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Facade.Proxy
 {
     public interface IHttpClient
     {
-        Task<T> GetAsync<T>(string endpoint);
-        Task<T> PostJsonAsync<T>(string endpoint, object payload = null);
+        Task<T> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default);
+        Task<T> PostJsonAsync<T>(string endpoint, object? payload = null, CancellationToken cancellationToken = default);
     }
 }

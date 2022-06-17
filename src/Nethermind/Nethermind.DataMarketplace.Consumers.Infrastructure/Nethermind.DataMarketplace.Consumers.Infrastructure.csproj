@@ -18,7 +18,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="MongoDB.Driver" Version="2.11.5" />
+      <PackageReference Include="MongoDB.Driver" Version="2.15.1" />
+      <!-- MongoDB.Driver dependency, safe version -->
+      <PackageReference Include="SharpCompress" Version="0.31.0" />
     </ItemGroup>
 
 </Project>

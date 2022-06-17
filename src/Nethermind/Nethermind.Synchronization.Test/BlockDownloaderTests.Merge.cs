@@ -28,6 +28,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
@@ -65,12 +66,13 @@ public partial class BlockDownloaderTests
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
         IBlockCacheService blockCacheService = new BlockCacheService();
         PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, notSyncedTree,
-            RopstenSpecProvider.Instance, blockCacheService, LimboLogs.Instance);
+            RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
         MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
+            new NoopInvalidChainTracker(),
             LimboLogs.Instance);
 
         Response responseOptions = Response.AllCorrect;
@@ -116,13 +118,14 @@ public partial class BlockDownloaderTests
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
         IBlockCacheService blockCacheService = new BlockCacheService();
         PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "10000000" }, new SyncConfig(), metadataDb, notSyncedTree,
-            RopstenSpecProvider.Instance, blockCacheService, LimboLogs.Instance);
+            RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         if (withBeaconPivot)
             beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
         MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
+            new NoopInvalidChainTracker(),
             LimboLogs.Instance);
 
         SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);
