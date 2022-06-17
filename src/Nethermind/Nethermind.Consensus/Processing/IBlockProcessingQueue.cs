@@ -37,6 +37,8 @@ namespace Nethermind.Consensus.Processing
         /// This is used for example by the block producers to notify them that we are fully synchronised.
         /// </summary>
         event EventHandler ProcessingQueueEmpty;
+        
+        event EventHandler<BlockHashEventArgs> BlockRemoved;
 
         /// <summary>
         /// Number of blocks in the processing queue.
@@ -44,6 +46,5 @@ namespace Nethermind.Consensus.Processing
         int Count { get; }
         
         public bool IsEmpty => Count == 0;
-        
     }
 }

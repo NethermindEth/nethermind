@@ -713,15 +713,11 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private AddBlockResult Suggest(Block? block, BlockHeader header,
-            BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess,
-            bool? setAsMain = null)
+        private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null)
         {
             bool shouldProcess = (options & BlockTreeSuggestOptions.ShouldProcess) != 0;
             bool fillBeaconBlock = (options & BlockTreeSuggestOptions.FillBeaconBlock) != 0;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}");
+            if (_logger.IsTrace) _logger.Trace($"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}");
             
 #if DEBUG
         /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -784,7 +780,7 @@ namespace Nethermind.Blockchain
             {
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
 
-                UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
+                UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain ?? !shouldProcess);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
             
@@ -817,21 +813,21 @@ namespace Nethermind.Blockchain
             return Suggest(null, header);
         }
 
-        public async Task<AddBlockResult> SuggestBlockAsync(Block block,
-            BlockTreeSuggestOptions suggestOptions = BlockTreeSuggestOptions.ShouldProcess,
-            bool? setAsMain = null)
+        public async ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions suggestOptions = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null)
         {
-            await WaitForReadinessToAcceptNewBlock;
+            if (!WaitForReadinessToAcceptNewBlock.IsCompleted)
+            {
+                await WaitForReadinessToAcceptNewBlock;
+            }
+
             return SuggestBlock(block, suggestOptions, setAsMain);
         }
 
-        public AddBlockResult SuggestBlock(Block block,
-            BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null)
+        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null)
         {
             if (Genesis is null && !block.IsGenesis)
             {
-                throw new InvalidOperationException(
-                    "Block tree should be initialized with genesis before suggesting other blocks.");
+                throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
             }
 
             return Suggest(block, block.Header, options, setAsMain);

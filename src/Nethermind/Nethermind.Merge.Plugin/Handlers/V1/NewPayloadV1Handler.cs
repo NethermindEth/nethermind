@@ -157,7 +157,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _mergeSyncController.StopSyncing();
             
             // Try to execute block
-            ValidationResult result = ValidateBlockAndProcess(block, parentHeader, out Block? processedBlock, out string? message);
+            (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader);
             
             if ((result & ValidationResult.AlreadyKnown) == ValidationResult.AlreadyKnown || result == ValidationResult.Invalid)
             {
@@ -183,63 +183,117 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Syncing;
             }
 
-            if (processedBlock is null)
-            {
-                if (_logger.IsInfo) _logger.Info($"Invalid block processed. Result of {requestStr}.");
-                return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, $"Processed block is null, request {request}"));
-            }
-
             if (_logger.IsInfo) _logger.Info($"Valid. Result of {requestStr}.");
             return NewPayloadV1Result.Valid(request.BlockHash);
         }
 
-        private ValidationResult ValidateBlockAndProcess(Block block, BlockHeader parent, out Block? processedBlock, out string? validationMessage)
+        private async Task<(ValidationResult, string? Message)> ValidateBlockAndProcess(Block block, BlockHeader parent)
         {
             ValidationResult ToValid(bool valid) => valid ? ValidationResult.Valid : ValidationResult.Invalid;
+            string? validationMessage = null;
             
-            validationMessage = null;
-            processedBlock = null;
-
             // If duplicate, reuse results
             bool isRecentBlock = _latestBlocks.TryGet(block.Hash!, out bool isValid);
             if (isRecentBlock)
             {
                 if (!isValid && _logger.IsWarn)
                 {
-                    validationMessage = $"Invalid block {block} sent from latestBlock cache";
+                    validationMessage = $"Invalid block found in latestBlock cache.";
                     if (_logger.IsWarn) _logger.Warn(validationMessage);
                 }
 
-                return ValidationResult.AlreadyKnown | ToValid(isValid);
+                return (ValidationResult.AlreadyKnown | ToValid(isValid), validationMessage);
             }
 
             // Validate
             bool validAndProcessed = ValidateWithBlockValidator(block, parent);
+            ValidationResult? result = ValidationResult.Syncing;
+            
             if (validAndProcessed)
             {
-                if (_processingQueue.IsEmpty)
+                TaskCompletionSource<ValidationResult> blockProcessedTaskCompletionSource = new();
+                Task<ValidationResult> blockProcessed = blockProcessedTaskCompletionSource.Task;
+
+                void GetProcessingQueueOnBlockRemoved(object? o, BlockHashEventArgs e)
                 {
-                    // processingQueue is empty so we can process the block in synchronous way
-                    _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
-                    // ToDo this operation is not thread safe - we should modify it to use queue or make sure that nothing will be processed during execution of this method
-                    processedBlock = _processor.Process(block, _processingOptions, NullBlockTracer.Instance);
+                    if (e.BlockHash == block.Hash)
+                    {
+                        ValidationResult validationResult = e.ProcessingResult switch
+                        {
+                            ProcessingResult.Success => ValidationResult.Valid,
+                            ProcessingResult.QueueException => ValidationResult.Syncing,
+                            ProcessingResult.MissingBlock => ValidationResult.Syncing,
+                            ProcessingResult.Exception => ValidationResult.Invalid,
+                            ProcessingResult.ProcessingError => ValidationResult.Invalid,
+                            _ => ValidationResult.Syncing
+                        };
+
+                        validationMessage = e.ProcessingResult switch
+                        {
+                            ProcessingResult.QueueException => "Block cannot be added to processing queue.",
+                            ProcessingResult.MissingBlock => "Block wasn't found in tree.",
+                            ProcessingResult.Exception => "Block processing threw exception.",
+                            ProcessingResult.ProcessingError => "Block processing failed.",
+                            _ => null
+                        };
+                        
+                        blockProcessedTaskCompletionSource.TrySetResult(validationResult);
+                        _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+                    }
                 }
-                else
+
+                _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
+                Task timeout = Task.Delay(TimeSpan.FromSeconds(5));
+                ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess, false);
+                await Task.WhenAny(timeout, addResult.AsTask());
+                if (addResult.IsCompletedSuccessfully)
                 {
-                    // this is needed for restarts. We have blocks in queue so we should add it to queue and return SYNCING
-                    _blockTree.SuggestBlock(block);
-                    return ValidationResult.Syncing;
+                    result = addResult.Result switch
+                    {
+                        AddBlockResult.InvalidBlock => ValidationResult.Invalid,
+                        AddBlockResult.AlreadyKnown => ValidationResult.AlreadyKnown,
+                        _ => null
+                    };
+                    
+                    validationMessage = addResult.Result switch
+                    {
+                        AddBlockResult.InvalidBlock => "Block couldn't be added to the tree.",
+                        AddBlockResult.AlreadyKnown => "Block was already known in the tree.",
+                        _ => null
+                    };
+                    
+                    if (!result.HasValue)
+                    {
+                        await Task.WhenAny(blockProcessed, timeout);
+                        if (blockProcessed.IsCompletedSuccessfully)
+                        {
+                            result = blockProcessed.Result;
+                        }
+                        else if (addResult.IsFaulted || addResult.IsCanceled)
+                        {
+                            result = ValidationResult.Invalid;
+                        }
+                        else // timeout
+                        {
+                            result = ValidationResult.Syncing;
+                        }
+                    }
                 }
-            
-                if (processedBlock is null)
+                else if (addResult.IsFaulted || addResult.IsCanceled)
+                {
+                    result = ValidationResult.Invalid;
+                }
+
+                if ((result & ValidationResult.Valid) == 0 && (result & ValidationResult.Syncing) == 0)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
-                    validAndProcessed = false;
                 }
+                
+                _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
             }
 
             _latestBlocks.Set(block.Hash!, validAndProcessed);
-            return ToValid(validAndProcessed);
+            return (result.Value, validationMessage);
         }
 
         private bool ValidateWithBlockValidator(Block block, BlockHeader parent)

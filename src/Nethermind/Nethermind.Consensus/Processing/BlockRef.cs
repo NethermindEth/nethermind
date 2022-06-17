@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.Processing
             Block = block;
             ProcessingOptions = processingOptions;
             IsInDb = false;
-            BlockHash = null;
+            BlockHash = block.Hash!;
         }
 
         public BlockRef(Keccak blockHash, ProcessingOptions processingOptions = ProcessingOptions.None)
@@ -39,7 +39,7 @@ namespace Nethermind.Consensus.Processing
         }
 
         public bool IsInDb { get; set; }
-        public Keccak? BlockHash { get; set; }
+        public Keccak BlockHash { get; set; }
         public Block? Block { get; set; }
         public ProcessingOptions ProcessingOptions { get; }
         
@@ -54,7 +54,6 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 Block = block;
-                BlockHash = null;
                 IsInDb = false;
             }
 

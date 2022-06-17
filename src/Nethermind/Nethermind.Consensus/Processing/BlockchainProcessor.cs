@@ -124,8 +124,9 @@ namespace Nethermind.Consensus.Processing
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
             int currentRecoveryQueueSize = Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
+            Keccak? blockHash = block.Hash!;
             BlockRef blockRef = currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx
-                ? new BlockRef(block.Hash!, processingOptions)
+                ? new BlockRef(blockHash, processingOptions)
                 : new BlockRef(block, processingOptions);
             
             if (!_recoveryQueue.IsAddingCompleted)
@@ -136,17 +137,14 @@ namespace Nethermind.Consensus.Processing
                     _recoveryQueue.Add(blockRef);
                     if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
                 }
-                catch (InvalidOperationException)
+                catch (Exception e)
                 {
                     Interlocked.Decrement(ref _queueCount);
-                    if (!_recoveryQueue.IsAddingCompleted)
+                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockHash, ProcessingResult.QueueException));
+                    if (e is not InvalidOperationException || !_recoveryQueue.IsAddingCompleted)
                     {
                         throw;
                     }
-                }
-                catch
-                {
-                    Interlocked.Decrement(ref _queueCount);
                 }
             }
         }
@@ -225,23 +223,30 @@ namespace Nethermind.Consensus.Processing
                     if (blockRef.Resolve(_blockTree))
                     {
                         Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
-                        if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash?.ToString() ?? blockRef.Block.ToString(Block.Format.Short)}.");
+                        if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
                         _recoveryStep.RecoverData(blockRef.Block);
 
                         try
                         {
                             _blockQueue.Add(blockRef);
                         }
-                        catch (InvalidOperationException)
+                        catch (Exception e)
                         {
                             Interlocked.Decrement(ref _queueCount);
-                            if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
-                            return;
+                            BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.QueueException));
+                            if (e is InvalidOperationException)
+                            {
+                                if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
+                                return;
+                            }
+
+                            throw;
                         }
                     }
                     else
                     {
                         Interlocked.Decrement(ref _queueCount);
+                        BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
                         if (_logger.IsTrace) _logger.Trace("Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
                         FireProcessingQueueEmpty();
                     }
@@ -249,6 +254,7 @@ namespace Nethermind.Consensus.Processing
                 catch
                 {
                     Interlocked.Decrement(ref _queueCount);
+                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Exception));
                     throw;
                 }
             }
@@ -266,6 +272,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (blockRef.IsInDb || blockRef.Block == null)
                     {
+                        BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
                         throw new InvalidOperationException("Processing loop expects only resolved blocks");
                     }
 
@@ -275,16 +282,22 @@ namespace Nethermind.Consensus.Processing
                     _stats.Start();
 
                     Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
-                    
+
                     if (processedBlock == null)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
+                        BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError));
                     }
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
                         _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
+                        BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                     }
+                }
+                catch
+                {
+                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Exception));
                 }
                 finally
                 {
@@ -307,6 +320,7 @@ namespace Nethermind.Consensus.Processing
         }
 
         public event EventHandler? ProcessingQueueEmpty;
+        public event EventHandler<BlockHashEventArgs>? BlockRemoved;
 
         int IBlockProcessingQueue.Count => _queueCount;
 
