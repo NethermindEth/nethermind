@@ -28,7 +28,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
@@ -48,29 +47,25 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private readonly bool _paymasterWhitelisted;
         private readonly bool _hasInitCode;
-        private readonly IStateProvider _stateProvider;
-
+        
         private bool _paymasterValidationMode;
-        private int numberOfCreate2Calls = 0;
+        private int _numberOfCreate2Calls;
         private bool _nextOpcodeMustBeCall; // GAS is allowed only if it followed immediately by a CALL, DELEGATECALL, STATICCALL, or CALLCODE
         
         public UserOperationTxTracer(
             Transaction? transaction,
             bool paymasterWhitelisted,
             bool hasInitCode,
-            IStateProvider stateProvider,
             Address sender,
             Address paymaster,
             Address entryPointAddress,
             ILogger logger)
         {
-            Transaction = transaction;
             Success = true;
             AccessedStorage = new Dictionary<Address, HashSet<UInt256>>();
             AccessedAddresses = ImmutableHashSet<Address>.Empty;
             _paymasterWhitelisted = paymasterWhitelisted;
             _hasInitCode = hasInitCode;
-            _stateProvider = stateProvider;
             _sender = sender;
             _paymaster = paymaster;
             _entryPointAddress = entryPointAddress;
@@ -78,12 +73,10 @@ namespace Nethermind.AccountAbstraction.Executor
             Output = Array.Empty<byte>();
         }
 
-        public Transaction? Transaction { get; }
         public IDictionary<Address, HashSet<UInt256>> AccessedStorage { get; }
         public IReadOnlySet<Address> AccessedAddresses { get; private set; }
         public bool Success { get; private set; }
         public string? Error { get; private set; }
-        public long GasSpent { get; set; }
         public byte[] Output { get; private set; }
 
         public bool IsTracingReceipt => true;
@@ -102,14 +95,12 @@ namespace Nethermind.AccountAbstraction.Executor
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
             Keccak? stateRoot = null)
         {
-            GasSpent = gasSpent;
             Output = output;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error,
             Keccak? stateRoot = null)
         {
-            GasSpent = gasSpent;
             Success = false;
             Error = error;
             Output = output;
@@ -183,7 +174,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
             else if (opcode == Instruction.CREATE2)
             {
-                numberOfCreate2Calls++;
+                _numberOfCreate2Calls++;
 
                 if (_paymasterValidationMode && _paymasterWhitelisted)
                 {
@@ -192,7 +183,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 
                 if (_hasInitCode)
                 {
-                    if (numberOfCreate2Calls > 1)
+                    if (_numberOfCreate2Calls > 1)
                     {
                         Success = false;
                         Error = $"simulation failed: op with non-empty initCode called CREATE2 more than once";
@@ -200,7 +191,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 }
                 else
                 {
-                    if (numberOfCreate2Calls > 0)
+                    if (_numberOfCreate2Calls > 0)
                     {
                         Success = false;
                         Error = $"simulation failed: op with empty initCode called CREATE2";

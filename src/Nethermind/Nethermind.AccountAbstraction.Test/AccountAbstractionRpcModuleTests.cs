@@ -256,7 +256,6 @@ namespace Nethermind.AccountAbstraction.Test
             {
                 countAfter.Should().Be(0);
             }
-
         }
 
         [Test]

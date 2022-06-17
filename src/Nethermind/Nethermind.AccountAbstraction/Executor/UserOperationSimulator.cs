@@ -44,47 +44,37 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public class UserOperationSimulator : IUserOperationSimulator
     {
-        private readonly IBlockTree _blockTree;
-        private readonly IReadOnlyDbProvider _dbProvider;
         private readonly AbiDefinition _entryPointContractAbi;
-        private readonly ILogManager _logManager;
         private readonly Address _entryPointContractAddress;
         private readonly Address[] _whitelistedPaymasters;
         private readonly ISpecProvider _specProvider;
         private readonly IUserOperationTxBuilder _userOperationTxBuilder;
-        private readonly IStateProvider _stateProvider;
-        private readonly IStateReader _stateReader;
-        private readonly IReadOnlyTrieStore _trieStore;
+        private readonly IReadOnlyStateProvider _stateProvider;
+        private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
         private readonly ITimestamper _timestamper;
-
         private readonly IAbiEncoder _abiEncoder;
+        private readonly ILogger _logger;
 
         public UserOperationSimulator(
             IUserOperationTxBuilder userOperationTxBuilder,
-            IStateProvider stateProvider,
-            IStateReader stateReader,
+            IReadOnlyStateProvider stateProvider,
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
             AbiDefinition entryPointContractAbi,
             Address entryPointContractAddress,
             Address[] whitelistedPaymasters,
             ISpecProvider specProvider,
-            IBlockTree blockTree,
-            IDbProvider dbProvider,
-            IReadOnlyTrieStore trieStore,
             ITimestamper timestamper,
             ILogManager logManager)
         {
             _userOperationTxBuilder = userOperationTxBuilder;
             _stateProvider = stateProvider;
-            _stateReader = stateReader;
+            _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
             _entryPointContractAbi = entryPointContractAbi;
             _entryPointContractAddress = entryPointContractAddress;
             _whitelistedPaymasters = whitelistedPaymasters;
             _specProvider = specProvider;
-            _blockTree = blockTree;
-            _dbProvider = dbProvider.AsReadOnly(false);
-            _trieStore = trieStore;
             _timestamper = timestamper;
-            _logManager = logManager;
+            _logger = logManager.GetClassLogger<UserOperationSimulator>();
 
             _abiEncoder = new AbiEncoder();
         }
@@ -109,8 +99,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
             
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
-            ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
@@ -148,11 +137,10 @@ namespace Nethermind.AccountAbstraction.Executor
             UserOperationTxTracer txTracer = new(
                 transaction,
                 paymasterWhitelisted,
-                userOperation.InitCode != Bytes.Empty,
-                _stateProvider, userOperation.Sender,
+                userOperation.InitCode != Bytes.Empty, userOperation.Sender,
                 userOperation.Paymaster,
                 _entryPointContractAddress,
-                _logManager.GetClassLogger()
+                _logger
             );
 
             transactionProcessor.Trace(transaction, parent, txTracer);
@@ -214,8 +202,7 @@ namespace Nethermind.AccountAbstraction.Executor
         [Todo("Refactor once BlockchainBridge is separated")]
         public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             using IReadOnlyTransactionProcessor transactionProcessor = txProcessingEnv.Build(header.StateRoot!);
             
             EstimateGasTracer estimateGasTracer = new();
@@ -272,7 +259,7 @@ namespace Nethermind.AccountAbstraction.Executor
             
             if (transaction.Nonce == 0)
             {
-                transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
+                transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
             }
 
             BlockHeader callHeader = new(
@@ -291,11 +278,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
             transaction.Hash = transaction.CalculateHash();
             transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
-        }
-        
-        private UInt256 GetNonce(Keccak stateRoot, Address address)
-        {
-            return _stateReader.GetNonce(stateRoot, address);
         }
     }
 }
