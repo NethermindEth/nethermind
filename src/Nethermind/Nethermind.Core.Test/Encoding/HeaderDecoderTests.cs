@@ -136,5 +136,22 @@ namespace Nethermind.Core.Test.Encoding
             blockHeader.Number.Should().Be(negativeLong);
             blockHeader.GasLimit.Should().Be(negativeLong);
         }
+        
+        [TestCase(-1)]
+        [TestCase(long.MinValue)]
+        public void Can_encode_decode_with_negative_long_when_using_span(long negativeLong)
+        {
+            BlockHeader header = Build.A.BlockHeader.
+                WithNumber(negativeLong).
+                WithGasUsed(negativeLong).
+                WithGasLimit(negativeLong).TestObject;
+            
+            Rlp rlp = Rlp.Encode(header);
+            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+            
+            blockHeader.GasUsed.Should().Be(negativeLong);
+            blockHeader.Number.Should().Be(negativeLong);
+            blockHeader.GasLimit.Should().Be(negativeLong);
+        }
     }
 }
