@@ -747,17 +747,13 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);
-            ExecutionPayloadV1 executionPayload = CreateBlockRequest(
-                CreateParentBlockRequestOnHead(chain.BlockTree),
-                TestItem.AddressD);
+            ExecutionPayloadV1 executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
             ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
-            resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
-            ResultWrapper<PayloadStatusV1>
-                resultWrapper2 = await rpc.engine_newPayloadV1(executionPayload);
-            resultWrapper2.Data.Status.Should().Be(PayloadStatus.Valid);
+            resultWrapper.Data.Status.Should().ContainAny(PayloadStatus.Valid, PayloadStatus.Syncing);
+            ResultWrapper<PayloadStatusV1> resultWrapper2 = await rpc.engine_newPayloadV1(executionPayload);
+            resultWrapper2.Data.Status.Should().ContainAny(PayloadStatus.Valid, PayloadStatus.Syncing);
             executionPayload.ParentHash = executionPayload.BlockHash;
-            ResultWrapper<PayloadStatusV1> invalidBlockRequest =
-                await rpc.engine_newPayloadV1(executionPayload);
+            ResultWrapper<PayloadStatusV1> invalidBlockRequest = await rpc.engine_newPayloadV1(executionPayload);
             invalidBlockRequest.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
         }
 
@@ -784,11 +780,9 @@ namespace Nethermind.Merge.Plugin.Test
 
             async Task CanReorganizeToBlock(ExecutionPayloadV1 block, MergeTestBlockchain testChain)
             {
-                ForkchoiceStateV1 forkchoiceStateV1 =
-                    new(block.BlockHash, block.BlockHash, block.BlockHash);
-                ResultWrapper<ForkchoiceUpdatedV1Result> result =
-                    await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
-                result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+                ForkchoiceStateV1 forkchoiceStateV1 = new(block.BlockHash, block.BlockHash, block.BlockHash);
+                ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
+                result.Data.PayloadStatus.Status.Should().ContainAny(PayloadStatus.Valid, PayloadStatus.Syncing);
                 result.Data.PayloadId.Should().Be(null);
                 testChain.BlockTree.HeadHash.Should().Be(block.BlockHash);
                 testChain.BlockTree.Head!.Number.Should().Be(block.BlockNumber);
