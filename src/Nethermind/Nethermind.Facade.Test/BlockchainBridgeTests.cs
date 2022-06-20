@@ -222,7 +222,7 @@ namespace Nethermind.Facade.Test
             _receiptStorage.FindBlockHash(txHash).Returns(blockHash);
             _receiptStorage.Get(block).Returns(new[] {receipt});
 
-            (TxReceipt Receipt, UInt256? EffectiveGasPrice) result = isCanonical || isRemoved ? (receipt, effectiveGasPrice) : (null, null);
+            (TxReceipt Receipt, UInt256? EffectiveGasPrice, int LogIndexStart) result = isCanonical ? (receipt, effectiveGasPrice, 0) : (null, null, 0);
             _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash).Should().BeEquivalentTo(result);
         }
     }

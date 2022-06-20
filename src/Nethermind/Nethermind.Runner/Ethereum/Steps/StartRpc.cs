@@ -19,9 +19,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Core;
+using Nethermind.Core.Authentication;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Authentication;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
@@ -58,6 +58,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 JsonRpcService jsonRpcService = new(_api.RpcModuleProvider!, _api.LogManager, jsonRpcConfig);
 
                 IJsonSerializer jsonSerializer = CreateJsonSerializer(jsonRpcService);
+                IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication
+                    ? NoAuthentication.Instance
+                    : MicrosoftJwtAuthentication.CreateFromFileOrGenerate(jsonRpcConfig.JwtSecretFile, new ClockImpl(), logger);
+
 
                 JsonRpcProcessor jsonRpcProcessor = new(
                     jsonRpcService,
@@ -66,10 +70,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _api.FileSystem,
                     _api.LogManager);
 
+                
                 if (initConfig.WebSocketsEnabled)
                 {
                     JsonRpcWebSocketsModule webSocketsModule = new(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats,
-                        _api.LogManager, jsonSerializer, jsonRpcUrlCollection);
+                        _api.LogManager, jsonSerializer, jsonRpcUrlCollection, auth);
                     _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 }
 
@@ -77,11 +82,13 @@ namespace Nethermind.Runner.Ethereum.Steps
                 Bootstrap.Instance.LogManager = _api.LogManager;
                 Bootstrap.Instance.JsonSerializer = jsonSerializer;
                 Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
+                Bootstrap.Instance.JsonRpcAuthentication = auth;
                 JsonRpcRunner? jsonRpcRunner = new(
                     jsonRpcProcessor,
                     jsonRpcUrlCollection,
                     _api.WebSocketsManager!,
                     _api.ConfigProvider,
+                    auth,
                     _api.LogManager,
                     _api);
 

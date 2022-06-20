@@ -16,7 +16,9 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing
@@ -32,5 +34,12 @@ namespace Nethermind.Consensus.Processing
         Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer);
 
         bool IsProcessingBlocks(ulong? maxProcessingInterval);
+        
+        event EventHandler<InvalidBlockEventArgs> InvalidBlock;
+
+        public class InvalidBlockEventArgs : EventArgs
+        {
+            public Keccak InvalidBlockHash { get; init; }
+        }
     }
 }

@@ -200,10 +200,7 @@
     },
     "Ropsten Archive": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\ropsten_archive.cfg --baseDbPath C:\\nethermind_db",
-      "environmentVariables": {
-        " ASPNETCORE_ENVIRONMENT": "Development"
-      }
+      "commandLineArgs": "--config configs\\ropsten_archive.cfg --baseDbPath C:\\nethermind_db"
     }
   }
 }

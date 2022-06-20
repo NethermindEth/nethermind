@@ -98,6 +98,12 @@ namespace Nethermind.Consensus.AuRa
             return receipts;
         }
 
+        // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
+        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        {
+            return base.ProcessBlock(block, blockTracer, options);
+        }
+
         // This validations cannot be run in AuraSealValidator because they are dependent on state.
         private void ValidateAuRa(Block block)
         {

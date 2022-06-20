@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin
 {
@@ -36,9 +37,11 @@ namespace Nethermind.Merge.Plugin
         private IManualBlockProductionTrigger? _blockProductionTrigger = null;
         private ManualTimestamper? _manualTimestamper;
 
+        protected virtual ITxSource? CreateTxSource(IStateProvider stateProvider) => null;
+
         public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
-            if (_mergeConfig.Enabled)
+            if (MergeEnabled)
             {
                 if (_api.EngineSigner == null) throw new ArgumentNullException(nameof(_api.EngineSigner));
                 if (_api.ChainSpec == null) throw new ArgumentNullException(nameof(_api.ChainSpec));
@@ -76,18 +79,24 @@ namespace Nethermind.Merge.Plugin
                     feeRecipient = new Address(_mergeConfig.FeeRecipient);
                     if (_logger.IsInfo) _logger.Info($"FeeRecipient: {feeRecipient}");
                 }
-                
+
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, feeRecipient, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
                 PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
-                _postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, _blockProductionTrigger);
-                
+                _postMergeBlockProducer = blockProducerFactory.Create(
+                    blockProducerEnv,
+                    _blockProductionTrigger,
+                    CreateTxSource(blockProducerEnv.ReadOnlyStateProvider)
+                );
+
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
             }
 
             return _api.BlockProducer;
         }
 
-        public bool Enabled => _mergeConfig.Enabled;
+        // this looks redundant but Enabled actually comes from IConsensusWrapperPlugin
+        // while MergeEnabled comes from merge config
+        public bool Enabled => MergeEnabled;
     }
 }

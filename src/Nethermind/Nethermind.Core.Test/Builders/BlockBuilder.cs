@@ -112,6 +112,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.TxRoot = trie.RootHash;
             return this;
         }
+        
+        public BlockBuilder WithTxRoot(Keccak txRoot)
+        {
+            TestObjectInternal.Header.TxRoot = txRoot;
+            return this;
+        }
 
         public BlockBuilder WithBeneficiary(Address address)
         {

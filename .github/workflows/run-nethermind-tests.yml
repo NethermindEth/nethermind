@@ -147,6 +147,9 @@ jobs:
     - name: Nethermind.Merge.Plugin.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Merge.Plugin.Test
+    - name: Nethermind.Merge.AuRa.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Merge.AuRa.Test
     - name: Nethermind.Mev.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Mev.Test  

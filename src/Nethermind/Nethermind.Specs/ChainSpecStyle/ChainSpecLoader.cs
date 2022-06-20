@@ -220,6 +220,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             chainSpec.ArrowGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 4 ?
                 chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[4]
                 : null;
+            chainSpec.GrayGlacierBlockNumber = chainSpec.Ethash?.DifficultyBombDelays.Count > 5 ?
+                chainSpec.Ethash?.DifficultyBombDelays.Keys.ToArray()[5]
+                : null;
             chainSpec.ShanghaiBlockNumber = chainSpec.Parameters.Eip1153Transition ?? (long.MaxValue - 1);
 
             // TheMerge parameters

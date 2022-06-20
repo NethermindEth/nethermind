@@ -198,7 +198,6 @@ namespace Nethermind.Network.Test.P2P
                     protocolHandler.ProtocolCode.Returns("aa" + i++);
                     protocolHandler.MessageIdSpaceSize.Returns(10);
                     session.AddProtocolHandler(protocolHandler);
-                    TestContext.WriteLine("aaa");
                 }
             };
 

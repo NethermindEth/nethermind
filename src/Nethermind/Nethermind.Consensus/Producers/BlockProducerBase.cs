@@ -238,7 +238,7 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private bool TrySetState(Keccak? parentStateRoot)
+        protected bool TrySetState(Keccak? parentStateRoot)
         {
             bool HasState(Keccak stateRoot)
             {

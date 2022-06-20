@@ -58,6 +58,7 @@ namespace Nethermind.Runner
         private static readonly CancellationTokenSource _processCloseCancellationSource = new();
         private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
         private static readonly TaskCompletionSource<object?> _processExit = new();
+        private static readonly ManualResetEventSlim _appClosed = new(true);
 
         public static void Main(string[] args)
         {
@@ -128,10 +129,9 @@ namespace Nethermind.Runner
 
             BuildOptionsFromConfigFiles(app);
 
-            ManualResetEventSlim appClosed = new(true);
             app.OnExecute(async () =>
             {
-                appClosed.Reset();
+                _appClosed.Reset();
                 IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
                 IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
@@ -187,13 +187,13 @@ namespace Nethermind.Runner
                 _logger.Info("Closing, please wait until all functions are stopped properly...");
                 await ethereumRunner.StopAsync();
                 _logger.Info("All done, goodbye!");
-                appClosed.Set();
+                _appClosed.Set();
 
                 return 0;
             });
 
             _ = app.Execute(args);
-            appClosed.Wait();
+            _appClosed.Wait();
         }
 
         private static void BuildOptionsFromConfigFiles(CommandLineApplication app)
@@ -396,6 +396,7 @@ namespace Nethermind.Runner
         {
             _processCloseCancellationSource.Cancel();
             _processExit.SetResult(null);
+            _appClosed.Wait();
         }
 
         private static void LogMemoryConfiguration()

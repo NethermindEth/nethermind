@@ -1090,6 +1090,36 @@ namespace Nethermind.TxPool.Test
         }
         
         [Test]
+        public void should_accept_zero_MaxFeePerGas_and_zero_MaxPriorityFee_1559_tx()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(null, specProvider);
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(UInt256.Zero)
+                .WithMaxPriorityFeePerGas(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+        }
+        
+        [Test]
+        public void should_reject_zero_MaxFeePerGas_and_positive_MaxPriorityFee_1559_tx()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(null, specProvider);
+            Transaction tx = Build.A.Transaction
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(UInt256.Zero)
+                .WithMaxPriorityFeePerGas(UInt256.One)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.GetPendingTransactions().Length.Should().Be(0);
+        }
+        
+        [Test]
         public void should_return_true_when_asking_for_txHash_existing_in_pool()
         {
             _txPool = CreatePool();
@@ -1180,6 +1210,64 @@ namespace Nethermind.TxPool.Test
             
             _txPool.GetPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(replaced ? newTx : oldTx);
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(1000000)]
+        public void should_always_replace_zero_fee_tx(int newGasPrice)
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(null, specProvider);
+            Transaction oldTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.Legacy)
+                .WithGasPrice(UInt256.Zero)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction newTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.Legacy)
+                .WithGasPrice((UInt256)newGasPrice)
+                .WithTo(TestItem.AddressC)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool.SubmitTx(oldTx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.SubmitTx(newTx, TxHandlingOptions.PersistentBroadcast);
+
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(newTx);
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(1000000)]
+        public void should_always_replace_zero_fee_tx_1559(int newMaxFeePerGas)
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            _txPool = CreatePool(null, specProvider);
+            Transaction oldTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas(UInt256.Zero)
+                .WithMaxPriorityFeePerGas(UInt256.Zero)
+                .WithTo(TestItem.AddressB)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction newTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithType(TxType.EIP1559)
+                .WithMaxFeePerGas((UInt256)newMaxFeePerGas)
+                .WithMaxPriorityFeePerGas(UInt256.Zero)
+                .WithTo(TestItem.AddressC)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            _txPool.SubmitTx(oldTx, TxHandlingOptions.PersistentBroadcast);
+            _txPool.SubmitTx(newTx, TxHandlingOptions.PersistentBroadcast);
+
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            _txPool.GetPendingTransactions().First().Should().BeEquivalentTo(newTx);
         }
 
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)

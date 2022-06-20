@@ -25,13 +25,11 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
@@ -43,21 +41,17 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Handlers.V1;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
 namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        private async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) 
+        protected virtual async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
             => await new MergeTestBlockchain(mergeConfig, mockedPayloadService)
-                .Build(
-                    new SingleReleaseSpecProvider(London.Instance, 1));
+                .Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
         {
@@ -65,18 +59,46 @@ namespace Nethermind.Merge.Plugin.Test
             
             chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), new MemDb(), chain.BlockTree, chain.LogManager);
             BlockCacheService blockCacheService = new();
+            InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(
+                chain.PoSSwitcher,
+                chain.BlockTree,
+                blockCacheService,
+                new TestErrorLogManager());
             chain.BeaconSync = new BeaconSync(chain.BeaconPivot, chain.BlockTree, syncConfig ?? new SyncConfig(), blockCacheService, chain.LogManager);
             return new EngineRpcModule(
-                new GetPayloadV1Handler(chain.PayloadPreparationService!, chain.LogManager),
-                new NewPayloadV1Handler(chain.BlockValidator, chain.BlockTree, chain.BlockchainProcessor, new InitConfig(), chain.PoSSwitcher, chain.BeaconSync, chain.BeaconPivot, blockCacheService, chain.BlockProcessingQueue, chain.BeaconSync, chain.LogManager),
-                new ForkchoiceUpdatedV1Handler(chain.BlockTree, chain.BlockFinalizationManager, chain.PoSSwitcher, chain.PayloadPreparationService!, blockCacheService, chain.BeaconSync, peerRefresher, chain.LogManager),
+                new GetPayloadV1Handler(
+                    chain.PayloadPreparationService!,
+                    chain.LogManager),
+                new NewPayloadV1Handler(
+                    chain.BlockValidator,
+                    chain.BlockTree, 
+                    chain.BlockchainProcessor,
+                    new InitConfig(),
+                    chain.PoSSwitcher,
+                    chain.BeaconSync,
+                    chain.BeaconPivot,
+                    blockCacheService, 
+                    chain.BlockProcessingQueue, 
+                    invalidChainTracker,
+                    chain.BeaconSync, 
+                    chain.LogManager),
+                new ForkchoiceUpdatedV1Handler(
+                    chain.BlockTree,
+                    chain.BlockFinalizationManager,
+                    chain.PoSSwitcher,
+                    chain.PayloadPreparationService!,
+                    blockCacheService,
+                    invalidChainTracker,
+                    chain.BeaconSync,
+                    peerRefresher,
+                    chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),
                 new GetPayloadBodiesV1Handler(chain.BlockTree, chain.LogManager),
                 new ExchangeTransitionConfigurationV1Handler(chain.PoSSwitcher, chain.LogManager),
                 chain.LogManager);
         }
 
-        private class MergeTestBlockchain : TestBlockchain
+        public class MergeTestBlockchain : TestBlockchain
         {
             public IMergeConfig MergeConfig { get; set; }
             
@@ -94,8 +116,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             {
-                GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis
-                    .WithTimestamp(UInt256.One);
+                GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(UInt256.One);
                 MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
                 PayloadPreparationService = mockedPayloadPreparationService;
             }
@@ -104,7 +125,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
             
-            public IEthSyncingInfo EthSyncingInfo { get; private set; }
+            public IEthSyncingInfo EthSyncingInfo { get; protected set; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
@@ -172,7 +193,8 @@ namespace Nethermind.Merge.Plugin.Test
                 IBlockCacheService blockCacheService = new BlockCacheService();
                 PoSSwitcher = new PoSSwitcher(MergeConfig, SyncConfig.Default, new MemDb(), BlockTree, SpecProvider, LogManager);
                 SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
-                HeaderValidator = new MergeHeaderValidator(PoSSwitcher, BlockTree, SpecProvider, SealValidator, LogManager);
+                HeaderValidator preMergeHeaderValidator = new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager);
+                HeaderValidator = new MergeHeaderValidator(PoSSwitcher, preMergeHeaderValidator, BlockTree, SpecProvider, SealValidator, LogManager);
                 
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),

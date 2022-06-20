@@ -64,10 +64,11 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly bool _needToWaitForHeaders;
         private readonly ILogger _logger;
+        private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
 
         private readonly long _pivotNumber;
-        private bool FastSyncEnabled => _syncConfig.FastSync || _syncConfig.SnapSync;   // SnapSync set to true automatically turns Fast Sync ON
-        private bool SnapSyncEnabled => _syncConfig.SnapSync;
+        private bool FastSyncEnabled => _syncConfig.FastSync;
+        private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
         private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;
@@ -110,8 +111,9 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
+            _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
 
-            _timer = StartUpdateTimer();
+            _timer = StartUpdateTimer();           
         }
 
         private Timer StartUpdateTimer()
