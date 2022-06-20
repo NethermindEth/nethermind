@@ -40,6 +40,7 @@ namespace Nethermind.Evm.Test
         protected const string SampleHexData1 = "a01234";
         protected const string SampleHexData2 = "b15678";
         protected const string HexZero = "00";
+        protected const long DefaultBlockGasLimit = 8000000;
 
         private IEthereumEcdsa _ethereumEcdsa;
         protected ITransactionProcessor _processor;
@@ -116,9 +117,9 @@ namespace Nethermind.Evm.Test
             return tracer;
         }
 
-        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code)
+        protected TestAllTracerWithOutput Execute(long blockNumber, long gasLimit, byte[] code, long blockGasLimit = DefaultBlockGasLimit)
         {
-            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code);
+            (Block block, Transaction transaction) = PrepareTx(blockNumber, gasLimit, code, blockGasLimit: blockGasLimit);
             TestAllTracerWithOutput tracer = CreateTracer();
             _processor.Execute(transaction, block.Header, tracer);
             return tracer;
@@ -129,7 +130,8 @@ namespace Nethermind.Evm.Test
             long gasLimit,
             byte[] code,
             SenderRecipientAndMiner senderRecipientAndMiner = null,
-            int value = 1)
+            int value = 1, 
+            long blockGasLimit = DefaultBlockGasLimit)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
             TestState.CreateAccount(senderRecipientAndMiner.Sender, 100.Ether());
@@ -152,7 +154,7 @@ namespace Nethermind.Evm.Test
                 .SignedAndResolved(_ethereumEcdsa, senderRecipientAndMiner.SenderKey)
                 .TestObject;
 
-            Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction);
+            Block block = BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit);
             return (block, transaction);
         }
 
@@ -202,10 +204,10 @@ namespace Nethermind.Evm.Test
             return BuildBlock(blockNumber, senderRecipientAndMiner, null);
         }
 
-        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx)
+        protected virtual Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction tx, long blockGasLimit = DefaultBlockGasLimit)
         {
             senderRecipientAndMiner ??= SenderRecipientAndMiner.Default;
-            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(8000000).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
+            return Build.A.Block.WithNumber(blockNumber).WithTransactions(tx == null ? new Transaction[0] : new[] {tx}).WithGasLimit(blockGasLimit).WithBeneficiary(senderRecipientAndMiner.Miner).TestObject;
         }
 
         protected void AssertGas(TestAllTracerWithOutput receipt, long gas)

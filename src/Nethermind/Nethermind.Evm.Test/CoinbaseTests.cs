@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -28,10 +28,10 @@ namespace Nethermind.Evm.Test
 
         private bool _setAuthor;
         
-        protected override Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction)
+        protected override Block BuildBlock(long blockNumber, SenderRecipientAndMiner senderRecipientAndMiner, Transaction transaction, long blockGasLimit = DefaultBlockGasLimit)
         {
             senderRecipientAndMiner ??= new SenderRecipientAndMiner();
-            Block block = base.BuildBlock(blockNumber, senderRecipientAndMiner, transaction);
+            Block block = base.BuildBlock(blockNumber, senderRecipientAndMiner, transaction, blockGasLimit);
             if(_setAuthor) block.Header.Author = TestItem.AddressC;
             block.Header.Beneficiary = senderRecipientAndMiner.Recipient;
             return block;

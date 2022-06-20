@@ -20,6 +20,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
+using System.Diagnostics;
 
 namespace Nethermind.Evm.Test
 {
@@ -72,6 +73,33 @@ namespace Nethermind.Evm.Test
 
             // Should be 0 since it's not yet set
             Assert.AreEqual(0, (int)result.ReturnValue.ToUInt256());
+        }
+
+        /// <summary>
+        /// Simple performance test
+        /// </summary>
+        [Ignore("Depends on hardware")]
+        [Test]
+        public void transient_storage_performance_test()
+        {
+            Stopwatch stopwatch = new Stopwatch();
+            long blockGasLimit = 30000000;
+            long numOfOps = (long)(blockGasLimit * .95) / (GasCostOf.TLoad + GasCostOf.TStore + GasCostOf.VeryLow * 4);
+            Prepare prepare = Prepare.EvmCode;
+            for (long i = 0; i < numOfOps; i++)
+            {
+                prepare.StoreDataInTransientStorage(1, 8);
+                prepare.LoadDataFromTransientStorage(1);
+                prepare.Op(Instruction.POP);
+            }
+
+            byte[] code = prepare.Done;
+
+            stopwatch.Start();
+            TestAllTracerWithOutput result = Execute(MainnetSpecProvider.ShanghaiBlockNumber, blockGasLimit, code, blockGasLimit);
+            Assert.AreEqual(StatusCode.Success, result.StatusCode);
+            stopwatch.Stop();
+            Assert.IsTrue(stopwatch.ElapsedMilliseconds < 5000);
         }
 
         [Test]
@@ -699,7 +727,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Tstore_does_not_result_in_gasrefund()
+        public void tstore_does_not_result_in_gasrefund()
         {
             byte[] code = Prepare.EvmCode
                 .StoreDataInTransientStorage(1, 7)
