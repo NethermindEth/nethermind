@@ -366,7 +366,6 @@ namespace Nethermind.Core.Test.Blockchain
 
         public virtual void Dispose()
         {
-            TestContext.Out.WriteLine($"disposing {this.GetHashCode()}");
             BlockProducer?.StopAsync();
             CodeDb?.Dispose();
             StateDb?.Dispose();
