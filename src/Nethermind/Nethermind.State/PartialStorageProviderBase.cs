@@ -26,7 +26,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public abstract class PartialStorageProviderBase : IPartialStorageProvider
+    public abstract class PartialStorageProviderBase
     {
         protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
 
@@ -57,27 +57,6 @@ namespace Nethermind.State
             _logger = logManager.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public byte[] GetOriginal(StorageCell storageCell)
-        {
-            if (!_originalValues.ContainsKey(storageCell))
-            {
-                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
-            }
-
-            if (_transactionChangesSnapshots.TryPeek(out int snapshot))
-            {
-                if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
-                {
-                    if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
-                    {
-                        return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
-                    }
-                }
-            }
-
-            return _originalValues[storageCell];
-        }
-
         public byte[] Get(StorageCell storageCell)
         {
             return GetCurrentValue(storageCell);
@@ -88,7 +67,7 @@ namespace Nethermind.State
             PushUpdate(storageCell, newValue);
         }
 
-        int IPartialStorageProvider.TakeSnapshot(bool newTransactionStart)
+        public int TakeSnapshot(bool newTransactionStart)
         {
             if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
             if (newTransactionStart && _currentPosition != Resettable.EmptyPosition)
@@ -202,9 +181,6 @@ namespace Nethermind.State
             Array.Clear(_changes, 0, _changes.Length);
             _storages.Reset();
         }
-
-        public abstract void CommitTrees(long blockNumber);
-
         protected abstract byte[] GetCurrentValue(StorageCell storageCell);
 
         private void PushUpdate(StorageCell cell, byte[] value)

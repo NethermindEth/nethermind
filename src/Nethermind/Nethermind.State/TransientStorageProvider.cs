@@ -29,19 +29,10 @@ namespace Nethermind.State
     /// EIP-1153 provides a transient store for contracts that doesn't persist
     /// storage across calls. Reverts will rollback any transient state changes.
     /// </summary>
-    public class TransientStorageProvider : PartialStorageProviderBase, IPartialStorageProvider
+    public class TransientStorageProvider : PartialStorageProviderBase
     {
         public TransientStorageProvider(ILogManager? logManager)
             : base(logManager) { }
-
-        private Keccak RecalculateRootHash(Address address)
-        {
-            throw new NotImplementedException();
-        }
-        public override void CommitTrees(long blockNumber)
-        {
-            throw new NotImplementedException();
-        }
 
         /// <summary>
         /// Nothing to commit to permanent storage

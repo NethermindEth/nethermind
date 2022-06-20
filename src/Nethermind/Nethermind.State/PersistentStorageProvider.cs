@@ -26,7 +26,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class PersistentStorageProvider : PartialStorageProviderBase, IPartialStorageProvider
+    public class PersistentStorageProvider : PartialStorageProviderBase
     {
 
         protected readonly ITrieStore _trieStore;
@@ -48,6 +48,27 @@ namespace Nethermind.State
             }
 
             return LoadFromTree(storageCell);
+        }
+
+        public byte[] GetOriginal(StorageCell storageCell)
+        {
+            if (!_originalValues.ContainsKey(storageCell))
+            {
+                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            }
+
+            if (_transactionChangesSnapshots.TryPeek(out int snapshot))
+            {
+                if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+                {
+                    if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
+                    {
+                        return _changes[lastChangeIndexBeforeOriginalSnapshot]!.Value;
+                    }
+                }
+            }
+
+            return _originalValues[storageCell];
         }
 
         public override void Commit(IStorageTracer tracer)
@@ -167,7 +188,7 @@ namespace Nethermind.State
             }
         }
 
-        public override void CommitTrees(long blockNumber)
+        public void CommitTrees(long blockNumber)
         {
             // _logger.Warn($"Storage block commit {blockNumber}");
             foreach (KeyValuePair<Address, StorageTree> storage in _storages)

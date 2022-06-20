@@ -85,8 +85,8 @@ namespace Nethermind.State
         }
         public void Restore(Snapshot snapshot)
         {
-            ((IPartialStorageProvider)_persistentStorageProvider).Restore(snapshot.PersistentStorageSnapshot);
-            ((IPartialStorageProvider)_transientStorageProvider).Restore(snapshot.TransientStorageSnapshot);
+            _persistentStorageProvider.Restore(snapshot.PersistentStorageSnapshot);
+            _transientStorageProvider.Restore(snapshot.TransientStorageSnapshot);
         }
 
         public void Set(StorageCell storageCell, byte[] newValue)
@@ -101,8 +101,8 @@ namespace Nethermind.State
 
         Snapshot IStorageProvider.TakeSnapshot(bool newTransactionStart)
         {
-            int persistentSnapshot = ((IPartialStorageProvider)_persistentStorageProvider).TakeSnapshot(newTransactionStart);
-            int transientSnapshot = ((IPartialStorageProvider)_transientStorageProvider).TakeSnapshot(newTransactionStart);
+            int persistentSnapshot = _persistentStorageProvider.TakeSnapshot(newTransactionStart);
+            int transientSnapshot = _transientStorageProvider.TakeSnapshot(newTransactionStart);
 
             return new Snapshot(Snapshot.EmptyPosition, persistentSnapshot, transientSnapshot);
         }
