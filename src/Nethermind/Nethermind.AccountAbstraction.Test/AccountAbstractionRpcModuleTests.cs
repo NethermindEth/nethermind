@@ -219,14 +219,16 @@ namespace Nethermind.AccountAbstraction.Test
             );
         }
 
-        [Test]
-        public async Task Test_ReadOnlyState_sees_State_updates()
+        [TestCase(0)]
+        [TestCase(1)]
+        public async Task Test_ReadOnlyState_sees_State_updates(int numBlocks)
         {
             var chain = await CreateChain();
             chain.State.CreateAccount(TestItem.AddressA, UInt256.Zero);
             var codeHash = chain.State.UpdateCode(new Byte[] {0x01, 0x02, 0x03});
             chain.State.UpdateCodeHash(TestItem.AddressA, codeHash, chain.SpecProvider.GenesisSpec);
             chain.State.Commit(chain.SpecProvider.GenesisSpec);
+            chain.State.CommitTree(chain.BlockTree.Head!.Number+numBlocks);
             chain.State.RecalculateStateRoot();
             await chain.AddBlock(true);
             chain.ReadOnlyState.GetCodeHash(TestItem.AddressA).Should().Be(codeHash);
