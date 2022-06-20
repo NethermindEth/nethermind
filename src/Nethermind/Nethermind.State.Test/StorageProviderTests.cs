@@ -57,7 +57,7 @@ namespace Nethermind.Store.Test
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Commit();
-            provider.Restore(new Snapshot(Snapshot.EmptyPosition, Snapshot.EmptyPosition, Snapshot.EmptyPosition));
+            provider.Restore(new Snapshot.Storage(Snapshot.EmptyPosition, Snapshot.EmptyPosition));
         }
 
         private StorageProvider BuildStorageProvider(Context ctx)
@@ -270,7 +270,7 @@ namespace Nethermind.Store.Test
         {
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
-            Snapshot[] snapshots = new Snapshot[4];
+            Snapshot.Storage[] snapshots = new Snapshot.Storage[4];
             snapshots[0] = ((IStorageProvider)provider).TakeSnapshot();
             provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
             snapshots[1] = ((IStorageProvider)provider).TakeSnapshot();
@@ -321,7 +321,7 @@ namespace Nethermind.Store.Test
         {
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
-            Snapshot[] snapshots = new Snapshot[4];
+            Snapshot.Storage[] snapshots = new Snapshot.Storage[4];
 
             // No updates
             snapshots[0] = ((IStorageProvider)provider).TakeSnapshot();
@@ -365,7 +365,7 @@ namespace Nethermind.Store.Test
         {
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
-            Snapshot[] snapshots = new Snapshot[4];
+            Snapshot.Storage[] snapshots = new Snapshot.Storage[4];
 
             // No updates
             snapshots[0] = ((IStorageProvider)provider).TakeSnapshot();

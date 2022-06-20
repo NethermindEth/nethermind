@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,14 +25,14 @@ namespace Nethermind.State
         
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {
-            Snapshot storageSnapshot = StorageProvider.TakeSnapshot(newTransactionStart);
-            return new (StateProvider.TakeSnapshot(), storageSnapshot.PersistentStorageSnapshot, storageSnapshot.TransientStorageSnapshot);
+            Snapshot.Storage storageSnapshot = StorageProvider.TakeSnapshot(newTransactionStart);
+            return new (StateProvider.TakeSnapshot(), storageSnapshot);
         }
 
         public void Restore(Snapshot snapshot)
         {
             StateProvider.Restore(snapshot.StateSnapshot);
-            StorageProvider.Restore(snapshot);
+            StorageProvider.Restore(snapshot.StorageSnapshot);
         }
 
         public IStorageProvider StorageProvider { get; }

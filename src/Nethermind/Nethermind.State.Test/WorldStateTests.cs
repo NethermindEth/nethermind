@@ -48,7 +48,7 @@ namespace Nethermind.Store.Test
             Snapshot snapshot = worldState.TakeSnapshot();
 
             snapshot.StateSnapshot.Should().Be(0);
-            snapshot.PersistentStorageSnapshot.Should().Be(0);
+            snapshot.StorageSnapshot.PersistentStorageSnapshot.Should().Be(0);
         }
 
         [Test]
@@ -60,12 +60,12 @@ namespace Nethermind.Store.Test
             WorldState worldState = new(stateProvider, storageProvider);
 
             stateProvider.TakeSnapshot().Returns(1);
-            storageProvider.TakeSnapshot().Returns(new Snapshot(1, 2, 3));
+            storageProvider.TakeSnapshot().Returns(new Snapshot.Storage(2, 3));
             
             Snapshot snapshot = worldState.TakeSnapshot();
             snapshot.StateSnapshot.Should().Be(1);
-            snapshot.PersistentStorageSnapshot.Should().Be(2);
-            snapshot.TransientStorageSnapshot.Should().Be(3);
+            snapshot.StorageSnapshot.PersistentStorageSnapshot.Should().Be(2);
+            snapshot.StorageSnapshot.TransientStorageSnapshot.Should().Be(3);
         }
         
         [Test]
@@ -86,9 +86,9 @@ namespace Nethermind.Store.Test
             IStorageProvider storageProvider = Substitute.For<IStorageProvider>();
 
             WorldState worldState = new(stateProvider, storageProvider);
-            worldState.Restore(new Snapshot(1, 2, 1));
+            worldState.Restore(new Snapshot(1, new Snapshot.Storage(2, 1)));
             stateProvider.Received().Restore(1);
-            storageProvider.Received().Restore(new Snapshot(1, 2, 1));
+            storageProvider.Received().Restore(new Snapshot.Storage(2, 1));
         }
     }
 }

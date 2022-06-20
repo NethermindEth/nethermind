@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,7 +18,7 @@ using Nethermind.Core;
 
 namespace Nethermind.State
 {
-    public interface IStorageProvider : IJournal<Snapshot>
+    public interface IStorageProvider : IJournal<Snapshot.Storage>
     {
         byte[] GetOriginal(StorageCell storageCell);
         
@@ -47,9 +47,9 @@ namespace Nethermind.State
         /// If <see cref="newTransactionStart"/> is true and there are already changes in <see cref="IStorageProvider"/> then next call to
         /// <see cref="GetOriginal"/> will use changes before this snapshot as original values for this new transaction.
         /// </remarks>
-        Snapshot TakeSnapshot(bool newTransactionStart = false);
+        Snapshot.Storage TakeSnapshot(bool newTransactionStart = false);
 
-        Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
+        Snapshot.Storage IJournal<Snapshot.Storage>.TakeSnapshot() => TakeSnapshot();
 
         void ClearStorage(Address address);
     }

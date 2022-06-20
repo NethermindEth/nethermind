@@ -26,17 +26,28 @@ namespace Nethermind.State
     /// </summary>
     public readonly struct Snapshot
     {
-        public Snapshot(int stateSnapshot, int storageSnapshot, int transientStorageSnapshot)
+        public Snapshot(int stateSnapshot, Storage storageSnapshot)
         {
             StateSnapshot = stateSnapshot;
-            PersistentStorageSnapshot = storageSnapshot;
-            TransientStorageSnapshot = transientStorageSnapshot;
+            StorageSnapshot = storageSnapshot;
+        }
+
+        public struct Storage
+        {
+
+            public int PersistentStorageSnapshot { get; }
+            public int TransientStorageSnapshot { get; }
+
+            public Storage(int storageSnapshot, int transientStorageSnapshot)
+            {
+                PersistentStorageSnapshot = storageSnapshot;
+                TransientStorageSnapshot = transientStorageSnapshot;
+            }
         }
         
         public int StateSnapshot { get; }
+        public Storage StorageSnapshot { get; }
         
-        public int PersistentStorageSnapshot { get; }
-        public int TransientStorageSnapshot { get; }
         public const int EmptyPosition = -1;
     }
 }
