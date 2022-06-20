@@ -55,7 +55,7 @@ namespace Nethermind.State
         }
 
         protected override byte[] GetCurrentValue(StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[] bytes) ? bytes : LoadFromTree(storageCell);
+            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
         public byte[] GetOriginal(StorageCell storageCell)
         {
