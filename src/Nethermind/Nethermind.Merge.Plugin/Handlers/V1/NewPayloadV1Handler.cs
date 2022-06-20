@@ -113,7 +113,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
             // ToDo if block is below syncPivot, we can return SYNCING and ignore block
 
-            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
+            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotSetTotalDifficulty);
             if (parentHeader is null)
             {
                 // possible that headers sync finished before this was called, so blocks in cache weren't inserted
