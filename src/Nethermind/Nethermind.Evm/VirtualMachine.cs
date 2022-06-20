@@ -2019,13 +2019,13 @@ namespace Nethermind.Evm
                     }
                     case Instruction.TLOAD:
                     {
+                        Metrics.TloadOpcode++;
                         if (!spec.TransientStorageEnabled)
                         {
                             EndInstructionTraceError(EvmExceptionType.BadInstruction);
                             return CallResult.InvalidInstructionException;
                         }
-                        Metrics.TloadOpcode++;
-                        var gasCost = spec.GetTLoadCost();
+                        var gasCost = GasCostOf.TLoad;
 
                         if (!UpdateGas(gasCost, ref gasAvailable))
                         {
@@ -2043,12 +2043,12 @@ namespace Nethermind.Evm
                         }
                     case Instruction.TSTORE:
                     {
+                        Metrics.TstoreOpcode++;
                         if (!spec.TransientStorageEnabled)
                         {
                             EndInstructionTraceError(EvmExceptionType.BadInstruction);
                             return CallResult.InvalidInstructionException;
                         }
-                        Metrics.TstoreOpcode++;
 
                         if (vmState.IsStatic)
                         {
@@ -2056,7 +2056,7 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
                         
-                        var gasCost = spec.GetTStoreCost();
+                        var gasCost = GasCostOf.TStore;
                         if (!UpdateGas(gasCost, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);

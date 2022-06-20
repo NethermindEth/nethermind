@@ -97,10 +97,5 @@ namespace Nethermind.Evm
             spec.UseExpDDosProtection
                 ? GasCostOf.ExpByteEip160
                 : GasCostOf.ExpByte;
-
-        public static long GetTLoadCost(this IReleaseSpec spec) =>
-            GasCostOf.TLoad;
-        public static long GetTStoreCost(this IReleaseSpec spec) =>
-            GasCostOf.TStore;
     }
 }

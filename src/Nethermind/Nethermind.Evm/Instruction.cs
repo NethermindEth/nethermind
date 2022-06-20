@@ -84,8 +84,6 @@ namespace Nethermind.Evm
         MSTORE8 = 0x53,
         SLOAD = 0x54,
         SSTORE = 0x55,
-        TLOAD = 0xb3,
-        TSTORE = 0xb4,
         JUMP = 0x56,
         JUMPI = 0x57,
         PC = 0x58,
@@ -168,6 +166,10 @@ namespace Nethermind.Evm
         LOG2 = 0xa2,
         LOG3 = 0xa3,
         LOG4 = 0xa4,
+
+        // EIP-1153
+        TLOAD = 0xb3,
+        TSTORE = 0xb4,
 
         CREATE = 0xf0,
         CALL = 0xf1,

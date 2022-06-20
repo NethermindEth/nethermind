@@ -115,7 +115,7 @@ namespace Nethermind.Evm
             return CallWithInput(address, gasLimit, Bytes.FromHexString(input));
         }
 
-        public Prepare CallWithInput(Address address, long gasLimit, byte[] input = null)
+        public Prepare CallWithInput(Address address, long gasLimit, byte[]? input = null)
         {
             if (input != null)
             {
@@ -187,7 +187,7 @@ namespace Nethermind.Evm
             return this;
         }
 
-        public Prepare DynamicCallWithInput(Instruction callType, Address address, long gasLimit, byte[] input = null)
+        public Prepare DynamicCallWithInput(Instruction callType, Address address, long gasLimit, byte[]? input = null)
         {
             if (callType != Instruction.CALL &&
                 callType != Instruction.STATICCALL &&
