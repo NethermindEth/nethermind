@@ -2039,6 +2039,11 @@ namespace Nethermind.Evm
                         byte[] value = _storage.GetTransientState(storageCell);
                         stack.PushBytes(value);
 
+                        if (_txTracer.IsTracingOpLevelStorage)
+                        {
+                            _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
+                        }
+
                         break;
                         }
                     case Instruction.TSTORE:
@@ -2056,7 +2061,7 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
                         
-                        var gasCost = GasCostOf.TStore;
+                        long gasCost = GasCostOf.TStore;
                         if (!UpdateGas(gasCost, ref gasAvailable))
                         {
                             EndInstructionTraceError(EvmExceptionType.OutOfGas);
@@ -2076,7 +2081,13 @@ namespace Nethermind.Evm
                         }
 
                         StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
-                        _storage.SetTransientState(storageCell, newValue.ToArray());
+                        byte[] currentValue = newValue.ToArray();
+                        _storage.SetTransientState(storageCell, currentValue);
+
+                        if (_txTracer.IsTracingOpLevelStorage)
+                        {
+                            _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
+                        }
 
                         break;
                     }

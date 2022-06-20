@@ -30,20 +30,10 @@ namespace Nethermind.State
     {
         protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
 
-        /// <summary>
-        /// EIP-1283
-        /// </summary>
-        protected readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
-
-        protected readonly ResettableHashSet<StorageCell> _committedThisRound = new();
-
         protected readonly ILogger _logger;
-        protected readonly ILogManager _logManager;
 
-        protected readonly ResettableDictionary<Address, StorageTree> _storages = new();
-
-        protected const int StartCapacity = Resettable.StartCapacity;
-        protected int _capacity = StartCapacity;
+        private const int StartCapacity = Resettable.StartCapacity;
+        private int _capacity = StartCapacity;
         protected Change?[] _changes = new Change[StartCapacity];
         protected int _currentPosition = Resettable.EmptyPosition;
 
@@ -51,10 +41,11 @@ namespace Nethermind.State
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        public PartialStorageProviderBase(ILogManager? logManager)
+        protected static readonly byte[] _zeroValue = {0};
+
+        protected PartialStorageProviderBase(ILogManager? logManager)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = logManager.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public byte[] Get(StorageCell storageCell)
@@ -84,7 +75,7 @@ namespace Nethermind.State
 
             if (snapshot > _currentPosition)
             {
-                throw new InvalidOperationException($"{nameof(PartialStorageProviderBase)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+                throw new InvalidOperationException($"{GetType().Name} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
             }
             
             if (snapshot == _currentPosition)
@@ -147,8 +138,6 @@ namespace Nethermind.State
             Commit(NullStorageTracer.Instance);
         }
 
-        protected static readonly byte[] _zeroValue = {0};
-
         protected readonly struct ChangeTrace
         {
             public ChangeTrace(byte[]? before, byte[]? after)
@@ -167,20 +156,51 @@ namespace Nethermind.State
             public byte[] After { get; }
         }
 
-        public abstract void Commit(IStorageTracer tracer);
+        public void Commit(IStorageTracer tracer)
+        {
+            if (_currentPosition == Snapshot.EmptyPosition)
+            {
+                if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
+            }
+            else
+            {
+                CommitCore(tracer);
+            }
+        }
 
-        public void Reset()
+        protected virtual void CommitCore(IStorageTracer tracer)
+        {
+            Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition);
+            _intraBlockCache.Reset();
+            _transactionChangesSnapshots.Clear();
+        }
+
+
+        public virtual void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 
             _intraBlockCache.Clear();
-            _originalValues.Clear();
             _transactionChangesSnapshots.Clear();
             _currentPosition = -1;
-            _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);
-            _storages.Reset();
         }
+
+        protected bool TryGetCachedValue(StorageCell storageCell, out byte[]? bytes)
+        {
+            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            {
+                int lastChangeIndex = stack.Peek();
+                {
+                    bytes = _changes[lastChangeIndex]!.Value;
+                    return true;
+                }
+            }
+
+            bytes = null;
+            return false;
+        }
+
         protected abstract byte[] GetCurrentValue(StorageCell storageCell);
 
         private void PushUpdate(StorageCell cell, byte[] value)
@@ -204,7 +224,18 @@ namespace Nethermind.State
             }
         }
 
-        public abstract void ClearStorage(Address address);
+        public virtual void ClearStorage(Address address)
+        {
+            // We are setting cached values to zero so we do not use previously set values
+            // when the contract is revived with CREATE2 inside the same block
+            foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraBlockCache)
+            {
+                if (cellByAddress.Key.Address == address)
+                {
+                    Set(cellByAddress.Key, _zeroValue);
+                }
+            }
+        }
 
         protected class Change
         {

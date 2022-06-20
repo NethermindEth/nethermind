@@ -28,27 +28,34 @@ namespace Nethermind.State
 {
     public class PersistentStorageProvider : PartialStorageProviderBase
     {
-
-        protected readonly ITrieStore _trieStore;
-        protected readonly IStateProvider _stateProvider;
+        private readonly ITrieStore _trieStore;
+        private readonly IStateProvider _stateProvider;
+        private readonly ILogManager? _logManager;
+        private readonly ResettableDictionary<Address, StorageTree> _storages = new();
+        /// <summary>
+        /// EIP-1283
+        /// </summary>
+        private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
+        private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
         public PersistentStorageProvider(ITrieStore? trieStore, IStateProvider? stateProvider, ILogManager? logManager)
             : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        protected override byte[] GetCurrentValue(StorageCell storageCell)
+        public override void Reset()
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
-            {
-                int lastChangeIndex = stack.Peek();
-                return _changes[lastChangeIndex]!.Value;
-            }
-
-            return LoadFromTree(storageCell);
+            base.Reset();
+            _storages.Reset();
+            _originalValues.Clear();
+            _committedThisRound.Clear();
         }
+
+        protected override byte[] GetCurrentValue(StorageCell storageCell) =>
+            TryGetCachedValue(storageCell, out byte[] bytes) ? bytes : LoadFromTree(storageCell);
 
         public byte[] GetOriginal(StorageCell storageCell)
         {
@@ -71,14 +78,8 @@ namespace Nethermind.State
             return _originalValues[storageCell];
         }
 
-        public override void Commit(IStorageTracer tracer)
+        protected override void CommitCore(IStorageTracer tracer)
         {
-            if (_currentPosition == -1)
-            {
-                if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
-                return;
-            }
-
             if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
             if (_changes[_currentPosition] is null)
@@ -176,11 +177,9 @@ namespace Nethermind.State
                 }
             }
 
-            Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
-            _committedThisRound.Reset();
-            _intraBlockCache.Reset();
+            base.CommitCore(tracer);
             _originalValues.Reset();
-            _transactionChangesSnapshots.Clear();
+            _committedThisRound.Reset();
 
             if (isTracing)
             {
@@ -255,19 +254,11 @@ namespace Nethermind.State
 
         public override void ClearStorage(Address address)
         {
-            /* we are setting cached values to zero so we do not use previously set values
-               when the contract is revived with CREATE2 inside the same block */
-            foreach (var cellByAddress in _intraBlockCache)
-            {
-                if (cellByAddress.Key.Address == address)
-                {
-                    Set(cellByAddress.Key, _zeroValue);
-                }
-            }
+            base.ClearStorage(address);
 
-            /* here it is important to make sure that we will not reuse the same tree when the contract is revived
-               by means of CREATE 2 - notice that the cached trie may carry information about items that were not
-               touched in this block, hence were not zeroed above */
+            // here it is important to make sure that we will not reuse the same tree when the contract is revived
+            // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
+            // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
             _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
         }

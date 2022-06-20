@@ -34,51 +34,7 @@ namespace Nethermind.State
         public TransientStorageProvider(ILogManager? logManager)
             : base(logManager) { }
 
-        /// <summary>
-        /// Nothing to commit to permanent storage
-        /// Reset the caches and return
-        /// </summary>
-        /// <param name="tracer"></param>
-        /// <exception cref="InvalidOperationException"></exception>
-        public override void Commit(IStorageTracer tracer)
-        {
-            if (_currentPosition == -1)
-            {
-                if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
-                return;
-            }
-
-            if (_logger.IsTrace) _logger.Trace("Committing transient storage changes");
-
-            Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
-            _committedThisRound.Reset();
-            _intraBlockCache.Reset();
-            _originalValues.Reset();
-            _transactionChangesSnapshots.Clear();
-        }
-
-        protected override byte[] GetCurrentValue(StorageCell storageCell)
-        {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
-            {
-                int lastChangeIndex = stack.Peek();
-                return _changes[lastChangeIndex]!.Value;
-            }
-
-            return _zeroValue;
-        }
-
-        public override void ClearStorage(Address address)
-        {
-            /* we are setting cached values to zero so we do not use previously set values
-               when the contract is revived with CREATE2 inside the same block */
-            foreach (var cellByAddress in _intraBlockCache)
-            {
-                if (cellByAddress.Key.Address == address)
-                {
-                    Set(cellByAddress.Key, _zeroValue);
-                }
-            }
-        }
+        protected override byte[] GetCurrentValue(StorageCell storageCell) =>
+            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : _zeroValue;
     }
 }

@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Test
         /// <summary>
         /// Simple performance test
         /// </summary>
-        [Ignore("Depends on hardware")]
+        [Explicit("Depends on hardware")]
         [Test]
         public void transient_storage_performance_test()
         {

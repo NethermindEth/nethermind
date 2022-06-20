@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -57,7 +58,7 @@ namespace Nethermind.Store.Test
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
             provider.Commit();
-            provider.Restore(new Snapshot.Storage(Snapshot.EmptyPosition, Snapshot.EmptyPosition));
+            provider.Restore(Snapshot.Storage.Empty);
         }
 
         private StorageProvider BuildStorageProvider(Context ctx)
@@ -325,27 +326,19 @@ namespace Nethermind.Store.Test
 
             // No updates
             snapshots[0] = ((IStorageProvider)provider).TakeSnapshot();
-            Assert.AreEqual(snapshots[0].TransientStorageSnapshot, -1);
-            Assert.AreEqual(snapshots[0].PersistentStorageSnapshot, -1);
 
             // Only update transient
             provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[1]);
             snapshots[1] = ((IStorageProvider)provider).TakeSnapshot();
-            Assert.AreEqual(snapshots[1].TransientStorageSnapshot, 0);
-            Assert.AreEqual(snapshots[1].PersistentStorageSnapshot, -1);
 
             // Update both
             provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[2]);
             provider.Set(new StorageCell(ctx.Address1, 1), _values[9]);
             snapshots[2] = ((IStorageProvider)provider).TakeSnapshot();
-            Assert.AreEqual(snapshots[2].TransientStorageSnapshot, 1);
-            Assert.AreEqual(snapshots[2].PersistentStorageSnapshot, 0);
 
             // Only update persistent
             provider.Set(new StorageCell(ctx.Address1, 1), _values[8]);
             snapshots[3] = ((IStorageProvider)provider).TakeSnapshot();
-            Assert.AreEqual(snapshots[3].TransientStorageSnapshot, 1);
-            Assert.AreEqual(snapshots[3].PersistentStorageSnapshot, 1);
 
             provider.Restore(snapshots[snapshot + 1]);
 
@@ -354,7 +347,14 @@ namespace Nethermind.Store.Test
             {
                 snapshot--;
             }
-            Assert.AreEqual(_values[snapshot + 1], provider.GetTransientState(new StorageCell(ctx.Address1, 1)));
+
+            snapshots.Should().Equal(
+                Snapshot.Storage.Empty,
+                new Snapshot.Storage(Snapshot.EmptyPosition, 0),
+                new Snapshot.Storage(0, 1),
+                new Snapshot.Storage(1, 1));
+
+            _values[snapshot + 1].Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)));
         }
 
         [TestCase(-1)]
@@ -369,27 +369,19 @@ namespace Nethermind.Store.Test
 
             // No updates
             snapshots[0] = ((IStorageProvider)provider).TakeSnapshot();
-            Assert.AreEqual(snapshots[0].TransientStorageSnapshot, -1);
-            Assert.AreEqual(snapshots[0].PersistentStorageSnapshot, -1);
 
             // Only update persistent
             provider.Set(new StorageCell(ctx.Address1, 1), _values[1]);
             snapshots[1] = ((IStorageProvider)provider).TakeSnapshot();
-            Assert.AreEqual(snapshots[1].PersistentStorageSnapshot, 0);
-            Assert.AreEqual(snapshots[1].TransientStorageSnapshot, -1);
 
             // Update both
             provider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
             provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[9]);
             snapshots[2] = ((IStorageProvider)provider).TakeSnapshot();
-            Assert.AreEqual(snapshots[2].PersistentStorageSnapshot, 1);
-            Assert.AreEqual(snapshots[2].TransientStorageSnapshot, 0);
 
             // Only update transient
             provider.SetTransientState(new StorageCell(ctx.Address1, 1), _values[8]);
             snapshots[3] = ((IStorageProvider)provider).TakeSnapshot();
-            Assert.AreEqual(snapshots[3].PersistentStorageSnapshot, 1);
-            Assert.AreEqual(snapshots[3].TransientStorageSnapshot, 1);
 
             provider.Restore(snapshots[snapshot + 1]);
 
@@ -398,7 +390,14 @@ namespace Nethermind.Store.Test
             {
                 snapshot--;
             }
-            Assert.AreEqual(_values[snapshot + 1], provider.Get(new StorageCell(ctx.Address1, 1)));
+
+            snapshots.Should().Equal(
+                Snapshot.Storage.Empty,
+                new Snapshot.Storage(0, Snapshot.EmptyPosition),
+                new Snapshot.Storage(1, 0),
+                new Snapshot.Storage(1, 1));
+
+            _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)));
         }
 
         private class Context

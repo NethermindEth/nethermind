@@ -79,10 +79,11 @@ namespace Nethermind.State
         /// Convenience for test cases
         /// </summary>
         /// <param name="snapshot"></param>
-        public void Restore(int snapshot)
+        internal void Restore(int snapshot)
         {
             Restore(new Snapshot.Storage(snapshot, Snapshot.EmptyPosition));
         }
+
         public void Restore(Snapshot.Storage snapshot)
         {
             _persistentStorageProvider.Restore(snapshot.PersistentStorageSnapshot);
