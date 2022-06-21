@@ -2045,7 +2045,7 @@ namespace Nethermind.Evm
                         }
 
                         break;
-                        }
+                    }
                     case Instruction.TSTORE:
                     {
                         Metrics.TstoreOpcode++;

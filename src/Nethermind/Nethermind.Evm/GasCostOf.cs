@@ -70,7 +70,7 @@ namespace Nethermind.Evm
         
         public const long AccessAccountListEntry = 2400; // eip-2930
         public const long AccessStorageListEntry = 1900; // eip-2930
-        public const long TLoad = WarmStateRead;
-        public const long TStore = WarmStateRead;
+        public const long TLoad = WarmStateRead; // eip-1153
+        public const long TStore = WarmStateRead; // eip-1153
     }
 }

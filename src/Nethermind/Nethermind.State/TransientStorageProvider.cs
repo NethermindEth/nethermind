@@ -28,6 +28,11 @@ namespace Nethermind.State
         public TransientStorageProvider(ILogManager? logManager)
             : base(logManager) { }
 
+        /// <summary>
+        /// Get the storage value at the specified storage cell
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <returns>Value at cell</returns>
         protected override byte[] GetCurrentValue(StorageCell storageCell) =>
             TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : _zeroValue;
     }

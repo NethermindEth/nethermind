@@ -23,6 +23,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
+    /// <summary>
+    /// Contains common code for both Persistent and Transient storage providers
+    /// </summary>
     public abstract class PartialStorageProviderBase
     {
         protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
@@ -45,16 +48,31 @@ namespace Nethermind.State
             _logger = logManager?.GetClassLogger<PartialStorageProviderBase>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
+        /// <summary>
+        /// Get the storage value at the specified storage cell
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <returns>Value at cell</returns>
         public byte[] Get(StorageCell storageCell)
         {
             return GetCurrentValue(storageCell);
         }
 
+        /// <summary>
+        /// Set the provided value to storage at the specified storage cell
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <param name="newValue">Value to store</param>
         public void Set(StorageCell storageCell, byte[] newValue)
         {
             PushUpdate(storageCell, newValue);
         }
 
+        /// <summary>
+        /// Creates a restartable snapshot.
+        /// </summary>
+        /// <param name="newTransactionStart"> Indicates new transaction will start here.</param>
+        /// <returns>Snapshot index</returns>
         public int TakeSnapshot(bool newTransactionStart)
         {
             if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
@@ -66,6 +84,11 @@ namespace Nethermind.State
             return _currentPosition;
         }
 
+        /// <summary>
+        /// Restore the state to the provided snapshot
+        /// </summary>
+        /// <param name="snapshot">Snapshot index</param>
+        /// <exception cref="InvalidOperationException">Throws exception if snapshot is invalid</exception>
         public void Restore(int snapshot)
         {
             if (_logger.IsTrace) _logger.Trace($"Restoring storage snapshot {snapshot}");
@@ -130,6 +153,9 @@ namespace Nethermind.State
 
         }
 
+        /// <summary>
+        /// Commit persistent storage
+        /// </summary>
         public void Commit()
         {
             Commit(NullStorageTracer.Instance);
@@ -153,6 +179,10 @@ namespace Nethermind.State
             public byte[] After { get; }
         }
 
+        /// <summary>
+        /// Commit persistent storage
+        /// </summary>
+        /// <param name="stateTracer">State tracer</param>
         public void Commit(IStorageTracer tracer)
         {
             if (_currentPosition == Snapshot.EmptyPosition)
@@ -165,6 +195,11 @@ namespace Nethermind.State
             }
         }
 
+        /// <summary>
+        /// Called by Commit
+        /// Used for storage-specific logic
+        /// </summary>
+        /// <param name="tracer">Storage tracer</param>
         protected virtual void CommitCore(IStorageTracer tracer)
         {
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition);
@@ -172,7 +207,9 @@ namespace Nethermind.State
             _transactionChangesSnapshots.Clear();
         }
 
-
+        /// <summary>
+        /// Reset the storage state
+        /// </summary>
         public virtual void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
@@ -183,6 +220,12 @@ namespace Nethermind.State
             Array.Clear(_changes, 0, _changes.Length);
         }
 
+        /// <summary>
+        /// Attempt to get the current value at the storage cell
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <param name="bytes">Resulting value</param>
+        /// <returns>True if value has been set</returns>
         protected bool TryGetCachedValue(StorageCell storageCell, out byte[]? bytes)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
@@ -198,8 +241,18 @@ namespace Nethermind.State
             return false;
         }
 
+        /// <summary>
+        /// Get the current value at the specified location
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <returns>Value at location</returns>
         protected abstract byte[] GetCurrentValue(StorageCell storageCell);
 
+        /// <summary>
+        /// Update the storage cell with provided value
+        /// </summary>
+        /// <param name="cell">Storage location</param>
+        /// <param name="value">Value to set</param>
         private void PushUpdate(StorageCell cell, byte[] value)
         {
             SetupRegistry(cell);
@@ -208,11 +261,18 @@ namespace Nethermind.State
             _changes[_currentPosition] = new Change(ChangeType.Update, cell, value);
         }
 
+        /// <summary>
+        /// Increment position and size (if needed) of _changes 
+        /// </summary>
         protected void IncrementChangePosition()
         {
             Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
         }
 
+        /// <summary>
+        /// Initialize the StackList at the storage cell position if needed
+        /// </summary>
+        /// <param name="cell"></param>
         protected void SetupRegistry(StorageCell cell)
         {
             if (!_intraBlockCache.ContainsKey(cell))
@@ -221,6 +281,10 @@ namespace Nethermind.State
             }
         }
 
+        /// <summary>
+        /// Clear all storage at specified address
+        /// </summary>
+        /// <param name="address">Contract address</param>
         public virtual void ClearStorage(Address address)
         {
             // We are setting cached values to zero so we do not use previously set values
@@ -234,6 +298,9 @@ namespace Nethermind.State
             }
         }
 
+        /// <summary>
+        /// Used for tracking each change to storage
+        /// </summary>
         protected class Change
         {
             public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
@@ -248,6 +315,9 @@ namespace Nethermind.State
             public byte[] Value { get; }
         }
 
+        /// <summary>
+        /// Type of change to track
+        /// </summary>
         protected enum ChangeType
         {
             JustCache,

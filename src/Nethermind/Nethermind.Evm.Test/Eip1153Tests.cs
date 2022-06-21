@@ -24,11 +24,17 @@ using System.Diagnostics;
 
 namespace Nethermind.Evm.Test
 {
+    /// <summary>
+    /// Tests functionality of Transient Storage
+    /// </summary>
     internal class Eip1153Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainnetSpecProvider.ShanghaiBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
+        /// <summary>
+        /// Transient storage should be activated after Shanghai hardfork
+        /// </summary>
         [Test]
         public void after_shanghai_can_call_tstore_tload()
         {
@@ -41,6 +47,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
         }
 
+        /// <summary>
+        /// Transient storage should not be activated until after Shanghai hardfork
+        /// </summary>
         [Test]
         public void before_shanghai_can_not_call_tstore_tload()
         {
@@ -59,6 +68,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(StatusCode.Failure, result.StatusCode);
         }
 
+        /// <summary>
+        /// Uninitialized transient storage is zero
+        /// </summary>
         [Test]
         public void tload_uninitialized_returns_zero()
         {
@@ -102,6 +114,9 @@ namespace Nethermind.Evm.Test
             Assert.IsTrue(stopwatch.ElapsedMilliseconds < 5000);
         }
 
+        /// <summary>
+        /// Simple functionality test
+        /// </summary>
         [Test]
         public void tload_after_tstore()
         {
@@ -118,6 +133,10 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(8, (int)result.ReturnValue.ToUInt256());
         }
 
+        /// <summary>
+        /// Testing transient data store/load from different locations
+        /// </summary>
+        /// <param name="loadLocation">Location</param>
         [TestCase(2)]
         [TestCase(3)]
         [TestCase(4)]
@@ -726,6 +745,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(expectedResult, (int)result.ReturnValue.ToUInt256());
         }
 
+        /// <summary>
+        /// Zeroing out a transient storage slot does not result in gas refund
+        /// </summary>
         [Test]
         public void tstore_does_not_result_in_gasrefund()
         {

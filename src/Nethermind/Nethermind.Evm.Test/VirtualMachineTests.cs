@@ -19,7 +19,6 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.State;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs;
@@ -426,6 +425,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), Storage.Get(new StorageCell(Recipient, 0)), "storage");
         }
 
+        /// <summary>
+        /// TLoad gas cost check
+        /// </summary>
         [Test]
         public void Tload()
         {
@@ -438,6 +440,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad, receipt.GasSpent, "gas");
         }
 
+        /// <summary>
+        /// TStore gas cost check
+        /// </summary>
         [Test]
         public void Tstore()
         {

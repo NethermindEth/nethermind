@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -237,6 +237,9 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(_values[(Resettable.StartCapacity + 1) % 2], valueAfter);
         }
 
+        /// <summary>
+        /// Transient storage should be zero if uninitialized
+        /// </summary>
         [Test]
         public void Can_tload_uninitialized_locations()
         {
@@ -253,6 +256,9 @@ namespace Nethermind.Store.Test
             Assert.True(provider.GetTransientState(new StorageCell(ctx.Address2, 1)).IsZero());
         }
 
+        /// <summary>
+        /// Simple transient storage test
+        /// </summary>
         [Test]
         public void Can_tload_after_tstore()
         {
@@ -263,6 +269,10 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(_values[1], provider.GetTransientState(new StorageCell(ctx.Address1, 2)));
         }
 
+        /// <summary>
+        /// Transient storage can be updated and restored
+        /// </summary>
+        /// <param name="snapshot">Snapshot to restore to</param>
         [TestCase(-1)]
         [TestCase(0)]
         [TestCase(1)]
@@ -288,6 +298,9 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(_values[snapshot + 1], provider.GetTransientState(new StorageCell(ctx.Address1, 1)));
         }
 
+        /// <summary>
+        /// Commit will reset transient state
+        /// </summary>
         [Test]
         public void Commit_resets_transient_state()
         {
@@ -301,6 +314,9 @@ namespace Nethermind.Store.Test
             Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
         }
 
+        /// <summary>
+        /// Reset will reset transient state
+        /// </summary>
         [Test]
         public void Reset_resets_transient_state()
         {
@@ -314,11 +330,15 @@ namespace Nethermind.Store.Test
             Assert.True(provider.GetTransientState(new StorageCell(ctx.Address1, 2)).IsZero());
         }
 
+        /// <summary>
+        /// Transient state does not impact persistent state
+        /// </summary>
+        /// <param name="snapshot">Snapshot to restore to</param>
         [TestCase(-1)]
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
-        public void Transient_state_restores_independent_of_permanent_state(int snapshot)
+        public void Transient_state_restores_independent_of_persistent_state(int snapshot)
         {
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);
@@ -357,11 +377,15 @@ namespace Nethermind.Store.Test
             _values[snapshot + 1].Should().BeEquivalentTo(provider.GetTransientState(new StorageCell(ctx.Address1, 1)));
         }
 
+        /// <summary>
+        /// Persistent state does not impact transient state
+        /// </summary>
+        /// <param name="snapshot">Snapshot to restore to</param>
         [TestCase(-1)]
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
-        public void Permanent_state_restores_independent_of_transient_state(int snapshot)
+        public void Persistent_state_restores_independent_of_transient_state(int snapshot)
         {
             Context ctx = new();
             StorageProvider provider = BuildStorageProvider(ctx);

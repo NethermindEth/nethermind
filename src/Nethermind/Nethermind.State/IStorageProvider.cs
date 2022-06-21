@@ -18,24 +18,67 @@ using Nethermind.Core;
 
 namespace Nethermind.State
 {
+    /// <summary>
+    /// Interface for the StorageProvider
+    /// Includes both persistent and transient storage
+    /// </summary>
     public interface IStorageProvider : IJournal<Snapshot.Storage>
     {
+        /// <summary>
+        /// Return the original persistent storage value from the storage cell
+        /// </summary>
+        /// <param name="storageCell"></param>
+        /// <returns></returns>
         byte[] GetOriginal(StorageCell storageCell);
         
+        /// <summary>
+        /// Get the persistent storage value at the specified storage cell
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <returns>Value at cell</returns>
         byte[] Get(StorageCell storageCell);
 
+        /// <summary>
+        /// Set the provided value to persistent storage at the specified storage cell
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <param name="newValue">Value to store</param>
         void Set(StorageCell storageCell, byte[] newValue);
 
+        /// <summary>
+        /// Get the transient storage value at the specified storage cell
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <returns>Value at cell</returns>
         byte[] GetTransientState(StorageCell storageCell);
 
+        /// <summary>
+        /// Set the provided value to transient storage at the specified storage cell
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <param name="newValue">Value to store</param>
         void SetTransientState(StorageCell storageCell, byte[] newValue);
 
+        /// <summary>
+        /// Reset all storage
+        /// </summary>
         void Reset();
         
+        /// <summary>
+        /// Commit persisent storage trees
+        /// </summary>
+        /// <param name="blockNumber">Current block number</param>
         void CommitTrees(long blockNumber);
         
+        /// <summary>
+        /// Commit persistent storage
+        /// </summary>
         void Commit();
         
+        /// <summary>
+        /// Commit persistent storage
+        /// </summary>
+        /// <param name="stateTracer">State tracer</param>
         void Commit(IStorageTracer stateTracer);
         
         /// <summary>
@@ -51,6 +94,10 @@ namespace Nethermind.State
 
         Snapshot.Storage IJournal<Snapshot.Storage>.TakeSnapshot() => TakeSnapshot();
 
+        /// <summary>
+        /// Clear all storage at specified address
+        /// </summary>
+        /// <param name="address">Contract address</param>
         void ClearStorage(Address address);
     }
 }

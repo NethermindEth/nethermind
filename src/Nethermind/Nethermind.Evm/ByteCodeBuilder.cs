@@ -22,6 +22,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
+    /// <summary>
+    /// A utility class to easily construct common patterns of EVM byte code
+    /// </summary>
     public class Prepare
     {
         private readonly List<byte> _byteCode = new();
@@ -187,6 +190,15 @@ namespace Nethermind.Evm
             return this;
         }
 
+        /// <summary>
+        /// Call the address with the specified callType
+        /// </summary>
+        /// <param name="callType">CALL, STATICCALL, DELEGATECALL</param>
+        /// <param name="address">Address of the contract</param>
+        /// <param name="gasLimit">Gas limit of the call</param>
+        /// <param name="input">Optional 32 byte input</param>
+        /// <returns>Prepare with call bytecode</returns>
+        /// <exception cref="Exception">Throws exception if callType is incorrect</exception>
         public Prepare DynamicCallWithInput(Instruction callType, Address address, long gasLimit, byte[]? input = null)
         {
             if (callType != Instruction.CALL &&
@@ -308,6 +320,12 @@ namespace Nethermind.Evm
             return this;
         }
 
+        /// <summary>
+        /// Take the data already on stack and store it in memory 
+        /// at specified position
+        /// </summary>
+        /// <param name="position">Memory position</param>
+        /// <returns>Prepare with requested bytecode</returns>
         public Prepare DataOnStackToMemory(int position)
         {            
             PushData(position);
@@ -315,6 +333,12 @@ namespace Nethermind.Evm
             return this;
         }
 
+        /// <summary>
+        /// Store input value at specified key in transient storage
+        /// </summary>
+        /// <param name="key">Storage key</param>
+        /// <param name="value">Value to store</param>
+        /// <returns>Prepare with requested bytecode</returns>
         public Prepare StoreDataInTransientStorage(int key, int value)
         {
             PushData(value);
@@ -323,6 +347,11 @@ namespace Nethermind.Evm
             return this;
         }
 
+        /// <summary>
+        /// Load value from specified key in transient storage
+        /// </summary>
+        /// <param name="key">Storage key</param>
+        /// <returns>Prepare with requested bytecode</returns>
         public Prepare LoadDataFromTransientStorage(int key)
         {
             PushData(key);
@@ -330,6 +359,12 @@ namespace Nethermind.Evm
             return this;
         }
 
+        /// <summary>
+        /// Return the data in memory at position
+        /// </summary>
+        /// <param name="size">Data size</param>
+        /// <param name="position">Memory position</param>
+        /// <returns>Prepare with requested bytecode</returns>
         public Prepare Return(int size, int position)
         {            
             PushData(size);
@@ -338,6 +373,10 @@ namespace Nethermind.Evm
             return this;
         }
 
+        /// <summary>
+        /// Returns the result from a call made immediately prior
+        /// </summary>
+        /// <returns>Prepare with requested bytecode</returns>
         public Prepare ReturnInnerCallResult()
         {
             PushData(32);

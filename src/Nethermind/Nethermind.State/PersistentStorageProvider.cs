@@ -26,6 +26,10 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
+    /// <summary>
+    /// Manages persistent storage allowing for snapshotting and restoring
+    /// Persists data to ITrieStore
+    /// </summary>
     public class PersistentStorageProvider : PartialStorageProviderBase
     {
         private readonly ITrieStore _trieStore;
@@ -46,6 +50,9 @@ namespace Nethermind.State
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         }
 
+        /// <summary>
+        /// Reset the storage state
+        /// </summary>
         public override void Reset()
         {
             base.Reset();
@@ -54,9 +61,19 @@ namespace Nethermind.State
             _committedThisRound.Clear();
         }
 
+        /// <summary>
+        /// Get the current value at the specified location
+        /// </summary>
+        /// <param name="storageCell">Storage location</param>
+        /// <returns>Value at location</returns>
         protected override byte[] GetCurrentValue(StorageCell storageCell) =>
             TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
+        /// <summary>
+        /// Return the original persistent storage value from the storage cell
+        /// </summary>
+        /// <param name="storageCell"></param>
+        /// <returns></returns>
         public byte[] GetOriginal(StorageCell storageCell)
         {
             if (!_originalValues.ContainsKey(storageCell))
@@ -78,6 +95,12 @@ namespace Nethermind.State
             return _originalValues[storageCell];
         }
 
+
+        /// <summary>
+        /// Called by Commit
+        /// Used for persistent storage specific logic
+        /// </summary>
+        /// <param name="tracer">Storage tracer</param>
         protected override void CommitCore(IStorageTracer tracer)
         {
             if (_logger.IsTrace) _logger.Trace("Committing storage changes");
@@ -187,6 +210,10 @@ namespace Nethermind.State
             }
         }
 
+        /// <summary>
+        /// Commit persisent storage trees
+        /// </summary>
+        /// <param name="blockNumber">Current block number</param>
         public void CommitTrees(long blockNumber)
         {
             // _logger.Warn($"Storage block commit {blockNumber}");
@@ -252,6 +279,10 @@ namespace Nethermind.State
             return storageTree.RootHash;
         }
 
+        /// <summary>
+        /// Clear all storage at specified address
+        /// </summary>
+        /// <param name="address">Contract address</param>
         public override void ClearStorage(Address address)
         {
             base.ClearStorage(address);
