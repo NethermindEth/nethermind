@@ -63,6 +63,11 @@ namespace Nethermind.Consensus.Validators
         /// <returns></returns>
         public virtual bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
+            if (!ValidateFieldLimit(header))
+            {
+                return false;
+            }
+            
             bool hashAsExpected = ValidateHash(header);
             
             if (!hashAsExpected)
@@ -148,6 +153,30 @@ namespace Nethermind.Consensus.Validators
                 extraDataValid &&
                 eip1559Valid;
         }
+
+        private bool ValidateFieldLimit(BlockHeader blockHeader)
+        {
+            if (blockHeader.Number < 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block number is negative {blockHeader.Number}");
+                return false;
+            }
+            
+            if (blockHeader.GasLimit < 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block GasLimit is negative {blockHeader.GasLimit}");
+                return false;
+            }
+            
+            if (blockHeader.GasUsed < 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block GasUsed is negative {blockHeader.GasUsed}");
+                return false;
+            }
+
+            return true;
+        }
+        
         protected virtual bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
         {
             bool extraDataValid =  header.ExtraData.Length <= spec.MaximumExtraDataSize
