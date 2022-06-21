@@ -6,6 +6,7 @@ concurrency:
 
 on: 
   push:
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -177,21 +178,12 @@ jobs:
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
-    - name: Nethermind.Runner.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Runner.Test
     - name: Nethermind.State.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.State.Test
-    - name: Nethermind.Trie.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Trie.Test
     - name: Nethermind.Synchronization.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test
-    - name: Nethermind.TxPool.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.TxPool.Test
   neth-tests5:
     name: Running Nethermind Tests 5
     runs-on: ubuntu-latest
@@ -207,15 +199,22 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
-    - name: Nethermind.Ssz.Test
+    - name: Nethermind.TxPool.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test
+        dotnet test -c Release src/Nethermind/Nethermind.TxPool.Test   
+    - name: Nethermind.Trie.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Trie.Test        
+    - name: Nethermind.Sockets.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Sockets.Test        
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Wallet.Test
-    - name: Nethermind.Sockets.Test
+    - name: Nethermind.Ssz.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Sockets.Test
+        dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test
+
   neth-runner:
     name: Nethermind Runner Tests
     runs-on: ubuntu-latest
