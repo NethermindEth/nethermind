@@ -38,7 +38,7 @@ namespace Nethermind.AccountAbstraction.Source
     {
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISigner _signer;
 
         // private readonly IUserOperationTxBuilder _userOperationTxBuilder;
@@ -54,7 +54,7 @@ namespace Nethermind.AccountAbstraction.Source
             IDictionary<Address, IUserOperationPool> userOperationPools,
             IDictionary<Address, UserOperationSimulator> userOperationSimulators,
             ISpecProvider specProvider,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ISigner signer,
             ILogger logger)
         {
