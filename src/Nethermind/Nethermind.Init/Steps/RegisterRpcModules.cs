@@ -43,6 +43,7 @@ using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.Rpc;
 
 namespace Nethermind.Init.Steps
 {
@@ -231,6 +232,9 @@ namespace Nethermind.Init.Steps
                 await plugin.InitRpcModules();
             }
             
+            RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled.ToList());
+            rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
+
             if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
             ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
         }
