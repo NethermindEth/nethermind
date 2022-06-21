@@ -994,39 +994,6 @@ namespace Nethermind.Merge.Plugin.Test
             UInt256 totalValue = ((int)(count * value)).GWei();
             chain.StateReader.GetBalance(getPayloadResult.StateRoot, recipient).Should().Be(totalValue);
         }
-        
-        [TestCase(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay / 10, ExpectedResult = 3)]
-        [TestCase(PayloadPreparationService.GetPayloadWaitForFullBlockMillisecondsDelay * 2, ExpectedResult = 0)]
-        public async Task<int> getPayloadV1_waits_for_block_production(int delay)
-        {
-            using MergeTestBlockchain chain = await CreateBlockChain();
-            
-            DelayBlockImprovementContextFactory improvementContextFactory = new(chain.BlockProductionTrigger, TimeSpan.FromSeconds(10), delay);
-            chain.PayloadPreparationService = new PayloadPreparationService(
-                chain.PostMergeBlockProducer!,
-                improvementContextFactory,
-                chain.SealEngine, 
-                TimerFactory.Default, 
-                chain.LogManager, 
-                TimeSpan.FromSeconds(10));
-
-            IEngineRpcModule rpc = CreateEngineModule(chain);
-            Keccak startingHead = chain.BlockTree.HeadHash;
-            uint count = 3;
-            int value = 10;
-            Address recipient = TestItem.AddressF;
-            PrivateKey sender = TestItem.PrivateKeyB;
-            Transaction[] transactions = BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
-            chain.AddTransactions(transactions);
-            string payloadId = rpc.engine_forkchoiceUpdatedV1(
-                new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                new PayloadAttributes { Timestamp = 100, PrevRandao = TestItem.KeccakA, SuggestedFeeRecipient = Address.Zero })
-                .Result.Data.PayloadId!;
-            
-            ExecutionPayloadV1 getPayloadResult = (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!;
-
-            return getPayloadResult.Transactions.Length;
-        }
 
         [Test]
         public async Task getPayloadV1_return_correct_block_values_for_empty_block()
