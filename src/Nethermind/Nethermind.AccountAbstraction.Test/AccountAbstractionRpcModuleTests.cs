@@ -219,21 +219,6 @@ namespace Nethermind.AccountAbstraction.Test
             );
         }
 
-        [TestCase(0)]
-        [TestCase(1)]
-        public async Task Test_ReadOnlyState_sees_State_updates(int numBlocks)
-        {
-            var chain = await CreateChain();
-            chain.State.CreateAccount(TestItem.AddressA, UInt256.Zero);
-            var codeHash = chain.State.UpdateCode(new Byte[] {0x01, 0x02, 0x03});
-            chain.State.UpdateCodeHash(TestItem.AddressA, codeHash, chain.SpecProvider.GenesisSpec);
-            chain.State.Commit(chain.SpecProvider.GenesisSpec);
-            chain.State.CommitTree(chain.BlockTree.Head!.Number+numBlocks);
-            chain.State.RecalculateStateRoot();
-            await chain.AddBlock(true);
-            chain.ReadOnlyState.GetCodeHash(TestItem.AddressA).Should().Be(codeHash);
-        }
-        
         [TestCase(true, false)]
         [TestCase(false, true)]
         public async Task Should_execute_well_formed_op_successfully_if_codehash_not_changed(bool changeCodeHash, bool success) {
@@ -259,6 +244,8 @@ namespace Nethermind.AccountAbstraction.Test
                 chain.State.UpdateCodeHash(walletAddress[0]!, codeHash, chain.SpecProvider.GenesisSpec);
                 chain.State.Commit(chain.SpecProvider.GenesisSpec);
                 chain.State.RecalculateStateRoot();
+                chain.State.CommitTree(chain.BlockTree.Head!.Number);
+                await chain.BlockTree.SuggestBlockAsync(new BlockBuilder().WithStateRoot(chain.State.StateRoot).TestObject);
             }
             await chain.AddBlock(true);
 
