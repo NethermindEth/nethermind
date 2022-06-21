@@ -14,6 +14,8 @@ jobs:
     name: Running Nethermind Tests 1
     runs-on: ubuntu-latest
     steps:
+    - name: Print concurrency token
+      run: echo "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
     - uses: actions/checkout@v2
       with:
         submodules: true
