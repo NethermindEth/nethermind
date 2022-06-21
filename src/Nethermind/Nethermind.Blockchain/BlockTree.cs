@@ -863,6 +863,8 @@ namespace Nethermind.Blockchain
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==
                                          BlockTreeLookupOptions.None;
+            bool setTotalDifficulty = (options & BlockTreeLookupOptions.DoNotSetTotalDifficulty) ==
+                                      BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) ==
                                      BlockTreeLookupOptions.RequireCanonical;
 
@@ -876,7 +878,7 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    SetTotalDifficulty(header);
+                    if (setTotalDifficulty) SetTotalDifficulty(header);
                     blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty!.Value);
                     level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                 }
