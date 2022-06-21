@@ -232,7 +232,7 @@ namespace Nethermind.Init.Steps
                 await plugin.InitRpcModules();
             }
             
-            RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled.ToList());
+            RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
             rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
 
             if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");

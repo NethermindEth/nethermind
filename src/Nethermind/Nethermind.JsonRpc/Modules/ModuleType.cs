@@ -76,7 +76,8 @@ namespace Nethermind.JsonRpc.Modules
             Deposit,
             Health,
             Witness,
-            AccountAbstraction
+            AccountAbstraction,
+            Rpc,
         };
 
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()
@@ -91,7 +92,7 @@ namespace Nethermind.JsonRpc.Modules
             Net,
             Parity,
             Health,
-            Rpc
+            Rpc,
         };
     }
 }

@@ -25,18 +25,16 @@ namespace Nethermind.JsonRpc.Modules.Rpc;
 /// so that `geth attach` would work with nethermind. Redundant name, but consistent with other module.
 public class RpcRpcModule: IRpcRpcModule
 {
-    private readonly List<String> _enabledModules;
+    private readonly IDictionary<string, string> _enabledModules;
 
-    public RpcRpcModule(List<String> enabledModules)
+    public RpcRpcModule(IReadOnlyCollection<string> enabledModules)
     {
-        _enabledModules = enabledModules;
+        // Geth seems to fix version at 1.0t 
+        _enabledModules = enabledModules.ToDictionary((s => s), s => "1.0");;
     }
     
     public ResultWrapper<IDictionary<string, string>> rpc_modules()
     {
-        // Geth seems to fix version at 1.0t 
-        IDictionary<string, string> response = _enabledModules.ToDictionary((s => s), s => "1.0");
-        
-        return ResultWrapper<IDictionary<string, string>>.Success(response);
+        return ResultWrapper<IDictionary<string, string>>.Success(_enabledModules);
     }
 }
