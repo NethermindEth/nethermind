@@ -882,8 +882,12 @@ namespace Nethermind.Blockchain
                     {
                         SetTotalDifficulty(header);
                         blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty!.Value);
-                        level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                     }
+                    else
+                    {
+                        blockInfo = new BlockInfo(header.Hash, UInt256.Zero);
+                    }
+                    level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                 }
                 else
                 {
@@ -1919,8 +1923,12 @@ namespace Nethermind.Blockchain
                     {
                         SetTotalDifficulty(block.Header);
                         blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty!.Value);
-                        level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo);
                     }
+                    else
+                    {
+                        blockInfo = new BlockInfo(block.Hash, UInt256.Zero);
+                    }
+                    level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo);
                 }
                 else
                 {
