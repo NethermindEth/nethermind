@@ -156,6 +156,9 @@ namespace Nethermind.Consensus.Validators
 
         private bool ValidateFieldLimit(BlockHeader blockHeader)
         {
+            // Note, these are out of spec. Technically, there could be a block with field with very high value that is
+            // valid when using ulong, but wrapped to negative value when using long. However, switching to ulong
+            // at this point can cause other unexpected error. So we just won't support it for now.
             if (blockHeader.Number < 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block number is negative {blockHeader.Number}");
