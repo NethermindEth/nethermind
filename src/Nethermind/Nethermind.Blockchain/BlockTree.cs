@@ -847,10 +847,8 @@ namespace Nethermind.Blockchain
 
         public BlockHeader? FindHeader(Keccak? blockHash, BlockTreeLookupOptions options)
         {
-            _logger.Warn($"blockhash: {blockHash}");
             if (blockHash is null || blockHash == Keccak.Zero)
             {
-                _logger.Warn($"blockhash: {blockHash} inside loop");
                 // TODO: would be great to check why this is still needed (maybe it is something archaic)
                 return null;
             }
@@ -858,7 +856,6 @@ namespace Nethermind.Blockchain
             BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, false);
             if (header is null)
             {
-                _logger.Warn("returning - header is null");
                 return null;
             }
 
@@ -881,9 +878,12 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    if (setTotalDifficulty) SetTotalDifficulty(header);
-                    blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty!.Value);
-                    level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
+                    if (setTotalDifficulty)
+                    {
+                        SetTotalDifficulty(header);
+                        blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty!.Value);
+                        level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
+                    }
                 }
                 else
                 {
@@ -1915,9 +1915,12 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Entering missing block info in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    if (setTotalDifficulty) SetTotalDifficulty(block.Header);
-                    blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty!.Value);
-                    level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo);
+                    if (setTotalDifficulty)
+                    {
+                        SetTotalDifficulty(block.Header);
+                        blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty!.Value);
+                        level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo);
+                    }
                 }
                 else
                 {
