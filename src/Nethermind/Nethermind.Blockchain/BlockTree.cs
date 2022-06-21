@@ -847,8 +847,10 @@ namespace Nethermind.Blockchain
 
         public BlockHeader? FindHeader(Keccak? blockHash, BlockTreeLookupOptions options)
         {
+            _logger.Warn($"blockhash: {blockHash}");
             if (blockHash is null || blockHash == Keccak.Zero)
             {
+                _logger.Warn($"blockhash: {blockHash} inside loop");
                 // TODO: would be great to check why this is still needed (maybe it is something archaic)
                 return null;
             }
@@ -856,6 +858,7 @@ namespace Nethermind.Blockchain
             BlockHeader? header = _headerDb.Get(blockHash, _headerDecoder, _headerCache, false);
             if (header is null)
             {
+                _logger.Warn("returning - header is null");
                 return null;
             }
 
