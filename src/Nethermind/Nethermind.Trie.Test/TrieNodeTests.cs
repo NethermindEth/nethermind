@@ -505,8 +505,8 @@ namespace Nethermind.Trie.Test
         {
             TrieNode node = new(NodeType.Branch);
             TrieNode randomTrieNode = new(NodeType.Leaf);
-            randomTrieNode.Key = new HexPrefix(true, new byte[] {1, 2, 3});
-            randomTrieNode.Value = new byte[] {1, 2, 3};
+            randomTrieNode.Key = new HexPrefix(true, new byte[] { 1, 2, 3 });
+            randomTrieNode.Value = new byte[] { 1, 2, 3 };
             for (int i = 0; i < 16; i++)
             {
                 node.SetChild(i, randomTrieNode);
@@ -517,6 +517,25 @@ namespace Nethermind.Trie.Test
             TrieNode restoredNode = new(NodeType.Branch, rlp);
 
             restoredNode.RlpEncode(NullTrieNodeResolver.Instance);
+        }
+
+        [Test]
+        public void Can_parallel_read_unresolved_children()
+        {
+            TrieNode node = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                TrieNode randomTrieNode = new(NodeType.Leaf);
+                randomTrieNode.Key = new HexPrefix(true, new byte[] { (byte)i, 2, 3 });
+                randomTrieNode.Value = new byte[] { 1, 2, 3 };
+                node.SetChild(i, randomTrieNode);
+            }
+
+            byte[] rlp = node.RlpEncode(NullTrieNodeResolver.Instance);
+
+            TrieNode restoredNode = new(NodeType.Branch, rlp);
+
+            Parallel.For(0, 32, (index,_) => restoredNode.GetChild(NullTrieNodeResolver.Instance, index % 3));
         }
 
         [Test]

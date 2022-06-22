@@ -796,6 +796,21 @@ namespace Nethermind.Trie
             }
         }
 
+        private void SeekChild(ref RlpStream.UnsafeReader reader, int itemToSetOn)
+        {
+            reader.SkipLength();
+            if (IsExtension)
+            {
+                reader.SkipItem();
+                itemToSetOn--;
+            }
+
+            for (int i = 0; i < itemToSetOn; i++)
+            {
+                reader.SkipItem();
+            }
+        }
+
         private object? ResolveChild(ITrieNodeResolver tree, int i)
         {
             object? childOrRef;
@@ -808,8 +823,9 @@ namespace Nethermind.Trie
                 InitData();
                 if (_data![i] is null)
                 {
-                    SeekChild(i);
-                    int prefix = _rlpStream!.ReadByte();
+                    RlpStream.UnsafeReader reader = _rlpStream!.GetReader();
+                    SeekChild(ref reader, i);
+                    int prefix = reader.ReadByte();
 
                     switch (prefix)
                     {
@@ -821,8 +837,8 @@ namespace Nethermind.Trie
                         }
                         case 160:
                         {
-                            _rlpStream.Position--;
-                            Keccak keccak = _rlpStream.DecodeKeccak();
+                            reader.Position--;
+                            Keccak keccak = reader.DecodeKeccak();
                             TrieNode child = tree.FindCachedOrUnknown(keccak);
                             _data![i] = childOrRef = child;
 
@@ -835,8 +851,8 @@ namespace Nethermind.Trie
                         }
                         default:
                         {
-                            _rlpStream.Position--;
-                            Span<byte> fullRlp = _rlpStream.PeekNextItem();
+                            reader.Position--;
+                            Span<byte> fullRlp = reader.PeekNextItem();
                             TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                             _data![i] = childOrRef = child;
                             break;
