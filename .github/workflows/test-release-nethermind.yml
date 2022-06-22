@@ -79,6 +79,7 @@ jobs:
   update-homebrew:
     name: Update Homebrew to latest version
     runs-on: ubuntu-latest
+    needs: build-nethermind
     steps:
       - name: Checkout repository
         uses: actions/checkout@master
@@ -88,10 +89,6 @@ jobs:
 
       - name: Update Homebrew file with new version, commit and date
         run: ./nethermind/scripts/deployment/update-homebrew.sh
-
-      - name: Commit and push changes
-        run: |
-          #add commit & push here
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
