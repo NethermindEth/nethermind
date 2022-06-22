@@ -1,8 +1,7 @@
 name: '[RUN] Nethermind/Ethereum Tests'
 
 concurrency: 
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}  
 
 on: 
   push:
