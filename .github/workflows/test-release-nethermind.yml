@@ -88,8 +88,15 @@ jobs:
           repository: NethermindEth/homebrew-nethermind
           path: homebrew-nethermind
 
+      - name: Download homebrew file for now, as it's not in master branch
+        run: |
+          wget https://raw.githubusercontent.com/NethermindEth/nethermind/homebrew-update-workflow/scripts/deployment/update-homebrew.sh
       - name: Update Homebrew file with new version, commit and date
-        run: ./nethermind/scripts/deployment/update-homebrew.sh
+        run: ./update-homebrew.sh
+        #run: ./nethermind/scripts/deployment/update-homebrew.sh
+
+      - name: cat homebrew file to verify update
+        run: cat homebrew-nethermind/nethermind.rb
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
