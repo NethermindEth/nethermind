@@ -281,10 +281,6 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             _stateProvider.SubtractFromBalance(caller, senderReservedGasPayment, spec);
-            if (commit)
-            {
-                _stateProvider.Commit(spec, txTracer.IsTracingState ? txTracer : NullTxTracer.Instance);
-            }
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
@@ -447,12 +443,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
                 else
                 {
-                    _stateProvider.AddToBalance(caller, senderReservedGasPayment, spec);
-                    if (notSystemTransaction)
-                    {
-                        _stateProvider.DecrementNonce(caller);
-                    }
-
                     _stateProvider.Commit(spec);
                 }
             }
