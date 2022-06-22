@@ -81,6 +81,10 @@ jobs:
     name: Update Homebrew to latest version
     runs-on: ubuntu-latest
     needs: build-nethermind
+    env:
+      OSX_RELEASE: nethermind-osx-x64
+      OSX_ARM64_RELEASE: nethermind-osx-arm64
+      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind 
     steps:
       - name: Checkout repository
         uses: actions/checkout@master
