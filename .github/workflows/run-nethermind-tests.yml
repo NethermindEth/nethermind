@@ -14,8 +14,6 @@ jobs:
     name: Running Nethermind Tests 1
     runs-on: ubuntu-latest
     steps:
-    - name: Print concurrency token
-      run: echo "${{ github.workflow }}-${{ github.head_ref || github.ref }}"
     - uses: actions/checkout@v2
       with:
         submodules: true
@@ -238,8 +236,31 @@ jobs:
     - name: Nethermind.State.Test.Runner.Test
       run : |
         dotnet test -c Release src/Nethermind/Nethermind.State.Test.Runner.Test
-  eth-tests:
-    name: Running Ethereum Tests
+  eth-tests1:
+    name: Running Ethereum Tests 1
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
+    - name: Unshallow fetching
+      run: git fetch --unshallow
+    - name: Updating submodules
+      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
+    - name: Ethereum.Basic.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
+    - name: Ethereum.Blockchain.Block.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Block.Test
+    - name: Ethereum.Blockchain.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Test
+
+  eth-tests2:
+    name: Running Ethereum Tests 2
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
@@ -254,15 +275,6 @@ jobs:
     - name: Ethereum.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Abi.Test
-    - name: Ethereum.Basic.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
-    - name: Ethereum.Blockchain.Block.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Block.Test
-    - name: Ethereum.Blockchain.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Test
     - name: Ethereum.Difficulty.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Difficulty.Test
