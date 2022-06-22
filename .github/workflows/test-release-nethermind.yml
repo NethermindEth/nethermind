@@ -1,6 +1,7 @@
 name: 'TEST - [RELEASE] Nethermind'
 
 on: 
+  push:
   workflow_dispatch:
     inputs:
       tag:
