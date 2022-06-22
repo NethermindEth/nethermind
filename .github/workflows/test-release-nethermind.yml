@@ -91,8 +91,11 @@ jobs:
       - name: Download homebrew file for now, as it's not in master branch
         run: |
           wget https://raw.githubusercontent.com/NethermindEth/nethermind/homebrew-update-workflow/scripts/deployment/update-homebrew.sh
+      
       - name: Update Homebrew file with new version, commit and date
-        run: ./update-homebrew.sh
+        run: | 
+          chmod +x update-homebrew.sh
+          ./update-homebrew.sh
         #run: ./nethermind/scripts/deployment/update-homebrew.sh
 
       - name: cat homebrew file to verify update
