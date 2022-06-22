@@ -17,11 +17,12 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Services;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliqueHealthHintService : IHealthHintService
+    internal class CliqueHealthHintService : IHealthHintService
     {
         private readonly ISnapshotManager _snapshotManager;
         private readonly ChainSpec _chainSpec;

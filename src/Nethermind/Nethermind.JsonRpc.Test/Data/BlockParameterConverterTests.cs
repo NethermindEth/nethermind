@@ -58,6 +58,10 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"EaRlIEST\"", BlockParameterType.Earliest)]
         [TestCase("\"pending\"", BlockParameterType.Pending)]
         [TestCase("\"PeNdInG\"", BlockParameterType.Pending)]
+        [TestCase("\"finalized\"", BlockParameterType.Finalized)]
+        [TestCase("\"Finalized\"", BlockParameterType.Finalized)]
+        [TestCase("\"safe\"", BlockParameterType.Safe)]
+        [TestCase("\"Safe\"", BlockParameterType.Safe)]
         public void Can_read_type(string input, BlockParameterType output)
         {
             using StringReader reader = new(input);
@@ -114,6 +118,8 @@ namespace Nethermind.JsonRpc.Test.Data
             TestRoundtrip(BlockParameter.Latest, "latest");
             TestRoundtrip(BlockParameter.Pending, "pending");
             TestRoundtrip(BlockParameter.Earliest, "earliest");
+            TestRoundtrip(BlockParameter.Finalized, "finalized");
+            TestRoundtrip(BlockParameter.Safe, "safe");
             TestRoundtrip(new BlockParameter(0L), "zero");
             TestRoundtrip(new BlockParameter(long.MaxValue), "max");
             TestRoundtrip(new BlockParameter(TestItem.KeccakA), "hash");

@@ -20,16 +20,17 @@ using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Comparers;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.PubSub;
 using Nethermind.Core.Specs;
@@ -296,6 +297,11 @@ namespace Nethermind.DataMarketplace.Infrastructure
         }
         
         public IMessageSerializationService MessageSerializationService => _nethermindApi.MessageSerializationService;
+        public IGossipPolicy GossipPolicy
+        {
+            get => _nethermindApi.GossipPolicy;
+            set => _nethermindApi.GossipPolicy = value;
+        }
 
         public IMonitoringService MonitoringService
         {
@@ -367,6 +373,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.SealValidator;
             set => _nethermindApi.SealValidator = value;
+        }
+
+        public ISealEngine SealEngine
+        {
+            get => _nethermindApi.SealEngine;
+            set => _nethermindApi.SealEngine = value;
         }
 
         public ISigner? EngineSigner
@@ -543,6 +555,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         {
             get => _nethermindApi.EthSyncingInfo;
             set => _nethermindApi.EthSyncingInfo = value;
+        }
+
+        public IBlockConfirmationManager BlockConfirmationManager
+        {
+            get => _nethermindApi.BlockConfirmationManager;
+            set => _nethermindApi.BlockConfirmationManager = value;
         }
 
         public IWallet? Wallet

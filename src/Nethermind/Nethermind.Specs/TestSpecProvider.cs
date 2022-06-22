@@ -15,23 +15,34 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Specs
 {
     public class TestSpecProvider : ISpecProvider
     {
+        private long? _theMergeBlock = null;
+
         public TestSpecProvider(IReleaseSpec initialSpecToReturn)
         {
             SpecToReturn = initialSpecToReturn;
             GenesisSpec = initialSpecToReturn;
         }
+        
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        {
+            if (blockNumber != null)
+                _theMergeBlock = blockNumber;
+            if (terminalTotalDifficulty != null)
+                TerminalTotalDifficulty = terminalTotalDifficulty;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
+        public UInt256? TerminalTotalDifficulty { get; set; }
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            return SpecToReturn;
-        }
+        public IReleaseSpec GetSpec(long blockNumber) => SpecToReturn;
 
         public IReleaseSpec SpecToReturn { get; set; }
 

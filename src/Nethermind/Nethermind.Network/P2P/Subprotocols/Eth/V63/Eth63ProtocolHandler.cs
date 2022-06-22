@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -42,7 +43,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
             ITxPool txPool,
-            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, logManager)
+            IGossipPolicy gossipPolicy,
+            ILogManager logManager) : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, TxReceipt[][]>(Send);

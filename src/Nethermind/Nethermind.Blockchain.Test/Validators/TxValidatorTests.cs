@@ -16,7 +16,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
-using Nethermind.Blockchain.Validators;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;

@@ -28,10 +28,14 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Nethermind.Mining.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Ethash.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Ethereum.Test.Base")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class Ethash : IEthash
+    internal class Ethash : IEthash
     {
         private HintBasedCache _hintBasedCache;
 

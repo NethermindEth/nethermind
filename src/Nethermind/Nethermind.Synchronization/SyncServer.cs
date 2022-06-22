@@ -23,8 +23,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
@@ -56,8 +56,10 @@ namespace Nethermind.Synchronization
         private readonly IDb _codeDb;
         private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
+        private readonly IGossipPolicy _gossipPolicy;
         private readonly CanonicalHashTrie? _cht;
         private readonly object _dummyValue = new();
+        private bool gossipStopped = false;
 
         private readonly ICache<Keccak, object> _recentlySuggested =
             new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
@@ -77,11 +79,13 @@ namespace Nethermind.Synchronization
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
             IWitnessRepository? witnessRepository,
+            IGossipPolicy gossipPolicy,
             ILogManager logManager,
             CanonicalHashTrie? cht = null)
         {
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _witnessRepository = witnessRepository ?? throw new ArgumentNullException(nameof(witnessRepository));
+            _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
@@ -93,10 +97,10 @@ namespace Nethermind.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cht = cht;
             _pivotNumber = _syncConfig.PivotNumberParsed;
-
-            _blockTree.NewHeadBlock += OnNewHeadBlock;
-            pool.NotifyPeerBlock += OnNotifyPeerBlock;
             _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
+            
+            _blockTree.NewHeadBlock += OnNewHeadBlock;
+            _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
 
         public ulong ChainId => _blockTree.ChainId;
@@ -137,7 +141,7 @@ namespace Nethermind.Synchronization
 
         public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
-            if (!_syncConfig.BlockGossipEnabled) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
             
             if (block.TotalDifficulty == null)
             {
@@ -244,8 +248,9 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
+                if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {syncPeer} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
                 AddBlockResult result = _blockTree.SuggestBlock(block);
-                if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.FullHashAndNumber)} adding result is {result}.");
+                if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
             }
             else
             {
@@ -308,7 +313,7 @@ namespace Nethermind.Synchronization
 
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
         {
-            if (!_syncConfig.BlockGossipEnabled) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
             
             if (number > syncPeer.HeadNumber)
             {
@@ -430,6 +435,7 @@ namespace Nethermind.Synchronization
 
             return null;
         }
+        
 
         private Random _broadcastRandomizer = new();
 
@@ -486,7 +492,7 @@ namespace Nethermind.Synchronization
 
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
         {
-            if (!_syncConfig.BlockGossipEnabled) return;
+            if (!_gossipPolicy.CanGossipBlocks) return;
             
             try
             {
@@ -499,11 +505,21 @@ namespace Nethermind.Synchronization
         }
         
         private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockPriority.High);
+        
+        
+        public void StopNotifyingPeersAboutNewBlocks()
+        {
+            if (gossipStopped == false)
+            {
+                _blockTree.NewHeadBlock -= OnNewHeadBlock;
+                _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
+                gossipStopped = true;
+            }
+        }
 
         public void Dispose()
         {
-            _blockTree.NewHeadBlock -= OnNewHeadBlock;
-            _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
+            StopNotifyingPeersAboutNewBlocks();
         }
     }
 }

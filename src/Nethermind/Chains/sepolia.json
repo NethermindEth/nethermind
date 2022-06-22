@@ -54,7 +54,8 @@
     "eip1559Transition": "0x0",
     "eip3198Transition": "0x0",
     "eip3529Transition": "0x0",
-    "eip3541Transition": "0x0"
+    "eip3541Transition": "0x0",
+    "terminalTotalDifficulty": "152D02C7E14AF6800000"
   },
   "genesis": {
     "seal": {
@@ -72,6 +73,8 @@
   },
   "nodes": [
     "enode://7c9740e4d64674801fe62b76798d46778a038c49caebb15843d8c0f2b2f80d7ceba2585b4be366e6161988f81ddcfcd6fca98b5da52ae9a6f22c1b2a84b24a04@18.130.169.73:30303",
+    "enode://0d5f5a5119236fa5f9e1c138e9658775e791cf3a30c461e0316d01dc910405cc375e0a6d18042b34d3c409238ecffb7fdcfa1513b0921b89b702f474a1d7425c@34.135.219.85:30303",
+    "enode://9246d00bc8fd1742e5ad2428b80fc4dc45d786283e05ef6edbd9002cbc335d40998444732fbe921cb88e1d2c73d1b1de53bae6a2237996e9bfe14f871baf7066@18.168.182.86:30303",
     "enode://ec66ddcf1a974950bd4c782789a7e04f8aa7110a72569b6e65fcd51e937e74eed303b1ea734e4d19cfaec9fbff9b6ee65bf31dcb50ba79acce9dd63a6aca61c7@52.14.151.177:30303"
   ],
   "accounts": {

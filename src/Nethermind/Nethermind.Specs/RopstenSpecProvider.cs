@@ -15,58 +15,41 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs
 {
     public class RopstenSpecProvider : ISpecProvider
     {
+        private long? _theMergeBlock;
+        private UInt256? _terminalTotalDifficulty = 50000000000000000;
+
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        {
+            if (blockNumber != null)
+                _theMergeBlock = blockNumber;
+            if (terminalTotalDifficulty != null)
+                _terminalTotalDifficulty = terminalTotalDifficulty;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
+        public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            if (blockNumber < SpuriousDragonBlockNumber)
+        public IReleaseSpec GetSpec(long blockNumber) =>
+            blockNumber switch
             {
-                return TangerineWhistle.Instance;
-            }
-
-            if (blockNumber < ByzantiumBlockNumber)
-            {
-                return SpuriousDragon.Instance;
-            }
-
-            if (blockNumber < ConstantinopleBlockNumber)
-            {
-                return Byzantium.Instance;
-            }
-
-            if (blockNumber < ConstantinopleFixBlockNumber)
-            {
-                return Constantinople.Instance;
-            }
-
-            if (blockNumber < IstanbulBlockNumber)
-            {
-                return ConstantinopleFix.Instance;
-            }
-
-            if (blockNumber < MuirGlacierBlockNumber)
-            {
-                return Istanbul.Instance;
-            }
-            
-            if (blockNumber < BerlinBlockNumber)
-            {
-                return MuirGlacier.Instance;
-            }
-
-            if (blockNumber < LondonBlockNumber)
-            {
-                return Berlin.Instance;
-            }
-            
-            return London.Instance;
-        }
+                < SpuriousDragonBlockNumber => TangerineWhistle.Instance,
+                < ByzantiumBlockNumber => SpuriousDragon.Instance,
+                < ConstantinopleBlockNumber => Byzantium.Instance,
+                < ConstantinopleFixBlockNumber => Constantinople.Instance,
+                < IstanbulBlockNumber => ConstantinopleFix.Instance,
+                < MuirGlacierBlockNumber => Istanbul.Instance,
+                < BerlinBlockNumber => MuirGlacier.Instance,
+                < LondonBlockNumber => Berlin.Instance,
+                _ => London.Instance
+            };
 
         public long? DaoBlockNumber => null;
         public const long SpuriousDragonBlockNumber  = 10;

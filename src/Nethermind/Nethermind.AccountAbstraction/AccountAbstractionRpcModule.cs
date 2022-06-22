@@ -17,7 +17,6 @@
 
 using System.Linq;
 using System.Collections.Generic;
-using Microsoft.VisualBasic;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Core;

@@ -34,6 +34,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -50,7 +51,8 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IPaymasterThrottler _paymasterThrottler;
         private readonly ILogFinder _logFinder;
         private readonly ISigner _signer;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
+        private readonly ISpecProvider _specProvider;
         private readonly ITimestamper _timestamper;
         private readonly Keccak _userOperationEventTopic;
         private readonly IUserOperationSimulator _userOperationSimulator;
@@ -64,6 +66,9 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly Channel<BlockEventArgs> _headBlockChannel = Channel.CreateUnbounded<BlockEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
         
         private readonly ulong _chainId;
+
+        private UInt256 _currentBaseFee;
+        
         public UserOperationPool(
             IAccountAbstractionConfig accountAbstractionConfig,
             IBlockTree blockTree,
@@ -72,7 +77,8 @@ namespace Nethermind.AccountAbstraction.Source
             IPaymasterThrottler paymasterThrottler,
             ILogFinder logFinder,
             ISigner signer,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
+            ISpecProvider specProvider,
             ITimestamper timestamper,
             IUserOperationSimulator userOperationSimulator,
             UserOperationSortedPool userOperationSortedPool,
@@ -82,6 +88,7 @@ namespace Nethermind.AccountAbstraction.Source
         {
             _blockTree = blockTree;
             _stateProvider = stateProvider;
+            _specProvider = specProvider;
             _paymasterThrottler = paymasterThrottler;
             _logFinder = logFinder;
             _signer = signer;
@@ -174,6 +181,8 @@ namespace Nethermind.AccountAbstraction.Source
                         try
                         {
                             RemoveProcessedUserOperations(args.Block);
+                            UpdateCurrentBaseFee();
+                            IncrementOpsSeenForOpsSurpassingBaseFee();
                         }
                         catch (Exception e)
                         {
@@ -231,6 +240,37 @@ namespace Nethermind.AccountAbstraction.Source
             return _userOperationSortedPool.CanInsert(userOperation);
         }
 
+        // we only want to increment opsSeen for ops whose maxFeePerGas passes baseFee
+        // else paymasters could be griefed by submitting many ops which might never 
+        // make it on chain but will increase opsSeen
+        private void IncrementOpsSeenForOpsSurpassingBaseFee()
+        {
+            _userOperationSortedPool.UpdatePool(RemoveOpsSurpassingBaseFee);
+        }
+
+        private IEnumerable<(UserOperation Tx, Action<UserOperation>? Change)> RemoveOpsSurpassingBaseFee(Address address, ICollection<UserOperation> userOperations)
+        {
+            foreach (UserOperation op in userOperations)
+            {
+                if (!op.PassedBaseFee && op.MaxFeePerGas >= _currentBaseFee)
+                {
+                    _paymasterThrottler.IncrementOpsSeen(op.Paymaster);
+                    yield return (op, o => o.PassedBaseFee = true);
+                }
+                else
+                {
+                    yield return (op, null);
+                }
+            }
+        }
+
+        private void UpdateCurrentBaseFee()
+        {
+            IReleaseSpec spec = _specProvider.GetSpec(_blockTree.Head!.Number + 1);
+            UInt256 baseFee = BaseFeeCalculator.Calculate(_blockTree.Head!.Header, spec);
+            _currentBaseFee = baseFee;
+        }
+
         public ResultWrapper<Keccak> AddUserOperation(UserOperation userOperation)
         {
             userOperation.CalculateRequestId(_entryPointAddress, _chainId);
@@ -240,6 +280,7 @@ namespace Nethermind.AccountAbstraction.Source
             UserOperationEventArgs userOperationEventArgs = new(userOperation, _entryPointAddress);
             NewReceived?.Invoke(this, userOperationEventArgs);
             
+            UpdateCurrentBaseFee();
             ResultWrapper<Keccak> result = ValidateUserOperation(userOperation);
             if (result.Result == Result.Success)
             {
@@ -247,7 +288,11 @@ namespace Nethermind.AccountAbstraction.Source
                 if (_userOperationSortedPool.TryInsert(userOperation.RequestId!, userOperation))
                 {
                     Metrics.UserOperationsPending++;
-                    _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
+                    if (userOperation.MaxFeePerGas >= _currentBaseFee)
+                    {
+                        userOperation.PassedBaseFee = true;
+                        _paymasterThrottler.IncrementOpsSeen(userOperation.Paymaster);
+                    }
                     if (_logger.IsDebug) _logger.Debug($"UserOperation {userOperation.RequestId!} inserted into pool");
                     _userOperationBroadcaster.BroadcastOnce(new UserOperationWithEntryPoint(userOperation, _entryPointAddress));                    
                     NewPending?.Invoke(this, userOperationEventArgs);
@@ -320,6 +365,11 @@ namespace Nethermind.AccountAbstraction.Source
             // make sure op not already in pool
             if (_userOperationSortedPool.TryGetValue(userOperation.RequestId!, out _))
                 return ResultWrapper<Keccak>.Fail("userOp is already present in the pool");
+
+            if (userOperation.MaxFeePerGas < _currentBaseFee * 70 / 100)
+            {
+                return ResultWrapper<Keccak>.Fail($"maxFeePerGas must be at least 70% of baseFee to be accepted into pool");
+            }
             
 
             PaymasterStatus paymasterStatus =

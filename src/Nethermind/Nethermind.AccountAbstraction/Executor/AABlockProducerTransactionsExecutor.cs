@@ -17,8 +17,8 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;

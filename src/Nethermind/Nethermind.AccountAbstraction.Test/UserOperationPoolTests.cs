@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -17,6 +19,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
@@ -25,6 +28,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.AccountAbstraction.Test
 {
@@ -37,6 +41,7 @@ namespace Nethermind.AccountAbstraction.Test
         private IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
         private ILogFinder _logFinder = Substitute.For<ILogFinder>();
         private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
+        private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly Keccak _userOperationEventTopic = new("0x33fd4d1f25a5461bea901784a6571de6debc16cd0831932c22c6969cd73ba994");
         private readonly string _entryPointContractAddress = "0x8595dd9e0438640b5e1254f9df579ac12a86865f";
@@ -194,6 +199,44 @@ namespace Nethermind.AccountAbstraction.Test
             _userOperationPool.GetUserOperations().Count().Should().Be(1);
             _userOperationPool.GetUserOperations().Should().BeEquivalentTo(new[] {higherGasPriceOp});
         }
+
+        [Test]
+        public void should_not_add_op_with_too_low_maxFeePerGas()
+        {
+            _userOperationPool = GenerateUserOperationPool();
+            _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.WithBaseFeePerGas(1.Ether()).TestObject);
+            
+            UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithNonce((UInt256)0).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _userOperationPool.AddUserOperation(op);
+
+            _userOperationPool.GetUserOperations().Should().BeNullOrEmpty();
+        }
+
+        [Test]
+        public void should_increment_opsSeen_only_when_op_passes_baseFee()
+        {
+            TestPaymasterThrottler paymasterThrottler = new();
+            Address paymasterAddress = Address.FromNumber(321312);
+
+            _userOperationPool = GenerateUserOperationPool(10, 10, paymasterThrottler);
+            _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.WithBaseFeePerGas(100).TestObject);
+            
+            UserOperation op = Build.A.UserOperation.WithSender(Address.SystemUser).WithPaymaster(paymasterAddress).WithNonce((UInt256)0).WithMaxFeePerGas(80).WithMaxPriorityFeePerGas(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            _userOperationPool.AddUserOperation(op);
+
+            _userOperationPool.GetUserOperations().Count().Should().Be(1);
+            paymasterThrottler.GetOpsSeen(paymasterAddress).Should().Be(0);
+            
+            
+            Block block = Nethermind.Core.Test.Builders.Build.A.Block.WithBaseFeePerGas(50).TestObject;
+            _blockTree.Head.Returns(block);
+            BlockEventArgs blockEventArgs = new(block);
+            _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
+            Thread.Sleep(TimeSpan.FromMilliseconds(100));
+
+            _userOperationPool.GetUserOperations().Count().Should().Be(1);
+            paymasterThrottler.GetOpsSeen(paymasterAddress).Should().Be(1);
+        }
         
         [Test]
         public void should_not_add_op_with_higher_fee_that_does_not_replace_op_if_sender_has_too_many_ops()
@@ -340,7 +383,7 @@ namespace Nethermind.AccountAbstraction.Test
             userOperations.Length.Should().Be(0);
         }
 
-        private UserOperationPool GenerateUserOperationPool(int capacity = 10, int perSenderCapacity = 10)
+        private UserOperationPool GenerateUserOperationPool(int capacity = 10, int perSenderCapacity = 10, IPaymasterThrottler? paymasterThrottler = null)
         {
             IAccountAbstractionConfig config = Substitute.For<IAccountAbstractionConfig>();
             config.EntryPointContractAddresses.Returns(_entryPointContractAddress);
@@ -363,7 +406,8 @@ namespace Nethermind.AccountAbstraction.Test
 
             _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 
-            IPaymasterThrottler paymasterThrottler = Substitute.For<PaymasterThrottler>();
+            paymasterThrottler ??= Substitute.For<IPaymasterThrottler>();
+            
             IUserOperationBroadcaster userOperationBroadcaster = Substitute.For<IUserOperationBroadcaster>();
 
             return new UserOperationPool(
@@ -374,7 +418,8 @@ namespace Nethermind.AccountAbstraction.Test
                 paymasterThrottler, 
                 _logFinder, 
                 _signer, 
-                _stateProvider, 
+                _stateProvider,
+                _specProvider,
                 Substitute.For<ITimestamper>(), 
                 _simulator, 
                 userOperationSortedPool,

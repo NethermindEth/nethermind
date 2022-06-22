@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.Clique
                 return snapshot;
             }
 
-            var headers = new List<BlockHeader>();
+            List<BlockHeader> headers = new List<BlockHeader>();
             lock (_snapshotCreationLock)
             {
                 BlockHeader? header = null;
@@ -136,7 +136,7 @@ namespace Nethermind.Consensus.Clique
                         
                         if(_logger.IsInfo) _logger.Info($"Creating epoch snapshot at block {number}");
                         int signersCount = CalculateSignersCount(header);
-                        var signers = new SortedList<Address, long>(signersCount, AddressComparer.Instance);
+                        SortedList<Address, long> signers = new SortedList<Address, long>(signersCount, AddressComparer.Instance);
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
@@ -232,8 +232,8 @@ namespace Nethermind.Consensus.Clique
 
         private static Keccak GetSnapshotKey(Keccak blockHash)
         {
-            var hashBytes = blockHash.Bytes;
-            var keyBytes = new byte[hashBytes.Length];
+            byte[] hashBytes = blockHash.Bytes;
+            byte[] keyBytes = new byte[hashBytes.Length];
             for (int i = 0; i < _snapshotBytes.Length; i++) keyBytes[i] = (byte) (hashBytes[i] ^ _snapshotBytes[i]);
 
             return new Keccak(keyBytes);
@@ -245,7 +245,7 @@ namespace Nethermind.Consensus.Clique
         private Snapshot? LoadSnapshot(Keccak hash)
         {
             Keccak key = GetSnapshotKey(hash);
-            var bytes = _blocksDb.Get(key);
+            byte[]? bytes = _blocksDb.Get(key);
             if (bytes == null) return null;
 
             return _decoder.Decode(bytes.AsRlpStream());

@@ -20,12 +20,10 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
@@ -46,50 +44,37 @@ namespace Nethermind.AccountAbstraction.Executor
 {
     public class UserOperationSimulator : IUserOperationSimulator
     {
-        private readonly IBlockTree _blockTree;
-        private readonly Address _create2FactoryAddress;
-        private readonly IReadOnlyDbProvider _dbProvider;
         private readonly AbiDefinition _entryPointContractAbi;
-        private readonly ILogManager _logManager;
         private readonly Address _entryPointContractAddress;
         private readonly Address[] _whitelistedPaymasters;
         private readonly ISpecProvider _specProvider;
         private readonly IUserOperationTxBuilder _userOperationTxBuilder;
-        private readonly IStateProvider _stateProvider;
-        private readonly IStateReader _stateReader;
-        private readonly IReadOnlyTrieStore _trieStore;
+        private readonly IReadOnlyStateProvider _stateProvider;
+        private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
         private readonly ITimestamper _timestamper;
-
         private readonly IAbiEncoder _abiEncoder;
+        private readonly ILogger _logger;
 
         public UserOperationSimulator(
             IUserOperationTxBuilder userOperationTxBuilder,
-            IStateProvider stateProvider,
-            IStateReader stateReader,
+            IReadOnlyStateProvider stateProvider,
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory,
             AbiDefinition entryPointContractAbi,
-            Address create2FactoryAddress,
             Address entryPointContractAddress,
             Address[] whitelistedPaymasters,
             ISpecProvider specProvider,
-            IBlockTree blockTree,
-            IDbProvider dbProvider,
-            IReadOnlyTrieStore trieStore,
             ITimestamper timestamper,
             ILogManager logManager)
         {
             _userOperationTxBuilder = userOperationTxBuilder;
             _stateProvider = stateProvider;
-            _stateReader = stateReader;
+            _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
             _entryPointContractAbi = entryPointContractAbi;
-            _create2FactoryAddress = create2FactoryAddress;
             _entryPointContractAddress = entryPointContractAddress;
             _whitelistedPaymasters = whitelistedPaymasters;
             _specProvider = specProvider;
-            _blockTree = blockTree;
-            _dbProvider = dbProvider.AsReadOnly(false);
-            _trieStore = trieStore;
             _timestamper = timestamper;
-            _logManager = logManager;
+            _logger = logManager.GetClassLogger<UserOperationSimulator>();
 
             _abiEncoder = new AbiEncoder();
         }
@@ -114,8 +99,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
             
             IReleaseSpec currentSpec = _specProvider.GetSpec(parent.Number + 1);
-            ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
             ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
 
             // wrap userOp into a tx calling the simulateWallet function off-chain from zero-address (look at EntryPoint.sol for more context)
@@ -153,11 +137,10 @@ namespace Nethermind.AccountAbstraction.Executor
             UserOperationTxTracer txTracer = new(
                 transaction,
                 paymasterWhitelisted,
-                userOperation.InitCode != Bytes.Empty,
-                _stateProvider, userOperation.Sender,
+                userOperation.InitCode != Bytes.Empty, userOperation.Sender,
                 userOperation.Paymaster,
                 _entryPointContractAddress,
-                _logManager.GetClassLogger()
+                _logger
             );
 
             transactionProcessor.Trace(transaction, parent, txTracer);
@@ -219,14 +202,12 @@ namespace Nethermind.AccountAbstraction.Executor
         [Todo("Refactor once BlockchainBridge is separated")]
         public BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
-            ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
-            ITransactionProcessor transactionProcessor = txProcessingEnv.Build(_stateProvider.StateRoot);
+            ReadOnlyTxProcessingEnv txProcessingEnv = _readOnlyTxProcessingEnvFactory.Create();
+            using IReadOnlyTransactionProcessor transactionProcessor = txProcessingEnv.Build(header.StateRoot!);
             
             EstimateGasTracer estimateGasTracer = new();
             (bool Success, string Error) tryCallResult = TryCallAndRestore(
                 transactionProcessor,
-                txProcessingEnv,
                 header,
                 UInt256.Max(header.Timestamp + 1, _timestamper.UnixTime.Seconds),
                 tx,
@@ -246,7 +227,6 @@ namespace Nethermind.AccountAbstraction.Executor
         
         private (bool Success, string Error) TryCallAndRestore(
             ITransactionProcessor transactionProcessor,
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
             BlockHeader blockHeader,
             in UInt256 timestamp,
             Transaction transaction,
@@ -255,7 +235,7 @@ namespace Nethermind.AccountAbstraction.Executor
         {
             try
             {
-                CallAndRestore(transactionProcessor, readOnlyTxProcessingEnv, blockHeader, timestamp, transaction, treatBlockHeaderAsParentBlock, tracer);
+                CallAndRestore(transactionProcessor, blockHeader, timestamp, transaction, treatBlockHeaderAsParentBlock, tracer);
                 return (true, string.Empty);
             }
             catch (InsufficientBalanceException ex)
@@ -266,7 +246,6 @@ namespace Nethermind.AccountAbstraction.Executor
 
         private void CallAndRestore(
             ITransactionProcessor transactionProcessor,
-            ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv,
             BlockHeader blockHeader,
             in UInt256 timestamp,
             Transaction transaction,
@@ -277,41 +256,28 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 transaction.SenderAddress = Address.SystemUser;
             }
-
-            _stateProvider.StateRoot = blockHeader.StateRoot!;
-            try
+            
+            if (transaction.Nonce == 0)
             {
-                if (transaction.Nonce == 0)
-                {
-                    transaction.Nonce = GetNonce(_stateProvider.StateRoot, transaction.SenderAddress);
-                }
-
-                BlockHeader callHeader = new(
-                    blockHeader.Hash!,
-                    Keccak.OfAnEmptySequenceRlp,
-                    Address.Zero,
-                    0,
-                    treatBlockHeaderAsParentBlock ? blockHeader.Number + 1 : blockHeader.Number,
-                    blockHeader.GasLimit,
-                    timestamp,
-                    Array.Empty<byte>());
-
-                callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
-                    ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
-                    : blockHeader.BaseFeePerGas;
-
-                transaction.Hash = transaction.CalculateHash();
-                transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
+                transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
             }
-            finally
-            {
-                readOnlyTxProcessingEnv.Reset();
-            }
-        }
-        
-        private UInt256 GetNonce(Keccak stateRoot, Address address)
-        {
-            return _stateReader.GetNonce(stateRoot, address);
+
+            BlockHeader callHeader = new(
+                blockHeader.Hash!,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                0,
+                treatBlockHeaderAsParentBlock ? blockHeader.Number + 1 : blockHeader.Number,
+                blockHeader.GasLimit,
+                timestamp,
+                Array.Empty<byte>());
+
+            callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
+                ? BaseFeeCalculator.Calculate(blockHeader, _specProvider.GetSpec(callHeader.Number))
+                : blockHeader.BaseFeePerGas;
+
+            transaction.Hash = transaction.CalculateHash();
+            transactionProcessor.CallAndRestore(transaction, callHeader, tracer);
         }
     }
 }

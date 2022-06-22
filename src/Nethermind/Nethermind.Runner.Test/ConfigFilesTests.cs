@@ -239,7 +239,7 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, int>(configWildcard, c => c.P2PPort, 30303);
             Test<INetworkConfig, string>(configWildcard, c => c.ExternalIp, (string) null);
             Test<INetworkConfig, string>(configWildcard, c => c.LocalIp, (string) null);
-            Test<INetworkConfig, int>(configWildcard, c => c.ActivePeersMaxCount, activePeers);
+            Test<INetworkConfig, int>(configWildcard, c => c.MaxActivePeers, activePeers);
         }
 
         [TestCase("*")]
@@ -259,7 +259,8 @@ namespace Nethermind.Runner.Test
 
         [TestCase("baseline", true)]
         [TestCase("spaceneth", true)]
-        [TestCase("^spaceneth ^baseline", false)]
+        [TestCase("ropsten", true)]
+        [TestCase("^spaceneth ^baseline ^ropsten", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);

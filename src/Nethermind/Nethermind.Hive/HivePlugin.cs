@@ -4,11 +4,11 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Peers;
@@ -48,9 +48,13 @@ namespace Nethermind.Hive
 
         public Task InitNetworkProtocol()
         {
-            if (_api.SyncPeerPool == null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
+            if (Enabled)
+            {
+                if (_api.SyncPeerPool == null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
 
-            _api.SyncPeerPool.PeerRefreshed += OnPeerRefreshed;
+                _api.SyncPeerPool.PeerRefreshed += OnPeerRefreshed;
+            }
+
             return Task.CompletedTask;
         }
 

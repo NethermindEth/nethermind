@@ -35,6 +35,7 @@ namespace Nethermind.Consensus
         public bool CanSign { get; } = true; // TODO: why true?
 
         public PrivateKey Key { get; }
+        
         public void SetSigner(PrivateKey key) { }
 
         public void SetSigner(ProtectedPrivateKey key) { }

@@ -119,10 +119,7 @@ namespace Nethermind.Vault
             provideTx.NetworkId = _networkId;
             provideTx.To = tx.To?.ToString();
             provideTx.Value = (BigInteger)tx.Value;
-            provideTx.Params = new Dictionary<string, object>
-            {
-                {"subsidize", true},
-            };
+            provideTx.Params = new string[] { "subsidize", "true" };
             // this should happen after we set the GasPrice
             _txSigner.Seal(tx, TxHandlingOptions.None);
             ProvideTx createdTx = await _provide.CreateTransaction(provideTx);

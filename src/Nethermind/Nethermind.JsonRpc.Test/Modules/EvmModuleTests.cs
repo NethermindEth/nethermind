@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Blockchain.Producers;
+using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc.Modules.Evm;
 using NSubstitute;
 using NUnit.Framework;

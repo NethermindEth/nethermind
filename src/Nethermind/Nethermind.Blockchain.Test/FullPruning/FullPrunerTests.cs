@@ -20,7 +20,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,9 +31,7 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
-using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
-using Org.BouncyCastle.Asn1.Cms;
 
 namespace Nethermind.Blockchain.Test.FullPruning
 {

@@ -21,8 +21,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
 using FluentAssertions;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Logging;
 using NUnit.Framework;
@@ -59,6 +59,7 @@ namespace Nethermind.AuRa.Test
         }
         
         [Test]
+        [Retry(3)]
         public async Task should_not_cancel_block_production_trigger_on_next_step_finished()
         {
             List<BlockProductionEventArgs> args = new();

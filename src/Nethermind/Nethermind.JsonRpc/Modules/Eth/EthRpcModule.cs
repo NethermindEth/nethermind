@@ -498,19 +498,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
         {
-            (TxReceipt Receipt, UInt256? EffectiveGasPrice) result = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
-            if (result.Receipt == null)
+            (TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart) = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
+            if (receipt == null)
             {
                 return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
             }
-
-            Keccak blockHash = result.Receipt.BlockHash;
-            TxReceipt[] receipts = _receiptFinder.Get(blockHash!);
-            int logIndexStart = receipts.GetBlockLogFirstIndex(result.Receipt.Index);
-            ReceiptForRpc receiptModel = new(txHash, result.Receipt, result.EffectiveGasPrice, logIndexStart);
-
+            
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-            return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));
+            return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, effectiveGasPrice, logIndexStart)));
         }
 
         public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)
@@ -615,13 +610,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
-            IEnumerable<FilterLog> GetLogs(BlockParameter blockParameter, BlockParameter toBlockParameter,
-                CancellationTokenSource cancellationTokenSource, CancellationToken token)
+            IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
             {
                 using (cancellationTokenSource)
                 {
-                    foreach (FilterLog log in _blockchainBridge.GetLogs(blockParameter, toBlockParameter,
-                        filter.Address, filter.Topics, token))
+                    foreach (FilterLog log in logs)
                     {
                         yield return log;
                     }
@@ -656,8 +649,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail($"'From' block '{fromBlockNumber}' is later than 'to' block '{toBlockNumber}'.", ErrorCodes.InvalidParams);
             }
 
-            return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filter.FromBlock, filter.ToBlock,
-                cancellationTokenSource, cancellationToken));
+            try
+            {
+                IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(filter.FromBlock, filter.ToBlock,
+                    filter.Address, filter.Topics, cancellationToken);
+                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
+            }
+            catch (ResourceNotFoundException exception)
+            {
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(exception.Message, ErrorCodes.ResourceNotFound);
+            }
         }
 
         public ResultWrapper<IEnumerable<byte[]>> eth_getWork()

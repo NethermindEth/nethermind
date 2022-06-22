@@ -48,18 +48,18 @@ namespace Nethermind.Baseline.Test
 
             config.BaselineTreeDbBlockCacheSize = dbBlockCacheSize;
             config.BaselineTreeMetadataDbBlockCacheSize = dbBlockCacheSize;
-            config.BaselineTreeDbCacheIndexAndFilterBlocks.Should().Equals(dbBlockCacheSize);
-            config.BaselineTreeMetadataDbCacheIndexAndFilterBlocks.Should().Equals(dbBlockCacheSize);
+            config.BaselineTreeDbBlockCacheSize.Should().Be(dbBlockCacheSize);
+            config.BaselineTreeMetadataDbBlockCacheSize.Should().Be(dbBlockCacheSize);
 
             config.BaselineTreeDbWriteBufferSize = dbWriteBufferSize;
             config.BaselineTreeMetadataDbWriteBufferSize = dbWriteBufferSize;
-            config.BaselineTreeDbWriteBufferSize.Should().Equals(dbWriteBufferSize);
-            config.BaselineTreeMetadataDbWriteBufferSize.Should().Equals(dbWriteBufferSize);
+            config.BaselineTreeDbWriteBufferSize.Should().Be(dbWriteBufferSize);
+            config.BaselineTreeMetadataDbWriteBufferSize.Should().Be(dbWriteBufferSize);
 
             config.BaselineTreeDbWriteBufferNumber = dbWriteBufferNumber;
             config.BaselineTreeMetadataDbWriteBufferNumber = dbWriteBufferNumber;
-            config.BaselineTreeDbWriteBufferNumber.Should().Equals(dbWriteBufferNumber);
-            config.BaselineTreeMetadataDbWriteBufferNumber.Should().Equals(dbWriteBufferNumber);
+            config.BaselineTreeDbWriteBufferNumber.Should().Be(dbWriteBufferNumber);
+            config.BaselineTreeMetadataDbWriteBufferNumber.Should().Be(dbWriteBufferNumber);
         }
         
         [TestCase("baseline", true)]

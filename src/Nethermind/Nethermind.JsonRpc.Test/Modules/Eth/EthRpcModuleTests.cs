@@ -48,6 +48,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth
@@ -369,6 +370,21 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
 
             Assert.AreEqual(expected, serialized);
         }
+        
+        [TestCase("{\"fromBlock\":\"earliest\",\"toBlock\":\"latest\"}", "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"resource not found message\"},\"id\":67}")]
+        public async Task Eth_get_logs_with_resourceNotFound(string parameter, string expected)
+        {
+            using Context ctx = await Context.Create();
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.GetLogs(Arg.Any<BlockParameter>(), Arg.Any<BlockParameter>(), Arg.Any<object>(), Arg.Any<IEnumerable<object>>(), Arg.Any<CancellationToken>())
+                .Throws(new ResourceNotFoundException("resource not found message"));
+            bridge.FilterExists(1).Returns(true);
+
+            ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
+            string serialized = ctx._test.TestEthRpc("eth_getLogs", parameter);
+
+            Assert.AreEqual(expected, serialized);
+        }
 
         [Test]
         public async Task Eth_tx_count_by_hash()
@@ -577,7 +593,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 .WithLogs(entries).TestObject;
             TxReceipt[] receiptsTab = {receipt};
             
-            blockchainBridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt, UInt256.One));
+            blockchainBridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt, UInt256.One, 0));
             blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
             receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
             receiptFinder.Get(Arg.Any<Keccak>()).Returns(receiptsTab);
@@ -640,7 +656,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
                 Logs = logEntries
             };
             
-            blockchainBridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt2, UInt256.One));
+            blockchainBridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt2, UInt256.One, 2));
             
             TxReceipt[] receipts = {receipt1, receipt2};
             
@@ -696,7 +712,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
             blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
             receiptFinder.Get(Arg.Any<Block>()).Returns(receiptsTab);
             receiptFinder.Get(Arg.Any<Keccak>()).Returns(receiptsTab);
-            blockchainBridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt, UInt256.One));
+            blockchainBridge.GetReceiptAndEffectiveGasPrice(Arg.Any<Keccak>()).Returns((receipt, UInt256.One, 0));
             
             ctx._test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockFinder(blockFinder).WithReceiptFinder(receiptFinder).WithBlockchainBridge(blockchainBridge).Build();
             string serialized = ctx._test.TestEthRpc("eth_getTransactionReceipt", tx.Hash.ToString());

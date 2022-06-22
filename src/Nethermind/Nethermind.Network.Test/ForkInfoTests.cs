@@ -51,11 +51,26 @@ namespace Nethermind.Network.Test
         [TestCase(12_964_999, "0x0eb440f6", 12_965_000, "Last Berlin")]
         [TestCase(12_965_000, "0xb715077d", 13_773_000L, "First London")]
         [TestCase(13_772_999, "0xb715077d", 13_773_000L, "Last London")]
-        [TestCase(13_773_000, "0x20c327fc", 0L, "First Arrow Glacier")]
-        [TestCase(14_811_000, "0x20c327fc", 0L, "Future Arrow Glacier")]
+        [TestCase(13_773_000, "0x20c327fc", 15_050_000L, "First Arrow Glacier")]
+        [TestCase(15_049_999, "0x20c327fc", 15_050_000L, "Last Arrow Glacier")]
+        [TestCase(15_050_000, "0xf0afd0e3", 0L, "First Gray Glacier")]
+        [TestCase(20_000_000, "0xf0afd0e3", 0L, "Future Gray Glacier")]
         public void Fork_id_and_hash_as_expected(long head, string forkHashHex, long next, string description)
         {
             Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");
+        }
+        
+        [TestCase(15_050_000, "0xf0afd0e3", 21_000_000L, "First Gray Glacier")]
+        [TestCase(21_000_000, "0x3f5fd195", 0L, "First Merge Fork Id test")]
+        [TestCase(21_811_000, "0x3f5fd195", 0L, "Future Merge Fork Id test")]
+        public void Fork_id_and_hash_as_expected_with_merge_fork_id(long head, string forkHashHex, long next, string description)
+        {
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine("../../../../Chains", "foundation.json")));
+            spec.Parameters.MergeForkIdTransition = 21_000_000L;
+            spec.MergeForkIdBlockNumber = 21_000_000L;
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+            Test(head, KnownHashes.MainnetGenesis, forkHashHex, next, description, provider);
         }
 
         [TestCase(0, "0xa3f5ab08", 1_561_651L, "Unsynced")]
@@ -112,13 +127,13 @@ namespace Nethermind.Network.Test
             Test(head, KnownHashes.RopstenGenesis, forkHashHex, next, description, RopstenSpecProvider.Instance, "ropsten.json");
         }
 
-        private static void Test(long head, Keccak genesisHash, string forkHashHex, long next, string description, ISpecProvider specProvider, string chainSpec)
+        private static void Test(long head, Keccak genesisHash, string forkHashHex, long next, string description, ISpecProvider specProvider, string chainSpec, string path = "../../../../Chains")
         {
             Test(head, genesisHash, forkHashHex, next, description, specProvider);
 
-            ChainSpecLoader loader = new(new EthereumJsonSerializer());
-            ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/" + chainSpec));
-            ChainSpecBasedSpecProvider provider = new(spec);
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine(path, chainSpec)));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
             Test(head, genesisHash, forkHashHex, next, description, provider);
         }
 

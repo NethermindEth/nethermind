@@ -104,7 +104,7 @@ namespace Nethermind.Network
             return p2PVersion == 4 || p2PVersion == 5;
         }
 
-        private bool ValidateCapabilities(IEnumerable<Capability> capabilities)
+        private static bool ValidateCapabilities(IEnumerable<Capability> capabilities)
         {
             // TODO: this is duplicated from P2PProtocolHandler.HandleHello. One should probably be removed
             return capabilities.Any(x =>

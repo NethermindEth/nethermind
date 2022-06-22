@@ -42,9 +42,9 @@ namespace Nethermind.Analytics
             _logManager = logManager;
         }
 
-        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, int port)
+        public ISocketsClient CreateClient(WebSocket webSocket, string clientName, HttpContext httpContext)
         {
-            var socketsClient = new SocketClient(clientName, new WebSocketHandler(webSocket, _logManager), _jsonSerializer);
+            SocketClient socketsClient = new SocketClient(clientName, new WebSocketHandler(webSocket, _logManager), _jsonSerializer);
             _clients.TryAdd(socketsClient.Id, socketsClient);
 
             return socketsClient;

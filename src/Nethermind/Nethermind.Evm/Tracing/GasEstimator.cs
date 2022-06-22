@@ -14,10 +14,10 @@ namespace Nethermind.Evm.Tracing
     public class GasEstimator
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
 
-        public GasEstimator(ITransactionProcessor transactionProcessor, IStateProvider stateProvider, ISpecProvider specProvider)
+        public GasEstimator(ITransactionProcessor transactionProcessor, IReadOnlyStateProvider stateProvider, ISpecProvider specProvider)
         {
             _transactionProcessor = transactionProcessor;
             _stateProvider = stateProvider;
@@ -125,7 +125,7 @@ namespace Nethermind.Evm.Tracing
                 StatusCode = Evm.StatusCode.Failure;
             }
 
-            public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+            public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
             {
             }
 

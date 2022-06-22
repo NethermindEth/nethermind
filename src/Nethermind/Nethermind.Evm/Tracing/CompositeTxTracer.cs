@@ -161,14 +161,14 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             for (int index = 0; index < _txTracers.Count; index++)
             {
                 ITxTracer innerTracer = _txTracers[index];
                 if (innerTracer.IsTracingInstructions)
                 {
-                    innerTracer.StartOperation(depth, gas, opcode, pc);
+                    innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
                 }
             }
         }

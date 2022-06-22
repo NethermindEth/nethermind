@@ -56,5 +56,7 @@ namespace Nethermind.Synchronization.ParallelSync
             add { }
             remove { }
         }
+
+        public void Dispose() { }
     }
 }

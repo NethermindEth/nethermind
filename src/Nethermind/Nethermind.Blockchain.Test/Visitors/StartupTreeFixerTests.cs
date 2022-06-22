@@ -18,12 +18,10 @@
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Blockchain.Visitors;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -120,7 +118,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
-                testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
             
@@ -153,7 +151,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
-                testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
             
@@ -176,7 +174,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
-                testRpc.BlockPreprocessorStep, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+                testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
             

@@ -11,7 +11,6 @@ using Nethermind.AccountAbstraction.Source;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Contracts.Json;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -26,9 +25,10 @@ using Nethermind.Stats.Model;
 using Nethermind.Mev;
 using Nethermind.AccountAbstraction.Bundler;
 using Nethermind.AccountAbstraction.Subscribe;
+using Nethermind.Consensus.Processing;
 using Nethermind.JsonRpc.Modules.Subscribe;
-using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Network.Config;
+using Nethermind.Consensus.Producers;
 
 
 namespace Nethermind.AccountAbstraction
@@ -36,16 +36,15 @@ namespace Nethermind.AccountAbstraction
     public class AccountAbstractionPlugin : IConsensusWrapperPlugin
     {
         private IAccountAbstractionConfig _accountAbstractionConfig = null!;
-        private Address _create2FactoryAddress = null!;
         private AbiDefinition _entryPointContractAbi = null!;
         private ILogger _logger = null!;
 
         private INethermindApi _nethermindApi = null!;
-        private IList<Address> _entryPointContractAddresses = new List<Address>();
-        private IList<Address> _whitelistedPaymasters = new List<Address>();
-        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>(); // EntryPoint Address -> Pool
-        private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
-        private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
+        private readonly IList<Address> _entryPointContractAddresses = new List<Address>();
+        private readonly IList<Address> _whitelistedPaymasters = new List<Address>();
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>(); // EntryPoint Address -> Pool
+        private readonly IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
+        private readonly IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
         private UserOperationTxSource? _userOperationTxSource;
         private IUserOperationBroadcaster? _userOperationBroadcaster;
 
@@ -70,8 +69,7 @@ namespace Nethermind.AccountAbstraction
                 _entryPointContractAbi,
                 getFromApi.EngineSigner!,
                 entryPoint,
-                getFromApi.SpecProvider!,
-                getFromApi.StateProvider!);
+                getFromApi.SpecProvider!);
 
             return _userOperationTxBuilders[entryPoint];
         }
@@ -99,7 +97,8 @@ namespace Nethermind.AccountAbstraction
                 new PaymasterThrottler(BundleMiningEnabled),
                 _nethermindApi.LogFinder!,
                 _nethermindApi.EngineSigner!,
-                _nethermindApi.StateProvider!,
+                _nethermindApi.ChainHeadStateProvider!,
+                _nethermindApi.SpecProvider!,
                 _nethermindApi.Timestamper,
                 UserOperationSimulator(entryPoint),
                 userOperationSortedPool,
@@ -118,19 +117,22 @@ namespace Nethermind.AccountAbstraction
 
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
+                getFromApi.DbProvider, 
+                getFromApi.ReadOnlyTrieStore, 
+                getFromApi.BlockTree, 
+                getFromApi.SpecProvider, 
+                getFromApi.LogManager);
+            
             _userOperationSimulators[entryPoint] = new UserOperationSimulator(
                 UserOperationTxBuilder(entryPoint),
-                getFromApi.StateProvider!,
-                getFromApi.StateReader!,
+                getFromApi.ChainHeadStateProvider!,
+                readOnlyTxProcessingEnvFactory,
                 _entryPointContractAbi,
-                _create2FactoryAddress,
                 entryPoint,
                 _whitelistedPaymasters.ToArray(),
                 getFromApi.SpecProvider!,
-                getFromApi.BlockTree!,
-                getFromApi.DbProvider!,
-                getFromApi.ReadOnlyTrieStore!,
-                getFromApi.Timestamper!,
+                getFromApi.Timestamper,
                 getFromApi.LogManager);
 
             return _userOperationSimulators[entryPoint];
@@ -148,7 +150,7 @@ namespace Nethermind.AccountAbstraction
                         _userOperationPools,
                         _userOperationSimulators,
                         _nethermindApi.SpecProvider!,
-                        _nethermindApi.StateProvider!,
+                        _nethermindApi.ChainHeadStateProvider!,
                         _nethermindApi.EngineSigner!,
                         _logger
                     );
@@ -205,7 +207,8 @@ namespace Nethermind.AccountAbstraction
                 }
                 
                 IList<string> whitelistedPaymastersString = _accountAbstractionConfig.GetWhitelistedPaymasters().ToList();
-                foreach (string addressString in whitelistedPaymastersString){
+                foreach (string addressString in whitelistedPaymastersString)
+                {
                     bool parsed = Address.TryParse(
                         addressString,
                         out Address? whitelistedPaymaster);
@@ -218,19 +221,6 @@ namespace Nethermind.AccountAbstraction
                         if (_logger.IsInfo) _logger.Info($"Parsed Whitelisted Paymaster address: {whitelistedPaymaster}");
                         _whitelistedPaymasters.Add(whitelistedPaymaster!);
                     }
-                }
-
-                bool parsedCreate2Factory = Address.TryParse(
-                    _accountAbstractionConfig.Create2FactoryAddress,
-                    out Address? create2FactoryAddress);
-                if (!parsedCreate2Factory)
-                {
-                    if (_logger.IsError) _logger.Error("Account Abstraction Plugin: Create2Factory contract address could not be parsed");
-                }
-                else
-                {
-                    if (_logger.IsInfo) _logger.Info($"Parsed Create2Factory Address: {create2FactoryAddress}");
-                    _create2FactoryAddress = create2FactoryAddress!;
                 }
 
                 _entryPointContractAbi = LoadEntryPointContract();
@@ -378,7 +368,7 @@ namespace Nethermind.AccountAbstraction
                     _nethermindApi.EngineSigner!, 
                     _entryPointContractAddresses.ToArray());
 
-            UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
+            UInt256 minerBalance = _nethermindApi.ChainHeadStateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
             if (minerBalance < 1.Ether())
                 if (_logger.IsWarn) _logger.Warn(
                     $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance / 1.Ether()} Ether < 1 Ether. Increasing balance is recommended");

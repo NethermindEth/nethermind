@@ -47,10 +47,8 @@ using NSubstitute;
 using NUnit.Framework;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Comparers;
-using Nethermind.Blockchain.Spec;
-using Nethermind.Blockchain.Validators;
-using Nethermind.Core.Test;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 

@@ -16,7 +16,6 @@
 // 
 
 using System.Collections.Generic;
-using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;

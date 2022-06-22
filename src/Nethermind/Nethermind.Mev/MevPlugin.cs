@@ -22,9 +22,9 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
@@ -191,6 +191,7 @@ namespace Nethermind.Mev
         {
             bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
             {
+                // TODO: why we are checking parent and not the currently produced block...?
                 BlockHeader? parent = _nethermindApi.BlockTree!.GetProducedBlockParent(e.ParentHeader);
                 if (parent is not null)
                 {

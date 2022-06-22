@@ -16,6 +16,7 @@
 
 using System;
 using FluentAssertions;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -47,6 +48,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
                 Substitute.For<ITxPool>(),
+                Substitute.For<IGossipPolicy>(),
                 LimboLogs.Instance);
 
             _timestamper = Substitute.For<ITimestamper>();

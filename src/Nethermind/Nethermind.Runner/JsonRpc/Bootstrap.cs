@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -33,6 +34,7 @@ namespace Nethermind.Runner.JsonRpc
         public ILogManager? LogManager { private get; set; }
         public IJsonSerializer? JsonSerializer { private get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { private get; set; }
+        public IRpcAuthentication? JsonRpcAuthentication { private get; set; }
 
         public void RegisterJsonRpcServices(IServiceCollection services)
         {
@@ -40,6 +42,7 @@ namespace Nethermind.Runner.JsonRpc
             services.AddSingleton(LogManager!);
             services.AddSingleton(JsonSerializer!);
             services.AddSingleton(JsonRpcLocalStats!);
+            services.AddSingleton(JsonRpcAuthentication!);
         }
     }
 }

@@ -16,12 +16,8 @@
 // 
 
 using System;
-using System.Data;
-using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -29,8 +25,6 @@ using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
-using Org.BouncyCastle.Bcpg;
-using Org.BouncyCastle.Crypto.Generators;
 
 namespace Nethermind.Blockchain.FullPruning
 {

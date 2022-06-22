@@ -101,7 +101,6 @@ namespace Nethermind.Wallet
                     SecureString nodeKeyPassword = CreateNodeKeyPassword(8);
                     _keyStore.StoreKey(nodeKey, nodeKeyPassword);
                     if (_logger.IsInfo) _logger.Info("Store this password for unlocking the node key for JSON RPC - this is not secure - this log message will be in your log files. Use only in DEV contexts.");
-                    if (_logger.IsInfo) _logger.Info(nodeKeyPassword.Unsecure());
                 }
             }
 

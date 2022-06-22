@@ -18,19 +18,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using System;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
-using Nethermind.Blockchain.Processing;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -43,7 +38,7 @@ namespace Nethermind.AccountAbstraction.Source
     {
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISigner _signer;
 
         // private readonly IUserOperationTxBuilder _userOperationTxBuilder;
@@ -59,7 +54,7 @@ namespace Nethermind.AccountAbstraction.Source
             IDictionary<Address, IUserOperationPool> userOperationPools,
             IDictionary<Address, UserOperationSimulator> userOperationSimulators,
             ISpecProvider specProvider,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ISigner signer,
             ILogger logger)
         {

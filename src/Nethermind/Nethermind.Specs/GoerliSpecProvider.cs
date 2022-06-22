@@ -16,6 +16,7 @@
 
 using System.Linq;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 
 namespace Nethermind.Specs
@@ -23,9 +24,20 @@ namespace Nethermind.Specs
     public class GoerliSpecProvider : ISpecProvider
     {
         public static readonly GoerliSpecProvider Instance = new();
-
         private GoerliSpecProvider() { }
+        
+        private long? _theMergeBlock = null;
 
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        {
+            if (blockNumber != null)
+                _theMergeBlock = blockNumber;
+            if (terminalTotalDifficulty != null)
+                TerminalTotalDifficulty = terminalTotalDifficulty;
+        }
+
+        public long? MergeBlockNumber => _theMergeBlock;
+        public UInt256? TerminalTotalDifficulty { get; private set; }
         public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
         
         private IReleaseSpec IstanbulNoBomb { get; } = Istanbul.Instance;
@@ -34,30 +46,19 @@ namespace Nethermind.Specs
         
         private IReleaseSpec LondonNoBomb { get; } = London.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            if (blockNumber < IstanbulBlockNumber)
+        public IReleaseSpec GetSpec(long blockNumber) =>
+            blockNumber switch
             {
-                return GenesisSpec;
-            }
-            
-            if (blockNumber < BerlinBlockNumber)
-            {
-                return IstanbulNoBomb;
-            }
-
-            if (blockNumber < LondonBlockNumber)
-            {
-                return BerlinNoBomb;
-            }
-
-            return LondonNoBomb;
-        }
+                < IstanbulBlockNumber => GenesisSpec,
+                < BerlinBlockNumber => IstanbulNoBomb,
+                < LondonBlockNumber => BerlinNoBomb,
+                _ => LondonNoBomb
+            };
 
         public long? DaoBlockNumber => null;
-        public static long IstanbulBlockNumber => 1_561_651;
-        public static long BerlinBlockNumber => 4_460_644;
-        public static long LondonBlockNumber => 5_062_605;
+        public const long IstanbulBlockNumber = 1_561_651;
+        public const long BerlinBlockNumber = 4_460_644;
+        public const long LondonBlockNumber = 5_062_605;
         public ulong ChainId => Core.ChainId.Goerli;
 
         public long[] TransitionBlocks { get; } =

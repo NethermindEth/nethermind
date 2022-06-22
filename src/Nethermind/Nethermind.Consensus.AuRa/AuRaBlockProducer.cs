@@ -19,10 +19,10 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Processing;
-using Nethermind.Blockchain.Producers;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -70,9 +70,9 @@ namespace Nethermind.Consensus.AuRa
             _config = config ?? throw new ArgumentNullException(nameof(config));
         }
 
-        protected override Block PrepareBlock(BlockHeader parent)
+        protected override Block PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
-            var block = base.PrepareBlock(parent);
+            Block block = base.PrepareBlock(parent, payloadAttributes);
             block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
             return block;
         }
