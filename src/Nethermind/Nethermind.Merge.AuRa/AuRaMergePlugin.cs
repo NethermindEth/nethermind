@@ -44,6 +44,9 @@ namespace Nethermind.Merge.AuRa
                 _auraApi.PoSSwitcher = _poSSwitcher;
                 _mergeConfig.Enabled = false; // set MergePlugin as disabled
             }
+
+            // this runs before all init steps that use tx filters
+            TxAuRaFilterBuilders.AddTxFilterDecorator(new AuRaMergeTxFilterDecorator(_auraApi!.PoSSwitcher!));
         }
 
         protected override ITxSource? CreateTxSource(IStateProvider stateProvider)
