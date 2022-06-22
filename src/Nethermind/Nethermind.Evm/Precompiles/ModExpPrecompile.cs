@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Precompiles
     /// </summary>
     public class ModExpPrecompile : IPrecompile
     {
-        public static IPrecompile Instance = new ModExpPrecompile();
+        public static readonly IPrecompile Instance = new ModExpPrecompile();
 
         private ModExpPrecompile()
         {
@@ -76,11 +76,11 @@ namespace Nethermind.Evm.Precompiles
 
                 UInt256 expLengthUpTo32 = UInt256.Min(32, expLength);
                 UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
-                UInt256 exp = new(
-                    inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
+                UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp);
-
-                return Math.Max(200L, (long)(complexity * iterationCount / 3));
+                UInt256 iterationCountDiv3 = iterationCount / 3;
+                UInt256.MultiplyOverflow(complexity, iterationCountDiv3, out UInt256 result);
+                return result > long.MaxValue ? long.MaxValue : Math.Max(200L, (long)result);
             }
             catch (OverflowException)
             {
@@ -206,14 +206,7 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 iterationCount;
                 if (exponentLength <= 32)
                 {
-                    if (!exponent.IsZero)
-                    {
-                        iterationCount = (UInt256)(exponent.BitLen - 1);
-                    }
-                    else
-                    {
-                        iterationCount = UInt256.Zero;
-                    }
+                    iterationCount = exponent.IsZero ? UInt256.Zero : (UInt256)(exponent.BitLen - 1);
                 }
                 else
                 {
@@ -222,8 +215,13 @@ namespace Nethermind.Evm.Precompiles
                     {
                         bitLength--;
                     }
-                        
-                    iterationCount = 8 * (exponentLength - 32) + (UInt256)bitLength;
+
+                    bool overflow = UInt256.MultiplyOverflow((exponentLength - 32), 8, out UInt256 multiplicationResult);
+                    overflow |= UInt256.AddOverflow(multiplicationResult, (UInt256)bitLength, out iterationCount);
+                    if (overflow)
+                    {
+                        return UInt256.MaxValue;
+                    }
                 }
 
                 return UInt256.Max(iterationCount, UInt256.One);

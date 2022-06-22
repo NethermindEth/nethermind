@@ -36,11 +36,12 @@ namespace Nethermind.Consensus.Producers
         private void OnBlockProduced(object? sender, BlockEventArgs e)
         {
             // PostMerge blocks are suggested in Engine API
-            if (e.Block.IsPostMerge == false)
+            if (!e.Block.IsPostMerge)
+            {
                 _blockTree.SuggestBlock(e.Block);
+            }
         }
 
-        public void Dispose() =>
-            _blockProducer.BlockProduced -= OnBlockProduced;
+        public void Dispose() => _blockProducer.BlockProduced -= OnBlockProduced;
     }
 }
