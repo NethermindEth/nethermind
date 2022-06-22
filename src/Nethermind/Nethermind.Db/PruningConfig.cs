@@ -42,6 +42,6 @@ namespace Nethermind.Db
         public FullPruningTrigger FullPruningTrigger { get; set; } = FullPruningTrigger.Manual;
         public int FullPruningMaxDegreeOfParallelism { get; set; } = 0;
         public int FullPruningMinimumDelayHours { get; set; } = 240;
-        public bool ShutdownAfterFullPrune { get; set; } = false;
+        public FullPruningCompletionBehavior ShutdownAfterFullPrune { get; set; } = FullPruningCompletionBehavior.None;
     }
 }

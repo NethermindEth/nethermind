@@ -62,6 +62,6 @@ namespace Nethermind.Db
         int FullPruningMinimumDelayHours { get; set; }
 
         [ConfigItem(Description = "If enabled, Nethermind will shut down after a full prune completes. Useful for automated systems that change pruning modes from Full to Memory after a full prune.")]
-        bool ShutdownAfterFullPrune { get; set; }
+        FullPruningCompletionBehavior ShutdownAfterFullPrune { get; set; }
     }
 }

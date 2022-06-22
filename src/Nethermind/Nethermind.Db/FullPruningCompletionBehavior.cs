@@ -17,17 +17,26 @@
 
 using System;
 
-namespace Nethermind.Db.FullPruning;
-
-public class PruningEventArgs : EventArgs
+namespace Nethermind.Db
 {
-    public PruningEventArgs(IPruningContext context, bool success)
+    /// <summary>
+    /// Defines what to do when a full prune completes.
+    /// </summary>
+    public enum FullPruningCompletionBehavior
     {
-        Context = context;
-        Success = success;
+        /// <summary>
+        /// Do nothing once pruning is completed.
+        /// </summary>
+        None,
+
+        /// <summary>
+        /// Shut Nethermind down gracefully if pruning was successful, but leave it running if it failed.
+        /// </summary>
+        ShutdownOnSuccess,
+
+        /// <summary>
+        /// Shut Nethermind down gracefully when pruning completes, regardless of whether or not it succeeded.
+        /// </summary>
+        AlwaysShutdown
     }
-
-    public IPruningContext Context { get; }
-
-    public bool Success { get; }
 }
