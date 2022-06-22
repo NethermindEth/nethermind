@@ -46,7 +46,10 @@ namespace Nethermind.Merge.AuRa
             }
 
             // this runs before all init steps that use tx filters
-            TxAuRaFilterBuilders.AddTxFilterDecorator(new AuRaMergeTxFilterDecorator(_auraApi!.PoSSwitcher!));
+            TxAuRaFilterBuilders.AddTxFilterDecorator(
+                    new AuRaMergeTxFilterDecorator(
+                        _api,
+                        _auraApi!.PoSSwitcher!));
         }
 
         protected override ITxSource? CreateTxSource(IStateProvider stateProvider)
