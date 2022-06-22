@@ -78,9 +78,9 @@ namespace Nethermind.Evm.Precompiles
                 UInt256 startIndex = 96 + baseLength; //+ expLength - expLengthUpTo32; // Geth takes head here, why?
                 UInt256 exp = new(inputData.Span.SliceWithZeroPaddingEmptyOnError((int)startIndex, (int)expLengthUpTo32), true);
                 UInt256 iterationCount = CalculateIterationCount(expLength, exp);
-                UInt256 iterationCountDiv3 = iterationCount / 3;
-                UInt256.MultiplyOverflow(complexity, iterationCountDiv3, out UInt256 result);
-                return result > long.MaxValue ? long.MaxValue : Math.Max(200L, (long)result);
+                bool overflow = UInt256.MultiplyOverflow(complexity, iterationCount, out UInt256 result);
+                result /= 3;
+                return result > long.MaxValue || overflow ? long.MaxValue : Math.Max(200L, (long)result);
             }
             catch (OverflowException)
             {
