@@ -29,8 +29,8 @@ public class RpcRpcModule: IRpcRpcModule
 
     public RpcRpcModule(IReadOnlyCollection<string> enabledModules)
     {
-        // Geth seems to fix version at 1.0t 
-        _enabledModules = enabledModules.ToDictionary((s => s), s => "1.0");;
+        // Geth seems to fix version at 1.0
+        _enabledModules = enabledModules.ToDictionary((s => s), s => "1.0");
     }
     
     public ResultWrapper<IDictionary<string, string>> rpc_modules()
