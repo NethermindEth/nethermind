@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Linq;
 using System.Collections.Generic;
 using Nethermind.Consensus.AuRa.Config;
@@ -31,20 +32,21 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public static class TxAuRaFilterBuilders
     {
-        private static IList<ITxFilterDecorator> _decorators = new List<ITxFilterDecorator>();
+        /// <summary>
+        /// Filter decorator.
+        /// <remarks>
+        /// Allow to create new filter based on original filter and a potential fallbackFilter if original filter was not used.
+        /// </remarks>
+        /// </summary>
+        public delegate ITxFilter FilterDecorator(ITxFilter originalFilter, ITxFilter? fallbackFilter = null);
 
-        public static void AddTxFilterDecorator(ITxFilterDecorator decorator)
-        {
-            _decorators.Add(decorator);
-        }
-
-        private static ITxFilter Decorate(ITxFilter txFilter)
-        {
-            // like functional programming hippies =)
-            return _decorators
-                .Where(decorator => decorator.IsApplicable(txFilter))
-                .Aggregate(txFilter, (current, decorator) => decorator.Decorate(current));
-        }
+        /// <summary>
+        /// Delegate factory method to create final filter for AuRa.
+        /// </summary>
+        /// <remarks>
+        /// This is used to decorate original filter with <see cref="AuRaMergeTxFilter"/> in order to disable it post-merge.
+        /// </remarks>
+        public static FilterDecorator CreateFilter { get; set; } = (x, _) => x;
 
         private static ITxFilter CreateBaseAuRaTxFilter(
             IMiningConfig miningConfig,
@@ -57,7 +59,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             ITxFilter gasPriceTxFilter = minGasPriceTxFilter;
             if (minGasPricesContractDataStore != null)
             {
-                gasPriceTxFilter = Decorate(new MinGasPriceContractTxFilter(minGasPriceTxFilter, minGasPricesContractDataStore));
+                gasPriceTxFilter = CreateFilter(new MinGasPriceContractTxFilter(minGasPriceTxFilter, minGasPricesContractDataStore), minGasPriceTxFilter);
             }
             
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
@@ -65,7 +67,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 RegisterContract registerContract = new(api.AbiEncoder, registrar, readOnlyTxProcessorSource);
                 CertifierContract certifierContract = new(api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
-                return Decorate(new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager));
+                return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager));
             }
 
             return gasPriceTxFilter;
@@ -82,7 +84,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 RegisterContract registerContract = new(api.AbiEncoder, registrar, readOnlyTxProcessorSource);
                 CertifierContract certifierContract = new(api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
-                return Decorate(new TxCertifierFilter(certifierContract, baseTxFilter, specProvider, api.LogManager));
+                return CreateFilter(new TxCertifierFilter(certifierContract, baseTxFilter, specProvider, api.LogManager));
             }
 
             return baseTxFilter;
@@ -98,7 +100,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 api.TxFilterCache ??= new PermissionBasedTxFilter.Cache();
                 
-                var txPermissionFilter = Decorate(new PermissionBasedTxFilter(
+                var txPermissionFilter = CreateFilter(new PermissionBasedTxFilter(
                     new VersionedTransactionPermissionContract(api.AbiEncoder,
                         api.ChainSpec.Parameters.TransactionPermissionContract,
                         api.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
