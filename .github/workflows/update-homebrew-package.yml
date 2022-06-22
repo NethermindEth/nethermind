@@ -1,6 +1,7 @@
 name: "Update Homebrew"
 
 on: 
+  push:
   workflow_dispatch:
 
 jobs:
