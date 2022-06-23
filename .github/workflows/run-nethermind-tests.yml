@@ -39,9 +39,6 @@ jobs:
     - name: Nethermind.AccountAbstraction.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.AccountAbstraction.Test
-    - name: Nethermind.Baseline.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Baseline.Test           
 
   neth-tests2:
     name: Running Nethermind Tests 2
@@ -93,7 +90,7 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test
     - name: MathGmp.Native
       run: |
-        dotnet test -c Release src/Math.Gmp.Native/MathGmp.Native.UnitTests   
+        dotnet test -c Release src/Math.Gmp.Native/MathGmp.Native.UnitTests
         
   neth-tests3:
     name: Running Nethermind Tests 3
@@ -137,9 +134,6 @@ jobs:
     - name: Nethermind.Mev.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Mev.Test  
-    - name: Nethermind.Mining.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Mining.Test
     - name: Nethermind.Specs.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Specs.Test
@@ -162,9 +156,6 @@ jobs:
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
-    - name: Nethermind.State.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.State.Test
     - name: Nethermind.Synchronization.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test
@@ -196,7 +187,15 @@ jobs:
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Wallet.Test
-     
+    - name: Nethermind.Baseline.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Baseline.Test
+    - name: Nethermind.Mining.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Mining.Test
+    - name: Nethermind.State.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.State.Test
 
   neth-tests-cortex:
     name: Running Cortex Tests
@@ -230,7 +229,7 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Core2.Test        
     - name: Nethermind.Ssz.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test        
+        dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test
 
   neth-runner:
     name: Nethermind Runner Tests
@@ -255,7 +254,7 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.State.Test.Runner.Test
     - name: Nethermind.Cli.Test
       run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Cli.Test        
+        dotnet test -c Release src/Nethermind/Nethermind.Cli.Test
 
   eth-tests1:
     name: Running Ethereum Tests 1
@@ -287,9 +286,6 @@ jobs:
       run: git fetch --unshallow
     - name: Updating submodules
       run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
-    - name: Ethereum.Transition.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Transition.Test
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
@@ -337,4 +333,7 @@ jobs:
     - name: Ethereum.Transaction.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Transaction.Test
+    - name: Ethereum.Transition.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Transition.Test
         
