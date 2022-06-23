@@ -19,6 +19,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -41,22 +42,13 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            var hashes = batch.Infos.Where(i => i != null).Select(i => i!.BlockHash).ToArray();
-            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(hashes, cancellationToken);
-            await getReceiptsTask.ContinueWith(
-                (t, state) =>
-                {
-                    ReceiptsSyncBatch batchLocal = (ReceiptsSyncBatch)state!;
-                    if (t.IsCompletedSuccessfully)
-                    {
-                        if (batchLocal.RequestTime > 1000)
-                        {
-                            if (Logger.IsDebug) Logger.Debug($"{batchLocal} - peer is slow {batchLocal.RequestTime:F2}");
-                        }
-
-                        batchLocal.Response = t.Result;
-                    }
-                }, batch);
+            
+            Keccak[]? hashes = batch.Infos.Where(i => i != null).Select(i => i!.BlockHash).ToArray();
+            batch.Response = await peer.GetReceipts(hashes, cancellationToken);
+            if (batch.RequestTime > 1000)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
+            }
         }
     }
 }
