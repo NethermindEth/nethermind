@@ -13,7 +13,11 @@ permissions:
   deployments: write
   packages: write
   contents: write
-
+  
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+  
 jobs:
   build-nethermind:
     name: Building Nethermind Packages
@@ -75,8 +79,23 @@ jobs:
         mv Nethermind.Launcher ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/Nethermind.Launcher
     - name: Archiving packages
       run: ./nethermind/scripts/deployment/archive-packages.sh
-
-
+    - uses: actions/upload-artifact@master
+      name: Uploading Nethermind darwin package
+      with:
+        name: nethermind-darwin-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Uploading Nethermind darwin arm64 package
+      with:
+        name: nethermind-darwin-arm64-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/nethermind-darwin-arm64-*
+    - uses: actions/upload-artifact@master
+      name: Uploading git-hash files
+      with:
+        name: nethermind-git-hash
+        path: ${{ env.RELEASE_DIRECTORY }}/git-*      
+        
+        
   update-homebrew:
     name: Update Homebrew to latest version
     runs-on: ubuntu-latest
@@ -86,6 +105,22 @@ jobs:
       OSX_ARM64_RELEASE: nethermind-osx-arm64
       RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind 
     steps:
+      - name: Downloading Nethermind darwin package
+        uses: actions/download-artifact@master
+        with:
+          name: nethermind-darwin-package
+          path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/
+      - name: Downloading Nethermind darwin arm64 package
+        uses: actions/download-artifact@master
+        with:
+          name: nethermind-darwin-arm64-package
+          path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
+      - name: Downloading git-hash files
+        uses: actions/download-artifact@master
+        with:
+          name: nethermind-git-hash
+          path: ${{ env.RELEASE_DIRECTORY }}/
+          
       - name: Checkout repository
         uses: actions/checkout@master
         with: 
