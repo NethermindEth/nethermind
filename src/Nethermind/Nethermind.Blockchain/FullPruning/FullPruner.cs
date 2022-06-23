@@ -170,20 +170,9 @@ namespace Nethermind.Blockchain.FullPruning
             switch (_pruningConfig.FullPruningCompletionBehavior)
             {
                 case FullPruningCompletionBehavior.AlwaysShutdown:
-                    _logger.Info("Full Pruning completed, shutting down as requested in the configuration.");
+                case FullPruningCompletionBehavior.ShutdownOnSuccess when e.Success:
+                    if (_logger.IsInfo) _logger.Info($"Full Pruning completed {(e.Success ? "successfully" : "unsuccessfully")}, shutting down as requested in the configuration.");
                     Task.Run(() => Environment.Exit(0));
-                    break;
-
-                case FullPruningCompletionBehavior.ShutdownOnSuccess:
-                    if (e.Success)
-                    {
-                        _logger.Info("Full Pruning completed successfully, shutting down as requested in the configuration.");
-                        Task.Run(() => Environment.Exit(0));
-                    }
-                    else
-                    {
-                        _logger.Info("Full Pruning failed, ignoring shutdown as requested in the configuration.");
-                    }
                     break;
             }
         }
@@ -229,6 +218,7 @@ namespace Nethermind.Blockchain.FullPruning
             _blockTree.NewHeadBlock -= OnNewHead;
             _pruningTrigger.Prune -= OnPrune;
             _currentPruning?.Dispose();
+            _fullPruningDb.PruningFinished -= HandlePruningFinished;
         }
     }
 }
