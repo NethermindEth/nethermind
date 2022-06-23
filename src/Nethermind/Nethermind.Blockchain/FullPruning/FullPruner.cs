@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -65,6 +65,11 @@ namespace Nethermind.Blockchain.FullPruning
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
+
+            if (_pruningConfig.FullPruningCompletionBehavior != FullPruningCompletionBehavior.None)
+            {
+                _fullPruningDb.PruningFinished += HandlePruningFinished;
+            }
         }
 
         /// <summary>
@@ -159,6 +164,29 @@ namespace Nethermind.Blockchain.FullPruning
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
+
+        private void HandlePruningFinished(object? sender, PruningEventArgs e)
+        {
+            switch (_pruningConfig.FullPruningCompletionBehavior)
+            {
+                case FullPruningCompletionBehavior.AlwaysShutdown:
+                    _logger.Info("Full Pruning completed, shutting down as requested in the configuration.");
+                    Task.Run(() => Environment.Exit(0));
+                    break;
+
+                case FullPruningCompletionBehavior.ShutdownOnSuccess:
+                    if (e.Success)
+                    {
+                        _logger.Info("Full Pruning completed successfully, shutting down as requested in the configuration.");
+                        Task.Run(() => Environment.Exit(0));
+                    }
+                    else
+                    {
+                        _logger.Info("Full Pruning failed, ignoring shutdown as requested in the configuration.");
+                    }
+                    break;
+            }
+        }
 
         protected virtual void RunPruning(IPruningContext pruning, Keccak statRoot)
         {
