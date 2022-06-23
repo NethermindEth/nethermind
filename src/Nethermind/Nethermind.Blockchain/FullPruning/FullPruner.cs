@@ -179,7 +179,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         protected virtual void RunPruning(IPruningContext pruning, Keccak statRoot)
         {
-            using (pruning)
+            try
             {
                 pruning.MarkStart();
                 using CopyTreeVisitor copyTreeVisitor = new(pruning, _logManager);
@@ -205,6 +205,11 @@ namespace Nethermind.Blockchain.FullPruning
                 {
                     pruning.Dispose();
                 }
+            }
+            catch (Exception)
+            {
+                pruning.Dispose();
+                throw;
             }
         }
 
