@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -166,6 +166,10 @@ namespace Nethermind.Evm
         LOG2 = 0xa2,
         LOG3 = 0xa3,
         LOG4 = 0xa4,
+
+        // EIP-1153
+        TLOAD = 0xb3,
+        TSTORE = 0xb4,
 
         CREATE = 0xf0,
         CALL = 0xf1,

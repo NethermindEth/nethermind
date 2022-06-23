@@ -251,6 +251,11 @@ namespace Nethermind.Core.Specs
         bool IsEip3607Enabled { get; }
 
         /// <summary>
+        /// Transient storage
+        /// </summary>
+        bool IsEip1153Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -327,5 +332,7 @@ namespace Nethermind.Core.Specs
         public Address? Eip1559FeeCollector => null;
 
         public UInt256? Eip1559BaseFeeMinValue => null;
+
+        public bool TransientStorageEnabled => IsEip1153Enabled;
     }
 }
