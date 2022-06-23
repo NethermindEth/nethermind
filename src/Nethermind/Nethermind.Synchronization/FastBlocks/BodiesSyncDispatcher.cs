@@ -44,6 +44,12 @@ namespace Nethermind.Synchronization.FastBlocks
             batch.MarkSent();
             
             Keccak[]? hashes = batch.Infos.Where(i => i != null).Select(i => i!.BlockHash).ToArray();
+            if (hashes.Length == 0)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{batch} - attempted send a request with no hash.");
+                return;
+            }
+            
             batch.Response = await peer.GetBlockBodies(hashes, cancellationToken);
             if (batch.RequestTime > 1000)
             {
