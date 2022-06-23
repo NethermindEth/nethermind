@@ -261,14 +261,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: '6.0.x'
-    - name: Unshallow fetching
-      run: git fetch --unshallow
-    - name: Updating submodules
-      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
     - name: Ethereum.Blockchain.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Test
@@ -278,14 +276,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: '6.0.x'
-    - name: Unshallow fetching
-      run: git fetch --unshallow
-    - name: Updating submodules
-      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
@@ -298,14 +294,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: '6.0.x'
-    - name: Unshallow fetching
-      run: git fetch --unshallow
-    - name: Updating submodules
-      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
     - name: Ethereum.Basic.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
