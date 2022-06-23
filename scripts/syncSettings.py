@@ -83,7 +83,7 @@ configs = {
         "multiplierRequirement": 30000 
     },
     "xdai_mev": {
-        "url": "https://dai.poa.network",
+        "url": "http://rpc.gnosischain.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     },
