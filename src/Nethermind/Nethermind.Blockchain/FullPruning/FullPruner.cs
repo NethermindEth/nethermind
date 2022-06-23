@@ -171,14 +171,14 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 case FullPruningCompletionBehavior.AlwaysShutdown:
                     _logger.Info("Full Pruning completed, shutting down as requested in the configuration.");
-                    Environment.Exit(0);
+                    Task.Run(() => Environment.Exit(0));
                     break;
 
                 case FullPruningCompletionBehavior.ShutdownOnSuccess:
                     if (e.Success)
                     {
                         _logger.Info("Full Pruning completed successfully, shutting down as requested in the configuration.");
-                        Environment.Exit(0);
+                        Task.Run(() => Environment.Exit(0));
                     }
                     else
                     {
