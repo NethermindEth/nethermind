@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.FullPruning
             _logger = _logManager.GetClassLogger();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
 
-            if (_pruningConfig.ShutdownAfterFullPrune != FullPruningCompletionBehavior.None)
+            if (_pruningConfig.FullPruningCompletionBehavior != FullPruningCompletionBehavior.None)
             {
                 _fullPruningDb.PruningFinished += HandlePruningFinished;
             }
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         private void HandlePruningFinished(object? sender, PruningEventArgs e)
         {
-            switch (_pruningConfig.ShutdownAfterFullPrune)
+            switch (_pruningConfig.FullPruningCompletionBehavior)
             {
                 case FullPruningCompletionBehavior.AlwaysShutdown:
                     _logger.Info("Full Pruning completed, shutting down as requested in the configuration.");
