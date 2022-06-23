@@ -17,6 +17,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using ConcurrentCollections;
 
 namespace Nethermind.Core.Resettables
 {
@@ -26,11 +27,19 @@ namespace Nethermind.Core.Resettables
         private readonly int _startCapacity;
         private readonly int _resetRatio;
 
-        private HashSet<T> _wrapped;
+        private ICollection<T> _wrapped;
+        private readonly int _concurrencyLevel;
 
-        public ResettableHashSet(int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
+        /// <summary>
+        /// Concurrent HashSet with capacity getting tuned on resets
+        /// </summary>
+        /// <param name="startCapacity">Initial capacity</param>
+        /// <param name="resetRatio">Capacity growth ratio on reset</param>
+        /// <param name="concurrencyLevel">Level of access parallelism, default to <see cref="P:System.Environment.ProcessorCount">Environment.ProcessorCount</see></param>
+        public ResettableHashSet(int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio, int? concurrencyLevel = null)
         {
-            _wrapped = new HashSet<T>(startCapacity);
+            _concurrencyLevel = concurrencyLevel ?? Environment.ProcessorCount;
+            _wrapped = _concurrencyLevel == 1 ? new HashSet<T>(startCapacity) : new ConcurrentHashSet<T>(_concurrencyLevel, startCapacity);
             _startCapacity = startCapacity;
             _resetRatio = resetRatio;
             _currentCapacity = _startCapacity;
@@ -84,7 +93,7 @@ namespace Nethermind.Core.Resettables
             if (_wrapped.Count < _currentCapacity / _resetRatio && _currentCapacity != _startCapacity)
             {
                 _currentCapacity = Math.Max(_startCapacity, _currentCapacity / _resetRatio);
-                _wrapped = new HashSet<T>(_currentCapacity);
+                _wrapped = new ConcurrentHashSet<T>(_concurrencyLevel, _currentCapacity);
             }
             else
             {

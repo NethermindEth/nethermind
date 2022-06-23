@@ -14,6 +14,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="ConcurrentHashset" Version="1.3.0" />
     <ProjectReference Include="..\..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj" />
     <ProjectReference Include="..\Nethermind.HashLib\Nethermind.HashLib.csproj">
       <Project>{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}</Project>
