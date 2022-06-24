@@ -266,8 +266,7 @@ namespace Nethermind.JsonRpc
             {
                 string paramStr = string.Join(", ", GetParametersToLog(providedParameters, expectedParameters));
                 string paramStrAdjusted = paramStr[..Math.Min(paramStr.Length, _maxLoggedRequestParametersCharacters ?? paramStr.Length)];
-                if (paramStrAdjusted.Length < paramStr.Length) paramStrAdjusted += "...";
-                _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
+                _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}{(paramStrAdjusted.Length < paramStr.Length ? "..." : "")}]");
             }
         }
 
