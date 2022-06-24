@@ -38,14 +38,16 @@ namespace Nethermind.JsonRpc
         private readonly ILogger _logger;
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
+        private readonly HashSet<string> _methodsLoggingFiltering;
+        private readonly int? _maxLoggedRequestParametersCharacters;
 
         public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
         {
             _logger = logManager.GetClassLogger();
             _rpcModuleProvider = rpcModuleProvider;
             _serializer = rpcModuleProvider.Serializer;
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+            _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? Array.Empty<string>()).ToHashSet();
+            _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters;
 
             List<JsonConverter> converterList = new();
             foreach (JsonConverter converter in rpcModuleProvider.Converters)
@@ -122,7 +124,7 @@ namespace Nethermind.JsonRpc
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string?[] providedParameters = request.Params ?? Array.Empty<string>();
             
-            LogRequest(methodName, providedParameters);
+            LogRequest(methodName, providedParameters, expectedParameters);
 
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
             int explicitNullableParamsCount = 0;
@@ -136,8 +138,7 @@ namespace Nethermind.JsonRpc
                     for (int i = 0; i < missingParamsCount; i++)
                     {
                         int parameterIndex = expectedParameters.Length - missingParamsCount + i;
-                        bool nullable =
-                            IsNullableParameter(expectedParameters[parameterIndex]);
+                        bool nullable = IsNullableParameter(expectedParameters[parameterIndex]);
                         
                         // if the null is the default parameter it could be passed in an explicit way as "" or null
                         // or we can treat null as a missing parameter. Two tests for this cases:
@@ -245,13 +246,26 @@ namespace Nethermind.JsonRpc
             return GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
         }
 
-        private void LogRequest(string methodName, string?[] providedParameters)
+        private void LogRequest(string methodName, string?[] providedParameters, ParameterInfo[] expectedParameters)
         {
-            //TODO: Move to a dictionary.
-            if (_logger.IsInfo && (_jsonRpcConfig.MethodsLoggingFiltering == null || !_jsonRpcConfig.MethodsLoggingFiltering.Contains(methodName)))
+            IEnumerable<string?> GetParametersToLog(string?[] parameters, ParameterInfo[] parametersInfo)
             {
-                string paramStr = string.Join(',', providedParameters);
-                string paramStrAdjusted = paramStr[..Math.Min(paramStr.Length, _jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? paramStr.Length)];
+                int bothLength = Math.Min(parameters.Length, parametersInfo.Length);
+                for (int i = 0; i < bothLength; i++)
+                {
+                    yield return parametersInfo[i].Name == "passphrase" ? "[passphrase]" : parameters[i];
+                }
+
+                for (int i = bothLength; i < parameters.Length; i++)
+                {
+                    yield return parameters[i];
+                }
+            }
+
+            if (_logger.IsInfo && !_methodsLoggingFiltering.Contains(methodName))
+            {
+                string paramStr = string.Join(", ", GetParametersToLog(providedParameters, expectedParameters));
+                string paramStrAdjusted = paramStr[..Math.Min(paramStr.Length, _maxLoggedRequestParametersCharacters ?? paramStr.Length)];
                 if (paramStrAdjusted.Length < paramStr.Length) paramStrAdjusted += "...";
                 _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
             }
