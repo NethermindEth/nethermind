@@ -23,6 +23,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -249,20 +250,6 @@ namespace Nethermind.JsonRpc
 
         private void LogRequest(string methodName, string?[] providedParameters, ParameterInfo[] expectedParameters)
         {
-            IEnumerable<string?> GetParametersToLog(string?[] parameters, ParameterInfo[] parametersInfo)
-            {
-                int bothLength = Math.Min(parameters.Length, parametersInfo.Length);
-                for (int i = 0; i < bothLength; i++)
-                {
-                    yield return parametersInfo[i].Name == "passphrase" ? "{passphrase}" : parameters[i];
-                }
-
-                for (int i = bothLength; i < parameters.Length; i++)
-                {
-                    yield return parameters[i];
-                }
-            }
-
             if (_logger.IsInfo && !_methodsLoggingFiltering.Contains(methodName))
             {
                 StringBuilder builder = new StringBuilder();
@@ -273,8 +260,13 @@ namespace Nethermind.JsonRpc
                 int paramsLength = 0;
                 int paramsCount = 0;
                 const string separator = ", ";
-                foreach (string? paramString in GetParametersToLog(providedParameters, expectedParameters))
+
+                for (int i = 0; i < providedParameters.Length; i++)
                 {
+                    string? parameter = expectedParameters.GetAtIndexOrDefault(i)?.Name == "passphrase"
+                        ? "{passphrase}"
+                        : providedParameters[i];
+
                     if (paramsLength > _maxLoggedRequestParametersCharacters)
                     {
                         int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
@@ -289,8 +281,8 @@ namespace Nethermind.JsonRpc
                         paramsLength += separator.Length;
                     }
 
-                    builder.Append(paramString);
-                    paramsLength += (paramString?.Length ?? 0);
+                    builder.Append(parameter);
+                    paramsLength += (parameter?.Length ?? 0);
                     paramsCount++;
                 }
                 builder.Append(']');
