@@ -493,8 +493,6 @@ namespace Nethermind.Runner.Test
             "volta_archive.cfg",
             "energyweb.cfg",
             "energyweb_archive.cfg",
-            "sepolia.cfg",
-            "sepolia_archive.cfg"
         };
 
         private IEnumerable<string> Resolve(string configWildcard)
