@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -39,7 +40,7 @@ namespace Nethermind.JsonRpc
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
         private readonly HashSet<string> _methodsLoggingFiltering;
-        private readonly int? _maxLoggedRequestParametersCharacters;
+        private readonly int _maxLoggedRequestParametersCharacters;
 
         public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
         {
@@ -47,7 +48,7 @@ namespace Nethermind.JsonRpc
             _rpcModuleProvider = rpcModuleProvider;
             _serializer = rpcModuleProvider.Serializer;
             _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? Array.Empty<string>()).ToHashSet();
-            _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters;
+            _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
             List<JsonConverter> converterList = new();
             foreach (JsonConverter converter in rpcModuleProvider.Converters)
@@ -253,7 +254,7 @@ namespace Nethermind.JsonRpc
                 int bothLength = Math.Min(parameters.Length, parametersInfo.Length);
                 for (int i = 0; i < bothLength; i++)
                 {
-                    yield return parametersInfo[i].Name == "passphrase" ? "[passphrase]" : parameters[i];
+                    yield return parametersInfo[i].Name == "passphrase" ? "{passphrase}" : parameters[i];
                 }
 
                 for (int i = bothLength; i < parameters.Length; i++)
@@ -264,9 +265,37 @@ namespace Nethermind.JsonRpc
 
             if (_logger.IsInfo && !_methodsLoggingFiltering.Contains(methodName))
             {
-                string paramStr = string.Join(", ", GetParametersToLog(providedParameters, expectedParameters));
-                ReadOnlySpan<char> paramStrAdjusted = paramStr.AsSpan(0, Math.Min(paramStr.Length, _maxLoggedRequestParametersCharacters ?? paramStr.Length));
-                _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}{(paramStrAdjusted.Length < paramStr.Length ? "..." : "")}]");
+                StringBuilder builder = new StringBuilder();
+                builder.Append("Executing JSON RPC call ");
+                builder.Append(methodName);
+                builder.Append(" with params [");
+
+                int paramsLength = 0;
+                int paramsCount = 0;
+                const string separator = ", ";
+                foreach (string? paramString in GetParametersToLog(providedParameters, expectedParameters))
+                {
+                    if (paramsLength > _maxLoggedRequestParametersCharacters)
+                    {
+                        int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
+                        builder.Remove(builder.Length - toRemove, toRemove);
+                        builder.Append("...");
+                        break;
+                    }
+
+                    if (paramsCount != 0)
+                    {
+                        builder.Append(separator);
+                        paramsLength += separator.Length;
+                    }
+
+                    builder.Append(paramString);
+                    paramsLength += (paramString?.Length ?? 0);
+                    paramsCount++;
+                }
+                builder.Append(']');
+                string log = builder.ToString();
+                _logger.Info(log);
             }
         }
 
