@@ -19,5 +19,5 @@ namespace Nethermind.Core.Extensions;
 
 public static class ListExtensions
 {
-    public static T? GetAtIndexOrDefault<T>(this T?[] array, int index) => index < array.Length ? array[index] : default;
+    public static T? GetAtIndexOrDefault<T>(this T?[] array, int index) => index >= 0 && index < array.Length ? array[index] : default;
 }
