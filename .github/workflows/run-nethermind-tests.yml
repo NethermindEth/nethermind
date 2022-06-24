@@ -24,6 +24,9 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Nethermind.Blockchain.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Blockchain.Test        
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Abi.Test;
@@ -36,24 +39,7 @@ jobs:
     - name: Nethermind.AccountAbstraction.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.AccountAbstraction.Test
-    - name: Nethermind.Baseline.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Baseline.Test
-    - name: Nethermind.BeaconNode.Eth1Bridge.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Eth1Bridge.Test
-    - name: Nethermind.BeaconNode.Peering.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Peering.Test
-    - name: Nethermind.BeaconNode.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Test
-    - name: Nethermind.Blockchain.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Blockchain.Test
-    - name: Nethermind.Cli.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Cli.Test
+
   neth-tests2:
     name: Running Nethermind Tests 2
     runs-on: ubuntu-latest
@@ -81,12 +67,6 @@ jobs:
     - name: Nethermind.Core.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Core.Test
-    - name: Nethermind.Core2.Configuration.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Core2.Configuration.Test
-    - name: Nethermind.Core2.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Core2.Test
     - name: Nethermind.Cryptography.Bls.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Cryptography.Bls.Test
@@ -110,7 +90,8 @@ jobs:
         dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test
     - name: MathGmp.Native
       run: |
-        dotnet test -c Release src/Math.Gmp.Native/MathGmp.Native.UnitTests                
+        dotnet test -c Release src/Math.Gmp.Native/MathGmp.Native.UnitTests
+        
   neth-tests3:
     name: Running Nethermind Tests 3
     runs-on: ubuntu-latest
@@ -153,12 +134,10 @@ jobs:
     - name: Nethermind.Mev.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Mev.Test  
-    - name: Nethermind.Mining.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.Mining.Test
     - name: Nethermind.Specs.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Specs.Test
+
   neth-tests4:
     name: Running Nethermind Tests 4
     runs-on: ubuntu-latest
@@ -177,12 +156,10 @@ jobs:
     - name: Nethermind.Secp256k1.Test.Linux
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Secp256k1.Test
-    - name: Nethermind.State.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Nethermind.State.Test
     - name: Nethermind.Synchronization.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Synchronization.Test
+
   neth-tests5:
     name: Running Nethermind Tests 5
     runs-on: ubuntu-latest
@@ -210,6 +187,46 @@ jobs:
     - name: Nethermind.Wallet.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Wallet.Test
+    - name: Nethermind.Baseline.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Baseline.Test
+    - name: Nethermind.Mining.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Mining.Test
+    - name: Nethermind.State.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.State.Test
+
+  neth-tests-cortex:
+    name: Running Cortex Tests
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
+    - name: Installing Linux packages
+      run: |
+        sudo apt-get update
+        sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Nethermind.BeaconNode.Eth1Bridge.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Eth1Bridge.Test
+    - name: Nethermind.BeaconNode.Peering.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Peering.Test
+    - name: Nethermind.BeaconNode.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Test    
+    - name: Nethermind.Core2.Configuration.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Core2.Configuration.Test
+    - name: Nethermind.Core2.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Core2.Test        
     - name: Nethermind.Ssz.Test
       run: |
         dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test
@@ -235,25 +252,21 @@ jobs:
     - name: Nethermind.State.Test.Runner.Test
       run : |
         dotnet test -c Release src/Nethermind/Nethermind.State.Test.Runner.Test
+    - name: Nethermind.Cli.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Nethermind.Cli.Test
+
   eth-tests1:
     name: Running Ethereum Tests 1
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: '6.0.x'
-    - name: Unshallow fetching
-      run: git fetch --unshallow
-    - name: Updating submodules
-      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
-    - name: Ethereum.Basic.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
-    - name: Ethereum.Blockchain.Block.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Block.Test
     - name: Ethereum.Blockchain.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Test
@@ -263,14 +276,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
       with:
         dotnet-version: '6.0.x'
-    - name: Unshallow fetching
-      run: git fetch --unshallow
-    - name: Updating submodules
-      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
+    - name: Ethereum.Trie.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
+    - name: Ethereum.VM.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.VM.Test
+        
+  eth-tests3:
+    name: Running Ethereum Tests 3
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: true
+    - name: Setting up dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: '6.0.x'
+    - name: Ethereum.Basic.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
+    - name: Ethereum.Blockchain.Block.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum.Blockchain.Block.Test      
     - name: Ethereum.Abi.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Abi.Test
@@ -295,9 +330,4 @@ jobs:
     - name: Ethereum.Transition.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Transition.Test
-    - name: Ethereum.Trie.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
-    - name: Ethereum.VM.Test
-      run: |
-        dotnet test -c Release src/Nethermind/Ethereum.VM.Test
+        
