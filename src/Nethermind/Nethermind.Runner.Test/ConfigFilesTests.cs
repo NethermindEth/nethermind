@@ -97,7 +97,7 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
         }
 
-        [TestCase("ropsten", "ws://ropsten-stats.parity.io/api")]
+        [TestCase("ropsten", "ws://localhost:3000/api")]
         [TestCase("rinkeby", "ws://localhost:3000/api")]
         [TestCase("goerli", "wss://stats.goerli.net/api")]
         [TestCase("mainnet", "wss://ethstats.net/api")]
