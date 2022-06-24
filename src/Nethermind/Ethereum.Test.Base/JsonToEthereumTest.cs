@@ -56,6 +56,7 @@ namespace Ethereum.Test.Base
                 "Istanbul" => Istanbul.Instance,
                 "Berlin" => Berlin.Instance,
                 "London" => London.Instance,
+                "Merge" => London.Instance,
                 _ => throw new NotSupportedException()
             };
         }
