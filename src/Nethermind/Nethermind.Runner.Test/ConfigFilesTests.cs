@@ -285,6 +285,20 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.DownloadHeadersInFastSync, downloadHeaders);
         }
 
+        [TestCase("archive", false)]
+        [TestCase("mainnet.cfg", true)]
+        [TestCase("goerli.cfg", true)]
+        [TestCase("ropsten.cfg", true)]
+        [TestCase("rinkeby.cfg", false)]
+        [TestCase("sepolia.cfg", false)]
+        [TestCase("xdai.cfg", false)]
+        [TestCase("sokol.cfg", false)]
+        [TestCase("kiln.cfg", false)]
+        public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
+        {
+            Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
+        }
+
         [TestCase("^aura", false)]
         [TestCase("aura ^archive", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
@@ -479,6 +493,8 @@ namespace Nethermind.Runner.Test
             "volta_archive.cfg",
             "energyweb.cfg",
             "energyweb_archive.cfg",
+            "sepolia.cfg",
+            "sepolia_archive.cfg"
         };
 
         private IEnumerable<string> Resolve(string configWildcard)
