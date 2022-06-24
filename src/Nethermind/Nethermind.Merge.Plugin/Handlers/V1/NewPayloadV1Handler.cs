@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -48,6 +49,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _processor;
+        private readonly ISyncConfig _syncConfig;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBeaconPivot _beaconPivot;
@@ -64,6 +66,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockTree blockTree,
             IBlockchainProcessor processor,
             IInitConfig initConfig,
+            ISyncConfig syncConfig,
             IPoSSwitcher poSSwitcher,
             IBeaconSyncStrategy beaconSyncStrategy,
             IBeaconPivot beaconPivot,
@@ -76,6 +79,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
             _processor = processor;
+            _syncConfig = syncConfig;
             _poSSwitcher = poSSwitcher;
             _beaconSyncStrategy = beaconSyncStrategy;
             _beaconPivot = beaconPivot;
@@ -108,6 +112,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
             {
                 return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
+            }
+
+            if (block.Header.Number <= _syncConfig.PivotNumberParsed)
+            {
+                return NewPayloadV1Result.Syncing;
             }
             
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
