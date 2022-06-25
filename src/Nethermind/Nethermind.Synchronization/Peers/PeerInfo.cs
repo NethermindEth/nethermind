@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using FastEnumUtility;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -132,7 +133,7 @@ namespace Nethermind.Synchronization.Peers
         
         // map from AllocationContexts single flag to index in array of _weaknesses
         private static readonly IDictionary<AllocationContexts, int> AllocationIndexes =
-            ((AllocationContexts[])Enum.GetValues(typeof(AllocationContexts)))
+            FastEnum.GetValues<AllocationContexts>()
             .Where(c => c != AllocationContexts.All && c != AllocationContexts.None)
             .Select((a, i) => (a, i))
             .ToDictionary(v => v.a, v => v.i);

@@ -50,7 +50,7 @@ namespace Nethermind.Db
         protected void RegisterDb(RocksDbSettings settings) => 
             AddRegisterAction(settings.DbName, () => CreateDb(settings));
         
-        protected void RegisterColumnsDb<T>(RocksDbSettings settings) =>
+        protected void RegisterColumnsDb<T>(RocksDbSettings settings) where T : struct, Enum =>
             AddRegisterAction(settings.DbName, () => CreateColumnDb<T>(settings));
         
         private void AddRegisterAction(string dbName, Func<IDb> dbCreation) =>
@@ -59,7 +59,7 @@ namespace Nethermind.Db
         private IDb CreateDb(RocksDbSettings settings) => 
             PersistedDb ? RocksDbFactory.CreateDb(settings) : MemDbFactory.CreateDb(settings.DbName);
 
-        private IDb CreateColumnDb<T>(RocksDbSettings settings) => 
+        private IDb CreateColumnDb<T>(RocksDbSettings settings) where T : struct, Enum =>
             PersistedDb ? RocksDbFactory.CreateColumnsDb<T>(settings) : MemDbFactory.CreateColumnsDb<T>(settings.DbName);
 
         protected void InitAll()

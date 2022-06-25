@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Diagnostics.CodeAnalysis;
+using FastEnumUtility;
 
 namespace Nethermind.Evm
 {
@@ -189,7 +190,7 @@ namespace Nethermind.Evm
         {
             return (instruction == Instruction.PREVRANDAO && !isPostMerge)
                 ? "DIFFICULTY"
-                : System.Enum.GetName(typeof(Instruction), instruction); //TODO: This is slow! Generate switch?
+                : FastEnum.GetName(instruction);
         }
     }
 }

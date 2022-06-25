@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -108,7 +109,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 case ExecutionType.CallCode:
                     return "callcode";
                 default:
-                    throw new NotSupportedException($"Parity trace call type is undefined for {Enum.GetName(typeof(ExecutionType), executionType)}");
+                    throw new NotSupportedException($"Parity trace call type is undefined for {FastEnum.GetName(executionType)}");
             }
         }
         

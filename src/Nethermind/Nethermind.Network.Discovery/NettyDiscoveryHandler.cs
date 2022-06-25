@@ -19,6 +19,7 @@ using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -127,7 +128,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         }
 
         byte typeRaw = msgBytes[97];
-        if (!Enum.IsDefined(typeof(MsgType), (int) typeRaw))
+        if (!FastEnum.IsDefined<MsgType>((int) typeRaw))
         {
             if (_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msgBytes.ToHexString()}");
             return;
