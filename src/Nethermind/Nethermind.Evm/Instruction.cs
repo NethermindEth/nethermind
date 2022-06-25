@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
 
@@ -186,12 +188,12 @@ namespace Nethermind.Evm
     
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false)
-        {
-            return (instruction == Instruction.PREVRANDAO && !isPostMerge)
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false) =>
+            (instruction == Instruction.PREVRANDAO && !isPostMerge)
                 ? "DIFFICULTY"
-                : FastEnum.GetName(instruction);
-        }
+                : FastEnum.IsDefined(instruction)
+                    ? FastEnum.GetName(instruction)
+                    : null;
     }
 }
 

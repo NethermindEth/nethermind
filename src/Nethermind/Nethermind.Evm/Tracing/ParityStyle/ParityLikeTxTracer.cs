@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                 case ExecutionType.CallCode:
                     return "callcode";
                 default:
-                    throw new NotSupportedException($"Parity trace call type is undefined for {FastEnum.GetName(executionType)}");
+                    throw new NotSupportedException($"Parity trace call type is undefined for {executionType}");
             }
         }
         
