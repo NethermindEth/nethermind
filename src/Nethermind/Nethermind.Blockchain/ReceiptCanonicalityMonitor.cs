@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain
         private void OnBlockAddedToMain(object sender, BlockReplacementEventArgs e)
         {
             // we don't want this to be on main processing thread
-            Task.Run(() => RollbackReceipts(e.PreviousBlock))
+            Task.Run(() => SwitchCanonicalBlock(e.Block, e.PreviousBlock))
                 .ContinueWith(t =>
                 {
                     if (t.IsFaulted)
@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain
                 });
         }
 
-        private void RollbackReceipts(Block? previousBlock)
+        private void SwitchCanonicalBlock(Block block, Block? previousBlock)
         {
             if (previousBlock != null)
             {
@@ -61,6 +61,8 @@ namespace Nethermind.Blockchain
                 }
                 _receiptStorage.Insert(previousBlock, txReceipts);
             }
+
+            _receiptStorage.EnsureCanonical(block);
         }
 
         public void Dispose()

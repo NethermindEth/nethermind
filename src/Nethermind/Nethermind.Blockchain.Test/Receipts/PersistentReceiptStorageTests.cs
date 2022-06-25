@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Test.Receipts
             var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
             ReceiptsRecovery receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
-            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, receiptsRecovery) {MigratedBlockNumber = 0};
+            _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, receiptsRecovery, new TestLogManager()) {MigratedBlockNumber = 0};
             _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
         }
 
@@ -199,6 +199,25 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             var (block, receipts) = InsertBlock();
             _storage.HasBlock(block.Hash).Should().BeTrue();
+        }
+        
+        [Test]
+        public void EnsureCanonical_should_change_tx_blockhash()
+        {
+            (Block block, TxReceipt[] receipts) = InsertBlock();
+            _storage.FindBlockHash(receipts[0].TxHash).Should().Be(block.Hash);
+            
+            Block anotherBlock = Build.A.Block
+                .WithTransactions(block.Transactions)
+                .WithReceiptsRoot(TestItem.KeccakA)
+                .WithExtraData(new byte[]{1})
+                .TestObject;
+
+            anotherBlock.Hash.Should().NotBe(block.Hash);
+            _storage.Insert(anotherBlock, new []{ Build.A.Receipt.TestObject });
+            
+            _storage.EnsureCanonical(anotherBlock);
+            _storage.FindBlockHash(receipts[0].TxHash).Should().Be(anotherBlock.Hash);
         }
 
         private (Block block, TxReceipt[] receipts) InsertBlock(Block block = null)

@@ -86,6 +86,12 @@ namespace Nethermind.Blockchain.Receipts
             return _receipts.ContainsKey(hash);
         }
 
+        public void EnsureCanonical(Block block)
+        {
+            // InMemory does not seems to store mapping of tx hash to block
+            return;
+        }
+
         public long? LowestInsertedReceiptBlockNumber { get; set; }
 
         public long MigratedBlockNumber { get; set; }

@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 #pragma warning disable 618
 
@@ -41,8 +42,9 @@ namespace Nethermind.Blockchain.Receipts
         
         private const int CacheSize = 64;
         private readonly ICache<Keccak, TxReceipt[]> _receiptsCache = new LruCache<Keccak, TxReceipt[]>(CacheSize, CacheSize, "receipts");
+        private ILogger _logger;
 
-        public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery)
+        public PersistentReceiptStorage(IColumnsDb<ReceiptsColumns> receiptsDb, ISpecProvider specProvider, IReceiptsRecovery receiptsRecovery, ILogManager logManager)
         {
             long Get(Keccak key, long defaultValue) => _database.Get(key)?.ToLongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
             
@@ -51,6 +53,7 @@ namespace Nethermind.Blockchain.Receipts
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _blocksDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
+            _logger = logManager.GetClassLogger(GetType());
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
             _lowestInsertedReceiptBlock = lowestBytes == null ? (long?) null : new RlpStream(lowestBytes).DecodeLong();
@@ -191,7 +194,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 for (int i = 0; i < txReceiptsLength; i++)
                 {
-                    var txHash = block.Transactions[i].Hash;
+                    Keccak txHash = block.Transactions[i].Hash;
                     _transactionDb.Set(txHash, block.Hash.Bytes);
                 }
             }
@@ -238,7 +241,16 @@ namespace Nethermind.Blockchain.Receipts
         {
             return _receiptsCache.Contains(hash) || _blocksDb.KeyExists(hash);
         }
-        
+
+        public void EnsureCanonical(Block block)
+        {
+            TxReceipt[] receipts = Get(block);
+            foreach (TxReceipt txReceipt in receipts)
+            {
+                _transactionDb.Set(txReceipt.TxHash, block.Hash.Bytes);
+            }
+        }
+
         public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 }

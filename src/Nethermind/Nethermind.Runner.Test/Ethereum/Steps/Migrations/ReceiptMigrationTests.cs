@@ -138,6 +138,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 return _outStorage.HasBlock(hash);
             }
 
+            public void EnsureCanonical(Block block)
+            {
+            }
+
             public event EventHandler<ReceiptsEventArgs> ReceiptsInserted { add { } remove { } }
         }
     }

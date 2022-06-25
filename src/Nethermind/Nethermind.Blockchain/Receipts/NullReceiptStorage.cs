@@ -60,5 +60,9 @@ namespace Nethermind.Blockchain.Receipts
         {
             return false;
         }
+
+        public void EnsureCanonical(Block block)
+        {
+        }
     }
 }

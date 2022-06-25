@@ -27,5 +27,6 @@ namespace Nethermind.Blockchain.Receipts
         long MigratedBlockNumber { get; set; }
         event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
         bool HasBlock(Keccak hash);
+        void EnsureCanonical(Block block);
     }
 }
