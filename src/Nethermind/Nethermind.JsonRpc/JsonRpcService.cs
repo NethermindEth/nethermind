@@ -263,7 +263,7 @@ namespace Nethermind.JsonRpc
 
                 for (int i = 0; i < providedParameters.Length; i++)
                 {
-                    string? parameter = expectedParameters.GetAtIndexOrDefault(i)?.Name == "passphrase"
+                    string? parameter = expectedParameters.ElementAtOrDefault(i)?.Name == "passphrase"
                         ? "{passphrase}"
                         : providedParameters[i];
 
