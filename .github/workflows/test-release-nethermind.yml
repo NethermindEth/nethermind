@@ -143,6 +143,11 @@ jobs:
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
         with:
+          token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+          commit-message: Update Homebrew to latest release
+          title: '[Release] Update Homebrew'
+          reviewers: falcoxyz
+          draft: true
           path: homebrew-nethermind
           add-paths: |
             nethermind.rb
