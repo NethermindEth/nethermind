@@ -226,8 +226,10 @@ public partial class BlockTreeTests
                 private BlockTreeBuilder? _syncedTreeBuilder;
                 private IChainLevelHelper? _chainLevelHelper;
 
-                public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1, bool moveBlocksToMainChain = true)
+                public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1, bool moveBlocksToMainChain = true, UInt256? ttd = null)
                 {
+                    var testSpecProvider = new TestSpecProvider(London.Instance);
+                    if (ttd != null) testSpecProvider.TerminalTotalDifficulty = ttd;
                     NotSyncedTreeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize);
                     NotSyncedTree = new(
                         NotSyncedTreeBuilder.BlocksDb,
@@ -235,7 +237,7 @@ public partial class BlockTreeTests
                         NotSyncedTreeBuilder.BlockInfoDb,
                         NotSyncedTreeBuilder.MetadataDb,
                         NotSyncedTreeBuilder.ChainLevelInfoRepository,
-                        MainnetSpecProvider.Instance,
+                        testSpecProvider,
                         NullBloomStorage.Instance,
                         new SyncConfig(),
                         LimboLogs.Instance);
@@ -249,7 +251,7 @@ public partial class BlockTreeTests
                             _syncedTreeBuilder.BlockInfoDb,
                             _syncedTreeBuilder.MetadataDb,
                             _syncedTreeBuilder.ChainLevelInfoRepository,
-                            MainnetSpecProvider.Instance,
+                            testSpecProvider,
                             NullBloomStorage.Instance,
                             new SyncConfig(),
                             LimboLogs.Instance);
