@@ -19,9 +19,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -38,14 +40,16 @@ namespace Nethermind.JsonRpc
         private readonly ILogger _logger;
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
-        private readonly IJsonRpcConfig _jsonRpcConfig;
+        private readonly HashSet<string> _methodsLoggingFiltering;
+        private readonly int _maxLoggedRequestParametersCharacters;
 
         public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
         {
             _logger = logManager.GetClassLogger();
             _rpcModuleProvider = rpcModuleProvider;
             _serializer = rpcModuleProvider.Serializer;
-            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+            _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? Array.Empty<string>()).ToHashSet();
+            _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
             List<JsonConverter> converterList = new();
             foreach (JsonConverter converter in rpcModuleProvider.Converters)
@@ -122,7 +126,7 @@ namespace Nethermind.JsonRpc
             ParameterInfo[] expectedParameters = method.Info.GetParameters();
             string?[] providedParameters = request.Params ?? Array.Empty<string>();
             
-            LogRequest(methodName, providedParameters);
+            LogRequest(methodName, providedParameters, expectedParameters);
 
             int missingParamsCount = expectedParameters.Length - providedParameters.Length + (providedParameters.Count(string.IsNullOrWhiteSpace));
             int explicitNullableParamsCount = 0;
@@ -136,8 +140,7 @@ namespace Nethermind.JsonRpc
                     for (int i = 0; i < missingParamsCount; i++)
                     {
                         int parameterIndex = expectedParameters.Length - missingParamsCount + i;
-                        bool nullable =
-                            IsNullableParameter(expectedParameters[parameterIndex]);
+                        bool nullable = IsNullableParameter(expectedParameters[parameterIndex]);
                         
                         // if the null is the default parameter it could be passed in an explicit way as "" or null
                         // or we can treat null as a missing parameter. Two tests for this cases:
@@ -245,15 +248,46 @@ namespace Nethermind.JsonRpc
             return GetSuccessResponse(methodName, resultWrapper.GetData(), request.Id, returnAction);
         }
 
-        private void LogRequest(string methodName, string?[] providedParameters)
+        private void LogRequest(string methodName, string?[] providedParameters, ParameterInfo[] expectedParameters)
         {
-            //TODO: Move to a dictionary.
-            if (_logger.IsInfo && (_jsonRpcConfig.MethodsLoggingFiltering == null || !_jsonRpcConfig.MethodsLoggingFiltering.Contains(methodName)))
+            if (_logger.IsInfo && !_methodsLoggingFiltering.Contains(methodName))
             {
-                string paramStr = string.Join(',', providedParameters);
-                string paramStrAdjusted = paramStr[..Math.Min(paramStr.Length, _jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? paramStr.Length)];
-                if (paramStrAdjusted.Length < paramStr.Length) paramStrAdjusted += "...";
-                _logger.Info($"Executing JSON RPC call {methodName} with params [{paramStrAdjusted}]");
+                StringBuilder builder = new StringBuilder();
+                builder.Append("Executing JSON RPC call ");
+                builder.Append(methodName);
+                builder.Append(" with params [");
+
+                int paramsLength = 0;
+                int paramsCount = 0;
+                const string separator = ", ";
+
+                for (int i = 0; i < providedParameters.Length; i++)
+                {
+                    string? parameter = expectedParameters.ElementAtOrDefault(i)?.Name == "passphrase"
+                        ? "{passphrase}"
+                        : providedParameters[i];
+
+                    if (paramsLength > _maxLoggedRequestParametersCharacters)
+                    {
+                        int toRemove = paramsLength - _maxLoggedRequestParametersCharacters;
+                        builder.Remove(builder.Length - toRemove, toRemove);
+                        builder.Append("...");
+                        break;
+                    }
+
+                    if (paramsCount != 0)
+                    {
+                        builder.Append(separator);
+                        paramsLength += separator.Length;
+                    }
+
+                    builder.Append(parameter);
+                    paramsLength += (parameter?.Length ?? 0);
+                    paramsCount++;
+                }
+                builder.Append(']');
+                string log = builder.ToString();
+                _logger.Info(log);
             }
         }
 

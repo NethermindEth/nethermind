@@ -97,7 +97,7 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.NetworkingEnabled, isEnabled);
         }
 
-        [TestCase("ropsten", "ws://ropsten-stats.parity.io/api")]
+        [TestCase("ropsten", "ws://localhost:3000/api")]
         [TestCase("rinkeby", "ws://localhost:3000/api")]
         [TestCase("goerli", "wss://stats.goerli.net/api")]
         [TestCase("mainnet", "wss://ethstats.net/api")]
@@ -283,6 +283,20 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.DownloadBodiesInFastSync, downloadBodies);
             Test<ISyncConfig, bool>(configWildcard, c => c.DownloadReceiptsInFastSync, downloadsReceipts);
             Test<ISyncConfig, bool>(configWildcard, c => c.DownloadHeadersInFastSync, downloadHeaders);
+        }
+
+        [TestCase("archive", false)]
+        [TestCase("mainnet.cfg", true)]
+        [TestCase("goerli.cfg", true)]
+        [TestCase("ropsten.cfg", true)]
+        [TestCase("rinkeby.cfg", false)]
+        [TestCase("sepolia.cfg", false)]
+        [TestCase("xdai.cfg", false)]
+        [TestCase("sokol.cfg", false)]
+        [TestCase("kiln.cfg", false)]
+        public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
+        {
+            Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
         [TestCase("^aura", false)]
