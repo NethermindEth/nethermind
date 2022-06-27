@@ -29,6 +29,22 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
 {
     public static class TxAuRaFilterBuilders
     {
+        /// <summary>
+        /// Filter decorator.
+        /// <remarks>
+        /// Allow to create new filter based on original filter and a potential fallbackFilter if original filter was not used.
+        /// </remarks>
+        /// </summary>
+        public delegate ITxFilter FilterDecorator(ITxFilter originalFilter, ITxFilter? fallbackFilter = null);
+
+        /// <summary>
+        /// Delegate factory method to create final filter for AuRa.
+        /// </summary>
+        /// <remarks>
+        /// This is used to decorate original filter with <see cref="AuRaMergeTxFilter"/> in order to disable it post-merge.
+        /// </remarks>
+        public static FilterDecorator CreateFilter { get; set; } = (x, _) => x;
+
         private static ITxFilter CreateBaseAuRaTxFilter(
             IMiningConfig miningConfig,
             AuRaNethermindApi api,
@@ -40,7 +56,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             ITxFilter gasPriceTxFilter = minGasPriceTxFilter;
             if (minGasPricesContractDataStore != null)
             {
-                gasPriceTxFilter = new MinGasPriceContractTxFilter(minGasPriceTxFilter, minGasPricesContractDataStore);
+                gasPriceTxFilter = CreateFilter(new MinGasPriceContractTxFilter(minGasPriceTxFilter, minGasPricesContractDataStore), minGasPriceTxFilter);
             }
             
             Address? registrar = api.ChainSpec?.Parameters.Registrar;
@@ -48,7 +64,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 RegisterContract registerContract = new(api.AbiEncoder, registrar, readOnlyTxProcessorSource);
                 CertifierContract certifierContract = new(api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
-                return new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager);
+                return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager));
             }
 
             return gasPriceTxFilter;
@@ -65,7 +81,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 RegisterContract registerContract = new(api.AbiEncoder, registrar, readOnlyTxProcessorSource);
                 CertifierContract certifierContract = new(api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
-                return new TxCertifierFilter(certifierContract, baseTxFilter, specProvider, api.LogManager);
+                return CreateFilter(new TxCertifierFilter(certifierContract, baseTxFilter, specProvider, api.LogManager));
             }
 
             return baseTxFilter;
@@ -81,7 +97,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 api.TxFilterCache ??= new PermissionBasedTxFilter.Cache();
                 
-                var txPermissionFilter = new PermissionBasedTxFilter(
+                var txPermissionFilter = CreateFilter(new PermissionBasedTxFilter(
                     new VersionedTransactionPermissionContract(api.AbiEncoder,
                         api.ChainSpec.Parameters.TransactionPermissionContract,
                         api.ChainSpec.Parameters.TransactionPermissionContractTransition ?? 0, 
@@ -90,7 +106,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
                         api.LogManager,
                         api.SpecProvider),
                     api.TxFilterCache,
-                    api.LogManager);
+                    api.LogManager));
                 
                 return txPermissionFilter;
             }

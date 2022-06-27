@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -293,6 +293,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.BerlinBlockNumber.Should().Be(MainnetSpecProvider.BerlinBlockNumber);
             chainSpec.LondonBlockNumber.Should().Be(MainnetSpecProvider.LondonBlockNumber);
             chainSpec.ArrowGlacierBlockNumber.Should().Be(MainnetSpecProvider.ArrowGlacierBlockNumber);
+            chainSpec.GrayGlacierBlockNumber.Should().Be(MainnetSpecProvider.GrayGlacierBlockNumber);
         }
         
         [Test]
@@ -363,6 +364,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             chainSpec.BerlinBlockNumber.Should().Be(0L);
             chainSpec.LondonBlockNumber.Should().Be(0L);
             chainSpec.ArrowGlacierBlockNumber.Should().Be(null);
+            chainSpec.GrayGlacierBlockNumber.Should().Be(null);
         }
         
         [Test]

@@ -37,50 +37,19 @@ namespace Nethermind.Specs
         public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            if (blockNumber < SpuriousDragonBlockNumber)
+        public IReleaseSpec GetSpec(long blockNumber) =>
+            blockNumber switch
             {
-                return TangerineWhistle.Instance;
-            }
-
-            if (blockNumber < ByzantiumBlockNumber)
-            {
-                return SpuriousDragon.Instance;
-            }
-
-            if (blockNumber < ConstantinopleBlockNumber)
-            {
-                return Byzantium.Instance;
-            }
-
-            if (blockNumber < ConstantinopleFixBlockNumber)
-            {
-                return Constantinople.Instance;
-            }
-
-            if (blockNumber < IstanbulBlockNumber)
-            {
-                return ConstantinopleFix.Instance;
-            }
-
-            if (blockNumber < MuirGlacierBlockNumber)
-            {
-                return Istanbul.Instance;
-            }
-            
-            if (blockNumber < BerlinBlockNumber)
-            {
-                return MuirGlacier.Instance;
-            }
-
-            if (blockNumber < LondonBlockNumber)
-            {
-                return Berlin.Instance;
-            }
-            
-            return London.Instance;
-        }
+                < SpuriousDragonBlockNumber => TangerineWhistle.Instance,
+                < ByzantiumBlockNumber => SpuriousDragon.Instance,
+                < ConstantinopleBlockNumber => Byzantium.Instance,
+                < ConstantinopleFixBlockNumber => Constantinople.Instance,
+                < IstanbulBlockNumber => ConstantinopleFix.Instance,
+                < MuirGlacierBlockNumber => Istanbul.Instance,
+                < BerlinBlockNumber => MuirGlacier.Instance,
+                < LondonBlockNumber => Berlin.Instance,
+                _ => London.Instance
+            };
 
         public long? DaoBlockNumber => null;
         public const long SpuriousDragonBlockNumber  = 10;

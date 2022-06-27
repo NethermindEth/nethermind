@@ -78,11 +78,15 @@ public partial class EngineModuleTests
         boostRelay.When(b => b.SendPayload(Arg.Any<BoostExecutionPayloadV1>(), Arg.Any<CancellationToken>()))
             .Do(c => sentItem = c.Arg<BoostExecutionPayloadV1>());
 
+        ManualResetEvent wait = new(false);
+        chain.PayloadPreparationService.BlockImproved += (_, _) => wait.Set();
+
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data
             .PayloadId!;
 
-        
+        await wait.WaitOneAsync(100, CancellationToken.None);
+
         ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
 
         ExecutionPayloadV1 executionPayloadV1 = response.Data!;
@@ -94,7 +98,7 @@ public partial class EngineModuleTests
     }
     
     [Test]
-    public async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http()
+    public virtual async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http()
     {
         MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
         using MergeTestBlockchain chain = await CreateBlockChain(mergeConfig);
@@ -126,10 +130,15 @@ public partial class EngineModuleTests
             
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
+
+        ManualResetEvent wait = new(false);
+        chain.PayloadPreparationService.BlockImproved += (_, _) => wait.Set();
         
         string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
                 payloadAttributes).Result.Data
             .PayloadId!;
+
+        await wait.WaitOneAsync(100, CancellationToken.None);
 
         ResultWrapper<ExecutionPayloadV1?> response = await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId));
         

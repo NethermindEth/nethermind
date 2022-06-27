@@ -25,6 +25,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Mev;
 using Nethermind.AccountAbstraction.Bundler;
 using Nethermind.AccountAbstraction.Subscribe;
+using Nethermind.Consensus.Processing;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Network.Config;
 using Nethermind.Consensus.Producers;
@@ -39,11 +40,11 @@ namespace Nethermind.AccountAbstraction
         private ILogger _logger = null!;
 
         private INethermindApi _nethermindApi = null!;
-        private IList<Address> _entryPointContractAddresses = new List<Address>();
-        private IList<Address> _whitelistedPaymasters = new List<Address>();
-        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>(); // EntryPoint Address -> Pool
-        private IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
-        private IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
+        private readonly IList<Address> _entryPointContractAddresses = new List<Address>();
+        private readonly IList<Address> _whitelistedPaymasters = new List<Address>();
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>(); // EntryPoint Address -> Pool
+        private readonly IDictionary<Address, UserOperationSimulator> _userOperationSimulators = new Dictionary<Address, UserOperationSimulator>();
+        private readonly IDictionary<Address, UserOperationTxBuilder> _userOperationTxBuilders = new Dictionary<Address, UserOperationTxBuilder>();
         private UserOperationTxSource? _userOperationTxSource;
         private IUserOperationBroadcaster? _userOperationBroadcaster;
 
@@ -68,8 +69,7 @@ namespace Nethermind.AccountAbstraction
                 _entryPointContractAbi,
                 getFromApi.EngineSigner!,
                 entryPoint,
-                getFromApi.SpecProvider!,
-                getFromApi.StateProvider!);
+                getFromApi.SpecProvider!);
 
             return _userOperationTxBuilders[entryPoint];
         }
@@ -97,7 +97,7 @@ namespace Nethermind.AccountAbstraction
                 new PaymasterThrottler(BundleMiningEnabled),
                 _nethermindApi.LogFinder!,
                 _nethermindApi.EngineSigner!,
-                _nethermindApi.StateProvider!,
+                _nethermindApi.ChainHeadStateProvider!,
                 _nethermindApi.SpecProvider!,
                 _nethermindApi.Timestamper,
                 UserOperationSimulator(entryPoint),
@@ -117,18 +117,22 @@ namespace Nethermind.AccountAbstraction
 
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(
+                getFromApi.DbProvider, 
+                getFromApi.ReadOnlyTrieStore, 
+                getFromApi.BlockTree, 
+                getFromApi.SpecProvider, 
+                getFromApi.LogManager);
+            
             _userOperationSimulators[entryPoint] = new UserOperationSimulator(
                 UserOperationTxBuilder(entryPoint),
-                getFromApi.StateProvider!,
-                getFromApi.StateReader!,
+                getFromApi.ChainHeadStateProvider!,
+                readOnlyTxProcessingEnvFactory,
                 _entryPointContractAbi,
                 entryPoint,
                 _whitelistedPaymasters.ToArray(),
                 getFromApi.SpecProvider!,
-                getFromApi.BlockTree!,
-                getFromApi.DbProvider!,
-                getFromApi.ReadOnlyTrieStore!,
-                getFromApi.Timestamper!,
+                getFromApi.Timestamper,
                 getFromApi.LogManager);
 
             return _userOperationSimulators[entryPoint];
@@ -146,7 +150,7 @@ namespace Nethermind.AccountAbstraction
                         _userOperationPools,
                         _userOperationSimulators,
                         _nethermindApi.SpecProvider!,
-                        _nethermindApi.StateProvider!,
+                        _nethermindApi.ChainHeadStateProvider!,
                         _nethermindApi.EngineSigner!,
                         _logger
                     );
@@ -364,7 +368,7 @@ namespace Nethermind.AccountAbstraction
                     _nethermindApi.EngineSigner!, 
                     _entryPointContractAddresses.ToArray());
 
-            UInt256 minerBalance = _nethermindApi.StateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
+            UInt256 minerBalance = _nethermindApi.ChainHeadStateProvider!.GetBalance(_nethermindApi.EngineSigner!.Address);
             if (minerBalance < 1.Ether())
                 if (_logger.IsWarn) _logger.Warn(
                     $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance low - {minerBalance / 1.Ether()} Ether < 1 Ether. Increasing balance is recommended");
