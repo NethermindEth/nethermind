@@ -158,6 +158,53 @@ public partial class BlockTreeTests
         Assert.AreEqual(9, tree.Head!.Number);
         Assert.True(tree.IsTerminalBlock(tree.Head.Header));
     }
+    
+    [Test]
+    public void Cannot_change_best_suggested_to_terminal_block_after_merge_block()
+    {
+        // every block has difficulty 1000000, block 9 TD: 10000000 
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = (UInt256)9999900;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
+        BlockTree tree = new(
+            treeBuilder.BlocksDb,
+            treeBuilder.HeadersDb,
+            treeBuilder.BlockInfoDb,
+            treeBuilder.MetadataDb,
+            treeBuilder.ChainLevelInfoRepository,
+            specProvider,
+            NullBloomStorage.Instance,
+            new SyncConfig(),
+            LimboLogs.Instance);
+        PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
+
+        Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
+        Assert.False(tree.IsTerminalBlock(block8!.Header));
+        Assert.AreEqual(9, tree.BestKnownNumber);
+        Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
+        Assert.AreEqual(9, tree.Head!.Number);
+        Assert.True(tree.IsTerminalBlock(tree.Head.Header));
+        
+        Block firstPoSBlock = Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithParent(tree.Head!.Header).TestObject)
+            .WithParent(tree.Head.Header)
+            .WithDifficulty(0)
+            .WithNumber(tree.Head!.Number + 1).TestObject;
+        tree.SuggestBlock(firstPoSBlock);
+        tree.UpdateMainChain(new []{ firstPoSBlock }, true, true); // simulating fcU
+        Assert.AreEqual(10, tree.BestKnownNumber);
+        Assert.AreEqual(10, tree.BestSuggestedBody!.Number);
+        
+        Block newTerminalBlock = Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithParent(block8!.Header).TestObject)
+            .WithParent(block8!)
+            .WithTotalDifficulty((UInt256)10000001)
+            .WithNumber(block8!.Number + 1).WithDifficulty(2000001).TestObject;
+        Assert.True(tree.IsTerminalBlock(newTerminalBlock.Header));
+        tree.SuggestBlock(newTerminalBlock);
+        Assert.AreEqual(10, tree.BestKnownNumber);
+        Assert.AreEqual(10, tree.BestSuggestedBody!.Number);
+    }
 
     [Test]
     public void Can_start_insert_pivot_block_with_correct_pointers()

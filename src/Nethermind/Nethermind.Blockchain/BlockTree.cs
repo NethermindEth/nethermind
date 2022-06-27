@@ -1520,8 +1520,6 @@ namespace Nethermind.Blockchain
 
         private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
-            // ToDo we need unit tests for these cases
-            
             bool reachedTtd = _specProvider.TerminalTotalDifficulty != null &&
                               header.TotalDifficulty >=
                               _specProvider.TerminalTotalDifficulty;
