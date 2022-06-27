@@ -1533,8 +1533,7 @@ namespace Nethermind.Blockchain
             
             return preMergeImprovementRequirementSatisfied || terminalBlockRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
-
-        // ToDo bad - duplicated with PosSwitcher
+        
         public bool IsTerminalBlock(BlockHeader header)
         {
             bool isTerminalBlock = false;
