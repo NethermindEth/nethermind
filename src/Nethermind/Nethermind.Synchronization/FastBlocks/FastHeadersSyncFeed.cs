@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.FastBlocks
             PostFinishCleanUp();
         }
         
-        protected virtual void PostFinishCleanUp()
+        protected void PostFinishCleanUp()
         {
             HeadersSyncProgressReport.Update(_pivotNumber);
             HeadersSyncProgressReport.MarkEnd();

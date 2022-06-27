@@ -215,7 +215,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     
                     if (_logger.IsTrace)
                         _logger.Trace(
-                            $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBlock} ShouldProcess: {shouldProcess}");
+                            $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBeaconBlock} ShouldProcess: {shouldProcess}");
 
                     AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
                     if (addResult == AddBlockResult.InvalidBlock)
