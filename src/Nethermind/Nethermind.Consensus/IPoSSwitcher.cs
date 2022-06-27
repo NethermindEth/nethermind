@@ -45,6 +45,8 @@ namespace Nethermind.Consensus
         
         bool TransitionFinished { get; }
         
+        bool PoSActivated { get; }
+        
         public Keccak ConfiguredTerminalBlockHash { get; }
         
         public long? ConfiguredTerminalBlockNumber { get; }

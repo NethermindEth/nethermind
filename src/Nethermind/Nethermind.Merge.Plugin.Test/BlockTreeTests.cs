@@ -119,11 +119,11 @@ public partial class BlockTreeTests
         PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
-        Assert.False(poSSwitcher.IsTerminalBlock(block8!.Header));
+        Assert.False(tree.IsTerminalBlock(block8!.Header));
         Assert.AreEqual(9, tree.BestKnownNumber);
         Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
         Assert.AreEqual(9, tree.Head!.Number);
-        Assert.True(poSSwitcher.IsTerminalBlock(tree.Head.Header));
+        Assert.True(tree.IsTerminalBlock(tree.Head.Header));
     }
 
     [Test]
@@ -152,11 +152,11 @@ public partial class BlockTreeTests
                 .WithNumber(block7!.Number + 1).WithDifficulty(1999950).TestObject;
         // current Head TD: 10000000, block7 TD: 8000000, TTD 9999900, newTerminalBlock 9999950
         tree.SuggestBlock(newTerminalBlock);
-        Assert.True(poSSwitcher.IsTerminalBlock(newTerminalBlock!.Header));
+        Assert.True(tree.IsTerminalBlock(newTerminalBlock!.Header));
         Assert.AreEqual(9, tree.BestKnownNumber);
         Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
         Assert.AreEqual(9, tree.Head!.Number);
-        Assert.True(poSSwitcher.IsTerminalBlock(tree.Head.Header));
+        Assert.True(tree.IsTerminalBlock(tree.Head.Header));
     }
 
     [Test]

@@ -1525,18 +1525,17 @@ namespace Nethermind.Blockchain
             bool reachedTtd = _specProvider.TerminalTotalDifficulty != null &&
                               header.TotalDifficulty >=
                               _specProvider.TerminalTotalDifficulty;
-            bool bestIsPostMerge = BestSuggestedBody !=null && (BestSuggestedBody.IsPostMerge || BestSuggestedBody.Difficulty == 0);
             bool isPostMerge = (header.IsPostMerge || header.Difficulty == 0);
             bool tdImproved = header.TotalDifficulty > (BestSuggestedBody?.TotalDifficulty ?? 0);
             bool preMergeImprovementRequirementSatisfied = tdImproved && !reachedTtd;
-            bool terminalBlockRequirementSatisfied = tdImproved && reachedTtd && IsTerminalBlock(header) && !bestIsPostMerge;
+            bool terminalBlockRequirementSatisfied = tdImproved && reachedTtd && IsTerminalBlock(header) && !HeadIsPoS;
             bool postMergeImprovementRequirementSatisfied = reachedTtd && (BestSuggestedBody?.Number ?? 0) <= header.Number && isPostMerge; 
             
             return preMergeImprovementRequirementSatisfied || terminalBlockRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
 
         // ToDo bad - duplicated with PosSwitcher
-        private bool IsTerminalBlock(BlockHeader header)
+        public bool IsTerminalBlock(BlockHeader header)
         {
             bool isTerminalBlock = false;
             bool ttdRequirement = header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty;

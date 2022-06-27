@@ -198,6 +198,9 @@ namespace Nethermind.Blockchain
         }
 
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
+        public bool HeadIsPoS => _wrapped.HeadIsPoS;
+        public bool IsTerminalBlock(BlockHeader header) => _wrapped.IsTerminalBlock(header);
+
         public void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
         
         public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) => _wrapped.ForkChoiceUpdated(finalizedBlockHash,safeBlockBlockHash);
