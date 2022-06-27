@@ -251,10 +251,10 @@ namespace Nethermind.Synchronization
 
                     throw new EthSyncException(message);
                 }
-
-                bool bestTdBetterThanTtd = _blockTree.BestSuggestedBody.TotalDifficulty >= (_specProvider.TerminalTotalDifficulty ?? 0);
-                bool bestIsPostMerge = _blockTree.BestSuggestedBody.IsPostMerge || _blockTree.BestSuggestedBody.Difficulty == 0;
-                bool shouldSkipProcessing = bestTdBetterThanTtd && bestIsPostMerge;
+                
+                bool shouldSkipProcessing = _blockTree.HeadIsPoS;
+                if (shouldSkipProcessing)
+                    if (_logger.IsInfo) _logger.Info($"Skipped processing of discovered block {block}, current head: {_blockTree.Head}");
                 if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {syncPeer} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
                 AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.None : BlockTreeSuggestOptions.ShouldProcess);
                 if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");

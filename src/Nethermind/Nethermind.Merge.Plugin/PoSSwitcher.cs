@@ -164,7 +164,6 @@ namespace Nethermind.Merge.Plugin
         }
 
         public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
-        public bool PoSActivated => TransitionFinished || _blockTree.HeadIsPoS;
         
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {
