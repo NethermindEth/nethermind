@@ -98,6 +98,66 @@ public partial class BlockTreeTests
         Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
         Assert.AreEqual(9, tree.Head!.Number);
     }
+    
+       [Test]
+    public void Can_suggest_terminal_block_correctly()
+    {
+        // every block has difficulty 1000000, block 9 TD: 10000000 
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = (UInt256)9999900;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
+        BlockTree tree = new(
+            treeBuilder.BlocksDb,
+            treeBuilder.HeadersDb,
+            treeBuilder.BlockInfoDb,
+            treeBuilder.MetadataDb,
+            treeBuilder.ChainLevelInfoRepository,
+            specProvider,
+            NullBloomStorage.Instance,
+            new SyncConfig(),
+            LimboLogs.Instance);
+        PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
+
+        Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
+        Assert.False(poSSwitcher.IsTerminalBlock(block8!.Header));
+        Assert.AreEqual(9, tree.BestKnownNumber);
+        Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
+        Assert.AreEqual(9, tree.Head!.Number);
+        Assert.True(poSSwitcher.IsTerminalBlock(tree.Head.Header));
+    }
+
+    [Test]
+    public void Suggest_terminal_block_with_lower_number_and_lower_total_difficulty()
+    {
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = (UInt256)9999900;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
+        BlockTree tree = new(
+            treeBuilder.BlocksDb,
+            treeBuilder.HeadersDb,
+            treeBuilder.BlockInfoDb,
+            treeBuilder.MetadataDb,
+            treeBuilder.ChainLevelInfoRepository,
+            specProvider,
+            NullBloomStorage.Instance,
+            new SyncConfig(),
+            LimboLogs.Instance);
+        PoSSwitcher poSSwitcher = new(new MergeConfig(),  new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
+
+        Block? block7 = tree.FindBlock(7, BlockTreeLookupOptions.None);
+        Block newTerminalBlock = Build.A.Block
+                .WithHeader(Build.A.BlockHeader.WithParent(block7!.Header).TestObject)
+                .WithParent(block7!)
+                .WithTotalDifficulty((UInt256)9999950)
+                .WithNumber(block7!.Number + 1).WithDifficulty(1999950).TestObject;
+        // current Head TD: 10000000, block7 TD: 8000000, TTD 9999900, newTerminalBlock 9999950
+        tree.SuggestBlock(newTerminalBlock);
+        Assert.True(poSSwitcher.IsTerminalBlock(newTerminalBlock!.Header));
+        Assert.AreEqual(9, tree.BestKnownNumber);
+        Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
+        Assert.AreEqual(9, tree.Head!.Number);
+        Assert.True(poSSwitcher.IsTerminalBlock(tree.Head.Header));
+    }
 
     [Test]
     public void Can_start_insert_pivot_block_with_correct_pointers()
