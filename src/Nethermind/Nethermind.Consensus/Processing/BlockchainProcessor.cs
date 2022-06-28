@@ -491,7 +491,7 @@ namespace Nethermind.Consensus.Processing
 
             finally
             {
-                if (invalidBlockHash is not null && (options & ProcessingOptions.ReadOnlyChain) == 0)
+                if (invalidBlockHash is not null && (options & ProcessingOptions.ReadOnlyChain) != ProcessingOptions.ReadOnlyChain)
                 {
                     DeleteInvalidBlocks(invalidBlockHash);
                 }

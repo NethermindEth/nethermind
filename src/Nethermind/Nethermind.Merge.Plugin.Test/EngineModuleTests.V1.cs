@@ -35,6 +35,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test;
 using Nethermind.JsonRpc.Test.Modules;
@@ -536,6 +537,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
+            chain.BlockFinder.SearchForBlock(new BlockParameter(getPayloadResult.BlockHash)).IsError.Should().BeTrue();
         }
 
 
