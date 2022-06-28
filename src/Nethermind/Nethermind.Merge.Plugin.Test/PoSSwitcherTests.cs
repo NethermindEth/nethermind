@@ -171,11 +171,10 @@ namespace Nethermind.Merge.Plugin.Test
         public void Can_load_parameters_after_the_restart()
         {
             using MemDb metadataDb = new();
-            var terminalBlock = 4;
+            int terminalBlock = 4;
             Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
             BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(4).TestObject;
-            TestSpecProvider specProvider = new(London.Instance);
-            specProvider.TerminalTotalDifficulty = 5000000;
+            TestSpecProvider specProvider = new(London.Instance) { TerminalTotalDifficulty = 5000000 };
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
 
             Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());
