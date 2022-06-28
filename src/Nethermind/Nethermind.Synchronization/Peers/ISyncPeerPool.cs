@@ -91,6 +91,16 @@ namespace Nethermind.Synchronization.Peers
         /// <param name="syncPeer"></param>
         /// <param name="hash">Hash of a block that we know might be the head block of the peer</param>
         void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash);
+        
+        /// <summary>
+        /// FCU have a slightly different handling in determining if the node should get disconnected. In particular,
+        /// if the node does not have a finalizedBlockhash, then we disconnect the node
+        /// </summary>
+        /// <param name="peerSyncPeer"></param>
+        /// <param name="headBlockhash"></param>
+        /// <param name="headParentBlockhash"></param>
+        /// <param name="finalizedBlockhash"></param>
+        void RefreshTotalDifficultyForFcu(ISyncPeer peerSyncPeer, Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash);
 
         /// <summary>
         /// Starts the pool loops.

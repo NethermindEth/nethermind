@@ -29,7 +29,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private readonly ISyncPeerPool _syncPeerPool;
     private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
     private DateTime _lastRefresh = DateTime.MinValue;
-    private Keccak _lastHash = Keccak.Zero;
+    private (Keccak, Keccak, Keccak) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
 
     public PeerRefresher(ISyncPeerPool syncPeerPool, ITimerFactory timerFactory)
@@ -40,35 +40,32 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         _syncPeerPool = syncPeerPool;
     }
 
-    public void RefreshPeers(Keccak? blockHash)
+    public void RefreshPeers(Keccak headBlockhash, Keccak parentHeadBlockhash, Keccak finalizedBlockhash)
     {
-        if (blockHash is not null)
+        _lastBlockhashes = (headBlockhash, parentHeadBlockhash, finalizedBlockhash);
+        TimeSpan timePassed = DateTime.Now - _lastRefresh;
+        if (timePassed > _minRefreshDelay)
         {
-            _lastHash = blockHash;
-            TimeSpan timePassed = DateTime.Now - _lastRefresh;
-            if (timePassed > _minRefreshDelay)
-            {
-                Refresh(blockHash);
-            }
-            else if (!_refreshTimer.Enabled)
-            {
-                _refreshTimer.Interval = _minRefreshDelay - timePassed;
-                _refreshTimer.Start();
-            }
+            Refresh(headBlockhash, parentHeadBlockhash, finalizedBlockhash);
+        }
+        else if (!_refreshTimer.Enabled)
+        {
+            _refreshTimer.Interval = _minRefreshDelay - timePassed;
+            _refreshTimer.Start();
         }
     }
 
     private void TimerOnElapsed(object? sender, EventArgs e)
     {
-        Refresh(_lastHash);
+        Refresh(_lastBlockhashes.Item1, _lastBlockhashes.Item2, _lastBlockhashes.Item3);
     }
     
-    private void Refresh(Keccak blockHash)
+    private void Refresh(Keccak headBlockhash, Keccak parentHeadBlockhash, Keccak finalizedBlockhash)
     {
         _lastRefresh = DateTime.Now;
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-            _syncPeerPool.RefreshTotalDifficulty(peer.SyncPeer, blockHash);
+            _syncPeerPool.RefreshTotalDifficultyForFcu(peer.SyncPeer, headBlockhash, parentHeadBlockhash, finalizedBlockhash);
         }
     }
 
@@ -81,5 +78,5 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
 public interface IPeerRefresher
 {
-    void RefreshPeers(Keccak? blockHash);
+    void RefreshPeers(Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash);
 }
