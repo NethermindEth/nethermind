@@ -113,7 +113,7 @@ namespace Nethermind.Consensus.Processing
                 options |= ProcessingOptions.StoreReceipts;
             }
 
-            if (blockEventArgs.Block != null)
+            if (blockEventArgs.Block is not null)
             {
                 Enqueue(blockEventArgs.Block, options);
             }
@@ -332,9 +332,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
+            if (_logger.IsTrace) _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
 
             bool shouldProcess =
                 suggestedBlock.IsGenesis
@@ -343,9 +341,7 @@ namespace Nethermind.Consensus.Processing
 
             if (!shouldProcess)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
+                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
                 return null;
             }
 
@@ -363,38 +359,36 @@ namespace Nethermind.Consensus.Processing
             if (processedBlocks.Length > 0)
             {
                 lastProcessed = processedBlocks[^1];
-                if (_logger.IsTrace)
-                    _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
+                if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
                 lastProcessed.Header.TotalDifficulty = suggestedBlock.TotalDifficulty;
             }
             else
             {
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
+                if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {lastProcessed == null}, processedBlocks.Length: {processedBlocks?.Length}");
             }
 
-            if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.DoNotUpdateHead)) == 0)
+            bool updateHead = (options & ProcessingOptions.DoNotUpdateHead) != ProcessingOptions.DoNotUpdateHead;
+            if (updateHead)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
-                _blockTree.UpdateMainChain(processingBranch.Blocks.ToArray(), true);
+                if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
+                _blockTree.UpdateMainChain(processingBranch.Blocks, true);
+            }
+
+            bool readOnlyChain = (options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.ReadOnlyChain;
+            if (!readOnlyChain)
+            {
+                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
+            }
+
+            if ((options & ProcessingOptions.MarkAsProcessed) == ProcessingOptions.MarkAsProcessed)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
+                _blockTree.MarkChainAsProcessed(processingBranch.Blocks);
 
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
 
-            if ((options & ProcessingOptions.MarkAsProcessed) != 0)
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Marked blocks as processed {lastProcessed}, blocks count: {processedBlocks.Length}");
-                _blockTree.MarkChainAsProcessed(processingBranch.Blocks.ToArray());
-
-                Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
-            }
-
-            if ((options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.None)
+            if (!readOnlyChain)
             {
                 _stats.UpdateStats(lastProcessed, _recoveryQueue.Count, _blockQueue.Count);
             }

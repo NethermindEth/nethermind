@@ -60,11 +60,9 @@ namespace Nethermind.Blockchain.Test.Visitors
 
                     ChainLevelInfo ithLevel = new(
                         true,
-                        new BlockInfo[1]
+                        new BlockInfo[]
                         {
-                            new(
-                                ithBlock.Hash,
-                                ithBlock.TotalDifficulty.Value) {WasProcessed = true}
+                            new(ithBlock.Hash, ithBlock.TotalDifficulty.Value) {WasProcessed = true}
                         });
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }

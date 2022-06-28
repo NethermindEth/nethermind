@@ -66,10 +66,6 @@ namespace Nethermind.State
             _tree.Accept(visitor, stateRoot, visitingOptions);
         }
 
-        public void CommitCode()
-        {
-        }
-
         private bool _needsStateRootUpdate;
 
         public void RecalculateStateRoot()

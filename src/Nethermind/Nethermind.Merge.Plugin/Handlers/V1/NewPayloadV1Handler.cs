@@ -27,10 +27,8 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -47,7 +45,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     {
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
-        private readonly IBlockchainProcessor _processor;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBeaconPivot _beaconPivot;
@@ -62,7 +59,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
             IBlockTree blockTree,
-            IBlockchainProcessor processor,
             IInitConfig initConfig,
             IPoSSwitcher poSSwitcher,
             IBeaconSyncStrategy beaconSyncStrategy,
@@ -75,7 +71,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
-            _processor = processor;
             _poSSwitcher = poSSwitcher;
             _beaconSyncStrategy = beaconSyncStrategy;
             _beaconPivot = beaconPivot;
@@ -247,7 +242,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 try
                 {
                     Task timeout = Task.Delay(TimeSpan.FromSeconds(5));
-                    ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess, false);
+                    ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.DontSetAsMain);
                     await Task.WhenAny(timeout, addResult.AsTask());
                     if (addResult.IsCompletedSuccessfully)
                     {
@@ -267,6 +262,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                         if (!result.HasValue)
                         {
+                            _processingQueue.Enqueue(block, _processingOptions);
                             await Task.WhenAny(blockProcessed, timeout);
                             if (blockProcessed.IsCompletedSuccessfully)
                             {

@@ -98,7 +98,8 @@ namespace Nethermind.Consensus.Processing
             Keccak previousBranchStateRoot = CreateCheckpoint();
             InitBranch(newBranchStateRoot);
 
-            bool readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
+            bool readOnly = (options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.ReadOnlyChain;
+            bool doNotUpdateHead = (options & ProcessingOptions.DoNotUpdateHead) == ProcessingOptions.DoNotUpdateHead;
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
             try
@@ -130,21 +131,15 @@ namespace Nethermind.Consensus.Processing
                     if (isCommitPoint && readOnly == false)
                     {
                         if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                        CommitBranch();
                         previousBranchStateRoot = CreateCheckpoint();
                         Keccak? newStateRoot = suggestedBlocks[i].StateRoot;
                         InitBranch(newStateRoot, false);
                     }
                 }
 
-                if (readOnly)
+                if (doNotUpdateHead)
                 {
                     RestoreBranch(previousBranchStateRoot);
-                }
-                else
-                {
-                    // TODO: move to branch processor
-                    CommitBranch();
                 }
 
                 return processedBlocks;
@@ -190,13 +185,6 @@ namespace Nethermind.Consensus.Processing
             if (_logger.IsTrace) _logger.Trace($"Committing the branch - {newBranchStateRoot}");
             _storageProvider.CommitTrees(blockNumber);
             _stateProvider.CommitTree(blockNumber);
-        }
-
-        // TODO: move to branch processor
-        private void CommitBranch()
-        {
-            _stateProvider.CommitCode();
-            // nowadays we could commit branch via TrieStore or similar (after this responsibility has been moved
         }
 
         // TODO: move to branch processor

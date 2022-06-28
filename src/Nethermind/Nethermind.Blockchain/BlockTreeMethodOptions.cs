@@ -50,5 +50,7 @@ public enum BlockTreeSuggestOptions
 {
     None = 0,
     ShouldProcess = 1,
-    FillBeaconBlock = 2
+    FillBeaconBlock = 2,
+    SetAsMain = 4,
+    DontSetAsMain = 8,
 }

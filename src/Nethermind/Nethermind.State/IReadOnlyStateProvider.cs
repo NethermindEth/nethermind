@@ -24,6 +24,8 @@ namespace Nethermind.State
 {
     public interface IReadOnlyStateProvider : IAccountStateProvider
     {
+        Keccak StateRoot { get; }
+
         UInt256 GetNonce(Address address);
         
         UInt256 GetBalance(Address address);

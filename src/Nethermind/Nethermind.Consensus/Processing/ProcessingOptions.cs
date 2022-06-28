@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Processing
         /// <summary>
         /// It will not update the storage data (will discard any changes).
         /// </summary>
-        ReadOnlyChain = 1,
+        ReadOnlyChain = 1 | DoNotUpdateHead,
         
         /// <summary>
         /// Will process the block even if it was processed in the past.
@@ -75,14 +75,15 @@ namespace Nethermind.Consensus.Processing
         /// EVM tracing needs to process blocks without storing the data on chain.
         /// </summary>
         Trace = ForceProcessing | ReadOnlyChain | DoNotVerifyNonce | NoValidation,
-        
+
+        /// <summary>
+        /// Processing options for engine_NewPayload
+        /// </summary>
         EthereumMerge = MarkAsProcessed | DoNotUpdateHead | IgnoreParentNotOnMainChain
     }
 
     public static class ProcessingOptionsExtensions
     {
-        public static bool IsReadOnly(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.ReadOnlyChain;
-        public static bool IsNotReadOnly(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ReadOnlyChain) != ProcessingOptions.ReadOnlyChain;
         public static bool IsProducingBlock(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ProducingBlock) == ProcessingOptions.ProducingBlock;
     }
 }
