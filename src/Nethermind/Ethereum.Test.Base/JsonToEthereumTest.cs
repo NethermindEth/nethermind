@@ -206,6 +206,7 @@ namespace Ethereum.Test.Base
                     test.CurrentNumber = testJson.Env.CurrentNumber;
                     test.CurrentTimestamp = testJson.Env.CurrentTimestamp;
                     test.CurrentBaseFee = testJson.Env.CurrentBaseFee;
+                    test.CurrentRandom = testJson.Env.CurrentRandom;
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
