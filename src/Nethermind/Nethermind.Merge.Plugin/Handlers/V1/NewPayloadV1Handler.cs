@@ -203,95 +203,97 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             // Validate
             bool validAndProcessed = ValidateWithBlockValidator(block, parent);
             ValidationResult? result = ValidationResult.Syncing;
-            
-            if (validAndProcessed)
+
+            if (!validAndProcessed)
             {
-                TaskCompletionSource<ValidationResult> blockProcessedTaskCompletionSource = new();
-                Task<ValidationResult> blockProcessed = blockProcessedTaskCompletionSource.Task;
+                return (ValidationResult.Invalid, string.Empty);
+            }
 
-                void GetProcessingQueueOnBlockRemoved(object? o, BlockHashEventArgs e)
-                {
-                    if (e.BlockHash == block.Hash)
-                    {
-                        _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
-                        
-                        ValidationResult validationResult = e.ProcessingResult switch
-                        {
-                            ProcessingResult.Success => ValidationResult.Valid,
-                            ProcessingResult.QueueException => ValidationResult.Syncing,
-                            ProcessingResult.MissingBlock => ValidationResult.Syncing,
-                            ProcessingResult.Exception => ValidationResult.Invalid,
-                            ProcessingResult.ProcessingError => ValidationResult.Invalid,
-                            _ => ValidationResult.Syncing
-                        };
+            TaskCompletionSource<ValidationResult> blockProcessedTaskCompletionSource = new();
+            Task<ValidationResult> blockProcessed = blockProcessedTaskCompletionSource.Task;
 
-                        validationMessage = e.ProcessingResult switch
-                        {
-                            ProcessingResult.QueueException => "Block cannot be added to processing queue.",
-                            ProcessingResult.MissingBlock => "Block wasn't found in tree.",
-                            ProcessingResult.Exception => "Block processing threw exception.",
-                            ProcessingResult.ProcessingError => "Block processing failed.",
-                            _ => null
-                        };
-                        
-                        blockProcessedTaskCompletionSource.TrySetResult(validationResult);
-                    }
-                }
-
-                _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
-                try
-                {
-                    Task timeout = Task.Delay(TimeSpan.FromSeconds(5));
-                    ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.DontSetAsMain);
-                    await Task.WhenAny(timeout, addResult.AsTask());
-                    if (addResult.IsCompletedSuccessfully)
-                    {
-                        result = addResult.Result switch
-                        {
-                            AddBlockResult.InvalidBlock => ValidationResult.Invalid,
-                            AddBlockResult.AlreadyKnown => ValidationResult.AlreadyKnown,
-                            _ => null
-                        };
-
-                        validationMessage = addResult.Result switch
-                        {
-                            AddBlockResult.InvalidBlock => "Block couldn't be added to the tree.",
-                            AddBlockResult.AlreadyKnown => "Block was already known in the tree.",
-                            _ => null
-                        };
-
-                        if (!result.HasValue)
-                        {
-                            _processingQueue.Enqueue(block, _processingOptions);
-                            await Task.WhenAny(blockProcessed, timeout);
-                            if (blockProcessed.IsCompletedSuccessfully)
-                            {
-                                result = blockProcessed.Result;
-                            }
-                            else if (addResult.IsFaulted || addResult.IsCanceled)
-                            {
-                                result = ValidationResult.Invalid;
-                            }
-                            else // timeout
-                            {
-                                result = ValidationResult.Syncing;
-                            }
-                        }
-                    }
-                    else if (addResult.IsFaulted || addResult.IsCanceled)
-                    {
-                        result = ValidationResult.Invalid;
-                    }
-
-                    if ((result & ValidationResult.Valid) == 0 && (result & ValidationResult.Syncing) == 0)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
-                    }
-                }
-                finally
+            void GetProcessingQueueOnBlockRemoved(object? o, BlockHashEventArgs e)
+            {
+                if (e.BlockHash == block.Hash)
                 {
                     _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+
+                    ValidationResult validationResult = e.ProcessingResult switch
+                    {
+                        ProcessingResult.Success => ValidationResult.Valid,
+                        ProcessingResult.QueueException => ValidationResult.Syncing,
+                        ProcessingResult.MissingBlock => ValidationResult.Syncing,
+                        ProcessingResult.Exception => ValidationResult.Invalid,
+                        ProcessingResult.ProcessingError => ValidationResult.Invalid,
+                        _ => ValidationResult.Syncing
+                    };
+
+                    validationMessage = e.ProcessingResult switch
+                    {
+                        ProcessingResult.QueueException => "Block cannot be added to processing queue.",
+                        ProcessingResult.MissingBlock => "Block wasn't found in tree.",
+                        ProcessingResult.Exception => "Block processing threw exception.",
+                        ProcessingResult.ProcessingError => "Block processing failed.",
+                        _ => null
+                    };
+
+                    blockProcessedTaskCompletionSource.TrySetResult(validationResult);
                 }
+            }
+
+            _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
+            try
+            {
+                Task timeout = Task.Delay(TimeSpan.FromSeconds(5));
+                ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.DontSetAsMain);
+                await Task.WhenAny(timeout, addResult.AsTask());
+                if (addResult.IsCompletedSuccessfully)
+                {
+                    result = addResult.Result switch
+                    {
+                        AddBlockResult.InvalidBlock => ValidationResult.Invalid,
+                        AddBlockResult.AlreadyKnown => ValidationResult.AlreadyKnown,
+                        _ => null
+                    };
+
+                    validationMessage = addResult.Result switch
+                    {
+                        AddBlockResult.InvalidBlock => "Block couldn't be added to the tree.",
+                        AddBlockResult.AlreadyKnown => "Block was already known in the tree.",
+                        _ => null
+                    };
+
+                    if (!result.HasValue)
+                    {
+                        _processingQueue.Enqueue(block, _processingOptions);
+                        await Task.WhenAny(blockProcessed, timeout);
+                        if (blockProcessed.IsCompletedSuccessfully)
+                        {
+                            result = blockProcessed.Result;
+                        }
+                        else if (addResult.IsFaulted || addResult.IsCanceled)
+                        {
+                            result = ValidationResult.Invalid;
+                        }
+                        else // timeout
+                        {
+                            result = ValidationResult.Syncing;
+                        }
+                    }
+                }
+                else if (addResult.IsFaulted || addResult.IsCanceled)
+                {
+                    result = ValidationResult.Invalid;
+                }
+
+                if ((result & ValidationResult.Valid) == 0 && (result & ValidationResult.Syncing) == 0)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
+                }
+            }
+            finally
+            {
+                _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
             }
 
             _latestBlocks.Set(block.Hash!, validAndProcessed);
