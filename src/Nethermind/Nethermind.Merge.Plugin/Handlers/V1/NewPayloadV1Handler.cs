@@ -116,11 +116,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (block.Header.Number <= _syncConfig.PivotNumberParsed)
             {
+                if (_logger.IsTrace) _logger.Trace($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
                 return NewPayloadV1Result.Syncing;
             }
             
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
-            // ToDo if block is below syncPivot, we can return SYNCING and ignore block
 
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
             if (parentHeader is null)
