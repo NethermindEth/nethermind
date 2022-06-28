@@ -1,7 +1,6 @@
 name: 'TEST - [RELEASE] Nethermind'
 
 on: 
-  push:
   workflow_dispatch:
     inputs:
       tag:
@@ -94,7 +93,11 @@ jobs:
       with:
         name: nethermind-git-hash
         path: ${{ env.RELEASE_DIRECTORY }}/git-*      
-        
+    - uses: actions/upload-artifact@master
+      name: Uploading update-homebrew.sh
+      with:
+        name: update-homebrew-sh
+        path: ./nethermind/scripts/deployment/update-homebrew.sh        
         
   update-homebrew:
     name: Update Homebrew to latest version
@@ -120,25 +123,22 @@ jobs:
         with:
           name: nethermind-git-hash
           path: ${{ env.RELEASE_DIRECTORY }}/
-          
+      - name: Downloading update-homebrew script
+        uses: actions/download-artifact@master
+        with:
+          name: update-homebrew-sh
+          path: ${{ env.RELEASE_DIRECTORY }}/          
       - name: Checkout repository
         uses: actions/checkout@master
         with: 
           repository: NethermindEth/homebrew-nethermind
           path: homebrew-nethermind
-
-      - name: Download homebrew file for now, as it's not in master branch
-        run: |
-          wget https://raw.githubusercontent.com/NethermindEth/nethermind/homebrew-update-workflow/scripts/deployment/update-homebrew.sh
-      
       - name: Update Homebrew file with new version, commit and date
         run: | 
-          chmod +x update-homebrew.sh
-          ./update-homebrew.sh
-        #run: ./nethermind/scripts/deployment/update-homebrew.sh
+          chmod +x ${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
+          ./${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
 
-      - name: cat homebrew file to verify update
-        run: cat homebrew-nethermind/nethermind.rb
+
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v4
