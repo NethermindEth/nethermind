@@ -114,14 +114,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-
-                long upperDownloadBoundary = _blockTree.BestKnownBeaconNumber;
-                long blocksLeft = upperDownloadBoundary - currentNumber;
-                int headersToProcess = (int)Math.Min(blocksLeft + 1, _syncBatchSize.Current);
-                if (headersToProcess <= 1)
-                {
-                    break;
-                }
                 
                 int requestSize = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
 
