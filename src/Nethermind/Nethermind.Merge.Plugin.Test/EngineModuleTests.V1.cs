@@ -510,6 +510,20 @@ namespace Nethermind.Merge.Plugin.Test
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.InvalidBlockHash);
         }
 
+        [Test]
+        public async Task executePayloadV1_rejects_block_with_invalid_timestamp()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            ExecutionPayloadV1 getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
+            getPayloadResult.Timestamp = (ulong)chain.BlockTree.Head!.Timestamp - 1;
+            getPayloadResult.TryGetBlock(out Block? block);
+            getPayloadResult.BlockHash = block!.Header.CalculateHash();
+
+            ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
+            executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
+        }
+
 
         [Test]
         [Parallelizable(ParallelScope.None)]
