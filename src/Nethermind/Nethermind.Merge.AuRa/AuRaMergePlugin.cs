@@ -8,6 +8,7 @@ using Nethermind.State;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Consensus.AuRa.Transactions;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -34,7 +35,8 @@ namespace Nethermind.Merge.AuRa
 
                 // this runs before all init steps that use tx filters
                 TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
-                    new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
+                    originalFilter is MinGasPriceContractTxFilter ? originalFilter
+                    : new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
             }
         }
 
