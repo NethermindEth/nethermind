@@ -29,9 +29,7 @@ public interface IChainLevelHelper
 {
     BlockHeader[]? GetNextHeaders(int maxCount);
 
-    void SetNextBlocks(int maxCount, BlockDownloadContext context);
-
-    bool IsBeaconBlock(long blockNumber);
+    bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
 
 public class ChainLevelHelper : IChainLevelHelper
@@ -69,7 +67,7 @@ public class ChainLevelHelper : IChainLevelHelper
                     _logger.Trace($"ChainLevelHelper.GetNextHeaders - level {startingPoint} not found");
                 break;
             }
-            
+
             BlockHeader? newHeader =
                 _blockTree.FindHeader(beaconMainChainBlock.BlockHash, BlockTreeLookupOptions.None);
 
@@ -103,8 +101,14 @@ public class ChainLevelHelper : IChainLevelHelper
         return headers.ToArray();
     }
 
-    public void SetNextBlocks(int maxCount, BlockDownloadContext context)
+    public bool TrySetNextBlocks(int maxCount, BlockDownloadContext context)
     {
+        long? startingPoint = GetStartingPoint();
+        if (startingPoint == null)
+            return false;
+        BlockInfo? beaconMainChainBlockInfo = GetBeaconMainChainBlockInfo(startingPoint.Value + 1);
+        if (beaconMainChainBlockInfo is not {IsBeaconBody: true}) return false;
+
         int offset = 0;
         while (offset != context.NonEmptyBlockHashes.Count)
         {
@@ -112,34 +116,25 @@ public class ChainLevelHelper : IChainLevelHelper
             for (int i = 0; i < hashesToRequest.Count; i++)
             {
                 Block? block = _blockTree.FindBlock(hashesToRequest[i], BlockTreeLookupOptions.None);
+                if (block == null) continue;
                 BlockBody blockBody = new(block.Transactions, block.Uncles);
                 context.SetBody(i + offset, blockBody);
             }
 
             offset += hashesToRequest.Count;
         }
-    }
 
-    public bool IsBeaconBlock(long blockNumber)
-    {
-        return _blockTree.FindLevel(blockNumber)
-            ?.BeaconMainChainBlock
-            ?.IsBeaconBody ?? false;
+        return true;
     }
 
     private long? GetStartingPoint()
     {
         long startingPoint = _blockTree.BestKnownNumber + 1;
         bool foundBeaconBlock;
-        ChainLevelInfo? startingLevel = _blockTree.FindLevel(startingPoint);
-        BlockInfo? beaconMainChainBlock = startingLevel?.BeaconMainChainBlock;
-        if (beaconMainChainBlock == null)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Beacon main chain block for number {startingPoint} was not found");
-            return null;
-        }
 
-        Keccak currentHash = startingLevel?.BeaconMainChainBlock!.BlockHash!;
+        BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
+        if (beaconMainChainBlock == null) return null;
+        Keccak currentHash = beaconMainChainBlock.BlockHash;
         // in normal situation we will have one iteration of this loop, in some cases a few. Thanks to that we don't need to add extra pointer to manage forward syncing
         do
         {
@@ -165,5 +160,18 @@ public class ChainLevelHelper : IChainLevelHelper
         } while (foundBeaconBlock);
 
         return startingPoint;
+    }
+
+    private BlockInfo? GetBeaconMainChainBlockInfo(long startingPoint)
+    {
+        ChainLevelInfo? startingLevel = _blockTree.FindLevel(startingPoint);
+        BlockInfo? beaconMainChainBlock = startingLevel?.BeaconMainChainBlock;
+        if (beaconMainChainBlock == null)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Beacon main chain block for number {startingPoint} was not found");
+            return null;
+        }
+
+        return beaconMainChainBlock;
     }
 }

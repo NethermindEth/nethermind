@@ -16,10 +16,14 @@
 // 
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
@@ -29,6 +33,9 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.Peers;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -351,6 +358,16 @@ public partial class BlockTreeTests
                     BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount);
                     while (headers != null && headers.Length > 0)
                     {
+                        BlockDownloadContext blockDownloadContext = new(
+                            Substitute.For<ISpecProvider>(),
+                            new PeerInfo(Substitute.For<ISyncPeer>()),
+                            headers,
+                            false,
+                            Substitute.For<IReceiptsRecovery>()
+                        );
+                        bool shouldSetBlocks = NotSyncedTree.FindBlock(headers[1].Hash,
+                            BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null;
+                        Assert.AreEqual(shouldSetBlocks, _chainLevelHelper.TrySetNextBlocks(maxCount, blockDownloadContext));
                         for (int i = 1; i < headers.Length; ++i)
                         {
                             Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);

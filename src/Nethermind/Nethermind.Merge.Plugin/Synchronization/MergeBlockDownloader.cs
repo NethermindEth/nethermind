@@ -110,22 +110,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 => currentNumber < _blockTree.BestKnownBeaconNumber &&
                    bestPeer.HeadNumber > currentNumber;
 
-            bool foundBeaconBlocks = false;
-
             while (HasMoreToSync())
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-
-                long upperDownloadBoundary = _blockTree.BestKnownBeaconNumber;
-                long blocksLeft = upperDownloadBoundary - currentNumber;
-                int headersToProcess = (int)Math.Min(blocksLeft + 1, _syncBatchSize.Current);
-                if (headersToProcess <= 1)
-                {
-                    break;
-                }
                 
-                int requestSize = Math.Min(headersToProcess, bestPeer.MaxHeadersPerRequest());
+                int requestSize = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
 
                 if (_logger.IsTrace)
                     _logger.Trace(
@@ -147,15 +137,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
 
-                if (foundBeaconBlocks) {
-                    _chainLevelHelper.SetNextBlocks(requestSize, context);
-                }
-                else
-                {
+                if (!_chainLevelHelper.TrySetNextBlocks(requestSize, context)) {
                     await RequestBodies(bestPeer, cancellation, context);
                 }
                 blocks = context.Blocks;
-                if (_chainLevelHelper.IsBeaconBlock(blocks[^1].Number)) foundBeaconBlocks = true;
 
                 if (downloadReceipts)
                 {
