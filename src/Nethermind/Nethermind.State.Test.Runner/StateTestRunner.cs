@@ -39,7 +39,7 @@ namespace Nethermind.State.Test.Runner
         private readonly WhenTrace _whenTrace;
         private readonly bool _traceMemory;
         private readonly bool _traceStack;
-        private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
+        private IJsonSerializer _serializer = new EthereumJsonSerializer();
 
         public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack)
         {
