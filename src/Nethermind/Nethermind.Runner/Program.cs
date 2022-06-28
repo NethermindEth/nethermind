@@ -179,19 +179,29 @@ namespace Nethermind.Runner
                 ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
 
                 EthereumRunner ethereumRunner = new(nethermindApi);
-                await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
+                bool runFailed = false;
+                try
                 {
-                    if (x.IsFaulted && _logger.IsError)
-                        _logger.Error("Error during ethereum runner start", x.Exception);
-                });
-
-                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                    await ethereumRunner.Start(_processCloseCancellationSource.Token);
+                
+                    _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error("Error during ethereum runner start", e);
+                    runFailed = true;
+                    _processCloseCancellationSource.Cancel();
+                }
 
                 _logger.Info("Closing, please wait until all functions are stopped properly...");
                 await ethereumRunner.StopAsync();
                 _logger.Info("All done, goodbye!");
                 _appClosed.Set();
 
+                if (runFailed)
+                {
+                    return -1;
+                }
                 return 0;
             });
 

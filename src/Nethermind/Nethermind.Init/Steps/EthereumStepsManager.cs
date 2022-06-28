@@ -153,6 +153,7 @@ namespace Nethermind.Init.Steps
                     {
                         if (_logger.IsWarn) _logger.Warn(
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms");
+                        throw t.Exception;
                     }
                     else
                     {
