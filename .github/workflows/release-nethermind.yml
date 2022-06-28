@@ -154,8 +154,8 @@ jobs:
           token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
           commit-message: Update Homebrew to latest release
           title: '[Release] Update Homebrew'
-          reviewers: falcoxyz
-          draft: true
+          reviewers: falcoxyz, AntiD2ta, matilote
+          draft: false
           path: homebrew-nethermind
           add-paths: |
             nethermind.rb
