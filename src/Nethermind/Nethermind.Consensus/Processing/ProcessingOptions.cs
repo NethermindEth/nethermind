@@ -84,6 +84,6 @@ namespace Nethermind.Consensus.Processing
 
     public static class ProcessingOptionsExtensions
     {
-        public static bool IsProducingBlock(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ProducingBlock) == ProcessingOptions.ProducingBlock;
+        public static bool ContainsFlag(this ProcessingOptions processingOptions, ProcessingOptions flag) => (processingOptions & flag) == flag;
     }
 }

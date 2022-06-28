@@ -98,8 +98,7 @@ namespace Nethermind.Consensus.Processing
             Keccak previousBranchStateRoot = CreateCheckpoint();
             InitBranch(newBranchStateRoot);
 
-            bool readOnly = (options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.ReadOnlyChain;
-            bool doNotUpdateHead = (options & ProcessingOptions.DoNotUpdateHead) == ProcessingOptions.DoNotUpdateHead;
+            bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
             try
@@ -117,7 +116,7 @@ namespace Nethermind.Consensus.Processing
 
                     // be cautious here as AuRa depends on processing
                     PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
-                    if (!readOnly)
+                    if (notReadOnly)
                     {
                         _witnessCollector.Persist(processedBlock.Hash!);
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
@@ -128,7 +127,7 @@ namespace Nethermind.Consensus.Processing
                     bool isLastInBatch = i == blocksCount - 1;
                     bool isNotAtTheEdge = !isFirstInBatch && !isLastInBatch;
                     bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
-                    if (isCommitPoint && readOnly == false)
+                    if (isCommitPoint && notReadOnly)
                     {
                         if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                         previousBranchStateRoot = CreateCheckpoint();
@@ -137,7 +136,7 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
 
-                if (doNotUpdateHead)
+                if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
                 {
                     RestoreBranch(previousBranchStateRoot);
                 }
@@ -206,7 +205,7 @@ namespace Nethermind.Consensus.Processing
             Block block = PrepareBlockForProcessing(suggestedBlock);
             TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-            if ((options & ProcessingOptions.StoreReceipts) != 0)
+            if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
             {
                 StoreTxReceipts(block, receipts);
             }
@@ -217,7 +216,7 @@ namespace Nethermind.Consensus.Processing
         // TODO: block processor pipeline
         private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
         {
-            if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
+            if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (_logger.IsError) _logger.Error($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");

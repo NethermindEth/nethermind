@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Processing
             ProcessingOptions processingOptions,
             IStateProvider stateProvider)
         {
-            if ((processingOptions & ProcessingOptions.DoNotVerifyNonce) != 0)
+            if (processingOptions.ContainsFlag(ProcessingOptions.DoNotVerifyNonce))
             {
                 currentTx.Nonce = stateProvider.GetNonce(currentTx.SenderAddress);
             }

@@ -338,7 +338,7 @@ namespace Nethermind.Consensus.Processing
             bool shouldProcess =
                 suggestedBlock.IsGenesis
                 || _blockTree.IsBetterThanHead(suggestedBlock.Header)
-                || (options & ProcessingOptions.ForceProcessing) == ProcessingOptions.ForceProcessing;
+                || options.ContainsFlag(ProcessingOptions.ForceProcessing);
 
             if (!shouldProcess)
             {
@@ -350,7 +350,7 @@ namespace Nethermind.Consensus.Processing
             PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
             _stopwatch.Restart();
-            Block[]? processedBlocks = ProcessBranch(processingBranch, suggestedBlock, options, tracer);
+            Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
             if (processedBlocks == null)
             {
                 return null;
@@ -368,15 +368,15 @@ namespace Nethermind.Consensus.Processing
                 if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
             }
 
-            bool updateHead = (options & ProcessingOptions.DoNotUpdateHead) != ProcessingOptions.DoNotUpdateHead;
+            bool updateHead = !options.ContainsFlag(ProcessingOptions.DoNotUpdateHead);
             if (updateHead)
             {
                 if (_logger.IsTrace) _logger.Trace($"Updating main chain: {lastProcessed}, blocks count: {processedBlocks.Length}");
                 _blockTree.UpdateMainChain(processingBranch.Blocks, true);
             }
 
-            bool readOnlyChain = (options & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.ReadOnlyChain;
-            if (!readOnlyChain)
+            bool notReadOnlyChain = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            if (notReadOnlyChain)
             {
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
@@ -389,7 +389,7 @@ namespace Nethermind.Consensus.Processing
                 Metrics.LastBlockProcessingTimeInMs = _stopwatch.ElapsedMilliseconds;
             }
 
-            if (!readOnlyChain)
+            if (!notReadOnlyChain)
             {
                 _stats.UpdateStats(lastProcessed, _recoveryQueue.Count, _blockQueue.Count);
             }
@@ -409,8 +409,7 @@ namespace Nethermind.Consensus.Processing
                 return true;
         }
 
-        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options,
-            IBlockTracer blockTracer, DumpOptions dumpType)
+        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
             if ((_options.DumpOptions & dumpType) != 0)
             {
@@ -433,10 +432,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private Block[]? ProcessBranch(ProcessingBranch processingBranch,
-            Block suggestedBlock,
-            ProcessingOptions options,
-            IBlockTracer tracer)
+        private Block[]? ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
         {
             void DeleteInvalidBlocks(Keccak invalidBlockHash)
             {
@@ -491,7 +487,7 @@ namespace Nethermind.Consensus.Processing
 
             finally
             {
-                if (invalidBlockHash is not null && (options & ProcessingOptions.ReadOnlyChain) != ProcessingOptions.ReadOnlyChain)
+                if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
                 {
                     DeleteInvalidBlocks(invalidBlockHash);
                 }
@@ -504,7 +500,7 @@ namespace Nethermind.Consensus.Processing
             ProcessingBranch processingBranch)
         {
             List<Block> blocksToProcess = processingBranch.BlocksToProcess;
-            if ((options & ProcessingOptions.ForceProcessing) != 0)
+            if (options.ContainsFlag(ProcessingOptions.ForceProcessing))
             {
                 processingBranch.Blocks.Clear();
                 blocksToProcess.Add(suggestedBlock);
@@ -568,7 +564,7 @@ namespace Nethermind.Consensus.Processing
                 // do not need them since we can requests state from outside
                 // TODO: remove this and verify the current usage scenarios - seems wrong
                 // !!!
-                if ((options & ProcessingOptions.IgnoreParentNotOnMainChain) != 0)
+                if (options.ContainsFlag(ProcessingOptions.IgnoreParentNotOnMainChain))
                 {
                     break;
                 }
@@ -658,22 +654,17 @@ namespace Nethermind.Consensus.Processing
                     "Block without total difficulty calculated was suggested for processing");
             }
 
-            if ((options & ProcessingOptions.NoValidation) == 0 && suggestedBlock.Hash == null)
+            if (!options.ContainsFlag(ProcessingOptions.NoValidation) && suggestedBlock.Hash is null)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
-                throw new InvalidOperationException(
-                    "Block hash should be known at this stage if running in a validating mode");
+                if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without calculated hash");
+                throw new InvalidOperationException("Block hash should be known at this stage if running in a validating mode");
             }
 
             for (int i = 0; i < suggestedBlock.Uncles.Length; i++)
             {
                 if (suggestedBlock.Uncles[i].Hash == null)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
-                            $"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
+                    if (_logger.IsDebug) _logger.Debug($"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} with null uncle hash ar {i}");
                     throw new InvalidOperationException($"Uncle's {i} hash is null when processing block");
                 }
             }
