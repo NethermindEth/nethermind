@@ -524,6 +524,20 @@ namespace Nethermind.Merge.Plugin.Test
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
         }
 
+        [Test]
+        public async Task executePayloadV1_rejects_block_with_invalid_receiptsRoot()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            ExecutionPayloadV1 getPayloadResult = await BuildAndGetPayloadResult(chain, rpc);
+            getPayloadResult.ReceiptsRoot = TestItem.KeccakA;
+            getPayloadResult.TryGetBlock(out Block? block);
+            getPayloadResult.BlockHash = block!.Header.CalculateHash();
+
+            ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
+            executePayloadResult.Data.Status.Should().Be(PayloadStatus.Invalid);
+        }
+
 
         [Test]
         [Parallelizable(ParallelScope.None)]
