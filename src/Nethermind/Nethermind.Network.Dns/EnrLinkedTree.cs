@@ -23,7 +23,7 @@ namespace Nethermind.Network.Dns;
 /// </summary>
 public class EnrLinkedTree : EnrTreeNode
 {
-    public string Link { get; set; }
+    public string Link { get; set; } = string.Empty;
 
     public override string ToString()
     {

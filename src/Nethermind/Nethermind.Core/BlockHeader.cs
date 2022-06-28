@@ -137,7 +137,7 @@ namespace Nethermind.Core
         public BlockHeader Clone()
         {
             BlockHeader header = (BlockHeader)MemberwiseClone();
-            header.Bloom = Bloom.Clone();
+            header.Bloom = Bloom?.Clone() ?? new Bloom();
             return header;
         }
     }
