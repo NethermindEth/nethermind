@@ -55,7 +55,7 @@
     "eip3198Transition": "0x0",
     "eip3529Transition": "0x0",
     "eip3541Transition": "0x0",
-    "terminalTotalDifficulty": "152D02C7E14AF6800000"
+    "terminalTotalDifficulty": "3C6568F12E8000"
   },
   "genesis": {
     "seal": {
