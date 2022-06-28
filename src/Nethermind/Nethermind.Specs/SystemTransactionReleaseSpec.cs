@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -130,5 +130,6 @@ namespace Nethermind.Specs
         public long Eip1559TransitionBlock => _spec.Eip1559TransitionBlock;
 
         public Address Eip1559FeeCollector => _spec.Eip1559FeeCollector;
+        public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
     }
 }

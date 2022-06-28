@@ -34,7 +34,13 @@ namespace Nethermind.Evm
         
         [Description("Number of SSTORE opcodes executed.")]
         public static long SstoreOpcode { get; set; }
-        
+
+        [Description("Number of TLOAD opcodes executed.")]
+        public static long TloadOpcode { get; set; }
+
+        [Description("Number of TSTORE opcodes executed.")]
+        public static long TstoreOpcode { get; set; }
+
         [Description("Number of MODEXP precompiles executed.")]
         public static long ModExpOpcode { get; set; }
         

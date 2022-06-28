@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using FluentAssertions;
 using MathNet.Numerics.Random;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
@@ -44,6 +45,14 @@ namespace Nethermind.Evm.Test
 #pragma warning restore 618
             
             Assert.AreEqual(gmpPair.Item1.ToArray(), bigIntPair.Item1.ToArray());
+        }
+
+        [Test]
+        public void Overflow_gas_cost()
+        {
+            Prepare input = Prepare.EvmCode.FromCode("0000000000000000000000000000000000000000000000000000000000000001200000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000010001");
+            long gas = ModExpPrecompile.Instance.DataGasCost(input.Done, Berlin.Instance);
+            gas.Should().Be(long.MaxValue);
         }
     }
 }

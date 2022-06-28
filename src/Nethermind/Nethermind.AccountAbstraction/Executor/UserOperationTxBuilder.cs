@@ -25,7 +25,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.AccountAbstraction.Executor
 {
@@ -35,21 +34,18 @@ namespace Nethermind.AccountAbstraction.Executor
         private readonly ISigner _signer;
         private readonly Address _entryPointContractAddress;
         private readonly ISpecProvider _specProvider;
-        private readonly IStateProvider _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
 
         public UserOperationTxBuilder(
             AbiDefinition entryPointContractAbi, 
             ISigner signer, 
             Address entryPointContractAddress,
-            ISpecProvider specProvider,
-            IStateProvider stateProvider)
+            ISpecProvider specProvider)
         {
             _entryPointContractAbi = entryPointContractAbi;
             _signer = signer;
             _entryPointContractAddress = entryPointContractAddress;
             _specProvider = specProvider;
-            _stateProvider = stateProvider;
 
             _abiEncoder = new AbiEncoder();
         }

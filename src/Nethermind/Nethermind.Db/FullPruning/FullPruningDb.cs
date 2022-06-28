@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -160,7 +160,7 @@ namespace Nethermind.Db.FullPruning
             context = pruningContext ?? newContext;
             if (pruningContext is null)
             {
-                PruningStarted?.Invoke(this, new PruningEventArgs(context));
+                PruningStarted?.Invoke(this, new PruningEventArgs(context, true));
                 return true;
             }
 
@@ -187,9 +187,9 @@ namespace Nethermind.Db.FullPruning
             oldDb.Clear();
         }
 
-        private void FinishPruning(PruningContext pruningContext)
+        private void FinishPruning(PruningContext pruningContext, bool success)
         {
-            PruningFinished?.Invoke(this, new PruningEventArgs(pruningContext));
+            PruningFinished?.Invoke(this, new PruningEventArgs(pruningContext, success));
             Interlocked.CompareExchange(ref _pruningContext, null, pruningContext);
         }
 
@@ -235,7 +235,7 @@ namespace Nethermind.Db.FullPruning
             {
                 if (!_disposed)
                 {
-                    _db.FinishPruning(this);
+                    _db.FinishPruning(this, _committed);
                     if (!_committed)
                     {
                         // if the context was not committed, then pruning failed and we delete the cloned DB

@@ -58,9 +58,9 @@ namespace Nethermind.Merge.Plugin
         protected IPoSSwitcher _poSSwitcher = NoPoS.Instance;
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
-        private IBlockCacheService _blockCacheService;
+        private IBlockCacheService _blockCacheService = null!;
         private InvalidChainTracker.InvalidChainTracker? _invalidChainTracker;
-        private IPeerRefresher _peerRefresher;
+        private IPeerRefresher _peerRefresher = null!;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
         private IMergeBlockProductionPolicy? _mergeBlockProductionPolicy;
@@ -246,11 +246,11 @@ namespace Nethermind.Merge.Plugin
                 }
 
                 PayloadPreparationService payloadPreparationService = new(
-                    _postMergeBlockProducer, 
-                    improvementContextFactory, 
-                    _api.Sealer, 
+                    _postMergeBlockProducer,
+                    improvementContextFactory,
+                    _api.Sealer,
                     _api.TimerFactory,
-                    _api.LogManager, 
+                    _api.LogManager,
                     TimeSpan.FromSeconds(_mergeConfig.SecondsPerSlot));
 
                 IEngineRpcModule engineRpcModule = new EngineRpcModule(

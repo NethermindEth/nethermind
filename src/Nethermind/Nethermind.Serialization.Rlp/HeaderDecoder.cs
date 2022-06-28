@@ -48,9 +48,9 @@ namespace Nethermind.Serialization.Rlp
             Keccak? receiptsRoot = decoderContext.DecodeKeccak();
             Bloom? bloom = decoderContext.DecodeBloom();
             UInt256 difficulty = decoderContext.DecodeUInt256();
-            UInt256 number = decoderContext.DecodeUInt256();
-            UInt256 gasLimit = decoderContext.DecodeUInt256();
-            UInt256 gasUsed = decoderContext.DecodeUInt256();
+            long number = decoderContext.DecodeLong();
+            long gasLimit = decoderContext.DecodeLong();
+            long gasUsed = decoderContext.DecodeLong();
             UInt256 timestamp = decoderContext.DecodeUInt256();
             byte[]? extraData = decoderContext.DecodeByteArray();
 
@@ -59,8 +59,8 @@ namespace Nethermind.Serialization.Rlp
                 unclesHash,
                 beneficiary,
                 difficulty,
-                (long)number,
-                (long)gasLimit,
+                number,
+                gasLimit,
                 timestamp,
                 extraData)
             {
@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
                 TxRoot = transactionsRoot,
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
-                GasUsed = (long)gasUsed,
+                GasUsed = gasUsed,
                 Hash = Keccak.Compute(headerRlp)
             };
 
@@ -116,9 +116,9 @@ namespace Nethermind.Serialization.Rlp
             Keccak? receiptsRoot = rlpStream.DecodeKeccak();
             Bloom? bloom = rlpStream.DecodeBloom();
             UInt256 difficulty = rlpStream.DecodeUInt256();
-            UInt256 number = rlpStream.DecodeUInt256();
-            UInt256 gasLimit = rlpStream.DecodeUInt256();
-            UInt256 gasUsed = rlpStream.DecodeUInt256();
+            long number = rlpStream.DecodeLong();
+            long gasLimit = rlpStream.DecodeLong();
+            long gasUsed = rlpStream.DecodeLong();
             UInt256 timestamp = rlpStream.DecodeUInt256();
             byte[]? extraData = rlpStream.DecodeByteArray();
 
@@ -127,8 +127,8 @@ namespace Nethermind.Serialization.Rlp
                 unclesHash,
                 beneficiary,
                 difficulty,
-                (long)number,
-                (long)gasLimit,
+                number,
+                gasLimit,
                 timestamp,
                 extraData)
             {
@@ -136,7 +136,7 @@ namespace Nethermind.Serialization.Rlp
                 TxRoot = transactionsRoot,
                 ReceiptsRoot = receiptsRoot,
                 Bloom = bloom,
-                GasUsed = (long)gasUsed,
+                GasUsed = gasUsed,
                 Hash = Keccak.Compute(headerRlp)
             };
 

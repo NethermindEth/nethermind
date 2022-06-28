@@ -22,6 +22,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm
 {
+    /// <summary>
+    /// A utility class to easily construct common patterns of EVM byte code
+    /// </summary>
     public class Prepare
     {
         private readonly List<byte> _byteCode = new();
@@ -115,12 +118,20 @@ namespace Nethermind.Evm
             return CallWithInput(address, gasLimit, Bytes.FromHexString(input));
         }
 
-        public Prepare CallWithInput(Address address, long gasLimit, byte[] input)
+        public Prepare CallWithInput(Address address, long gasLimit, byte[]? input = null)
         {
-            StoreDataInMemory(0, input);
+            if (input != null)
+            {
+                StoreDataInMemory(0, input);
+            }
+            else
+            {
+                // Use top of stack as input
+                DataOnStackToMemory(0);
+            }
             PushData(0);
             PushData(0);
-            PushData(input.Length);
+            PushData(input != null ? input.Length : 32);
             PushData(0);
             PushData(0);
             PushData(address);
@@ -176,6 +187,43 @@ namespace Nethermind.Evm
             PushData(address);
             PushData(gasLimit);
             Op(Instruction.STATICCALL);
+            return this;
+        }
+
+        /// <summary>
+        /// Call the address with the specified callType
+        /// </summary>
+        /// <param name="callType">CALL, STATICCALL, DELEGATECALL</param>
+        /// <param name="address">Address of the contract</param>
+        /// <param name="gasLimit">Gas limit of the call</param>
+        /// <param name="input">Optional 32 byte input</param>
+        /// <returns>Prepare with call bytecode</returns>
+        /// <exception cref="Exception">Throws exception if callType is incorrect</exception>
+        public Prepare DynamicCallWithInput(Instruction callType, Address address, long gasLimit, byte[]? input = null)
+        {
+            if (callType != Instruction.CALL &&
+                callType != Instruction.STATICCALL &&
+                callType != Instruction.DELEGATECALL)
+            {
+                throw new Exception($"Unexpected call type {callType}");
+            }
+            if (input != null)
+            {
+                StoreDataInMemory(0, input);
+            }
+            else
+            {
+                // Use top of stack as input
+                DataOnStackToMemory(0);
+            }
+            PushData(0);
+            PushData(0);
+            PushData(input != null ? input.Length : 32);
+            PushData(0);
+            PushData(0);
+            PushData(address);
+            PushData(gasLimit);
+            Op(callType);
             return this;
         }
 
@@ -269,6 +317,75 @@ namespace Nethermind.Evm
                 Op(Instruction.MSTORE);
             }
 
+            return this;
+        }
+
+        /// <summary>
+        /// Take the data already on stack and store it in memory 
+        /// at specified position
+        /// </summary>
+        /// <param name="position">Memory position</param>
+        /// <returns>Prepare with requested bytecode</returns>
+        public Prepare DataOnStackToMemory(int position)
+        {            
+            PushData(position);
+            Op(Instruction.MSTORE);
+            return this;
+        }
+
+        /// <summary>
+        /// Store input value at specified key in transient storage
+        /// </summary>
+        /// <param name="key">Storage key</param>
+        /// <param name="value">Value to store</param>
+        /// <returns>Prepare with requested bytecode</returns>
+        public Prepare StoreDataInTransientStorage(int key, int value)
+        {
+            PushData(value);
+            PushData(key);
+            Op(Instruction.TSTORE);
+            return this;
+        }
+
+        /// <summary>
+        /// Load value from specified key in transient storage
+        /// </summary>
+        /// <param name="key">Storage key</param>
+        /// <returns>Prepare with requested bytecode</returns>
+        public Prepare LoadDataFromTransientStorage(int key)
+        {
+            PushData(key);
+            Op(Instruction.TLOAD);
+            return this;
+        }
+
+        /// <summary>
+        /// Return the data in memory at position
+        /// </summary>
+        /// <param name="size">Data size</param>
+        /// <param name="position">Memory position</param>
+        /// <returns>Prepare with requested bytecode</returns>
+        public Prepare Return(int size, int position)
+        {            
+            PushData(size);
+            PushData(position);
+            Op(Instruction.RETURN);
+            return this;
+        }
+
+        /// <summary>
+        /// Returns the result from a call made immediately prior
+        /// </summary>
+        /// <returns>Prepare with requested bytecode</returns>
+        public Prepare ReturnInnerCallResult()
+        {
+            PushData(32);
+            PushData(0);
+            PushData(0);
+            Op(Instruction.RETURNDATACOPY);
+            PushData(32);
+            PushData(0);
+            Op(Instruction.RETURN);
             return this;
         }
     }

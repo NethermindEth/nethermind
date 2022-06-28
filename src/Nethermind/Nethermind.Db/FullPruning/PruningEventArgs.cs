@@ -21,10 +21,13 @@ namespace Nethermind.Db.FullPruning;
 
 public class PruningEventArgs : EventArgs
 {
-    public PruningEventArgs(IPruningContext context)
+    public PruningEventArgs(IPruningContext context, bool success)
     {
         Context = context;
+        Success = success;
     }
 
     public IPruningContext Context { get; }
+
+    public bool Success { get; }
 }
