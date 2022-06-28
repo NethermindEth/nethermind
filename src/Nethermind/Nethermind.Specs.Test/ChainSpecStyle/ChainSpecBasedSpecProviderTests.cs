@@ -52,6 +52,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             CompareSpecProviders(sepolia, provider, blockNumbersToTest);
+            Assert.AreEqual(SepoliaSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(long.MaxValue, provider.GenesisSpec.DifficultyBombDelay);
         }
