@@ -56,6 +56,7 @@ namespace Ethereum.Test.Base
                 "Istanbul" => Istanbul.Instance,
                 "Berlin" => Berlin.Instance,
                 "London" => London.Instance,
+                "Merge" => London.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -103,11 +104,7 @@ namespace Ethereum.Test.Base
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
             Transaction transaction = new();
-            if (transaction.AccessList != null)
-                transaction.Type = TxType.AccessList;
-            if (transactionJson.MaxFeePerGas != null)
-                transaction.Type = TxType.EIP1559;
-            
+
             transaction.Value = transactionJson.Value[postStateJson.Indexes.Value];
             transaction.GasLimit = transactionJson.GasLimit[postStateJson.Indexes.Gas];
             transaction.GasPrice = transactionJson.GasPrice ?? transactionJson.MaxPriorityFeePerGas ?? 0;
@@ -124,6 +121,14 @@ namespace Ethereum.Test.Base
                 ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
             transaction.AccessList = builder.ToAccessList();
+            
+            if (transaction.AccessList.Data.Count != 0)
+                transaction.Type = TxType.AccessList;
+            else
+                transaction.AccessList = null;
+            
+            if (transactionJson.MaxFeePerGas != null)
+                transaction.Type = TxType.EIP1559;
 
             return transaction;
         }
@@ -201,14 +206,11 @@ namespace Ethereum.Test.Base
                     test.CurrentNumber = testJson.Env.CurrentNumber;
                     test.CurrentTimestamp = testJson.Env.CurrentTimestamp;
                     test.CurrentBaseFee = testJson.Env.CurrentBaseFee;
+                    test.CurrentRandom = testJson.Env.CurrentRandom;
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
                     test.Transaction = Convert(stateJson, testJson.Transaction);
-                    if (!test.Fork.UseTxAccessLists)
-                    {
-                        test.Transaction.AccessList = null;
-                    }
 
                     blockchainTests.Add(test);
                     ++iterationNumber;
@@ -250,7 +252,7 @@ namespace Ethereum.Test.Base
             return test;
         }
 
-        private static EthereumJsonSerializer _serializer = new();
+        private static readonly EthereumJsonSerializer _serializer = new();
 
         public static IEnumerable<GeneralStateTest> Convert(string json)
         {

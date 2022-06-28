@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Db
 {
     /// <summary>
@@ -33,7 +35,7 @@ namespace Nethermind.Db
         /// </summary>
         /// <param name="rocksDbSettings">Setting to use for DB creation.</param>
         /// <returns>Column DB.</returns>
-        IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull;
+        IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum;
 
         /// <summary>
         /// Gets the file system path for the DB.

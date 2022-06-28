@@ -167,8 +167,7 @@ namespace Nethermind.Init.Steps
             
             IStateReader stateReader = setApi.StateReader = new StateReader(readOnlyTrieStore, readOnly.GetDb<IDb>(DbNames.Code), getApi.LogManager);
             
-            setApi.TransactionComparerProvider =
-                new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
+            setApi.TransactionComparerProvider = new TransactionComparerProvider(getApi.SpecProvider!, getApi.BlockTree.AsReadOnly());
             setApi.ChainHeadStateProvider = new ChainHeadReadOnlyStateProvider(getApi.BlockTree, stateReader);
             Account.AccountStartNonce = getApi.ChainSpec.Parameters.AccountStartNonce;
 

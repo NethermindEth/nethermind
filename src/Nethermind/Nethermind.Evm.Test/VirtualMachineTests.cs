@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,9 +19,9 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.State;
 using Nethermind.Int256;
 using NUnit.Framework;
+using Nethermind.Specs;
 
 namespace Nethermind.Evm.Test
 {
@@ -423,6 +423,37 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset, receipt.GasSpent, "gas");
             Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), Storage.Get(new StorageCell(Recipient, 0)), "storage");
+        }
+
+        /// <summary>
+        /// TLoad gas cost check
+        /// </summary>
+        [Test]
+        public void Tload()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(96)
+                .Op(Instruction.TLOAD)
+                .Done;
+
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad, receipt.GasSpent, "gas");
+        }
+
+        /// <summary>
+        /// TStore gas cost check
+        /// </summary>
+        [Test]
+        public void Tstore()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(96)
+                .PushData(64)
+                .Op(Instruction.TSTORE)
+                .Done;
+
+            TestAllTracerWithOutput receipt = Execute(MainnetSpecProvider.ShanghaiBlockNumber, 100000, code);
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore, receipt.GasSpent, "gas");
         }
 
         [Test]

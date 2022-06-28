@@ -26,12 +26,12 @@ public class EnrTreeRoot : EnrTreeNode
     /// <summary>
     /// the root hashes of subtrees containing nodes and links subtrees
     /// </summary>
-    public string EnrRoot { get; set; }
+    public string EnrRoot { get; set; } = string.Empty;
 
     /// <summary>
     /// the root hashes of subtrees containing nodes and links subtrees
     /// </summary>
-    public string LinkRoot { get; set; }
+    public string LinkRoot { get; set; } = string.Empty;
 
     /// <summary>
     /// Updated each time the tree gets updated.
@@ -41,7 +41,7 @@ public class EnrTreeRoot : EnrTreeNode
     /// <summary>
     /// Signature but need to learn where to take the public key from
     /// </summary>
-    public string Signature { get; set; }
+    public string Signature { get; set; } = string.Empty;
 
     public override string ToString()
     {

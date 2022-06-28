@@ -30,7 +30,7 @@ namespace Nethermind.Db
             throw new InvalidOperationException();
         }
 
-        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
+        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum
         {
             throw new InvalidOperationException();
         }

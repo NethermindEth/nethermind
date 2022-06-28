@@ -87,5 +87,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public long? TerminalPoWBlockNumber { get; set; }
         
         public UInt256? TerminalTotalDifficulty { get; set; }
+
+        public long? ShanghaiBlockNumber { get; set; }
     }
 }

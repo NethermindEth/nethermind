@@ -221,23 +221,19 @@ namespace Nethermind.AccountAbstraction.Test
                         EntryPointContractAbi,
                         Signer,
                         entryPoint!,
-                        SpecProvider,
-                        State);
+                        SpecProvider);
                 }
 
                 foreach (Address entryPoint in entryPointContractAddresses)
                 {
                     UserOperationSimulator[entryPoint] = new(
                         UserOperationTxBuilder[entryPoint],
-                        State,
-                        StateReader,
+                        ReadOnlyState,
+                        new ReadOnlyTxProcessingEnvFactory(DbProvider, ReadOnlyTrieStore, BlockTree, SpecProvider, LogManager),
                         EntryPointContractAbi,
                         entryPoint!,
                         WhitelistedPayamsters,
                         SpecProvider, 
-                        BlockTree, 
-                        DbProvider, 
-                        ReadOnlyTrieStore, 
                         Timestamper,
                         LogManager);
                 }

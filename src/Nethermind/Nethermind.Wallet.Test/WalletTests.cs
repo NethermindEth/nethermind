@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -120,10 +121,7 @@ namespace Nethermind.Wallet.Test
             ProtectedKeyStore
         }
 
-        public static IEnumerable<WalletType> WalletTypes
-        {
-            get => Enum.GetValues(typeof(WalletType)).OfType<WalletType>();
-        }
+        public static IEnumerable<WalletType> WalletTypes => FastEnum.GetValues<WalletType>();
 
         [Test]
         public void Has_10_dev_accounts([ValueSource(nameof(WalletTypes))] WalletType walletType)

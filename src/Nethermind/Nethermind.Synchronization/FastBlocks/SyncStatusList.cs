@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.FastBlocks
     {
         private long _queueSize;
         private readonly IBlockTree _blockTree;
-        private FastBlockStatus[] _statuses;
+        private readonly FastBlockStatus[] _statuses;
         
         public long LowestInsertWithoutGaps { get; private set; }
         public long QueueSize => _queueSize;
@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization.FastBlocks
             LowestInsertWithoutGaps = lowestInserted ?? pivotNumber;
         }
 
-        public void GetInfosForBatch(BlockInfo[] blockInfos)
+        public void GetInfosForBatch(BlockInfo?[] blockInfos)
         {
             int collected = 0;
 

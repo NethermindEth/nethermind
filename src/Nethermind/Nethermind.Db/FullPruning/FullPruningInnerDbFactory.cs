@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
@@ -51,7 +52,7 @@ namespace Nethermind.Db.FullPruning
         }
 
         /// <inheritdoc />
-        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull
+        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum
         {
             RocksDbSettings settings = GetRocksDbSettings(rocksDbSettings);
             return _rocksDbFactory.CreateColumnsDb<T>(settings);
