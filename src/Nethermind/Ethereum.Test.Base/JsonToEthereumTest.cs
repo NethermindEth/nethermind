@@ -252,7 +252,7 @@ namespace Ethereum.Test.Base
             return test;
         }
 
-        private static EthereumJsonSerializer _serializer = new();
+        private static readonly EthereumJsonSerializer _serializer = new();
 
         public static IEnumerable<GeneralStateTest> Convert(string json)
         {
