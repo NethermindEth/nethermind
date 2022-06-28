@@ -12,11 +12,7 @@ permissions:
   deployments: write
   packages: write
   contents: write
-  
-concurrency: 
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-  
+ 
 jobs:
   build-nethermind:
     name: Building Nethermind Packages
@@ -84,6 +80,21 @@ jobs:
         name: nethermind-darwin-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_RELEASE }}/nethermind-darwin-amd64-*
     - uses: actions/upload-artifact@master
+      name: Uploading Nethermind linux package
+      with:
+        name: nethermind-linux-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_RELEASE }}/nethermind-linux-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Uploading Nethermind windows package
+      with:
+        name: nethermind-windows-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.WIN_RELEASE }}/nethermind-windows-amd64-*
+    - uses: actions/upload-artifact@master
+      name: Uploading Nethermind linux arm64 package
+      with:
+        name: nethermind-linux-arm64-package
+        path: ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/nethermind-linux-arm64-*
+    - uses: actions/upload-artifact@master
       name: Uploading Nethermind darwin arm64 package
       with:
         name: nethermind-darwin-arm64-package
@@ -92,13 +103,13 @@ jobs:
       name: Uploading git-hash files
       with:
         name: nethermind-git-hash
-        path: ${{ env.RELEASE_DIRECTORY }}/git-*      
+        path: ${{ env.RELEASE_DIRECTORY }}/git-*  
     - uses: actions/upload-artifact@master
       name: Uploading update-homebrew.sh
       with:
         name: update-homebrew-sh
-        path: ./nethermind/scripts/deployment/update-homebrew.sh        
-        
+        path: ./nethermind/scripts/deployment/update-homebrew.sh  
+
   update-homebrew:
     name: Update Homebrew to latest version
     runs-on: ubuntu-latest
@@ -137,17 +148,3 @@ jobs:
         run: | 
           chmod +x ${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
           ./${{ env.RELEASE_DIRECTORY }}/update-homebrew.sh
-
-
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v4
-        with:
-          token: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
-          commit-message: Update Homebrew to latest release
-          title: '[Release] Update Homebrew'
-          reviewers: falcoxyz
-          draft: true
-          path: homebrew-nethermind
-          add-paths: |
-            nethermind.rb
