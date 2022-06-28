@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using FastEnumUtility;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
@@ -41,17 +42,17 @@ namespace Nethermind.Stats
         private decimal? _averageSnapRangesTransferSpeed;
         private decimal? _averageLatency;
 
-        private int[] _statCountersArray;
-        private object _speedLock = new object();
+        private readonly int[] _statCountersArray;
+        private readonly object _speedLock = new();
 
         private DisconnectReason? _lastLocalDisconnect;
         private DisconnectReason? _lastRemoteDisconnect;
 
         private DateTime? _lastDisconnectTime;
         private DateTime? _lastFailedConnectionTime;
-        private static readonly Random Random = new Random();
+        private static readonly Random Random = new();
 
-        private static int _statsLength = Enum.GetValues(typeof(NodeStatsEventType)).Length;
+        private static readonly int _statsLength = FastEnum.GetValues<NodeStatsEventType>().Count;
 
         public NodeStatsLight(Node node)
         {
