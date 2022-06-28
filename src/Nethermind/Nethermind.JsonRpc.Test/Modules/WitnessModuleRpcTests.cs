@@ -63,9 +63,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             _blockFinder.FindHeader((BlockParameter)null).ReturnsForAnyArgs(_block.Header);
             _blockFinder.Head.Returns(_block);
-
-            _witnessRepository.Add(_block.Hash);
-            _witnessRepository.Persist(_block.Hash);
+            using (_witnessRepository.Track())
+            {
+                _witnessRepository.Add(_block.Hash);
+                _witnessRepository.Persist(_block.Hash);
+            }
 
             string serialized =
                 RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", _block.CalculateHash().ToString());
