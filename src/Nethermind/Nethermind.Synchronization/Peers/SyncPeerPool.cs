@@ -740,7 +740,8 @@ namespace Nethermind.Synchronization.Peers
         
         private async Task ExecuteRefreshTaskForHead(ISyncPeer syncPeer, Keccak? hash, Task? delayTask, CancellationToken token)
         {
-            Task<BlockHeader?> getHeadHeaderTask = syncPeer.GetHeadBlockHeader(hash ?? syncPeer.HeadHash, token);
+            Keccak effectiveHash = hash ?? syncPeer.HeadHash;
+            Task<BlockHeader?> getHeadHeaderTask = syncPeer.GetHeadBlockHeader(effectiveHash, token);
             Task firstToComplete = await Task.WhenAny(getHeadHeaderTask, delayTask);
 
             if (firstToComplete == delayTask)

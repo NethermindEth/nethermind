@@ -727,7 +727,6 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.Start();
             var syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
-            ctx.Pool.AddPeer(syncPeer);
 
             // On add, it will refresh for init first
             syncPeer.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()).Returns(Task.FromResult(initHeader));
@@ -736,6 +735,7 @@ namespace Nethermind.Synchronization.Test
                 .Returns(Task.FromResult(new []{parentBlockHeader, headHeader}));
             syncPeer.GetHeadBlockHeader(finalizedBlockHeader.Hash, Arg.Any<CancellationToken>()).Returns(Task.FromResult(finalizedBlockHeader));
             
+            ctx.Pool.AddPeer(syncPeer);
             ctx.Pool.RefreshTotalDifficultyForFcu(syncPeer, headHeader.Hash, parentBlockHeader.Hash, finalizedBlockHeader.Hash);
             await Task.Delay(100);
 
@@ -756,13 +756,13 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.Start();
             var syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
-            ctx.Pool.AddPeer(syncPeer);
 
             // On add, it will refresh for init first
             syncPeer.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()).Returns(Task.FromResult(headHeader));
             
             syncPeer.GetHeadBlockHeader(finalizedBlockHeader.Hash, Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(null));
             
+            ctx.Pool.AddPeer(syncPeer);
             ctx.Pool.RefreshTotalDifficultyForFcu(syncPeer, headHeader.Hash, parentBlockHeader.Hash, finalizedBlockHeader.Hash);
             await Task.Delay(100);
 
