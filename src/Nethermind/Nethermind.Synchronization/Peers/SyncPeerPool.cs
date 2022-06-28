@@ -36,7 +36,6 @@ using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
-using Prometheus;
 using ILogger = Nethermind.Logging.ILogger;
 using Timer = System.Timers.Timer;
 
@@ -416,9 +415,6 @@ namespace Nethermind.Synchronization.Peers
             SignalPeersChanged();
         }
 
-        private static Gauge peerRefreshQueueSize = Prometheus.Metrics.CreateGauge("peer_refresh_queue_size", "Size of peer refresh queue");
-        private static Gauge pendingRefreshTaskSize = Prometheus.Metrics.CreateGauge("pending_refresh_task_size", "Pending peer refresh size");
-
         private async Task RunRefreshPeerLoop()
         {
             // TODO: Why use a queue when it's not going to block
@@ -428,15 +424,11 @@ namespace Nethermind.Synchronization.Peers
                 if (_logger.IsTrace) _logger.Trace($"Refreshing info for {syncPeer}.");
                 CancellationTokenSource initCancelSource = _refreshCancelTokens[syncPeer.Node.Id] = new CancellationTokenSource();
                 CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
-                
-                pendingRefreshTaskSize.Inc();
-                peerRefreshQueueSize.Set(_peerRefreshQueue.Count);
 
 #pragma warning disable 4014
                 ExecuteRefreshTask(refreshTask, linkedSource.Token).ContinueWith(t =>
 #pragma warning restore 4014
                 {
-                    pendingRefreshTaskSize.Dec();
                     _refreshCancelTokens.TryRemove(syncPeer.Node.Id, out _);
                     if (t.IsFaulted)
                     {
@@ -713,7 +705,7 @@ namespace Nethermind.Synchronization.Peers
                     _logger.Trace($"PeerRefreshForFCU failed for node: {syncPeer.Node:c}{Environment.NewLine} - Finalized block header not found");
                 _stats.ReportSyncEvent(syncPeer.Node,
                     syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
-                syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - null response");
+                syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - no finalized block header");
                 return;
             }
 

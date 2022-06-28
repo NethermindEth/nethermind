@@ -714,6 +714,62 @@ namespace Nethermind.Synchronization.Test
                 Assert.Null(allocation.Current, "null A");
             }
         }
+        
+        [Test, Retry(3)]
+        public async Task Can_refresh_with_fcu()
+        {
+            BlockHeader initHeader = Build.A.BlockHeader.WithNumber(50).TestObject;
+            BlockHeader parentBlockHeader = Build.A.BlockHeader.WithNumber(101).TestObject;
+            BlockHeader headHeader = Build.A.BlockHeader.WithParent(parentBlockHeader).WithNumber(102).TestObject;
+            BlockHeader finalizedBlockHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
+            
+            await using Context ctx = new();
+            ctx.Pool.Start();
+            var syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+            ctx.Pool.AddPeer(syncPeer);
+
+            // On add, it will refresh for init first
+            syncPeer.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()).Returns(Task.FromResult(initHeader));
+            
+            syncPeer.GetBlockHeaders(parentBlockHeader.Hash, 2, 0, Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(new []{parentBlockHeader, headHeader}));
+            syncPeer.GetHeadBlockHeader(finalizedBlockHeader.Hash, Arg.Any<CancellationToken>()).Returns(Task.FromResult(finalizedBlockHeader));
+            
+            ctx.Pool.RefreshTotalDifficultyForFcu(syncPeer, headHeader.Hash, parentBlockHeader.Hash, finalizedBlockHeader.Hash);
+            await Task.Delay(100);
+
+            await syncPeer.Received(2).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
+            await syncPeer.Received(1).GetBlockHeaders(parentBlockHeader.Hash, 2, 0, Arg.Any<CancellationToken>());
+            syncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            syncPeer.HeadNumber.Should().Be(102);
+        }
+        
+        [Test, Retry(3)]
+        public async Task When_finalized_header_not_found_then_disconnect()
+        {
+            BlockHeader parentBlockHeader = Build.A.BlockHeader.TestObject;
+            BlockHeader headHeader = Build.A.BlockHeader.WithParent(parentBlockHeader).TestObject;
+            BlockHeader finalizedBlockHeader = Build.A.BlockHeader.WithNumber(99).TestObject;
+            
+            await using Context ctx = new();
+            ctx.Pool.Start();
+            var syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+            ctx.Pool.AddPeer(syncPeer);
+
+            // On add, it will refresh for init first
+            syncPeer.GetHeadBlockHeader(null, Arg.Any<CancellationToken>()).Returns(Task.FromResult(headHeader));
+            
+            syncPeer.GetHeadBlockHeader(finalizedBlockHeader.Hash, Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(null));
+            
+            ctx.Pool.RefreshTotalDifficultyForFcu(syncPeer, headHeader.Hash, parentBlockHeader.Hash, finalizedBlockHeader.Hash);
+            await Task.Delay(100);
+
+            await syncPeer.Received(2).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
+            await syncPeer.Received(1).GetBlockHeaders(parentBlockHeader.Hash, 2, 0, Arg.Any<CancellationToken>());
+            syncPeer.Received().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
 
         private int _pendingRequests;
 
