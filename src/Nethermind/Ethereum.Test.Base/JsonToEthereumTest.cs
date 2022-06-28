@@ -122,8 +122,11 @@ namespace Ethereum.Test.Base
                 : transactionJson.AccessList, builder);
             transaction.AccessList = builder.ToAccessList();
             
-            if (transaction.AccessList != null)
+            if (transaction.AccessList.Data.Count != 0)
                 transaction.Type = TxType.AccessList;
+            else
+                transaction.AccessList = null;
+            
             if (transactionJson.MaxFeePerGas != null)
                 transaction.Type = TxType.EIP1559;
 
