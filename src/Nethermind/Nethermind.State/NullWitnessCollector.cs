@@ -39,6 +39,15 @@ namespace Nethermind.State
         
         public void Persist(Keccak blockHash) { }
 
+        class EmptyDisposable: IDisposable
+        {
+            public void Dispose()
+            {
+            }
+        }
+        
+        public IDisposable Track() { return new EmptyDisposable(); }
+
         public Keccak[]? Load(Keccak blockHash)
         {
             throw new InvalidOperationException(

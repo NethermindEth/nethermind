@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -32,6 +33,9 @@ namespace Nethermind.State.Witnesses
     /// </summary>
     public class WitnessCollector : IWitnessCollector, IWitnessRepository
     {
+        [ThreadStatic]
+        private static bool _collectWitness;
+        
         private readonly LruCache<Keccak, Keccak[]> _witnessCache
             = new(256, "Witnesses");
         
@@ -45,6 +49,10 @@ namespace Nethermind.State.Witnesses
 
         public void Add(Keccak hash)
         {
+            if (!_collectWitness)
+            {
+                return;
+            }
             _collected.Add(hash);
         }
 
@@ -79,6 +87,23 @@ namespace Nethermind.State.Witnesses
             {
                 _witnessCache.Set(blockHash, Array.Empty<Keccak>());
             }
+        }
+
+        class WitnessCollectorTrackingScope: IDisposable
+        {
+            public WitnessCollectorTrackingScope()
+            {
+                _collectWitness = true;
+            }
+            public void Dispose()
+            {
+                _collectWitness = false;
+            }
+        }
+        
+        public IDisposable Track()
+        {
+            return new WitnessCollectorTrackingScope();
         }
 
         public Keccak[]? Load(Keccak blockHash)

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
@@ -32,5 +33,7 @@ namespace Nethermind.State
         void Reset();
         
         void Persist(Keccak blockHash);
+
+        IDisposable Track();
     }
 }
