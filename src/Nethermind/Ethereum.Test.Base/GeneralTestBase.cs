@@ -31,6 +31,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -45,6 +46,7 @@ namespace Ethereum.Test.Base
         private static ILogger _logger = new ConsoleAsyncLogger(LogLevel.Info);
         private static ILogManager _logManager = LimboLogs.Instance;
         private static UInt256 _defaultBaseFeeForStateTest = 0xA;
+        private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
         [SetUp]
         public void Setup()
@@ -59,7 +61,9 @@ namespace Ethereum.Test.Base
 
         protected EthereumTestResult RunTest(GeneralStateTest test)
         {
-            return RunTest(test, NullTxTracer.Instance);
+            EthereumTestResult? testResult =  RunTest(test, NullTxTracer.Instance);
+            Console.Out.Write(_serializer.Serialize(testResult, true));
+            return testResult;
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
