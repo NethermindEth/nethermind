@@ -417,7 +417,6 @@ namespace Nethermind.Synchronization.Peers
 
         private async Task RunRefreshPeerLoop()
         {
-            // TODO: Why use a queue when it's not going to block
             foreach (RefreshTotalDiffTask refreshTask in _peerRefreshQueue.GetConsumingEnumerable(_refreshLoopCancellation.Token))
             {
                 ISyncPeer syncPeer = refreshTask.SyncPeer;
@@ -650,7 +649,7 @@ namespace Nethermind.Synchronization.Peers
                 BlockHeader[] headAndParentHeaders = await getHeadParentHeaderTask;
                 if (headAndParentHeaders.Length == 1)
                 {
-                    headBlockHeader = headAndParentHeaders[0];
+                    headParentBlockHeader = headAndParentHeaders[0];
                 }
                 else if (headAndParentHeaders.Length == 2)
                 {

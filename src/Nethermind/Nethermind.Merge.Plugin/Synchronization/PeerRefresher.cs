@@ -40,13 +40,13 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         _syncPeerPool = syncPeerPool;
     }
 
-    public void RefreshPeers(Keccak headBlockhash, Keccak parentHeadBlockhash, Keccak finalizedBlockhash)
+    public void RefreshPeers(Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash)
     {
-        _lastBlockhashes = (headBlockhash, parentHeadBlockhash, finalizedBlockhash);
+        _lastBlockhashes = (headBlockhash, headParentBlockhash, finalizedBlockhash);
         TimeSpan timePassed = DateTime.Now - _lastRefresh;
         if (timePassed > _minRefreshDelay)
         {
-            Refresh(headBlockhash, parentHeadBlockhash, finalizedBlockhash);
+            Refresh(headBlockhash, headParentBlockhash, finalizedBlockhash);
         }
         else if (!_refreshTimer.Enabled)
         {
@@ -60,12 +60,12 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         Refresh(_lastBlockhashes.Item1, _lastBlockhashes.Item2, _lastBlockhashes.Item3);
     }
     
-    private void Refresh(Keccak headBlockhash, Keccak parentHeadBlockhash, Keccak finalizedBlockhash)
+    private void Refresh(Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash)
     {
         _lastRefresh = DateTime.Now;
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-            _syncPeerPool.RefreshTotalDifficultyForFcu(peer.SyncPeer, headBlockhash, parentHeadBlockhash, finalizedBlockhash);
+            _syncPeerPool.RefreshTotalDifficultyForFcu(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
         }
     }
 
