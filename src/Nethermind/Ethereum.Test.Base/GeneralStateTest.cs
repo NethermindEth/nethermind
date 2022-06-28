@@ -45,7 +45,8 @@ namespace Ethereum.Test.Base
         public Keccak? PostReceiptsRoot { get; set; }
         public string? LoadFailure { get; set; }
         public Transaction? Transaction { get; set; }
-        
+        public Keccak? CurrentRandom { get; set; }
+
         public override string ToString()
         {
             return $"{Path.GetFileName(Category)}.{Name}_{ForkName}";
