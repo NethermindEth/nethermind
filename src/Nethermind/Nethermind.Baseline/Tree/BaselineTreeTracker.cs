@@ -23,6 +23,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 
