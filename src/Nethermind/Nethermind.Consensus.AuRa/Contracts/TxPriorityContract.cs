@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 using DestinationTuple = System.ValueTuple<Nethermind.Core.Address, byte[], Nethermind.Int256.UInt256>;

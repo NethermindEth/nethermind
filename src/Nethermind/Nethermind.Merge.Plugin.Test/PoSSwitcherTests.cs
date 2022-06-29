@@ -83,10 +83,10 @@ namespace Nethermind.Merge.Plugin.Test
             BlockHeader? block5 = blockTree.FindHeader(5, BlockTreeLookupOptions.All);
             Block blockWithPostMergeFlag = Build.A.Block.WithNumber(4).WithDifficulty(0).WithPostMergeFlag(true)
                                             .WithParent(block3!).TestObject; 
-            Assert.AreEqual(false, blockTree.IsTerminalBlock(block3!)); // PoWBlock
-            Assert.AreEqual(true, blockTree.IsTerminalBlock(block4!)); // terminal block
-            Assert.AreEqual(false, blockTree.IsTerminalBlock(block5!)); // incorrect PoW not terminal block
-            Assert.AreEqual(false, blockTree.IsTerminalBlock(blockWithPostMergeFlag.Header)); // block with post merge flag
+            Assert.AreEqual(false, block3!.IsTerminalBlock(specProvider)); // PoWBlock
+            Assert.AreEqual(true, block4!.IsTerminalBlock(specProvider)); // terminal block
+            Assert.AreEqual(false, block5!.IsTerminalBlock(specProvider)); // incorrect PoW not terminal block
+            Assert.AreEqual(false, blockWithPostMergeFlag.IsTerminalBlock(specProvider)); // block with post merge flag
         }
         
         [TestCase(5000000, true)]
@@ -100,7 +100,7 @@ namespace Nethermind.Merge.Plugin.Test
             BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
-            Assert.AreEqual(expectedResult, blockTree.IsTerminalBlock(genesisBlock!.Header));
+            Assert.AreEqual(expectedResult, genesisBlock.IsTerminalBlock(specProvider));
         }
         
         [Test]

@@ -105,8 +105,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public bool HeadIsPoS => Head is { IsGenesis: false } && (Head.IsPostMerge || Head.Difficulty == 0);
-
         private static async Task<bool> VisitMissing(IBlockTreeVisitor visitor, Keccak hash, CancellationToken cancellationToken)
         {
             bool shouldContinue = await visitor.VisitMissing(hash, cancellationToken);

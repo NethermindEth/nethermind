@@ -1483,32 +1483,14 @@ namespace Nethermind.Blockchain
 
         private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
-            bool reachedTtd = _specProvider.TerminalTotalDifficulty != null &&
-                              header.TotalDifficulty >=
-                              _specProvider.TerminalTotalDifficulty;
-            bool isPostMerge = (header.IsPostMerge || header.Difficulty == 0);
+            bool reachedTtd = header.IsPostTTD(_specProvider);
+            bool isPostMerge = header.IsPoS();
             bool tdImproved = header.TotalDifficulty > (BestSuggestedBody?.TotalDifficulty ?? 0);
             bool preMergeImprovementRequirementSatisfied = tdImproved && !reachedTtd;
-            bool terminalBlockRequirementSatisfied = tdImproved && reachedTtd && IsTerminalBlock(header) && !HeadIsPoS;
+            bool terminalBlockRequirementSatisfied = tdImproved && reachedTtd && header.IsTerminalBlock(_specProvider) && !Head.IsPoS();
             bool postMergeImprovementRequirementSatisfied = reachedTtd && (BestSuggestedBody?.Number ?? 0) <= header.Number && isPostMerge; 
             
             return preMergeImprovementRequirementSatisfied || terminalBlockRequirementSatisfied || postMergeImprovementRequirementSatisfied;
-        }
-        
-        public bool IsTerminalBlock(BlockHeader header)
-        {
-            bool isTerminalBlock = false;
-            bool ttdRequirement = header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty;
-            if (ttdRequirement && header.IsGenesis)
-                return true;
-            
-            if (ttdRequirement && header.Difficulty != 0)
-            {
-                UInt256? parentTotalDifficulty = header.TotalDifficulty >= header.Difficulty ? header.TotalDifficulty - header.Difficulty : 0;
-                isTerminalBlock = parentTotalDifficulty < _specProvider.TerminalTotalDifficulty;
-            }
-
-            return isTerminalBlock;
         }
 
         private void LoadStartBlock()

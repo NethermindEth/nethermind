@@ -19,7 +19,7 @@ using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Find
+namespace Nethermind.Facade
 {
     public static class BlockExtensions
     {
