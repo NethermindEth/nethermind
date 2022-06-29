@@ -215,6 +215,13 @@ namespace Nethermind.Consensus.Processing
 
         private void RunRecoveryLoop()
         {
+            void DecrementQueue(Keccak blockHash, ProcessingResult processingResult)
+            {
+                Interlocked.Decrement(ref _queueCount);
+                BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockHash, processingResult));
+                FireProcessingQueueEmpty();
+            }
+
             if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
             _lastProcessedBlock = DateTime.UtcNow;
             foreach (BlockRef blockRef in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
@@ -233,8 +240,8 @@ namespace Nethermind.Consensus.Processing
                         }
                         catch (Exception e)
                         {
-                            Interlocked.Decrement(ref _queueCount);
-                            BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.QueueException));
+                            DecrementQueue(blockRef.BlockHash, ProcessingResult.QueueException);
+
                             if (e is InvalidOperationException)
                             {
                                 if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");
@@ -246,16 +253,13 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        Interlocked.Decrement(ref _queueCount);
-                        BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
+                        DecrementQueue(blockRef.BlockHash, ProcessingResult.MissingBlock);
                         if (_logger.IsTrace) _logger.Trace("Block was removed from the DB and cannot be recovered (it belonged to an invalid branch). Skipping.");
-                        FireProcessingQueueEmpty();
                     }
                 }
                 catch
                 {
-                    Interlocked.Decrement(ref _queueCount);
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Exception));
+                    DecrementQueue(blockRef.BlockHash, ProcessingResult.Exception);
                     throw;
                 }
             }
