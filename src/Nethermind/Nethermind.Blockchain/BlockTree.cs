@@ -715,13 +715,12 @@ namespace Nethermind.Blockchain
 
         private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
-            bool shouldProcess = (options & BlockTreeSuggestOptions.ShouldProcess) != 0;
-            bool fillBeaconBlock = (options & BlockTreeSuggestOptions.FillBeaconBlock) != 0;
-            bool setAsMainSet = (options & BlockTreeSuggestOptions.SetAsMain) != 0;
-            bool dontSetAsMainSet = (options & BlockTreeSuggestOptions.DontSetAsMain) != 0;
-            bool setAsMain = setAsMainSet || !dontSetAsMainSet && !shouldProcess;
+            bool shouldProcess =  options.ContainsFlag(BlockTreeSuggestOptions.ShouldProcess);
+            bool fillBeaconBlock = options.ContainsFlag(BlockTreeSuggestOptions.FillBeaconBlock);
+            bool setAsMain = options.ContainsFlag(BlockTreeSuggestOptions.SetAsMain) ||
+                             !options.ContainsFlag(BlockTreeSuggestOptions.DontSetAsMain) && !shouldProcess;
 
-            if (_logger.IsTrace) _logger.Trace($"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}");
+            if (_logger.IsTrace) _logger.Trace($"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}, SetAsMain {setAsMain}");
             
 #if DEBUG
         /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -756,8 +755,7 @@ namespace Nethermind.Blockchain
 
             if (!header.IsGenesis && !IsKnownBlock(header.Number - 1, header.ParentHash!))
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
+                if (_logger.IsTrace) _logger.Trace($"Could not find parent ({header.ParentHash}) of block {header.Hash}");
                 return AddBlockResult.UnknownParent;
             }
 

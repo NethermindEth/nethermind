@@ -54,3 +54,8 @@ public enum BlockTreeSuggestOptions
     SetAsMain = 4,
     DontSetAsMain = 8,
 }
+
+public static class BlockTreeSuggestOptionsExtensions
+{
+    public static bool ContainsFlag(this BlockTreeSuggestOptions value, BlockTreeSuggestOptions flag) => (value & flag) == flag;
+}
