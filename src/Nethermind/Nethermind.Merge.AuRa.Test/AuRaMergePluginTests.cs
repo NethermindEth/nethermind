@@ -57,6 +57,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         await Task.CompletedTask;
     }
 
+    [Test]
     [Parallelizable(ParallelScope.None)]
     public override Task executePayloadV1_accepts_already_known_block()
     {
