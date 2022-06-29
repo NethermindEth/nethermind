@@ -24,7 +24,7 @@ namespace Nethermind.Network.Dns;
 /// </summary>
 public class EnrTreeBranch : EnrTreeNode
 {
-    public string[] Hashes { get; set; }
+    public string[] Hashes { get; set; } = Array.Empty<string>();
 
     public override string ToString()
     {

@@ -182,5 +182,11 @@ namespace Nethermind.Blockchain
         int DeleteChainSlice(in long startNumber, long? endNumber = null);
 
         bool IsBetterThanHead(BlockHeader? header);
+        
+        bool HeadIsPoS { get; }
+
+        // Terminal PoW block: A PoW block that satisfies the following conditions pow_block.total_difficulty >= TERMINAL_TOTAL_DIFFICULTY and pow_block.parent_block.total_difficulty < TERMINAL_TOTAL_DIFFICULTY
+        // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#specification
+        bool IsTerminalBlock(BlockHeader header);
     }
 }

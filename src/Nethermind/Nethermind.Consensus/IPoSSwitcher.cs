@@ -44,7 +44,6 @@ namespace Nethermind.Consensus
         UInt256? FinalTotalDifficulty { get; }
         
         bool TransitionFinished { get; }
-        
         public Keccak ConfiguredTerminalBlockHash { get; }
         
         public long? ConfiguredTerminalBlockNumber { get; }

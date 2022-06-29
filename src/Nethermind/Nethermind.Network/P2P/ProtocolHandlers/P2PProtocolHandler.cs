@@ -21,6 +21,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -141,8 +142,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     ReportIn(disconnectMessage);
                     if (Logger.IsTrace)
                     {
-                        string reason = Enum.IsDefined(typeof(DisconnectReason), (byte) disconnectMessage.Reason)
-                            ? ((DisconnectReason) disconnectMessage.Reason).ToString()
+                        string reason = FastEnum.IsDefined<DisconnectReason>((byte) disconnectMessage.Reason)
+                            ? ((DisconnectReason) disconnectMessage.Reason).ToName()
                             : disconnectMessage.Reason.ToString();
                         Logger.Trace($"{Session} Received disconnect ({reason}) on {Session.RemotePort}");
                     }

@@ -12,4 +12,8 @@
       <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="FastEnum" Version="1.7.0" />
+    </ItemGroup>
+
 </Project>

@@ -64,7 +64,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
             {
                 RegisterContract registerContract = new(api.AbiEncoder, registrar, readOnlyTxProcessorSource);
                 CertifierContract certifierContract = new(api.AbiEncoder, registerContract, readOnlyTxProcessorSource);
-                return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager));
+                return CreateFilter(new TxCertifierFilter(certifierContract, gasPriceTxFilter, specProvider, api.LogManager), gasPriceTxFilter);
             }
 
             return gasPriceTxFilter;
