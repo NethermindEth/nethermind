@@ -1265,30 +1265,32 @@ namespace Nethermind.Blockchain
 
         public void MarkChainAsProcessed(IReadOnlyList<Block> blocks)
         {
-            if (blocks.Count != 0)
+            if (blocks.Count == 0)
             {
-                using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+                return;
+            }
 
-                for (int i = 0; i < blocks.Count; i++)
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+
+            for (int i = 0; i < blocks.Count; i++)
+            {
+                Block block = blocks[i];
+                if (ShouldCache(block.Number))
                 {
-                    Block block = blocks[i];
-                    if (ShouldCache(block.Number))
-                    {
-                        _blockCache.Set(block.Hash, blocks[i]);
-                        _headerCache.Set(block.Hash, block.Header);
-                    }
-
-                    ChainLevelInfo? level = LoadLevel(block.Number);
-                    int? index = level is null ? null : FindIndex(block.Hash, level);
-                    if (index is null)
-                    {
-                        throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
-                    }
-
-                    BlockInfo info = level.BlockInfos[index.Value];
-                    info.WasProcessed = true;
-                    _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
+                    _blockCache.Set(block.Hash, blocks[i]);
+                    _headerCache.Set(block.Hash, block.Header);
                 }
+
+                ChainLevelInfo? level = LoadLevel(block.Number);
+                int? index = level is null ? null : FindIndex(block.Hash, level);
+                if (index is null)
+                {
+                    throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
+                }
+
+                BlockInfo info = level.BlockInfos[index.Value];
+                info.WasProcessed = true;
+                _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
             }
         }
 
@@ -1418,8 +1420,7 @@ namespace Nethermind.Blockchain
             int? index = level is null ? null : FindIndex(block.Hash, level);
             if (index is null)
             {
-                throw new InvalidOperationException(
-                    $"Cannot move unknown block {block.ToString(Block.Format.FullHashAndNumber)} to main");
+                throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.FullHashAndNumber)} to main");
             }
 
 
