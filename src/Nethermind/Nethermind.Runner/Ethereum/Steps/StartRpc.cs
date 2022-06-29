@@ -98,7 +98,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     jsonRpcUrlCollection,
                     _api.WebSocketsManager!,
                     _api.ConfigProvider,
-                    rpcAuthentication,
+                    auth,
                     _api.LogManager,
                     _api);
 
