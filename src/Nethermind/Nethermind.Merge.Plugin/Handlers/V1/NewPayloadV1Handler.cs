@@ -245,7 +245,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             try
             {
                 Task timeout = Task.Delay(TimeSpan.FromSeconds(5));
-                ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.DontSetAsMain);
+                ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain);
                 await Task.WhenAny(timeout, addResult.AsTask());
                 if (addResult.IsCompletedSuccessfully)
                 {
