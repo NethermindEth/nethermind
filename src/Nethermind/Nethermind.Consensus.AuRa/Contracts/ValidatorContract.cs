@@ -25,6 +25,7 @@ using Nethermind.Evm;
 using Nethermind.State;
 using Nethermind.Blockchain.Find;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {

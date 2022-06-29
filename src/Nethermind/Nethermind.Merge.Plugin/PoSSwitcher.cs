@@ -123,8 +123,10 @@ namespace Nethermind.Merge.Plugin
 
         public bool TryUpdateTerminalBlock(BlockHeader header)
         {
-            if (_terminalBlockExplicitSpecified || TransitionFinished || _blockTree.IsTerminalBlock(header) == false)
+            if (_terminalBlockExplicitSpecified || TransitionFinished || !header.IsTerminalBlock(_specProvider))
+            {
                 return false;
+            }
 
             _terminalBlockNumber = header.Number;
             _terminalBlockHash = header.Hash;
@@ -139,7 +141,10 @@ namespace Nethermind.Merge.Plugin
                 _hasEverReachedTerminalDifficulty = true;
                 if (_logger.IsInfo) _logger.Info($"Reached terminal block {header}");
             }
-            else if (_logger.IsInfo) _logger.Info($"Updated terminal block {header}");
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"Updated terminal block {header}");
+            }
 
             return true;
         }
@@ -201,7 +206,7 @@ namespace Nethermind.Merge.Plugin
                 }
                 else
                 {
-                    isTerminal = _blockTree.IsTerminalBlock(header); // we're checking if block is terminal if not it should be PostMerge block
+                    isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
                     isPostMerge = !isTerminal;
                 }
             }

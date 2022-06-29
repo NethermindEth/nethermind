@@ -119,11 +119,11 @@ public partial class BlockTreeTests
         PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
-        Assert.False(tree.IsTerminalBlock(block8!.Header));
+        Assert.False(block8!.IsTerminalBlock(specProvider));
         Assert.AreEqual(9, tree.BestKnownNumber);
         Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
         Assert.AreEqual(9, tree.Head!.Number);
-        Assert.True(tree.IsTerminalBlock(tree.Head.Header));
+        Assert.True(tree.Head.IsTerminalBlock(specProvider));
     }
 
     [Test]
@@ -152,11 +152,11 @@ public partial class BlockTreeTests
                 .WithNumber(block7!.Number + 1).WithDifficulty(1999950).TestObject;
         // current Head TD: 10000000, block7 TD: 8000000, TTD 9999900, newTerminalBlock 9999950
         tree.SuggestBlock(newTerminalBlock);
-        Assert.True(tree.IsTerminalBlock(newTerminalBlock!.Header));
+        Assert.True(newTerminalBlock.IsTerminalBlock(specProvider));
         Assert.AreEqual(9, tree.BestKnownNumber);
         Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
         Assert.AreEqual(9, tree.Head!.Number);
-        Assert.True(tree.IsTerminalBlock(tree.Head.Header));
+        Assert.True(tree.Head.IsTerminalBlock(specProvider));
     }
     
     [Test]
@@ -179,11 +179,11 @@ public partial class BlockTreeTests
         PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
 
         Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
-        Assert.False(tree.IsTerminalBlock(block8!.Header));
+        Assert.False(block8!.Header.IsTerminalBlock(specProvider));
         Assert.AreEqual(9, tree.BestKnownNumber);
         Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
         Assert.AreEqual(9, tree.Head!.Number);
-        Assert.True(tree.IsTerminalBlock(tree.Head.Header));
+        Assert.True(tree.Head.IsTerminalBlock(specProvider));
         
         Block firstPoSBlock = Build.A.Block
             .WithHeader(Build.A.BlockHeader.WithParent(tree.Head!.Header).TestObject)
@@ -200,7 +200,7 @@ public partial class BlockTreeTests
             .WithParent(block8!)
             .WithTotalDifficulty((UInt256)10000001)
             .WithNumber(block8!.Number + 1).WithDifficulty(2000001).TestObject;
-        Assert.True(tree.IsTerminalBlock(newTerminalBlock.Header));
+        Assert.True(newTerminalBlock.IsTerminalBlock(specProvider));
         tree.SuggestBlock(newTerminalBlock);
         Assert.AreEqual(10, tree.BestKnownNumber);
         Assert.AreEqual(10, tree.BestSuggestedBody!.Number);
