@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc
            return result;
         }
 
-        public bool IsAuthenticated { get; private set; }
+        public bool IsAuthenticated { get; }
         public string Scheme { get; set; }
         public string Host { get; set; }
         public int Port { get; set; }
