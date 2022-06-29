@@ -543,7 +543,7 @@ namespace Nethermind.Merge.Plugin.Test
 
         [Test]
         [Parallelizable(ParallelScope.None)]
-        public async Task executePayloadV1_accepts_already_known_block()
+        public virtual async Task executePayloadV1_accepts_already_known_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();
             IEngineRpcModule rpc = CreateEngineModule(chain);

@@ -56,7 +56,13 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         // NOTE: This is the blockhash AuRa produces `0xb337e096b1540ade48f63104b653691af54bb87feb0944d7ec597baeb04f7e1b`
         await Task.CompletedTask;
     }
-    
+
+    [Parallelizable(ParallelScope.None)]
+    public override Task executePayloadV1_accepts_already_known_block()
+    {
+        return base.executePayloadV1_accepts_already_known_block();
+    }
+
     class MergeAuRaTestBlockchain : EngineModuleTests.MergeTestBlockchain
 {
     public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
