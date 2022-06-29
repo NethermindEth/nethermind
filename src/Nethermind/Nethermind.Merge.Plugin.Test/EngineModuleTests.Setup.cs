@@ -73,6 +73,7 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BlockValidator,
                     chain.BlockTree,
                     new InitConfig(),
+                    new SyncConfig(),
                     chain.PoSSwitcher,
                     chain.BeaconSync,
                     chain.BeaconPivot,
