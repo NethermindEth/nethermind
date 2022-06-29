@@ -1560,12 +1560,7 @@ namespace Nethermind.Blockchain
                 return true;
             }
 
-            if (_headerCache.Get(blockHash) is not null)
-            {
-                return true;
-            }
-
-            (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(number, blockHash, true);
+            (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(number, blockHash, false);
             if (level is null || blockInfo is null) return false;
             return !blockInfo.IsBeaconInfo;
         }
@@ -1575,11 +1570,6 @@ namespace Nethermind.Blockchain
             if (number > BestKnownBeaconNumber)
             {
                 return false;
-            }
-
-            if (_headerCache.Get(blockHash) is not null)
-            {
-                return true;
             }
 
             (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(number, blockHash, true);

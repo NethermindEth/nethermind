@@ -103,10 +103,9 @@ public class ChainLevelHelper : IChainLevelHelper
 
     public bool TrySetNextBlocks(int maxCount, BlockDownloadContext context)
     {
-        long? startingPoint = GetStartingPoint();
-        if (startingPoint == null)
-            return false;
-        BlockInfo? beaconMainChainBlockInfo = GetBeaconMainChainBlockInfo(startingPoint.Value + 1);
+        if (context.Blocks.Length == 0) return false;
+
+        BlockInfo? beaconMainChainBlockInfo = GetBeaconMainChainBlockInfo(context.Blocks[0].Number);
         if (beaconMainChainBlockInfo is not {IsBeaconBody: true}) return false;
 
         int offset = 0;
