@@ -20,7 +20,6 @@ using System.IdentityModel.Tokens.Jwt;
 using System.IO;
 using System.Linq;
 using Microsoft.IdentityModel.Tokens;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.Core.Authentication;
@@ -29,25 +28,25 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
 {
     private readonly SecurityKey _securityKey;
     private readonly ILogger _logger;
-    private readonly IClock _clock;
+    private readonly ITimestamper _timestamper;
     private const string JwtMessagePrefix = "Bearer ";
     private const int JwtTokenTtl = 5;
     private const int JwtSecretLength = 64;
 
-    public MicrosoftJwtAuthentication(byte[] secret, IClock clock, ILogger logger)
+    public MicrosoftJwtAuthentication(byte[] secret, ITimestamper timestamper, ILogger logger)
     {
         _securityKey = new SymmetricSecurityKey(secret);
         _logger = logger;
-        _clock = clock;
+        _timestamper = timestamper;
     }
 
-    public static MicrosoftJwtAuthentication CreateFromHexSecret(string hexSecret, IClock clock, ILogger logger)
+    public static MicrosoftJwtAuthentication CreateFromHexSecret(string hexSecret, ITimestamper timestamper, ILogger logger)
     {
         byte[] decodedSecret = DecodeSecret(hexSecret);
-        return new MicrosoftJwtAuthentication(decodedSecret, clock, logger);
+        return new MicrosoftJwtAuthentication(decodedSecret, timestamper, logger);
     }
 
-    public static MicrosoftJwtAuthentication CreateFromFileOrGenerate(string filePath, IClock clock, ILogger logger)
+    public static MicrosoftJwtAuthentication CreateFromFileOrGenerate(string filePath, ITimestamper timestamper, ILogger logger)
     {
         FileInfo fileInfo = new(filePath);
         if (!fileInfo.Exists || fileInfo.Length == 0)
@@ -63,7 +62,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             writer.Write(hexSecret);
             writer.Close();
             logger.Info($"Secret have been written to {fileInfo.FullName}");
-            return new MicrosoftJwtAuthentication(secret, clock, logger);
+            return new MicrosoftJwtAuthentication(secret, timestamper, logger);
         }
         else
         {
@@ -76,7 +75,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             {
                 throw new FormatException("Secret should be a 64 digit hexadecimal number");
             }
-            return CreateFromHexSecret(hexSecret, clock, logger);
+            return CreateFromHexSecret(hexSecret, timestamper, logger);
         }
     }
 
@@ -116,7 +115,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             handler.ValidateToken(token, tokenValidationParameters, out securityToken);
             JwtSecurityToken jwtToken = handler.ReadJwtToken(token);
             long iat = ((DateTimeOffset)jwtToken.IssuedAt).ToUnixTimeSeconds();
-            long now = _clock.GetCurrentTime();
+            long now = _timestamper.UnixTime.SecondsLong;
             if (Math.Abs(iat - now) <= JwtTokenTtl)
             {
                 if (_logger.IsTrace) _logger.Trace($"Authentication: authenticated. Token: {token}, iat: {iat}, time: {now}");
@@ -141,7 +140,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
     {
         if (expires == null) return true;
         long exp = ((DateTimeOffset)expires).ToUnixTimeSeconds();
-        return _clock.GetCurrentTime() < exp;
+        return _timestamper.UnixTime.SecondsLong < exp;
     }
 
     private static byte[] DecodeSecret(string hexSecret)

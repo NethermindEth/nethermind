@@ -158,7 +158,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             private void OnBlockProduced(object? sender, BlockEventArgs e)
             {
-                BlockTree.SuggestBlock(e.Block, BlockTreeSuggestOptions.None, false);
+                BlockTree.SuggestBlock(e.Block, BlockTreeSuggestOptions.ForceDontSetAsMain);
                 BlockchainProcessor.Process(e.Block!, GetProcessingOptions(), NullBlockTracer.Instance);
                 BlockTree.UpdateMainChain(new[] { e.Block! }, true);
             }

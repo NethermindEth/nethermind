@@ -43,7 +43,9 @@ namespace Nethermind.Core.Test.Builders
                 block.Header.Hash = block.Header.CalculateHash();
                 parent = block;
                 bool shouldProcess = i == branchLength - 1;
-                blockTree.SuggestBlock(block, shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None, false);
+                BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ForceDontSetAsMain;
+                options |= shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+                blockTree.SuggestBlock(block, options);
             }
         }
 
@@ -60,7 +62,7 @@ namespace Nethermind.Core.Test.Builders
 
             if (branchLength > blockTree.Head!.Number)
             {
-                blockTree.UpdateMainChain(blocks.ToArray(), true);
+                blockTree.UpdateMainChain(blocks, true);
             }
         }
 

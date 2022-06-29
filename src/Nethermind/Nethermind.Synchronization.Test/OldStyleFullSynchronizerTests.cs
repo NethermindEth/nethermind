@@ -118,6 +118,7 @@ namespace Nethermind.Synchronization.Test
                 quickConfig,
                 new WitnessCollector(new MemDb(), LimboLogs.Instance), 
                 Policy.FullGossip,
+                MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
         }
 

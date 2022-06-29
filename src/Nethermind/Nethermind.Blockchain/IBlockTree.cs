@@ -96,17 +96,17 @@ namespace Nethermind.Blockchain
         /// Suggests block for inclusion in the block tree.
         /// </summary>
         /// <param name="block">Block to be included</param>
-        /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
+        /// <param name="options">Options for suggesting block, whether a block should be processed or just added to the store.</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null);
+        AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess);
         
         /// <summary>
         /// Suggests block for inclusion in the block tree. Wait for DB unlock if needed.
         /// </summary>
         /// <param name="block">Block to be included</param>
-        /// <param name="shouldProcess">Whether a block should be processed or just added to the store</param>
+        /// <param name="options">Options for suggesting block, whether a block should be processed or just added to the store.</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        Task<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null);
+        ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess);
 
         /// <summary>
         /// Suggests a block header (without body)
@@ -145,9 +145,9 @@ namespace Nethermind.Blockchain
         /// <param name="blocks">Blocks that will now be at the top of the chain</param>
         /// <param name="wereProcessed"></param>
         /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
-        void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false);
+        void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false);
         
-        void MarkChainAsProcessed(Block[] blocks);
+        void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
 
         bool CanAcceptNewBlocks { get; }
 
@@ -165,8 +165,7 @@ namespace Nethermind.Blockchain
 
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
 
-        BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant,
-            long maxSearchDepth);
+        BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth);
 
         void DeleteInvalidBlock(Block invalidBlock);
 

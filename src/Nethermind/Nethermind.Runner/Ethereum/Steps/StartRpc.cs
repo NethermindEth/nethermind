@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -22,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
@@ -47,20 +49,20 @@ namespace Nethermind.Runner.Ethereum.Steps
             if (jsonRpcConfig.Enabled)
             {
                 IInitConfig initConfig = _api.Config<IInitConfig>();
-                IJsonRpcUrlCollection jsonRpcUrlCollection =
-                    new JsonRpcUrlCollection(_api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
+                IJsonRpcUrlCollection jsonRpcUrlCollection = new JsonRpcUrlCollection(_api.LogManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
 
                 JsonRpcLocalStats jsonRpcLocalStats = new(
                     _api.Timestamper,
                     jsonRpcConfig,
                     _api.LogManager);
 
-                JsonRpcService jsonRpcService = new(_api.RpcModuleProvider!, _api.LogManager, jsonRpcConfig);
+                IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
+                JsonRpcService jsonRpcService = new(rpcModuleProvider, _api.LogManager, jsonRpcConfig);
 
                 IJsonSerializer jsonSerializer = CreateJsonSerializer(jsonRpcService);
-                IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication
+                IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                     ? NoAuthentication.Instance
-                    : MicrosoftJwtAuthentication.CreateFromFileOrGenerate(jsonRpcConfig.JwtSecretFile, new ClockImpl(), logger);
+                    : MicrosoftJwtAuthentication.CreateFromFileOrGenerate(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger);
 
 
                 JsonRpcProcessor jsonRpcProcessor = new(
@@ -73,8 +75,15 @@ namespace Nethermind.Runner.Ethereum.Steps
                 
                 if (initConfig.WebSocketsEnabled)
                 {
-                    JsonRpcWebSocketsModule webSocketsModule = new(jsonRpcProcessor, jsonRpcService, jsonRpcLocalStats,
-                        _api.LogManager, jsonSerializer, jsonRpcUrlCollection, auth);
+                    JsonRpcWebSocketsModule webSocketsModule = new(
+                        jsonRpcProcessor,
+                        jsonRpcService,
+                        jsonRpcLocalStats,
+                        _api.LogManager,
+                        jsonSerializer,
+                        jsonRpcUrlCollection,
+                        auth);
+
                     _api.WebSocketsManager!.AddModule(webSocketsModule, true);
                 }
 
@@ -83,6 +92,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 Bootstrap.Instance.JsonSerializer = jsonSerializer;
                 Bootstrap.Instance.JsonRpcLocalStats = jsonRpcLocalStats;
                 Bootstrap.Instance.JsonRpcAuthentication = auth;
+
                 JsonRpcRunner? jsonRpcRunner = new(
                     jsonRpcProcessor,
                     jsonRpcUrlCollection,

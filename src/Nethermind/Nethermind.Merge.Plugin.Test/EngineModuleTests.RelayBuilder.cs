@@ -98,6 +98,7 @@ public partial class EngineModuleTests
     }
     
     [Test]
+    [Parallelizable(ParallelScope.None)]
     public virtual async Task forkchoiceUpdatedV1_should_communicate_with_boost_relay_through_http()
     {
         MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
