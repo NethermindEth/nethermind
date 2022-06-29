@@ -112,7 +112,7 @@ namespace Nethermind.Synchronization.FastBlocks
             BodiesSyncBatch? batch = null;
             if (ShouldBuildANewBatch())
             {
-                BlockInfo[] infos = new BlockInfo[_requestSize];
+                BlockInfo?[] infos = new BlockInfo[_requestSize];
                 _syncStatusList.GetInfosForBatch(infos);
                 if (infos[0] != null)
                 {

@@ -17,4 +17,7 @@
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FastEnum" Version="1.7.0" />
+  </ItemGroup>
 </Project>

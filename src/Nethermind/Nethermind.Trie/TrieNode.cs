@@ -203,8 +203,8 @@ namespace Nethermind.Trie
 
             _rlpStream = rlp.AsRlpStream();
         }
-        
-        public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp) 
+
+        public TrieNode(NodeType nodeType, Keccak keccak, byte[] rlp)
             : this(nodeType, rlp)
         {
             Keccak = keccak;
@@ -318,7 +318,7 @@ namespace Nethermind.Trie
                 throw new TrieException($"Error when decoding node {Keccak}", rlpException);
             }
         }
-        
+
         public void ResolveKey(ITrieNodeResolver tree, bool isRoot)
         {
             if (Keccak is not null)
@@ -782,17 +782,22 @@ namespace Nethermind.Trie
                 return;
             }
 
-            _rlpStream.Reset();
-            _rlpStream.SkipLength();
+            SeekChild(_rlpStream, itemToSetOn);
+        }
+
+        private void SeekChild(RlpStream rlpStream, int itemToSetOn)
+        {
+            rlpStream.Reset();
+            rlpStream.SkipLength();
             if (IsExtension)
             {
-                _rlpStream.SkipItem();
+                rlpStream.SkipItem();
                 itemToSetOn--;
             }
 
             for (int i = 0; i < itemToSetOn; i++)
             {
-                _rlpStream.SkipItem();
+                rlpStream.SkipItem();
             }
         }
 
@@ -808,8 +813,10 @@ namespace Nethermind.Trie
                 InitData();
                 if (_data![i] is null)
                 {
-                    SeekChild(i);
-                    int prefix = _rlpStream!.ReadByte();
+                    // Allows to load children in parallel
+                    RlpStream rlpStream = new(_rlpStream!.Data!);
+                    SeekChild(rlpStream, i);
+                    int prefix = rlpStream!.ReadByte();
 
                     switch (prefix)
                     {
@@ -821,8 +828,8 @@ namespace Nethermind.Trie
                         }
                         case 160:
                         {
-                            _rlpStream.Position--;
-                            Keccak keccak = _rlpStream.DecodeKeccak();
+                            rlpStream.Position--;
+                            Keccak keccak = rlpStream.DecodeKeccak();
                             TrieNode child = tree.FindCachedOrUnknown(keccak);
                             _data![i] = childOrRef = child;
 
@@ -835,8 +842,8 @@ namespace Nethermind.Trie
                         }
                         default:
                         {
-                            _rlpStream.Position--;
-                            Span<byte> fullRlp = _rlpStream.PeekNextItem();
+                            rlpStream.Position--;
+                            Span<byte> fullRlp = rlpStream.PeekNextItem();
                             TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                             _data![i] = childOrRef = child;
                             break;

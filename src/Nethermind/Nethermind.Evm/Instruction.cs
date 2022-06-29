@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,7 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using FastEnumUtility;
 
 namespace Nethermind.Evm
 {
@@ -167,6 +170,10 @@ namespace Nethermind.Evm
         LOG3 = 0xa3,
         LOG4 = 0xa4,
 
+        // EIP-1153
+        TLOAD = 0xb3,
+        TSTORE = 0xb4,
+
         CREATE = 0xf0,
         CALL = 0xf1,
         CALLCODE = 0xf2,
@@ -181,12 +188,12 @@ namespace Nethermind.Evm
     
     public static class InstructionExtensions
     {
-        public static string? GetName(this Instruction instruction, bool isPostMerge = false)
-        {
-            return (instruction == Instruction.PREVRANDAO && !isPostMerge)
+        public static string? GetName(this Instruction instruction, bool isPostMerge = false) =>
+            (instruction == Instruction.PREVRANDAO && !isPostMerge)
                 ? "DIFFICULTY"
-                : System.Enum.GetName(typeof(Instruction), instruction); //TODO: This is slow! Generate switch?
-        }
+                : FastEnum.IsDefined(instruction)
+                    ? FastEnum.GetName(instruction)
+                    : null;
     }
 }
 

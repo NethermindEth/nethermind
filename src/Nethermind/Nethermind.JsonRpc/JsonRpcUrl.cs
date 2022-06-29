@@ -19,7 +19,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-
+using FastEnumUtility;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc
             RpcEndpoint endpoint = RpcEndpoint.None;
             foreach (string endpointValue in endpointValues)
             {
-                if (Enum.TryParse(endpointValue, ignoreCase: true, out RpcEndpoint parsedEndpoint) &&
+                if (FastEnum.TryParse(endpointValue, ignoreCase: true, out RpcEndpoint parsedEndpoint) &&
                     (parsedEndpoint == RpcEndpoint.Http || parsedEndpoint == RpcEndpoint.Ws))
                     endpoint |= parsedEndpoint;
             }

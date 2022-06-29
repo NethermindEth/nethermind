@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+
 namespace Nethermind.Db.FullPruning
 {
     public class MemDbFactoryToRocksDbAdapter : IRocksDbFactory
@@ -28,6 +30,6 @@ namespace Nethermind.Db.FullPruning
         
         public IDb CreateDb(RocksDbSettings rocksDbSettings) => _memDbFactory.CreateDb(rocksDbSettings.DbName);
 
-        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : notnull => _memDbFactory.CreateColumnsDb<T>(rocksDbSettings.DbName);
+        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum => _memDbFactory.CreateColumnsDb<T>(rocksDbSettings.DbName);
     }
 }

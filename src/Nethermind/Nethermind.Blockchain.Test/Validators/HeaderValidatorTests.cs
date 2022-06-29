@@ -258,5 +258,35 @@ namespace Nethermind.Blockchain.Test.Validators
             
             Assert.True(result);
         }
+        
+        [Test]
+        public void When_block_number_is_negative()
+        {
+            _block.Header.Number = -1;
+            _block.Header.Hash = _block.CalculateHash();
+            
+            bool result = _validator.Validate(_block.Header);
+            Assert.False(result);
+        }
+        
+        [Test]
+        public void When_gas_used_is_negative()
+        {
+            _block.Header.GasUsed = -1;
+            _block.Header.Hash = _block.CalculateHash();
+            
+            bool result = _validator.Validate(_block.Header);
+            Assert.False(result);
+        }
+        
+        [Test]
+        public void When_gas_limit_is_negative()
+        {
+            _block.Header.GasLimit = -1;
+            _block.Header.Hash = _block.CalculateHash();
+            
+            bool result = _validator.Validate(_block.Header);
+            Assert.False(result);
+        }
     }
 }

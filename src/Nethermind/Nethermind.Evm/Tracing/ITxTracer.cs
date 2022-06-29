@@ -127,8 +127,10 @@ namespace Nethermind.Evm.Tracing
         void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value);
 
         void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue);
+        void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, Span<byte> newValue, byte[] currentValue) { }
         
         void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value);
+        void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, byte[] value) { }
 
         void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress);
 

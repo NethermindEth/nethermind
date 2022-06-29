@@ -1,25 +1,14 @@
 using Nethermind.Merge.Plugin;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Processing;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.InitializationSteps;
-using Nethermind.Consensus.AuRa.Contracts.DataStore;
-using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Data;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.State;
-using Nethermind.Specs.ChainSpecStyle;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Consensus.AuRa.Transactions;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -43,6 +32,11 @@ namespace Nethermind.Merge.AuRa
                 _auraApi = (AuRaNethermindApi)nethermindApi;
                 _auraApi.PoSSwitcher = _poSSwitcher;
                 _mergeConfig.Enabled = false; // set MergePlugin as disabled
+
+                // this runs before all init steps that use tx filters
+                TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
+                    originalFilter is MinGasPriceContractTxFilter ? originalFilter
+                    : new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
             }
         }
 

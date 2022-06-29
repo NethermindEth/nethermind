@@ -60,5 +60,12 @@ namespace Nethermind.Db
 
         [ConfigItem(Description = "In order to not exhaust disk writes, there is a minimum delay between allowed full pruning operations.", DefaultValue = "240")]
         int FullPruningMinimumDelayHours { get; set; }
+
+        [ConfigItem(Description = "Determines what to do after Nethermind completes a full prune. " +
+                                  "'None': does not take any special action. " +
+                                  "'ShutdownOnSuccess': shuts Nethermind down if the full prune succeeded. " +
+                                  "'AlwaysShutdown': shuts Nethermind down once the prune completes, whether it succeeded or failed.",
+            DefaultValue = "None")]
+        FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; }
     }
 }

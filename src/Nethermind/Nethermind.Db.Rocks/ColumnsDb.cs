@@ -17,17 +17,18 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FastEnumUtility;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks
 {
-    public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : notnull
+    public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
     {
         private readonly IDictionary<T, IDbWithSpan> _columnDbs = new Dictionary<T, IDbWithSpan>();
         
-        public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, params T[] keys) 
+        public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys)
             : base(basePath, settings, dbConfig, logManager, GetColumnFamilies(dbConfig, settings.DbName, GetEnumKeys(keys)))
         {
             keys = GetEnumKeys(keys);
@@ -38,17 +39,17 @@ namespace Nethermind.Db.Rocks
             }
         }
 
-        private static T[] GetEnumKeys(T[] keys)
+        private static IReadOnlyList<T> GetEnumKeys(IReadOnlyList<T> keys)
         {
-            if (typeof(T).IsEnum && keys.Length == 0)
+            if (typeof(T).IsEnum && keys.Count == 0)
             {
-                keys = Enum.GetValues(typeof(T)).Cast<T>().ToArray();
+                keys = FastEnum.GetValues<T>().ToArray();
             }
 
             return keys;
         }
 
-        private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, T[] keys)
+        private static ColumnFamilies GetColumnFamilies(IDbConfig dbConfig, string name, IReadOnlyList<T> keys)
         {
             InitCache(dbConfig);
             

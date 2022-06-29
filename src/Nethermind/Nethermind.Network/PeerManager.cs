@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using FastEnumUtility;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -418,22 +419,9 @@ namespace Nethermind.Network
             }
         }
 
-        private static readonly ActivePeerSelectionCounter[] _enumValues = InitEnumValues();
+        private static readonly IReadOnlyList<ActivePeerSelectionCounter> _enumValues = FastEnum.GetValues<ActivePeerSelectionCounter>();
 
-        private static ActivePeerSelectionCounter[] InitEnumValues()
-        {
-            Array values = Enum.GetValues(typeof(ActivePeerSelectionCounter));
-            ActivePeerSelectionCounter[] result = new ActivePeerSelectionCounter[values.Length];
 
-            int index = 0;
-            foreach (ActivePeerSelectionCounter value in values)
-            {
-                result[index++] = value;
-            }
-
-            return result;
-        }
-        
         private void SelectAndRankCandidates()
         {
             if (AvailableActivePeersCount <= 0)
@@ -445,7 +433,7 @@ namespace Nethermind.Network
             _currentSelection.Candidates.Clear();
             _currentSelection.Incompatible.Clear();
 
-            for (int i = 0; i < _enumValues.Length; i++)
+            for (int i = 0; i < _enumValues.Count; i++)
             {
                 _currentSelection.Counters[_enumValues[i]] = 0;
             }
