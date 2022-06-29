@@ -713,15 +713,15 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private AddBlockResult Suggest(Block? block, BlockHeader header,
-            BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess,
-            bool? setAsMain = null)
+        private AddBlockResult Suggest(Block? block, BlockHeader header, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
             bool shouldProcess = (options & BlockTreeSuggestOptions.ShouldProcess) != 0;
             bool fillBeaconBlock = (options & BlockTreeSuggestOptions.FillBeaconBlock) != 0;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}");
+            bool setAsMainSet = (options & BlockTreeSuggestOptions.SetAsMain) != 0;
+            bool dontSetAsMainSet = (options & BlockTreeSuggestOptions.DontSetAsMain) != 0;
+            bool setAsMain = setAsMainSet || !dontSetAsMainSet && !shouldProcess;
+
+            if (_logger.IsTrace) _logger.Trace($"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}");
             
 #if DEBUG
         /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -783,11 +783,10 @@ namespace Nethermind.Blockchain
             if (!isKnown || fillBeaconBlock)
             {
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
-
-                UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain is null ? !shouldProcess : setAsMain.Value);
-                NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, setAsMain);
+                NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block!));
             }
-            
+
             if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
             {
                 if (header.IsGenesis)
@@ -796,14 +795,15 @@ namespace Nethermind.Blockchain
                 }
 
                 BestSuggestedHeader = header;
+
                 if (block is not null && block.IsPostMerge)
+                {
                     BestSuggestedBody = block;
+                }
 
                 if (block is not null && shouldProcess)
                 {
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"New best suggested block. PreviousBestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
+                    if (_logger.IsTrace) _logger.Trace($"New best suggested block. PreviousBestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
                     BestSuggestedBody = block;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
@@ -817,24 +817,24 @@ namespace Nethermind.Blockchain
             return Suggest(null, header);
         }
 
-        public async Task<AddBlockResult> SuggestBlockAsync(Block block,
-            BlockTreeSuggestOptions suggestOptions = BlockTreeSuggestOptions.ShouldProcess,
-            bool? setAsMain = null)
+        public async ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions suggestOptions = BlockTreeSuggestOptions.ShouldProcess)
         {
-            await WaitForReadinessToAcceptNewBlock;
-            return SuggestBlock(block, suggestOptions, setAsMain);
+            if (!WaitForReadinessToAcceptNewBlock.IsCompleted)
+            {
+                await WaitForReadinessToAcceptNewBlock;
+            }
+
+            return SuggestBlock(block, suggestOptions);
         }
 
-        public AddBlockResult SuggestBlock(Block block,
-            BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null)
+        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
             if (Genesis is null && !block.IsGenesis)
             {
-                throw new InvalidOperationException(
-                    "Block tree should be initialized with genesis before suggesting other blocks.");
+                throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
             }
 
-            return Suggest(block, block.Header, options, setAsMain);
+            return Suggest(block, block.Header, options);
         }
 
         public BlockHeader? FindHeader(long number, BlockTreeLookupOptions options)
@@ -1228,8 +1228,7 @@ namespace Nethermind.Blockchain
         public bool IsMainChain(BlockHeader blockHeader)
         {
             ChainLevelInfo? chainLevelInfo = LoadLevel(blockHeader.Number);
-            bool isMain = chainLevelInfo is not null
-                          && chainLevelInfo.MainChainBlock?.BlockHash?.Equals(blockHeader.Hash) == true;
+            bool isMain = chainLevelInfo is not null && chainLevelInfo.MainChainBlock?.BlockHash.Equals(blockHeader.Hash) == true;
             return isMain;
         }
 
@@ -1252,8 +1251,7 @@ namespace Nethermind.Blockchain
             ChainLevelInfo? levelInfo = LoadLevel(number);
             if (levelInfo is null)
             {
-                throw new InvalidOperationException(
-                    $"Not able to find block {blockHash} from an unknown level {number}");
+                throw new InvalidOperationException($"Not able to find block {blockHash} from an unknown level {number}");
             }
 
             int? index = FindIndex(blockHash, levelInfo);
@@ -1265,78 +1263,44 @@ namespace Nethermind.Blockchain
             return levelInfo.BlockInfos[index.Value].WasProcessed;
         }
 
-        public void MarkChainAsProcessed(Block[] blocks)
+        public void MarkChainAsProcessed(IReadOnlyList<Block> blocks)
         {
-            if (blocks.Length == 0)
+            if (blocks.Count != 0)
             {
-                return;
-            }
+                using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
-            bool ascendingOrder = true;
-            if (blocks.Length > 1)
-            {
-                if (blocks[^1].Number < blocks[0].Number)
+                for (int i = 0; i < blocks.Count; i++)
                 {
-                    ascendingOrder = false;
-                }
-            }
-
-            long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
-            long previousHeadNumber = Head?.Number ?? 0L;
-            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
-            if (previousHeadNumber > lastNumber)
-            {
-                for (long i = 0; i < previousHeadNumber - lastNumber; i++)
-                {
-                    long levelNumber = previousHeadNumber - i;
-
-                    ChainLevelInfo? level = LoadLevel(levelNumber);
-                    if (level is not null)
+                    Block block = blocks[i];
+                    if (ShouldCache(block.Number))
                     {
-                        level.HasBlockOnMainChain = false;
-                        _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                        _blockCache.Set(block.Hash, blocks[i]);
+                        _headerCache.Set(block.Hash, block.Header);
                     }
-                }
-            }
 
-            for (int i = 0; i < blocks.Length; i++)
-            {
-                Block block = blocks[i];
-                if (ShouldCache(block.Number))
-                {
-                    _blockCache.Set(block.Hash, blocks[i]);
-                    _headerCache.Set(block.Hash, block.Header);
-                }
+                    ChainLevelInfo? level = LoadLevel(block.Number);
+                    int? index = level is null ? null : FindIndex(block.Hash, level);
+                    if (index is null)
+                    {
+                        throw new InvalidOperationException($"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
+                    }
 
-                ChainLevelInfo? level = LoadLevel(block.Number);
-                int? index = level is null ? null : FindIndex(block.Hash, level);
-                if (index is null)
-                {
-                    throw new InvalidOperationException(
-                        $"Cannot mark unknown block {block.ToString(Block.Format.FullHashAndNumber)} as processed");
+                    BlockInfo info = level.BlockInfos[index.Value];
+                    info.WasProcessed = true;
+                    _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
                 }
-
-                BlockInfo info = level.BlockInfos[index.Value];
-                info.WasProcessed = true;
-                if (block.Number<previousHeadNumber) 
-                {
-                    (level.BlockInfos[index.Value], level.BlockInfos[0]) =
-                        (level.BlockInfos[0], level.BlockInfos[index.Value]);
-                }
-
-                _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
             }
         }
 
-        public void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceUpdateHeadBlock = false)
+        public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceUpdateHeadBlock = false)
         {
-            if (blocks.Length == 0)
+            if (blocks.Count == 0)
             {
                 return;
             }
 
             bool ascendingOrder = true;
-            if (blocks.Length > 1)
+            if (blocks.Count > 1)
             {
                 if (blocks[^1].Number < blocks[0].Number)
                 {
@@ -1345,7 +1309,7 @@ namespace Nethermind.Blockchain
             }
 
 #if DEBUG
-            for (int i = 0; i < blocks.Length; i++)
+            for (int i = 0; i < blocks.Count; i++)
             {
                 if (i != 0)
                 {
@@ -1380,7 +1344,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            for (int i = 0; i < blocks.Length; i++)
+            for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
                 if (ShouldCache(block.Number))
@@ -1390,7 +1354,7 @@ namespace Nethermind.Blockchain
                 }
 
                 // we only force update head block for last block in processed blocks
-                bool lastProcessedBlock = i == blocks.Length - 1;
+                bool lastProcessedBlock = i == blocks.Count - 1;
                 MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
             }
         }
@@ -1511,10 +1475,8 @@ namespace Nethermind.Blockchain
             // ToDo we need unit tests for these cases
             // ToDo if our Best -> PostMerge, we shouldn't reorganize to terminal block
             // ToDo if PoW block TD > TTD we should check if it is terminal block
-            bool ttdRequirementSatisfied =
-                TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
-            bool preMergeRequirementSatisfied =
-                ttdRequirementSatisfied && (!header.IsPostMerge && header.Difficulty != 0);
+            bool ttdRequirementSatisfied = TotalDifficultyRequirementSatisfied(header, BestSuggestedHeader?.TotalDifficulty ?? 0);
+            bool preMergeRequirementSatisfied = ttdRequirementSatisfied && (!header.IsPostMerge && header.Difficulty != 0);
             bool postMergeRequirementSatisfied = ttdRequirementSatisfied &&
                                                  BestSuggestedBody?.Number <= header.Number &&
                                                  (header.IsPostMerge || header.Difficulty == 0);

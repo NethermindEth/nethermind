@@ -258,7 +258,6 @@ namespace Nethermind.Merge.Plugin
                     new NewPayloadV1Handler(
                         _api.BlockValidator,
                         _api.BlockTree,
-                        _api.BlockchainProcessor,
                         _api.Config<IInitConfig>(),
                         _poSSwitcher,
                         _beaconSync,

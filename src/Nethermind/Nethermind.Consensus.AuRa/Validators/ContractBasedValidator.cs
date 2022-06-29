@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return;
             }
             
-            var isProducingBlock = options.IsProducingBlock();
+            var isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
             var notConsecutiveBlock = block.Number - 1 > _lastProcessedBlockNumber || _lastProcessedBlockNumber == 0;
@@ -202,7 +202,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             
             if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
             {
-                var isProcessingBlock = !options.IsProducingBlock();
+                bool isProcessingBlock = !options.ContainsFlag(ProcessingOptions.ProducingBlock);
                 InitiateChange(block, potentialValidators, isProcessingBlock, Validators.Length == 1);
                 if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Signal for transition within contract at block {block.ToString(Block.Format.Short)}. New list of {potentialValidators.Length} : [{string.Join<Address>(", ", potentialValidators)}].");
             }

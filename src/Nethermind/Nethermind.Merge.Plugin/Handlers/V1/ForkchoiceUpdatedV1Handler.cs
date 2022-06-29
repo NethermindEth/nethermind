@@ -49,7 +49,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IMergeSyncController _mergeSyncController;
         private readonly ILogger _logger;
         private readonly IPeerRefresher _peerRefresher;
-        private int i = 0;
 
         public ForkchoiceUpdatedV1Handler(
             IBlockTree blockTree,

@@ -60,7 +60,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public virtual void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
-            if (!options.IsProducingBlock() && !block.IsGenesis)
+            if (!options.ContainsFlag(ProcessingOptions.ProducingBlock) && !block.IsGenesis)
             {
                 var auRaStep = block.Header.AuRaStep.Value;
                 if (!_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, auRaStep))

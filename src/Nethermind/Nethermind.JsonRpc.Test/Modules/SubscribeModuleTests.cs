@@ -392,7 +392,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
             }));
 
-            blockTree.UpdateMainChain(blocks.ToArray(), true);
+            blockTree.UpdateMainChain(blocks, true);
             
             manualResetEvent.WaitOne();
             
