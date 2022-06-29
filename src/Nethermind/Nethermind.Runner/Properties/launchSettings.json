@@ -201,6 +201,10 @@
     "Ropsten Archive": {
       "commandName": "Project",
       "commandLineArgs": "--config configs\\ropsten_archive.cfg --baseDbPath C:\\nethermind_db"
+    },
+    "Gnosis_Merge_Devnet": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\gnosis_merge_devnet.cfg --baseDbPath C:\\nethermind_db"
     }
   }
 }

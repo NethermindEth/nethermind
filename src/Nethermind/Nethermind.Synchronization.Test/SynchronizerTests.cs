@@ -439,6 +439,7 @@ namespace Nethermind.Synchronization.Test
                     syncConfig,
                     new WitnessCollector(new MemDb(), LimboLogs.Instance),
                     Policy.FullGossip,
+                    MainnetSpecProvider.Instance,
                     _logManager);
                 
                 SyncPeerPool.Start();
