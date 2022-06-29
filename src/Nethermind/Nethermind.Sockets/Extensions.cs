@@ -20,8 +20,6 @@ using System.Net.WebSockets;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Primitives;
-using Nethermind.Core.Authentication;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
 namespace Nethermind.Sockets
