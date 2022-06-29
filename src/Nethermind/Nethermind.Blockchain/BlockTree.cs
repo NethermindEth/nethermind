@@ -881,12 +881,8 @@ namespace Nethermind.Blockchain
                     if (setTotalDifficulty)
                     {
                         SetTotalDifficulty(header);
-                        blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty!.Value);
                     }
-                    else
-                    {
-                        blockInfo = new BlockInfo(header.Hash, UInt256.Zero);
-                    }
+                    blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
                     level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                 }
                 else
