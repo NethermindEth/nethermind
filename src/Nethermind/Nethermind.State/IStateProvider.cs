@@ -64,10 +64,5 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="codeHash"></param>
         void TouchCode(Keccak codeHash);
-
-        /// <summary>
-        /// pruning hack
-        /// </summary>
-        void CommitCode();
     }
 }

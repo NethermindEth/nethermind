@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain
         public long BestKnownNumber => _wrapped.BestKnownNumber;
         public long BestKnownBeaconNumber => _wrapped.BestKnownBeaconNumber;
         public Block Head => _wrapped.Head;
-        public void MarkChainAsProcessed(Block[] blocks) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
+        public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkChainAsProcessed)} calls");
         public UInt256? BackFillTotalDifficulty(long startNumber, long endNumber, long batchSize, UInt256? startingTotalDifficulty = null) => throw new InvalidOperationException();
         public (BlockInfo Info, ChainLevelInfo Level) GetInfo(long number, Keccak blockHash) => _wrapped.GetInfo(number, blockHash);
         public UInt256? UpdateTotalDifficulty(Block block, UInt256 totalDifficulty) => throw new InvalidOperationException();
@@ -90,9 +90,9 @@ namespace Nethermind.Blockchain
             _wrapped.UpdateHeadBlock(blockHash);
         }
 
-        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
+        public AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
         
-        public Task<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess, bool? setAsMain = null) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlockAsync)} calls");
+        public ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlockAsync)} calls");
 
         public AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
@@ -198,7 +198,8 @@ namespace Nethermind.Blockchain
         }
 
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
-        public void UpdateMainChain(Block[] blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
+
+        public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
         
         public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) => _wrapped.ForkChoiceUpdated(finalizedBlockHash,safeBlockBlockHash);
     }

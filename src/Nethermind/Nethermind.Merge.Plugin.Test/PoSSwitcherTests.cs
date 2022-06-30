@@ -72,10 +72,10 @@ namespace Nethermind.Merge.Plugin.Test
         [TestCase(4900000)]
         public void IsTerminalBlock_returning_expected_results(long terminalTotalDifficulty)
         {
-            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
-            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(6).TestObject;
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject;
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = (UInt256)terminalTotalDifficulty;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             BlockHeader? block3 = blockTree.FindHeader(3, BlockTreeLookupOptions.All);
@@ -83,24 +83,24 @@ namespace Nethermind.Merge.Plugin.Test
             BlockHeader? block5 = blockTree.FindHeader(5, BlockTreeLookupOptions.All);
             Block blockWithPostMergeFlag = Build.A.Block.WithNumber(4).WithDifficulty(0).WithPostMergeFlag(true)
                                             .WithParent(block3!).TestObject; 
-            Assert.AreEqual(false, poSSwitcher.IsTerminalBlock(block3!)); // PoWBlock
-            Assert.AreEqual(true, poSSwitcher.IsTerminalBlock(block4!)); // terminal block
-            Assert.AreEqual(false, poSSwitcher.IsTerminalBlock(block5!)); // incorrect PoW not terminal block
-            Assert.AreEqual(false, poSSwitcher.IsTerminalBlock(blockWithPostMergeFlag.Header)); // block with post merge flag
+            Assert.AreEqual(false, block3!.IsTerminalBlock(specProvider)); // PoWBlock
+            Assert.AreEqual(true, block4!.IsTerminalBlock(specProvider)); // terminal block
+            Assert.AreEqual(false, block5!.IsTerminalBlock(specProvider)); // incorrect PoW not terminal block
+            Assert.AreEqual(false, blockWithPostMergeFlag.IsTerminalBlock(specProvider)); // block with post merge flag
         }
         
         [TestCase(5000000, true)]
         [TestCase(4900000, false)]
         public void IsTerminalBlock_returning_expected_result_for_genesis_block(long genesisDifficulty, bool expectedResult)
         {
-            Block genesisBlock = Build.A.Block.WithNumber(0).WithDifficulty((UInt256)genesisDifficulty)
-                .WithTotalDifficulty(genesisDifficulty).TestObject; 
-            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(6).TestObject;
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = (UInt256)5000000;
+            Block genesisBlock = Build.A.Block.WithNumber(0).WithDifficulty((UInt256)genesisDifficulty)
+                .WithTotalDifficulty(genesisDifficulty).TestObject; 
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
-            Assert.AreEqual(expectedResult, poSSwitcher.IsTerminalBlock(genesisBlock!.Header));
+            Assert.AreEqual(expectedResult, genesisBlock.IsTerminalBlock(specProvider));
         }
         
         [Test]
@@ -133,10 +133,10 @@ namespace Nethermind.Merge.Plugin.Test
         [TestCase(4900000)]
         public void GetBlockSwitchInfo_returning_expected_results(long terminalTotalDifficulty)
         {
-            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
-            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(6).TestObject;
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = (UInt256)terminalTotalDifficulty;
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(6).TestObject;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             BlockHeader? block3 = blockTree.FindHeader(3, BlockTreeLookupOptions.All);
@@ -153,10 +153,11 @@ namespace Nethermind.Merge.Plugin.Test
         [Test]
         public void Switch_when_TTD_is_reached()
         {
-            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
-            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(4).TestObject;
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = 5000000;
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
+
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, new MemDb(), specProvider);
 
             Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());
@@ -171,11 +172,11 @@ namespace Nethermind.Merge.Plugin.Test
         public void Can_load_parameters_after_the_restart()
         {
             using MemDb metadataDb = new();
-            var terminalBlock = 4;
-            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
-            BlockTree blockTree = Build.A.BlockTree(genesisBlock).OfChainLength(4).TestObject;
+            int terminalBlock = 4;
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.TerminalTotalDifficulty = 5000000;
+            Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
             PoSSwitcher poSSwitcher = CreatePosSwitcher(blockTree, metadataDb, specProvider);
 
             Assert.AreEqual(false, poSSwitcher.HasEverReachedTerminalBlock());

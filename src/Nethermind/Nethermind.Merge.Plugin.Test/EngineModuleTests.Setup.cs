@@ -71,9 +71,9 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.LogManager),
                 new NewPayloadV1Handler(
                     chain.BlockValidator,
-                    chain.BlockTree, 
-                    chain.BlockchainProcessor,
+                    chain.BlockTree,
                     new InitConfig(),
+                    new SyncConfig(),
                     chain.PoSSwitcher,
                     chain.BeaconSync,
                     chain.BeaconPivot,

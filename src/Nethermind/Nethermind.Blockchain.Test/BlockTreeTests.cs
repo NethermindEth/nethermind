@@ -1601,11 +1601,11 @@ namespace Nethermind.Blockchain.Test
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
             blockTree.BlockAcceptingNewBlocks();
-            Task suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
-            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            ValueTask<AddBlockResult> suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
+            suggest.IsCompleted.Should().Be(false);
             blockTree.ReleaseAcceptingNewBlocks();
             await suggest;
-            suggest.Status.Should().Be(TaskStatus.RanToCompletion);
+            suggest.IsCompleted.Should().Be(true);
         }
         
         [Test]
@@ -1617,28 +1617,28 @@ namespace Nethermind.Blockchain.Test
             blockTree.BlockAcceptingNewBlocks();        // 1st blockade
             blockTree.BlockAcceptingNewBlocks();        // 2nd blockade
             blockTree.BlockAcceptingNewBlocks();        // 3rd blockade
-            Task suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
-            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            ValueTask<AddBlockResult> suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
+            suggest.IsCompleted.Should().Be(false);
             blockTree.ReleaseAcceptingNewBlocks();      // 1st release - 2 blockades left
-            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            suggest.IsCompleted.Should().Be(false);
             blockTree.ReleaseAcceptingNewBlocks();      // 2nd release - 1 blockade left
-            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            suggest.IsCompleted.Should().Be(false);
             blockTree.BlockAcceptingNewBlocks();        // 1 more blockade - 2 blockades left
-            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            suggest.IsCompleted.Should().Be(false);
             blockTree.ReleaseAcceptingNewBlocks();      // release - 1 blockade left
-            suggest.Status.Should().Be(TaskStatus.WaitingForActivation);
+            suggest.IsCompleted.Should().Be(false);
             blockTree.ReleaseAcceptingNewBlocks();      // 3rd release - access unlocked
             await suggest;
-            suggest.Status.Should().Be(TaskStatus.RanToCompletion);
+            suggest.IsCompleted.Should().Be(true);
         }
         
         [Test]
         public async Task SuggestBlockAsync_works_well_when_there_are_no_blockades()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-            Task suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
+            ValueTask<AddBlockResult> suggest = blockTree.SuggestBlockAsync(Build.A.Block.WithNumber(3).TestObject);
             await suggest;
-            suggest.Status.Should().Be(TaskStatus.RanToCompletion);
+            suggest.IsCompleted.Should().Be(true);
         }
 
         private class TestBlockTreeVisitor : IBlockTreeVisitor

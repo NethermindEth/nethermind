@@ -28,10 +28,8 @@ namespace Nethermind.Core
             BlockInfos = blockInfos;
         }
 
-        public bool HasNonBeaconBlocks => BlockInfos.Any(b =>
-            (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) == 0);
-        public bool HasBeaconBlocks => BlockInfos.Any(b =>
-            (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0);
+        public bool HasNonBeaconBlocks => BlockInfos.Any(b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) == 0);
+        public bool HasBeaconBlocks => BlockInfos.Any(b => (b.Metadata & (BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody)) != 0);
         public bool HasBlockOnMainChain { get; set; }
         public BlockInfo[] BlockInfos { get; set; }
         public BlockInfo? MainChainBlock => HasBlockOnMainChain ? BlockInfos[0] : null;

@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
@@ -103,9 +104,10 @@ public partial class BlockDownloaderTests
     [TestCase(32L, DownloaderOptions.MoveToMain, 32, true)]
     public async Task Can_reach_terminal_block(long headNumber, int options, int threshold, bool withBeaconPivot)
     {
+        UInt256 ttd = 10000000;
         BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
             .GoesLikeThis()
-            .WithBlockTrees(4, (int)headNumber + 1)
+            .WithBlockTrees(4, (int)headNumber + 1, true, ttd)
             .InsertBeaconPivot(16)
             .InsertHeaders(4, 16)
             .InsertBeaconBlocks(16, headNumber, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
@@ -117,7 +119,7 @@ public partial class BlockDownloaderTests
         MergeConfig mergeConfig = new() { Enabled = true };
         MemDb metadataDb = blockTrees.NotSyncedTreeBuilder.MetadataDb;
         IBlockCacheService blockCacheService = new BlockCacheService();
-        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "10000000" }, new SyncConfig(), metadataDb, notSyncedTree,
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = $"{ttd}" }, new SyncConfig(), metadataDb, notSyncedTree,
             RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         if (withBeaconPivot)
