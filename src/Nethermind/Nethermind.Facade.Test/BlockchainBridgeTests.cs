@@ -195,11 +195,9 @@ namespace Nethermind.Facade.Test
             _blockchainBridge.HeadBlock.Should().Be(head);
         }
 
-        [TestCase(true, true)]
-        [TestCase(true, false)]
-        [TestCase(false, true)]
-        [TestCase(false, false)]
-        public void GetReceiptAndEffectiveGasPrice_returns_correct_results(bool isCanonical, bool isRemoved)
+        [TestCase(true)]
+        [TestCase(false)]
+        public void GetReceiptAndEffectiveGasPrice_returns_correct_results(bool isCanonical)
         {
             Keccak txHash = TestItem.KeccakA;
             Keccak blockHash = TestItem.KeccakB;
@@ -214,7 +212,6 @@ namespace Nethermind.Facade.Test
             TxReceipt receipt = Build.A.Receipt
                 .WithBlockHash(blockHash)
                 .WithTransactionHash(txHash)
-                .WithRemoved(isRemoved)
                 .TestObject;
 
             _blockTree.FindBlock(blockHash, Arg.Is(BlockTreeLookupOptions.RequireCanonical)).Returns(isCanonical ? block : null);

@@ -266,16 +266,16 @@ namespace Nethermind.Blockchain.Filters
                 || logFilter.ToBlock.Type == BlockParameterType.Earliest
                 || logFilter.ToBlock.Type == BlockParameterType.Pending)
             {
-                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
+                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry, false);
             }
 
             if (logFilter.FromBlock.Type == BlockParameterType.Latest || logFilter.ToBlock.Type == BlockParameterType.Latest)
             {
                 //TODO: check if is last mined block
-                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
+                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry, false);
             }
 
-            return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
+            return new FilterLog(index, transactionLogIndex, txReceipt, logEntry, false);
         }
     }
 }

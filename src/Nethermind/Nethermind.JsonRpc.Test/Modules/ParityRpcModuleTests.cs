@@ -182,7 +182,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Logs = logEntries
             };
             
-            receiptStorage.Insert(block, receipt1, receipt2, receipt3);
+            receiptStorage.Insert(block, new []{receipt1, receipt2, receipt3});
         }
         
         private static Peer SetUpPeerA()

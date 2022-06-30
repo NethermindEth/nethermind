@@ -168,7 +168,7 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
-        public void Insert(Block block, params TxReceipt[] txReceipts)
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             int txReceiptsLength = txReceipts.Length;
@@ -187,16 +187,6 @@ namespace Nethermind.Blockchain.Receipts
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
             _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
 
-            bool wasRemoved = txReceiptsLength > 0 && txReceipts[0].Removed;
-            if (!wasRemoved)
-            {
-                for (int i = 0; i < txReceiptsLength; i++)
-                {
-                    Keccak txHash = block.Transactions[i].Hash;
-                    _transactionDb.Set(txHash, block.Hash.Bytes);
-                }
-            }
-
             if (blockNumber < MigratedBlockNumber)
             {
                 MigratedBlockNumber = blockNumber;
@@ -204,7 +194,10 @@ namespace Nethermind.Blockchain.Receipts
             
             _receiptsCache.Set(block.Hash, txReceipts);
 
-            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts, wasRemoved));
+            if (ensureCanonical)
+            {
+                EnsureCanonical(block);
+            }
         }
 
         public long? LowestInsertedReceiptBlockNumber
@@ -248,7 +241,5 @@ namespace Nethermind.Blockchain.Receipts
                 _transactionDb.Set(txReceipt.TxHash, block.Hash.Bytes);
             }
         }
-
-        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 }

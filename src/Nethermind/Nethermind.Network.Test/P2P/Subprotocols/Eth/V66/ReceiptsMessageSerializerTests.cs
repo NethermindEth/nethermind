@@ -56,7 +56,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             txReceipt.BlockNumber.Should().Be(0x0);
             txReceipt.TxHash.Should().BeNull();
             txReceipt.BlockHash.Should().BeNull();
-            txReceipt.Removed.Should().BeFalse();
             txReceipt.Index.Should().Be(0x0);
             
             ReceiptsMessage message = new(1111, ethMessage);

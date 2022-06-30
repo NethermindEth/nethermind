@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void Insert(Block block, params TxReceipt[] txReceipts)
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true)
         {
             _receipts[block.Hash] = txReceipts;
             for (int i = 0; i < txReceipts.Length; i++)
@@ -76,9 +76,6 @@ namespace Nethermind.Blockchain.Receipts
                 txReceipt.BlockHash = block.Hash;
                 _transactions[txReceipt.TxHash] = txReceipt;
             }
-
-            bool wasRemoved = txReceipts.Length > 0 && txReceipts[0].Removed;
-            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts, wasRemoved));
         }
         
         public bool HasBlock(Keccak hash)
@@ -97,7 +94,5 @@ namespace Nethermind.Blockchain.Receipts
         public long MigratedBlockNumber { get; set; }
 
         public int Count => _transactions.Count;
-        
-        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 }

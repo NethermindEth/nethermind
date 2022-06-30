@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Receipts
         {
         }
 
-        public void Insert(Block block, params TxReceipt[] txReceipts) { }
+        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical) { }
 
         public TxReceipt[] Get(Block block) => Array.Empty<TxReceipt>();
         public TxReceipt[] Get(Keccak blockHash) => Array.Empty<TxReceipt>();

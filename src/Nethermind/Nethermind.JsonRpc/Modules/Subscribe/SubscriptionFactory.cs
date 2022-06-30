@@ -49,8 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public SubscriptionFactory(ILogManager? logManager,
             IBlockTree? blockTree,
             ITxPool? txPool,
-            IReceiptStorage? receiptStorage,
-            IReceiptFinder? receiptFinder,
+            ReceiptCanonicalityMonitor receiptCanonicalityMonitor,
             IFilterStore? filterStore,
             IEthSyncingInfo ethSyncingInfo,
             ISpecProvider specProvider, 
@@ -60,8 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+            receiptCanonicalityMonitor = receiptCanonicalityMonitor ?? throw new ArgumentNullException(nameof(receiptCanonicalityMonitor));
             filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
             specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -73,7 +71,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, args)),
                 
                 [SubscriptionType.Logs] = CreateSubscriptionType<Filter?>((jsonRpcDuplexClient, filter) => 
-                    new LogsSubscription(jsonRpcDuplexClient, receiptStorage, receiptFinder, filterStore, blockTree, logManager, filter)),
+                    new LogsSubscription(jsonRpcDuplexClient, receiptCanonicalityMonitor, filterStore, blockTree, logManager, filter)),
                 
                 [SubscriptionType.NewPendingTransactions] = CreateSubscriptionType<TransactionsOption?>((jsonRpcDuplexClient, args) => 
                     new NewPendingTransactionsSubscription(jsonRpcDuplexClient, txPool, logManager, args)),

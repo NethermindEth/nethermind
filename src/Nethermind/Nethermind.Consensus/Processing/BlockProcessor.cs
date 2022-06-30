@@ -252,7 +252,7 @@ namespace Nethermind.Consensus.Processing
         // TODO: block processor pipeline
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
-            _receiptStorage.Insert(block, txReceipts);
+            _receiptStorage.Insert(block, txReceipts, false);
         }
 
         // TODO: block processor pipeline

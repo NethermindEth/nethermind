@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Filters
         public long TransactionIndex { get; }
         public long TransactionLogIndex { get; }
         
-        public FilterLog(long logIndex, long transactionLogIndex, TxReceipt txReceipt, LogEntry logEntry)
+        public FilterLog(long logIndex, long transactionLogIndex, TxReceipt txReceipt, LogEntry logEntry, bool removed)
             : this(
                 logIndex,
                 transactionLogIndex,
@@ -42,8 +42,8 @@ namespace Nethermind.Blockchain.Filters
                 txReceipt.TxHash,
                 logEntry.LoggersAddress,
                 logEntry.Data,
-                logEntry.Topics,
-                txReceipt.Removed) { }
+                logEntry.Topics, 
+                removed) { }
 
         public FilterLog(long logIndex, long transactionLogIndex, long blockNumber, Keccak blockHash, int transactionIndex, Keccak transactionHash, Address address, byte[] data, Keccak[] topics, bool removed = false)
         {

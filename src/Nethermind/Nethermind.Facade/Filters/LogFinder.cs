@@ -334,7 +334,7 @@ namespace Nethermind.Blockchain.Find
                             if (filter.Accepts(log))
                             {
                                 RecoverReceiptsData(blockHash, receipts);
-                                yield return new FilterLog(logIndexInBlock, j, receipt, log);
+                                yield return new FilterLog(logIndexInBlock, j, receipt, log, false);
                             }
 
                             logIndexInBlock++;

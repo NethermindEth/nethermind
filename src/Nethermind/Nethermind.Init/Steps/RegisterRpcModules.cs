@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -203,12 +204,14 @@ namespace Nethermind.Init.Steps
             WitnessRpcModule witnessRpcModule = new(_api.WitnessRepository, _api.BlockTree);
             rpcModuleProvider.RegisterSingle<IWitnessRpcModule>(witnessRpcModule);
             
+            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(_api.BlockTree, _api.ReceiptStorage, _api.LogManager);
+            _api.DisposeStack.Push(receiptCanonicalityMonitor);
+            
             SubscriptionFactory subscriptionFactory = new(
                 _api.LogManager,
                 _api.BlockTree,
                 _api.TxPool,
-                _api.ReceiptStorage,
-                _api.ReceiptFinder,
+                receiptCanonicalityMonitor,
                 _api.FilterStore,
                 _api.EthSyncingInfo!,
                 _api.SpecProvider,
