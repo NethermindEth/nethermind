@@ -861,7 +861,7 @@ namespace Nethermind.Blockchain
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==
                                          BlockTreeLookupOptions.None;
-            bool setTotalDifficulty = (options & BlockTreeLookupOptions.DoNotSetTotalDifficulty) ==
+            bool calculateTotalDifficulty = (options & BlockTreeLookupOptions.DoNotCalculateTotalDifficulty) ==
                                       BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) ==
                                      BlockTreeLookupOptions.RequireCanonical;
@@ -876,7 +876,7 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    if (setTotalDifficulty)
+                    if (calculateTotalDifficulty)
                     {
                         SetTotalDifficulty(header);
                     }
@@ -1855,7 +1855,7 @@ namespace Nethermind.Blockchain
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==
                                          BlockTreeLookupOptions.None;
-            bool setTotalDifficulty = (options & BlockTreeLookupOptions.DoNotSetTotalDifficulty) ==
+            bool calculateTotalDifficulty = (options & BlockTreeLookupOptions.DoNotCalculateTotalDifficulty) ==
                                       BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) ==
                                      BlockTreeLookupOptions.RequireCanonical;
@@ -1870,7 +1870,7 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Entering missing block info in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    if (setTotalDifficulty)
+                    if (calculateTotalDifficulty)
                     {
                         SetTotalDifficulty(block.Header);
                     }
