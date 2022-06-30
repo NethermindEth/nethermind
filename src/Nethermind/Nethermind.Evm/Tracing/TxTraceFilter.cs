@@ -19,6 +19,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 
 namespace Nethermind.Evm.Tracing
@@ -52,9 +53,17 @@ namespace Nethermind.Evm.Tracing
 
         public bool ShouldTraceTx(Transaction? tx, bool validateChainId)
         {
-            if (_logger.IsTrace) _logger.Trace($"Tracing transaction {tx}, from: {tx?.SenderAddress}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
-            if (tx == null ||
-                !TxMatchesAddresses(tx, validateChainId) ||
+            if (tx == null || (_count <= 0))
+            {
+                return false;
+            }
+            return true;
+        }
+        
+        public bool IsValidTxTrace(ParityTraceAction? tx)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Tracing transaction {tx}, from: {tx?.From}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
+            if (tx == null || !MatchAddresses(tx.From, tx.To) ||
                 (_count <= 0))
             {
                 return false;
@@ -70,56 +79,17 @@ namespace Nethermind.Evm.Tracing
             return true;
         }
 
-        public bool ShouldContinue()
-        {
-            return _count == null ||  _count > 0;
-        }
-
         public bool ShouldTraceBlock(Block? block)
         {
             if (block == null)
                 return false;
-            
-            int txCount = CountMatchingTransactions(block);
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"Checking if we should trace block {block}, matching tx count: {txCount}, after: {_after}");
-            if (_after >= txCount)
-            {
-                // we can skip the block if it don't have enough transactions
-                _after -= txCount;
-                return false;
-            }
-
             return true;
         }
 
-        private int CountMatchingTransactions(Block block)
+        private bool MatchAddresses(Address? fromAddress, Address? toAddress)
         {
-            if (_fromAddresses == null && _toAddresses == null)
-                return block.Transactions.Length;
-
-            int counter = 0;
-            bool validateChainId = _specProvider.GetSpec(block.Number).ValidateChainId;
-            for (int index = 0; index < block.Transactions.Length; index++)
-            {
-                Transaction tx = block.Transactions[index];
-                if (TxMatchesAddresses(tx, validateChainId))
-                {
-                    ++counter;
-                }
-            }
-
-            return counter;
-        }
-
-        private bool TxMatchesAddresses(Transaction tx, bool validateChainId)
-        {
-            Address? senderAddress = tx.SenderAddress;
-            if (senderAddress == null && tx.Signature != null)
-                senderAddress = _ecdsa.RecoverAddress(tx, !validateChainId);
-            return (_fromAddresses == null || _fromAddresses.Contains(senderAddress)) &&
-                (_toAddresses == null || _toAddresses.Contains(tx.To));
+            return (_fromAddresses == null || _fromAddresses.Contains(fromAddress)) &&
+                   (_toAddresses == null || _toAddresses.Contains(toAddress));
         }
     }
 }
