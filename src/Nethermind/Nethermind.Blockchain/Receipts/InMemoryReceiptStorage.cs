@@ -70,11 +70,9 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true)
         {
             _receipts[block.Hash] = txReceipts;
-            for (int i = 0; i < txReceipts.Length; i++)
+            if (ensureCanonical)
             {
-                var txReceipt = txReceipts[i];
-                txReceipt.BlockHash = block.Hash;
-                _transactions[txReceipt.TxHash] = txReceipt;
+                EnsureCanonical(block);
             }
         }
         
@@ -85,8 +83,13 @@ namespace Nethermind.Blockchain.Receipts
 
         public void EnsureCanonical(Block block)
         {
-            // InMemory does not seems to store mapping of tx hash to block
-            return;
+            TxReceipt[] txReceipts = Get(block);
+            for (int i = 0; i < txReceipts.Length; i++)
+            {
+                var txReceipt = txReceipts[i];
+                txReceipt.BlockHash = block.Hash;
+                _transactions[txReceipt.TxHash] = txReceipt;
+            }
         }
 
         public long? LowestInsertedReceiptBlockNumber { get; set; }
