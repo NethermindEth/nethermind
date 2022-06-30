@@ -45,11 +45,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly JsonSerializer _jsonSerializer;
         private readonly ConcurrentDictionary<string, CustomSubscriptionType> _subscriptionConstructors;
 
-
         public SubscriptionFactory(ILogManager? logManager,
             IBlockTree? blockTree,
             ITxPool? txPool,
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor,
+            IReceiptCanonicalityMonitor receiptCanonicalityMonitor,
             IFilterStore? filterStore,
             IEthSyncingInfo ethSyncingInfo,
             ISpecProvider specProvider, 

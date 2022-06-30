@@ -51,7 +51,7 @@ namespace Nethermind.AccountAbstraction.Test
         private ILogManager _logManager = null!;
         private IBlockTree _blockTree = null!;
         private ITxPool _txPool = null!;
-        private ReceiptCanonicalityMonitor _receiptCanonicalityMonitor = null!;
+        private IReceiptCanonicalityMonitor _receiptCanonicalityMonitor = null!;
         private IReceiptStorage _receiptStorage = null!;
         private IFilterStore _filterStore = null!;
         private ISubscriptionManager _subscriptionManager = null!;

@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IJsonRpcDuplexClient _jsonRpcDuplexClient;
         private IJsonSerializer _jsonSerializer;
         private ISpecProvider _specProvider;
-        private ReceiptCanonicalityMonitor _receiptCanonicalityMonitor;
+        private IReceiptCanonicalityMonitor _receiptCanonicalityMonitor;
             
 
         [SetUp]
@@ -75,7 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _filterStore = new FilterStore();
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
-            _receiptCanonicalityMonitor = new(_blockTree, _receiptStorage, _logManager);
+            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
             
             JsonSerializer jsonSerializer = new();
             jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
