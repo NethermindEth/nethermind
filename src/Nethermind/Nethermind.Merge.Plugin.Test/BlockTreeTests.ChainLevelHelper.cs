@@ -96,13 +96,14 @@ public partial class BlockTreeTests
     }
 
     [Test]
-    public void  Correct_levels_with_chain_fork()
+    public void Correct_levels_with_chain_fork()
     {
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertHeaders(4, 6)
             .InsertBeaconBlocks(8, 9)
+            .InsertFork(1, 9)
             .AssertBestSuggestedBody(3)
             .SuggestBlocksUsingChainLevels()
             .AssertChainLevel(0, 9);

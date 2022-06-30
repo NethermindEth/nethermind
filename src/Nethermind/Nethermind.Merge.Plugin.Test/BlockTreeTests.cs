@@ -16,13 +16,11 @@
 // 
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -60,27 +58,17 @@ public partial class BlockTreeTests
             new SyncConfig(),
             LimboLogs.Instance);
         
-        BlockTreeBuilder syncedTreeBuilder = Build.A.BlockTree().OfChainLength(syncedTreeSize);
+        BlockTreeBuilder syncedTreeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(syncedTreeSize);
         BlockTree syncedTree = new(
-            treeBuilder.BlocksDb,
-            treeBuilder.HeadersDb,
-            treeBuilder.BlockInfoDb,
-            treeBuilder.MetadataDb,
-            treeBuilder.ChainLevelInfoRepository,
+            syncedTreeBuilder.BlocksDb,
+            syncedTreeBuilder.HeadersDb,
+            syncedTreeBuilder.BlockInfoDb,
+            syncedTreeBuilder.MetadataDb,
+            syncedTreeBuilder.ChainLevelInfoRepository,
             specProvider,
             NullBloomStorage.Instance,
             new SyncConfig(),
             LimboLogs.Instance);
-
-        Block parent = syncedTree.Head!;
-        for (int i = 0; i < syncedTreeSize - notSyncedTreeSize; ++i)
-        {
-            Block block = Build.A.Block.WithNumber(parent!.Number + 1).WithParent(parent).TestObject;
-            AddBlockResult addBlockResult = syncedTree.SuggestBlock(block);
-            Assert.AreEqual(AddBlockResult.Added, addBlockResult);
-
-            parent = block;
-        }
         
         return (notSyncedTree, syncedTree);
     }
@@ -370,9 +358,19 @@ public partial class BlockTreeTests
                         Assert.AreEqual(shouldSetBlocks, _chainLevelHelper.TrySetNextBlocks(maxCount, blockDownloadContext));
                         for (int i = 1; i < headers.Length; ++i)
                         {
-                            Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
-                            beaconBlock.Header.TotalDifficulty = null;
-                            AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock | BlockTreeSuggestOptions.ForceSetAsMain);
+                            Block? beaconBlock;
+                            if (shouldSetBlocks)
+                            {
+                                beaconBlock = blockDownloadContext.Blocks[i - 1];
+                            }
+                            else
+                            {
+                                beaconBlock =
+                                    SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
+                                beaconBlock.Header.TotalDifficulty = null;
+                            }
+
+                            AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock | BlockTreeSuggestOptions.ForceSetAsMain);
                             Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
                         }
                         
@@ -420,6 +418,19 @@ public partial class BlockTreeTests
                         AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, true, insertOptions);
                         Assert.AreEqual(AddBlockResult.Added, insertResult);
                     }
+                    return this;
+                }
+
+                public ScenarioBuilder InsertFork(long low, long high)
+                {
+                    for (long i = low; i <= high; i++)
+                    {
+                        Block parent = NotSyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
+                        Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
+                        NotSyncedTree.Insert(blockToInsert, true, BlockTreeInsertOptions.BeaconBlockInsert);
+                        SyncedTree.Insert(blockToInsert, true);
+                    }
+
                     return this;
                 }
 

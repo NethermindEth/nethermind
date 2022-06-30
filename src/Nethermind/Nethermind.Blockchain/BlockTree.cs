@@ -663,7 +663,7 @@ namespace Nethermind.Blockchain
             bool moveToBeaconMainChain = (options & BlockTreeInsertOptions.MoveToBeaconMainChain) != 0;
             if (addBeaconMetadata)
             {
-                // we're manipulating level when we're inserting header and
+                // we're manipulating level when we're inserting header
                 ChainLevelInfo chainLevelInfo = LoadLevel(block.Number);
                 if (chainLevelInfo is not null)
                 {

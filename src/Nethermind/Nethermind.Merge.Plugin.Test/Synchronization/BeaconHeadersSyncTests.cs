@@ -201,7 +201,7 @@ public class BeaconHeadersSyncTests
         highestBlock = syncedBlockTree.FindBlock(900, BlockTreeLookupOptions.None)!;
         blockTree.Insert(highestBlock, true);
         pivot.EnsurePivot(syncedBlockTree.FindHeader(999, BlockTreeLookupOptions.None));
-        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 701);
+        BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 900, 901);
     }
 
     [Test]
@@ -284,14 +284,6 @@ public class BeaconHeadersSyncTests
             BlockHeader? lowestHeader = syncedBlockTree.FindHeader(lowestHeaderNumber, BlockTreeLookupOptions.None);
             blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(lowestHeader?.Hash);
         }
-
-        HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
-        result.Should().BeNull();
-        blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash);
-        blockTree.BestKnownNumber.Should().Be(bestPointer);
-        blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
-        ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
     }
 
     private void BuildHeadersSyncBatchResponse(HeadersSyncBatch batch, IBlockTree blockTree)
