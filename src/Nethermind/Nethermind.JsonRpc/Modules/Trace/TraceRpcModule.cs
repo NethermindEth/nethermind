@@ -165,7 +165,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
-            TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count, _specProvider, _logManager);
             List<ParityLikeTxTrace> txTraces = new();
             IEnumerable<SearchResult<Block>> blocksSearch =
                 _blockFinder.SearchForBlocksOnMainChain(traceFilterForRpc.FromBlock ?? BlockParameter.Latest, traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
@@ -177,20 +176,14 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 }
                 Block block = blockSearch.Object;
                 IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock =
-                    TraceBlock(block, ParityTraceTypes.Trace, txTracerFilter);
+                    TraceBlock(block, ParityTraceTypes.Trace);
                 txTraces.AddRange(txTracesFromOneBlock);
             }
 
             ParityTxTraceFromStore[] txTracesResult = txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray();
-            List<ParityTxTraceFromStore> filteredTxTracesResult = new();
             
-            foreach (ParityTxTraceFromStore? txTrace in txTracesResult)
-            {
-                if (txTracerFilter.IsValidTxTrace(txTrace.Action))
-                    filteredTxTracesResult.Add(txTrace);
-            }
-            
-            return ResultWrapper<ParityTxTraceFromStore[]>.Success(filteredTxTracesResult.ToArray());
+            TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
+            return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTracerFilter.FilterTxTraces(txTracesResult));
         }
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_block(BlockParameter blockParameter)
@@ -244,12 +237,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes, TxTraceFilter? txTraceFilter = null)
+        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes)
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-            ParityLikeBlockTracer listener = new(traceTypes, txTraceFilter, _specProvider);
+            ParityLikeBlockTracer listener = new(traceTypes, _specProvider);
             _tracer.Trace(block, listener);
 
             return listener.BuildResult();

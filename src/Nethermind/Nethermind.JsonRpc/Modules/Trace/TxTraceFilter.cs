@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -22,7 +23,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Logging;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class TxTraceFilter
     {
@@ -30,39 +31,33 @@ namespace Nethermind.Evm.Tracing
         private readonly Address[]? _toAddresses;
         private int _after;
         private int? _count;
-        private readonly ISpecProvider _specProvider;
-        private readonly ILogger _logger;
-        private readonly EthereumEcdsa _ecdsa;
         
         public TxTraceFilter(
             Address[]? fromAddresses,
             Address[]? toAddresses,
             int after,
-            int? count,
-            ISpecProvider specProvider,
-            ILogManager logManager)
+            int? count)
         {
             _fromAddresses = fromAddresses;
             _toAddresses = toAddresses;
             _after = after;
             _count = count;
-            _specProvider = specProvider;
-            _logger = logManager.GetClassLogger();
-            _ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
         }
 
-        public bool ShouldTraceTx(Transaction? tx, bool validateChainId)
+        public ParityTxTraceFromStore[] FilterTxTraces(ParityTxTraceFromStore[]? txTraces)
         {
-            if (tx == null || (_count <= 0))
+            List<ParityTxTraceFromStore> filteredTxTracesResult = new();
+            foreach (ParityTxTraceFromStore? txTrace in txTraces)
             {
-                return false;
+                if (ShouldUseTxTrace(txTrace.Action))
+                    filteredTxTracesResult.Add(txTrace);
             }
-            return true;
+
+            return filteredTxTracesResult.ToArray();
         }
-        
-        public bool IsValidTxTrace(ParityTraceAction? tx)
+
+        public bool ShouldUseTxTrace(ParityTraceAction? tx)
         {
-            if (_logger.IsTrace) _logger.Trace($"Tracing transaction {tx}, from: {tx?.From}, to: {tx?.To}, fromAddresses: {_fromAddresses}, toAddresses {_toAddresses}, after {_after}, count {_count}");
             if (tx == null || !MatchAddresses(tx.From, tx.To) ||
                 (_count <= 0))
             {
@@ -76,13 +71,6 @@ namespace Nethermind.Evm.Tracing
             }
             
             --_count;
-            return true;
-        }
-
-        public bool ShouldTraceBlock(Block? block)
-        {
-            if (block == null)
-                return false;
             return true;
         }
 
