@@ -171,22 +171,26 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 _blockFinder.SearchForBlocksOnMainChain(traceFilterForRpc.FromBlock ?? BlockParameter.Latest, traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
             foreach (SearchResult<Block> blockSearch in blocksSearch)
             {
-                if (!txTracerFilter.ShouldContinue())
-                    break;
                 if (blockSearch.IsError)
                 {
                     return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
                 }
                 Block block = blockSearch.Object;
-                if (!txTracerFilter.ShouldTraceBlock(block))
-                    continue;
-
                 IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock =
-                    TraceBlock(block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, txTracerFilter);
+                    TraceBlock(block, ParityTraceTypes.Trace, txTracerFilter);
                 txTraces.AddRange(txTracesFromOneBlock);
             }
+
+            ParityTxTraceFromStore[] txTracesResult = txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray();
+            List<ParityTxTraceFromStore> filteredTxTracesResult = new();
             
-            return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray());
+            foreach (ParityTxTraceFromStore? txTrace in txTracesResult)
+            {
+                if (txTracerFilter.IsValidTxTrace(txTrace.Action))
+                    filteredTxTracesResult.Add(txTrace);
+            }
+            
+            return ResultWrapper<ParityTxTraceFromStore[]>.Success(filteredTxTracesResult.ToArray());
         }
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_block(BlockParameter blockParameter)
@@ -246,7 +250,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             CancellationToken cancellationToken = cancellationTokenSource.Token;
 
             ParityLikeBlockTracer listener = new(traceTypes, txTraceFilter, _specProvider);
-            _tracer.Trace(block, listener.WithCancellation(cancellationToken));
+            _tracer.Trace(block, listener);
 
             return listener.BuildResult();
         }

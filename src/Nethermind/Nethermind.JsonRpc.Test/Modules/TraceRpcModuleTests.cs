@@ -238,6 +238,54 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
             Assert.AreEqual(1, traces.Data.Length);
         }
+        
+        [Test]
+        public async Task Trace_filter_with_filtering_by_internal_transaction_receiver()
+        {
+            
+            Context context = new();
+            await context.Build();
+            TestRpcBlockchain blockchain = context.Blockchain;
+            UInt256 currentNonceAddressA = blockchain.State.GetAccount(TestItem.AddressA).Nonce;
+            UInt256 currentNonceAddressB = blockchain.State.GetAccount(TestItem.AddressB).Nonce;
+            await blockchain.AddFunds(TestItem.AddressA, 10000.Ether());
+            byte[] deployedCode = new byte[3];
+            byte[] initCode = Prepare.EvmCode
+                .ForInitOf(deployedCode)
+                .Done;
+            byte[] createCode = Prepare.EvmCode
+                .Create(initCode, 0)
+                .Op(Instruction.STOP)
+                .Done;
+            
+            Transaction transaction1 = Build.A.Transaction.WithNonce(currentNonceAddressA++)
+                .WithData(createCode)
+                .WithTo(null)
+                .WithGasLimit(93548).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            await blockchain.AddBlock(transaction1);
+            Address? contractAddress = ContractAddress.From(TestItem.AddressA, currentNonceAddressA);
+            byte[] code = Prepare.EvmCode
+                .Call(contractAddress, 50000)
+                .Call(contractAddress, 50000)
+                .Op(Instruction.STOP)
+                .Done;
+            
+            Transaction transaction2 = Build.A.Transaction.WithNonce(currentNonceAddressB++)
+                .WithData(code).SignedAndResolved(TestItem.PrivateKeyB)
+                .WithTo(null)
+                .WithGasLimit(93548).TestObject;
+            await blockchain.AddBlock(transaction2);
+            await blockchain.AddBlock();
+            long lastBLockNumber = blockchain.BlockTree.Head!.Number;
+            
+            TraceFilterForRpc traceFilterRequest = new();
+            traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
+            traceFilterRequest.ToBlock = BlockParameter.Latest;
+            traceFilterRequest.ToAddress = new[] {contractAddress};
+            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(2, traces.Data.Length);
+
+        }
         [Test]
         public async Task Trace_filter_with_filtering_by_sender_and_receiver()
         {
