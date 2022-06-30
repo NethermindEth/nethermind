@@ -189,6 +189,21 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         _blockTree.FindBlock(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) !=
                         null;
                     bool isKnownBlock = _blockTree.IsKnownBlock(currentBlock.Number, currentBlock.Hash) != null;
+                    bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
+                    
+                    void GetProcessingQueueOnBlockRemoved()
+                    {
+                    }
+                    
+
+                    if (shouldProcess)
+                    {
+                        bool toBeProcessedIsNotBlockOne = currentBlock.Number > 1;
+                        bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
+                        
+                        shouldProcess = shouldProcess;
+                    }
+
                     BlockTreeSuggestOptions suggestOptions =
                         shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
                     if (_logger.IsTrace)

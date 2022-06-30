@@ -99,7 +99,7 @@ public partial class EngineModuleTests
         foreach (ExecutionPayloadV1 r in requests)
         {
             payloadStatus = await rpc.engine_newPayloadV1(r);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
+            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
             chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
             chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
             chain.BeaconPivot.BeaconPivotExists().Should().BeFalse();
@@ -142,7 +142,7 @@ public partial class EngineModuleTests
         for (int i = 4; i < requests.Length - 1; i++)
         {
             payloadStatus = await rpc.engine_newPayloadV1(requests[i]);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
+            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         }
         // use third last block request as beacon pivot so there are blocks in cache
         ForkchoiceStateV1 forkchoiceStateV1 = new(requests[^3].BlockHash, startingHead, startingHead);
@@ -295,7 +295,7 @@ public partial class EngineModuleTests
         // setting up beacon pivot
         ExecutionPayloadV1 pivotRequest = CreateBlockRequest(requests[^1], Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
+        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         pivotRequest.TryGetBlock(out Block? pivotBlock);
         // check block tree pointers
         BlockTreePointers pointers = new BlockTreePointers

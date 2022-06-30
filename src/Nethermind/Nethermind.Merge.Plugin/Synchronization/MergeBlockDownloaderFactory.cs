@@ -48,6 +48,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
         private readonly IInvalidChainTracker _invalidChainTracker;
+        private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IChainLevelHelper _chainLevelHelper;
 
         public MergeBlockDownloaderFactory(
@@ -63,6 +64,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             ISyncReport syncReport,
             IInvalidChainTracker invalidChainTracker,
+            ISyncProgressResolver syncProgressResolver,
             ILogManager logManager)
         {
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
@@ -76,6 +78,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));;
             _chainLevelHelper = new ChainLevelHelper(_blockTree, syncConfig, _logManager);
             _invalidChainTracker = invalidChainTracker;
         }

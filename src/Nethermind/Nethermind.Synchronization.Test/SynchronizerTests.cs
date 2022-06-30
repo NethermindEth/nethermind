@@ -378,6 +378,7 @@ namespace Nethermind.Synchronization.Test
                         bestPeerStrategy,
                         syncReport,
                         invalidChainTracker,
+                        syncProgressResolver,
                         _logManager
                     );
                     Synchronizer = new MergeSynchronizer(

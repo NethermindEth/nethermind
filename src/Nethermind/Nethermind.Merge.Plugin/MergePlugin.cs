@@ -359,6 +359,7 @@ namespace Nethermind.Merge.Plugin
                     _api.BetterPeerStrategy!,
                     syncReport,
                     _invalidChainTracker,
+                    _api.SyncProgressResolver,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(
                     _api.DbProvider, 
