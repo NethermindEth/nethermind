@@ -117,7 +117,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
 
-            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
+            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
             if (parentHeader is null)
             {
                 // possible that headers sync finished before this was called, so blocks in cache weren't inserted

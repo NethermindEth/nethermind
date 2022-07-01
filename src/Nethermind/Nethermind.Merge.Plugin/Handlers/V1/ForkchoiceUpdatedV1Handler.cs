@@ -246,7 +246,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private Block? GetBlock(Keccak headBlockHash)
         {
-            Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.None);
+            Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
             if (block is null)
             {
                 if (_logger.IsInfo) _logger.Info($"Syncing... Block {headBlockHash} not found.");
@@ -280,7 +280,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return null;
             }
 
-            BlockHeader? blockHeader = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+            BlockHeader? blockHeader = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
             if (blockHeader is null)
             {
                 errorMessage = $"Block {blockHash} not found.";
@@ -297,7 +297,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             while (true)
             {
-                predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.None);
+                predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
                 if (predecessor == null)
                 {
                     blocks = Array.Empty<Block>();

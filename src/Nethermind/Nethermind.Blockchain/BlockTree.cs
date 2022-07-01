@@ -875,6 +875,8 @@ namespace Nethermind.Blockchain
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==
                                          BlockTreeLookupOptions.None;
+            bool calculateTotalDifficulty = (options & BlockTreeLookupOptions.DoNotCalculateTotalDifficulty) ==
+                                      BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) ==
                                      BlockTreeLookupOptions.RequireCanonical;
 
@@ -888,8 +890,11 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Entering missing block info in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    SetTotalDifficulty(header);
-                    blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty!.Value);
+                    if (calculateTotalDifficulty)
+                    {
+                        SetTotalDifficulty(header);
+                    }
+                    blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
                     level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                 }
                 else
@@ -1864,6 +1869,8 @@ namespace Nethermind.Blockchain
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) ==
                                          BlockTreeLookupOptions.None;
+            bool calculateTotalDifficulty = (options & BlockTreeLookupOptions.DoNotCalculateTotalDifficulty) ==
+                                      BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) ==
                                      BlockTreeLookupOptions.RequireCanonical;
 
@@ -1877,8 +1884,11 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Entering missing block info in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}");
-                    SetTotalDifficulty(block.Header);
-                    blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty!.Value);
+                    if (calculateTotalDifficulty)
+                    {
+                        SetTotalDifficulty(block.Header);
+                    }
+                    blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty ?? UInt256.Zero);
                     level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo);
                 }
                 else
