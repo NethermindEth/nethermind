@@ -195,7 +195,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     
                     if (shouldProcess)
                     {
-                        // ToDo
+                        // 
                         bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                         bool toBeProcessedIsNotBlockOne = currentBlock.Number > 1;
                         bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;

@@ -1683,10 +1683,10 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (number > BestKnownNumber)
-                    {
-                        BestKnownNumber = number;
-                    }
+                    // if (number > BestKnownNumber)
+                    // {
+                    //     BestKnownNumber = number;
+                    // }
 
                     level = new ChainLevelInfo(false, new[] { blockInfo });
                 }
