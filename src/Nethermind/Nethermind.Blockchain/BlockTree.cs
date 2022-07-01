@@ -81,7 +81,21 @@ namespace Nethermind.Blockchain
 
         public BlockHeader? Genesis { get; private set; }
         public Block? Head { get; private set; }
-        public BlockHeader? BestSuggestedHeader { get; private set; }
+
+        private BlockHeader? _bestSuggestedHeader;
+        
+        public BlockHeader? BestSuggestedHeader
+        {
+            get
+            {
+                return _bestSuggestedHeader;
+            }
+            private set
+            {
+                _logger.Info($"Setting BestSuggestedHeader {value} {new System.Diagnostics.StackTrace().ToString()}");
+                _bestSuggestedHeader = value;
+            }
+        }
         public Block? BestSuggestedBody { get; private set; }
         public BlockHeader? LowestInsertedHeader { get; private set; }
         public BlockHeader? BestSuggestedBeaconHeader { get; private set; }

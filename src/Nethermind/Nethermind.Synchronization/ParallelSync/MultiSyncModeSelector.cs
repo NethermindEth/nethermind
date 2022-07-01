@@ -602,9 +602,8 @@ namespace Nethermind.Synchronization.ParallelSync
             long state = _syncProgressResolver.FindBestFullState();
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
-            long beaconHeader = _syncProgressResolver.FindBestBeaconHeader();
 
-            Snapshot best = new(processed, state, block, header, beaconHeader, peerBlock, peerDifficulty, inBeaconControl);
+            Snapshot best = new(processed, state, block, header, peerBlock, peerDifficulty, inBeaconControl);
             VerifySnapshot(best);
             return best;
         }
@@ -659,13 +658,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private ref struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, long beaconHeader, long peerBlock, in UInt256 peerDifficulty, bool isInBeaconControl)
+            public Snapshot(long processed, long state, long block, long header, long peerBlock, in UInt256 peerDifficulty, bool isInBeaconControl)
             {
                 Processed = processed;
                 State = state;
                 Block = block;
                 Header = header;
-                BeaconHeader = beaconHeader;
                 PeerBlock = peerBlock;
                 PeerDifficulty = peerDifficulty;
                 IsInBeaconControl = isInBeaconControl;
@@ -705,11 +703,6 @@ namespace Nethermind.Synchronization.ParallelSync
             /// Best block header - may be missing body if we just insert headers
             /// </summary>
             public long Header { get; }
-            
-            /// <summary>
-            /// Beacon header - 
-            /// </summary>
-            public long BeaconHeader { get; }
 
             /// <summary>
             /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers

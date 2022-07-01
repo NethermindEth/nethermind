@@ -532,6 +532,18 @@ public partial class BlockTreeTests
     }
     
     [Test]
+    public void BeaconBlockInsert_does_not_change_best_blocks()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertBeaconBlocks(8, 9)
+            .AssertBestSuggestedBody(3)
+            .AssertBestSuggestedHeader(3)
+            .AssertBestKnownNumber(3);
+    }
+    
+    [Test]
     public void pointers_are_set_on_restart_during_header_sync()
     {
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()

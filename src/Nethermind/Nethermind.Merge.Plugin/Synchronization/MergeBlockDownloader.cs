@@ -50,6 +50,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IInvalidChainTracker _invalidChainTracker;
+        private readonly ISyncProgressResolver _syncProgressResolver;
         private int _sinceLastTimeout;
 
         public MergeBlockDownloader(
@@ -66,6 +67,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             IChainLevelHelper chainLevelHelper,
             IInvalidChainTracker invalidChainTracker,
+            ISyncProgressResolver syncProgressResolver,
             ILogManager logManager)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
                 specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, logManager),
@@ -81,6 +83,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _beaconPivot = beaconPivot;
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, logManager), specProvider);
             _invalidChainTracker = invalidChainTracker;
+            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _logger = logManager.GetClassLogger();
         }
 
@@ -189,19 +192,20 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         _blockTree.FindBlock(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) !=
                         null;
                     bool isKnownBlock = _blockTree.IsKnownBlock(currentBlock.Number, currentBlock.Hash) != null;
-                    bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                     
-                    void GetProcessingQueueOnBlockRemoved()
-                    {
-                    }
-                    
-
                     if (shouldProcess)
                     {
+                        // ToDo
+                        bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                         bool toBeProcessedIsNotBlockOne = currentBlock.Number > 1;
                         bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
-                        
-                        shouldProcess = shouldProcess;
+                        if (isFastSyncTransition)
+                        {
+                            long bestFullState = _syncProgressResolver.FindBestFullState();
+                            shouldProcess = currentBlock.Number >= bestFullState;
+                            if (!shouldProcess)
+                                if (_logger.IsInfo) _logger.Info("Skipping processing fastSyncTransition"); // ToDo
+                        }
                     }
 
                     BlockTreeSuggestOptions suggestOptions =

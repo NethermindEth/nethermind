@@ -86,7 +86,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
-                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper, _invalidChainTracker,
+                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper, _invalidChainTracker, _syncProgressResolver,
                 _logManager);
         }
     }
