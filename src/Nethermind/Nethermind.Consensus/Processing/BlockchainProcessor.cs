@@ -329,6 +329,11 @@ namespace Nethermind.Consensus.Processing
 
         public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
         {
+            if (_options.LogProducedBlocks != DumpOptions.None && options == ProcessingOptions.ProducingBlock)
+            {
+                TraceProducedBlock(suggestedBlock, options);
+            }
+            
             if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
             {
                 return null;
@@ -411,28 +416,7 @@ namespace Nethermind.Consensus.Processing
                 return true;
         }
 
-        private void TraceBranch(ProcessingBranch processingBranch, ProcessingOptions options)
-        {
-            TraceBranch(
-                processingBranch,
-                options,
-                new BlockReceiptsTracer(),
-                DumpOptions.Receipts);
-
-            TraceBranch(
-                processingBranch,
-                options,
-                new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
-                DumpOptions.Parity);
-
-            TraceBranch(
-                processingBranch,
-                options,
-                new GethLikeBlockTracer(GethTraceOptions.Default),
-                DumpOptions.Geth);
-        }
-        
-        private void TraceBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
+        private void TraceFailingBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer blockTracer, DumpOptions dumpType)
         {
             if ((_options.DumpOptions & dumpType) != 0)
             {
@@ -453,6 +437,35 @@ namespace Nethermind.Consensus.Processing
                     BlockTraceDumper.LogTraceFailure(blockTracer, processingBranch.Root, ex, _logger);
                 }
             }
+        }
+        
+        private void TraceProducedBlock(Block block, ProcessingOptions options)
+        {
+            if ((_options.LogProducedBlocks & DumpOptions.Receipts) != 0)
+            {
+                TraceProducedBlock(block, options, new BlockReceiptsTracer());
+            }
+            
+            if ((_options.LogProducedBlocks & DumpOptions.Parity) != 0)
+            {
+                TraceProducedBlock(block, options, new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace));
+            }
+            
+            if ((_options.LogProducedBlocks & DumpOptions.Geth) != 0)
+            {
+                TraceProducedBlock(block, options, new GethLikeBlockTracer(GethTraceOptions.Default));
+            }
+        }
+
+        private void TraceProducedBlock(Block block, ProcessingOptions options, IBlockTracer blockTracer)
+        {
+            _blockProcessor.Process(
+                block.StateRoot,
+                new List<Block> {block},
+                options,
+                blockTracer);
+                
+            BlockTraceDumper.LogDiagnosticTrace(blockTracer, block.Hash, _logger);
         }
 
         private Block[]? ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
@@ -487,19 +500,29 @@ namespace Nethermind.Consensus.Processing
                 });
                 
                 invalidBlockHash = ex.InvalidBlockHash;
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new BlockReceiptsTracer(),
+                    DumpOptions.Receipts);
 
-                TraceBranch(processingBranch, options);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
+                    DumpOptions.Parity);
+
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new GethLikeBlockTracer(GethTraceOptions.Default),
+                    DumpOptions.Geth);
 
                 processedBlocks = null;
             }
 
             finally
             {
-                if (_options.LogProducedBlocks && options == ProcessingOptions.ProducingBlock)
-                {
-                    TraceBranch(processingBranch, options);
-                }
-                
                 if (invalidBlockHash is not null && !options.ContainsFlag(ProcessingOptions.ReadOnlyChain))
                 {
                     DeleteInvalidBlocks(invalidBlockHash);
@@ -717,8 +740,8 @@ namespace Nethermind.Consensus.Processing
             public static Options Default = new();
 
             public bool StoreReceiptsByDefault { get; set; } = true;
-            
-            public bool LogProducedBlocks { get; set; }
+
+            public DumpOptions LogProducedBlocks { get; set; } = DumpOptions.None;
 
             public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
         }

@@ -78,8 +78,8 @@ namespace Nethermind.Api
         [ConfigItem(Description = "Auto dump on bad blocks for diagnostics", DefaultValue = "Receipts")]
         DumpOptions AutoDump { get; set; } 
         
-        [ConfigItem(Description = "Setting this to true will log all produced blocks to files.", DefaultValue = "false")]
-        bool LogProducedBlocks { get; set; }
+        [ConfigItem(Description = "Setting this to value different than None will log all produced blocks to files. Possible options: Receipts, Parity, Geth, All.", DefaultValue = "None")]
+        DumpOptions LogProducedBlocks { get; set; }
 
         [ConfigItem(Description = "Url for remote node that will be used as DB source when 'DiagnosticMode' is set to'RpcDb'", DefaultValue = "")]
         string RpcDbUrl { get; set; }
