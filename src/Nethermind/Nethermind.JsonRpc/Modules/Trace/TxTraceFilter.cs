@@ -44,40 +44,41 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _count = count;
         }
 
-        public ParityTxTraceFromStore[] FilterTxTraces(ParityTxTraceFromStore[]? txTraces)
+        public IEnumerable<ParityTxTraceFromStore> FilterTxTraces(ParityTxTraceFromStore[] txTraces)
         {
-            List<ParityTxTraceFromStore> filteredTxTracesResult = new();
             foreach (ParityTxTraceFromStore? txTrace in txTraces)
             {
+                if (_count <= 0)
+                {
+                    break;
+                }
+
                 if (ShouldUseTxTrace(txTrace.Action))
-                    filteredTxTracesResult.Add(txTrace);
+                {
+                    yield return txTrace;
+                }
             }
 
-            return filteredTxTracesResult.ToArray();
         }
 
         public bool ShouldUseTxTrace(ParityTraceAction? tx)
         {
-            if (tx == null || !MatchAddresses(tx.From, tx.To) ||
-                (_count <= 0))
+            if (tx is not null && !(_count <= 0) && MatchAddresses(tx.From, tx.To))
             {
-                return false;
+                if (_after > 0)
+                {
+                    --_after;
+                    return false;
+                }
+
+                --_count;
+                return true;
             }
 
-            if (_after > 0)
-            {
-                --_after;
-                return false;
-            }
-            
-            --_count;
-            return true;
+            return false;
         }
 
-        private bool MatchAddresses(Address? fromAddress, Address? toAddress)
-        {
-            return (_fromAddresses == null || _fromAddresses.Contains(fromAddress)) &&
-                   (_toAddresses == null || _toAddresses.Contains(toAddress));
-        }
+        private bool MatchAddresses(Address? fromAddress, Address? toAddress) =>
+            _fromAddresses?.Contains(fromAddress) != false && _toAddresses?.Contains(toAddress) != false;
     }
 }

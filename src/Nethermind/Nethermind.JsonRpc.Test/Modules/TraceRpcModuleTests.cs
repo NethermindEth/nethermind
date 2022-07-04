@@ -174,8 +174,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             await context.Build();
             TraceFilterForRpc traceRequest = new();
             traceRequest.After = 3;
-            ResultWrapper<ParityTxTraceFromStore[]> secondTraces = context.TraceRpcModule.trace_filter(traceRequest);
-            Assert.AreEqual(7, secondTraces.Data.Length);
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> secondTraces = context.TraceRpcModule.trace_filter(traceRequest);
+            Assert.AreEqual(7, secondTraces.Data.Count());
         }
         [Test]
         public async Task Trace_filter_get_given_amount_of_traces()
@@ -184,8 +184,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             await context.Build();
             TraceFilterForRpc traceFilterRequest = new();
             traceFilterRequest.Count = 3;
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
-            Assert.AreEqual(3, traces.Data.Length);
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(3, traces.Data.Count());
         }
         [Test]
         public async Task Trace_filter_skip_and_get_the_rest_of_traces()
@@ -195,9 +195,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             TraceFilterForRpc traceFilterRequest = new();
             traceFilterRequest.Count = 3;
             traceFilterRequest.After = 7;
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
             // Total 9 transactions in block + 1 reward trace - after skipping 7 - it should be 3
-            Assert.AreEqual(3, traces.Data.Length);
+            Assert.AreEqual(3, traces.Data.Count());
         }
         [Test]
         public async Task Trace_filter_with_filtering_by_receiver_address()
@@ -216,8 +216,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber);
             traceFilterRequest.ToBlock = new BlockParameter(lastBLockNumber);
             traceFilterRequest.ToAddress = new[] {TestItem.AddressA};
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
-            Assert.AreEqual(1, traces.Data.Length);
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(1, traces.Data.Count());
         }
         [Test]
         public async Task Trace_filter_with_filtering_by_sender()
@@ -236,8 +236,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
             traceFilterRequest.ToBlock = BlockParameter.Latest;
             traceFilterRequest.FromAddress = new[] {TestItem.PrivateKeyA.Address};
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
-            Assert.AreEqual(1, traces.Data.Length);
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(1, traces.Data.Count());
         }
         
         [Test]
@@ -283,8 +283,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             traceFilterRequest.FromBlock = new BlockParameter(lastBLockNumber - 1);
             traceFilterRequest.ToBlock = BlockParameter.Latest;
             traceFilterRequest.ToAddress = new[] {contractAddress};
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
-            Assert.AreEqual(2, traces.Data.Length);
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(2, traces.Data.Count());
 
         }
         [Test]
@@ -312,8 +312,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             traceFilterRequest.ToBlock = BlockParameter.Latest;
             traceFilterRequest.FromAddress = new[] {TestItem.PrivateKeyA.Address};
             traceFilterRequest.ToAddress = new[] {TestItem.AddressC};
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
-            Assert.AreEqual(1, traces.Data.Length);
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(1, traces.Data.Count());
         }
         [Test]
         public async Task Trace_filter_complex_scenario()
@@ -393,8 +393,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }
             );
             await blockchain.AddBlock();
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
-            Assert.AreEqual(traceFilterRequest.Count, traces.Data.Length);
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(traceFilterRequest.Count, traces.Data.Count());
         }
         
         [Test]
@@ -421,8 +421,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                         .SignedAndResolved(TestItem.PrivateKeyC).TestObject,
                 }
             );
-            ResultWrapper<ParityTxTraceFromStore[]> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
-            Assert.AreEqual(4, traces.Data.Length);
+            ResultWrapper<IEnumerable<ParityTxTraceFromStore>> traces = context.TraceRpcModule.trace_filter(traceFilterRequest);
+            Assert.AreEqual(4, traces.Data.Count());
         }
         
         [Test]
