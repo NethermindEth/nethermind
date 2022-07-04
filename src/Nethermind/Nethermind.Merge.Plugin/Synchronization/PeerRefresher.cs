@@ -27,7 +27,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
@@ -35,15 +37,14 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 {
-    private const int RefreshTimeout = 3000; // the Eth.Timeout hits us at 5000 (or whatever it is configured to)
-    private readonly ISyncPeerPool _syncPeerPool;
+    private readonly IRefreshablePeerDifficultyPool _syncPeerPool;
     private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
     private DateTime _lastRefresh = DateTime.MinValue;
     private (Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
-    private ILogger _logger;
+    private readonly ILogger _logger;
 
-    public PeerRefresher(ISyncPeerPool syncPeerPool, ITimerFactory timerFactory, ILogManager logManager)
+    public PeerRefresher(IRefreshablePeerDifficultyPool syncPeerPool, ITimerFactory timerFactory, ILogManager logManager)
     {
         _refreshTimer = timerFactory.CreateTimer(_minRefreshDelay);
         _refreshTimer.Elapsed += TimerOnElapsed;
@@ -77,7 +78,9 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         _lastRefresh = DateTime.Now;
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
+#pragma warning disable CS4014
             StartPeerRefreshTask(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
+#pragma warning restore CS4014
         }
     }
 
@@ -88,19 +91,14 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         Keccak finalizedBlockhash
     )
     {
-        CancellationTokenSource delaySource = new();
-        Task delayTask = Task.Delay(RefreshTimeout, delaySource.Token);
+        using CancellationTokenSource delaySource = new(Timeouts.RefreshDifficulty);
         try
         {
-            await RefreshPeerForFcu(syncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash, delayTask, delaySource.Token);
+            await RefreshPeerForFcu(syncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash, delaySource.Token);
         }
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Exception in peer refresh. This is unexpected. {syncPeer}", exception);
-        }
-        finally
-        {
-            delaySource.Cancel();
         }
     }
 
@@ -109,102 +107,113 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         Keccak headBlockhash,
         Keccak headParentBlockhash,
         Keccak finalizedBlockhash,
-        Task? delayTask,
-        CancellationToken token
-    ) {
-        
+        CancellationToken token)
+    {
         // headBlockhash is obtained together with headParentBlockhash
         Task<BlockHeader[]> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
         Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Keccak.Zero 
             ? Task.FromResult<BlockHeader?>(null)
             : syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
 
-        Task getHeaderTask = Task.WhenAll(getFinalizedHeaderTask, getHeadParentHeaderTask);
-        Task firstToComplete = await Task.WhenAny(getHeaderTask, delayTask);
+        BlockHeader? headBlockHeader, headParentBlockHeader, finalizedBlockHeader;
 
-        if (firstToComplete == delayTask)
-        {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "timeout");
-            return;
-        }
-
-        BlockHeader? headBlockHeader = null;
-        BlockHeader? headParentBlockHeader = null;
-        BlockHeader? finalizedBlockHeader = null;
         try
         {
             BlockHeader[] headAndParentHeaders = await getHeadParentHeaderTask;
-            if (headAndParentHeaders.Length == 1 && headAndParentHeaders[0].Hash == headParentBlockhash)
+            if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders, out headParentBlockHeader, out headBlockHeader))
             {
-                headParentBlockHeader = headAndParentHeaders[0];
-            }
-            else if (headAndParentHeaders.Length == 2)
-            {
-                // Maybe the head is not the same as we expected. In that case, leave it as null
-                if (headBlockhash == headAndParentHeaders[1].Hash)
-                {
-                    headBlockHeader = headAndParentHeaders[1];
-                }
-                headParentBlockHeader = headAndParentHeaders[0];
-            }
-            else if (headAndParentHeaders.Length > 0)
-            {
-                if (_logger.IsTrace) _logger.Trace($"PeerRefreshForFCU unexpected response length when fetching header: {headAndParentHeaders.Length}");
-                _syncPeerPool.ReportRefreshFailed(syncPeer, "unexpected response length");
+                _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU unexpected response length");
                 return;
             }
 
             finalizedBlockHeader = await getFinalizedHeaderTask;
         }
-        catch (TaskCanceledException exception)
+        catch (AggregateException exception) when (exception.InnerException is OperationCanceledException)
         {
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"PeerRefreshForFCU canceled for node: {syncPeer.Node:c}{Environment.NewLine}{exception}");
-            _syncPeerPool.ReportRefreshCancelled(syncPeer);
-            throw;
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception);
+            return;
+        }
+        catch (OperationCanceledException exception)
+        {
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception);
+            return;
         }
         catch (Exception exception)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "faulted", exception);
-            // TODO: how to know if exception is transient
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU faulted", exception);
             return;
         }
 
-        if (_logger.IsTrace)
-        {
-            _logger.Trace($"PeerRefreshForFCU received block info from {syncPeer.Node:c} headHeader: {headBlockHeader} headParentHeader: {headParentBlockHeader} finalizedBlockHeader: {finalizedBlockHeader}");
-        }
+        if (_logger.IsTrace) _logger.Trace($"PeerRefreshForFCU received block info from {syncPeer.Node:c} headHeader: {headBlockHeader} headParentHeader: {headParentBlockHeader} finalizedBlockHeader: {finalizedBlockHeader}");
 
         if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader == null)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "no finalized block header");
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU no finalized block header");
             return;
         }
 
-        List<BlockHeader> headersToCheck = new [] {
-            headBlockHeader,
-            headParentBlockHeader,
-            finalizedBlockHeader
-        }.Where((header) => header != null).ToList();
-        
-        foreach (BlockHeader header in headersToCheck)
+        if (!CheckHeader(syncPeer, headBlockHeader))
         {
-            if (!HeaderValidator.ValidateHash(header))
-            {
-                _syncPeerPool.ReportRefreshFailed(syncPeer, "invalid header hash");
-                return;
-            }
+            return;
         }
 
-        foreach (BlockHeader header in headersToCheck)
+        if (!CheckHeader(syncPeer, headParentBlockHeader))
         {
-            _syncPeerPool.UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
+            return;
+        }
+
+        if (!CheckHeader(syncPeer, finalizedBlockHeader))
+        {
+            return;
         }
 
         _syncPeerPool.SignalPeersChanged();
     }
-        
+
+    private bool CheckHeader(ISyncPeer syncPeer, BlockHeader? header)
+    {
+        if (header is not null)
+        {
+            if (!HeaderValidator.ValidateHash(header))
+            {
+                _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU invalid header hash");
+                return false;
+            }
+
+            _syncPeerPool.UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
+        }
+
+        return true;
+    }
+
+    private static bool TryGetHeadAndParent(Keccak headBlockhash, Keccak headParentBlockhash, BlockHeader[] headers, out BlockHeader? headBlockHeader, out BlockHeader? headParentBlockHeader)
+    {
+        headBlockHeader = null;
+        headParentBlockHeader = null;
+
+        if (headers.Length > 2)
+        {
+            return false;
+        }
+
+        if (headers.Length == 1 && headers[0].Hash == headParentBlockhash)
+        {
+            headParentBlockHeader = headers[0];
+        }
+        else if (headers.Length == 2)
+        {
+            // Maybe the head is not the same as we expected. In that case, leave it as null
+            if (headBlockhash == headers[1].Hash)
+            {
+                headBlockHeader = headers[1];
+            }
+
+            headParentBlockHeader = headers[0];
+        }
+
+        return true;
+    }
+
     public ValueTask DisposeAsync()
     {
         _refreshTimer.Dispose();

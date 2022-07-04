@@ -118,22 +118,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
             public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
-            
-            public void SignalPeersChanged()
-            {
-            }
-
-            public void UpdateSyncPeerHeadIfHeaderIsBetter(ISyncPeer syncPeer, BlockHeader header)
-            {
-            }
-
-            public void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception)
-            {
-            }
-
-            public void ReportRefreshCancelled(ISyncPeer syncPeer)
-            {
-            }
         }
 
         private class TestBatch

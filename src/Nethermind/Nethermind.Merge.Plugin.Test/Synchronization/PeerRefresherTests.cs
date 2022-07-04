@@ -35,21 +35,21 @@ namespace Nethermind.Merge.Plugin.Test.Synchronization;
 
 public class PeerRefresherTests
 {
-    private BlockHeader headBlockHeader;
-    private BlockHeader headParentBlockHeader;
-    private BlockHeader finalizedBlockHeader;
-    private PeerRefresher _peerRefresher;
-    private ISyncPeerPool _syncPeerPool;
-    private ISyncPeer _syncPeer;
+    private BlockHeader _headBlockHeader = null!;
+    private BlockHeader _headParentBlockHeader = null!;
+    private BlockHeader _finalizedBlockHeader = null!;
+    private PeerRefresher _peerRefresher = null!;
+    private IRefreshablePeerDifficultyPool _syncPeerPool = null!;
+    private ISyncPeer _syncPeer = null!;
 
     [SetUp]
     public void Setup()
     {
-        headParentBlockHeader = Build.A.BlockHeader.WithExtraData(new byte []{ 0 }).TestObject;
-        headBlockHeader = Build.A.BlockHeader.WithParent(headParentBlockHeader).TestObject;
-        finalizedBlockHeader = Build.A.BlockHeader.WithExtraData(new byte []{ 1 }).TestObject;
+        _headParentBlockHeader = Build.A.BlockHeader.WithExtraData(new byte []{ 0 }).TestObject;
+        _headBlockHeader = Build.A.BlockHeader.WithParent(_headParentBlockHeader).TestObject;
+        _finalizedBlockHeader = Build.A.BlockHeader.WithExtraData(new byte []{ 1 }).TestObject;
 
-        _syncPeerPool = Substitute.For<ISyncPeerPool>();
+        _syncPeerPool = Substitute.For<IRefreshablePeerDifficultyPool>();
         _syncPeer = Substitute.For<ISyncPeer>();
         _peerRefresher = new PeerRefresher(_syncPeerPool, new TimerFactory(), new TestLogManager());
     }
@@ -59,11 +59,11 @@ public class PeerRefresherTests
     {
         GivenAllHeaderAvailable();
 
-        WhenCalledWithCorrectHash();
+        await WhenCalledWithCorrectHash();
         
-        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, headBlockHeader);
-        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, headParentBlockHeader);
-        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, finalizedBlockHeader);
+        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headBlockHeader);
+        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headParentBlockHeader);
+        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _finalizedBlockHeader);
         _syncPeerPool.DidNotReceive().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
     }
 
@@ -72,47 +72,44 @@ public class PeerRefresherTests
     {
         GivenFinalizedHeaderAvailable();
 
-        WhenCalledWithCorrectHash();
+        await WhenCalledWithCorrectHash();
         
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, headBlockHeader);
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, headParentBlockHeader);
-        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, finalizedBlockHeader);
+        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headBlockHeader);
+        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headParentBlockHeader);
+        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _finalizedBlockHeader);
         _syncPeerPool.DidNotReceive().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
     }
     
     [Test]
     public async Task Given_finalizedBlockNotAvailable_thenShouldCallRefreshFailed()
     {
-        WhenCalledWithCorrectHash();
+        await WhenCalledWithCorrectHash();
         
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, headBlockHeader);
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, headParentBlockHeader);
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, finalizedBlockHeader);
+        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headBlockHeader);
+        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headParentBlockHeader);
+        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _finalizedBlockHeader);
         _syncPeerPool.Received().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
     }
 
     private Task WhenCalledWithCorrectHash()
     {
+        CancellationTokenSource source = new(1000);
         return _peerRefresher.RefreshPeerForFcu(
             _syncPeer,
-            headBlockHeader.Hash,
-            headParentBlockHeader.Hash,
-            finalizedBlockHeader.Hash, 
-            Task.Delay(1000),
-            new CancellationToken());
+            _headBlockHeader.Hash!,
+            _headParentBlockHeader.Hash!,
+            _finalizedBlockHeader.Hash!,
+            source.Token);
     }
     
     private void GivenAllHeaderAvailable()
     {
-        _syncPeer.GetBlockHeaders(headParentBlockHeader.Hash, 2, 0, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new[] { headParentBlockHeader, headBlockHeader }));
+        _syncPeer.GetBlockHeaders(_headParentBlockHeader.Hash!, 2, 0, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new[] { _headParentBlockHeader, _headBlockHeader }));
         GivenFinalizedHeaderAvailable();
     }
     
-    private void GivenFinalizedHeaderAvailable()
-    {
-        _syncPeer.GetHeadBlockHeader(finalizedBlockHeader.Hash, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(finalizedBlockHeader));
-    }
-    
+    private void GivenFinalizedHeaderAvailable() =>
+        _syncPeer.GetHeadBlockHeader(_finalizedBlockHeader.Hash!, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(_finalizedBlockHeader));
 }

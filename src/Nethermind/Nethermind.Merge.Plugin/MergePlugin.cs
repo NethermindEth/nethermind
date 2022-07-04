@@ -45,6 +45,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin
@@ -59,7 +60,7 @@ namespace Nethermind.Merge.Plugin
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService = null!;
-        private InvalidChainTracker.InvalidChainTracker? _invalidChainTracker;
+        private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
         private IPeerRefresher _peerRefresher = null!;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
@@ -168,13 +169,14 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 if (_api.HeaderValidator == null) throw new ArgumentException(nameof(_api.HeaderValidator));
 
-                var headerValidator = new MergeHeaderValidator(
+                MergeHeaderValidator headerValidator = new(
                         _poSSwitcher,
                         _api.HeaderValidator,
                         _api.BlockTree,
                         _api.SpecProvider,
                         _api.SealValidator,
                         _api.LogManager);
+
                 _api.HeaderValidator = new InvalidHeaderInterceptor(
                     headerValidator,
                     _invalidChainTracker,
@@ -310,18 +312,19 @@ namespace Nethermind.Merge.Plugin
                 if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
 
                 // ToDo strange place for validators initialization
-                PeerRefresher peerRefresher = new(_api.SyncPeerPool, _api.TimerFactory, _api.LogManager);
+                PeerRefresher peerRefresher = new((IRefreshablePeerDifficultyPool)_api.SyncPeerPool, _api.TimerFactory, _api.LogManager);
                 _peerRefresher = peerRefresher;
                 _api.DisposeStack.Push(peerRefresher);
                 _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
 
-                var headerValidator = new MergeHeaderValidator(
+                MergeHeaderValidator headerValidator = new(
                         _poSSwitcher,
                         _api.HeaderValidator,
                         _api.BlockTree,
                         _api.SpecProvider,
                         _api.SealValidator,
                         _api.LogManager);
+
                 _api.HeaderValidator = new InvalidHeaderInterceptor(
                     headerValidator,
                     _invalidChainTracker,

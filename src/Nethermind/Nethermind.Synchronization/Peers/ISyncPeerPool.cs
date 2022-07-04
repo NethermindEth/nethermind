@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -109,13 +108,5 @@ namespace Nethermind.Synchronization.Peers
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
         
         event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
-        
-        void SignalPeersChanged();
-        
-        void UpdateSyncPeerHeadIfHeaderIsBetter(ISyncPeer syncPeer, BlockHeader header);
-        
-        void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception = null);
-        
-        void ReportRefreshCancelled(ISyncPeer syncPeer);
     }
 }
