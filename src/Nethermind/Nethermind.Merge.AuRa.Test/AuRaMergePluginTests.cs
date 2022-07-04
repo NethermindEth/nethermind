@@ -28,9 +28,9 @@ namespace Nethermind.Merge.AuRa.Test;
 [TestFixture]
 public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
-    protected override async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) =>
-        await new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService)
-            .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+    protected override MergeTestBlockchain CreateBaseBlockChain(IMergeConfig mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null)
+        => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService);
 
     protected override Keccak ExpectedBlockHash => new("0x0ec8f29f7438df15ac81d68da632ea8bca8914335ed48cee8d613317c781b447");
 
@@ -57,11 +57,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         await Task.CompletedTask;
     }
 
-    [Test]
-    [Parallelizable(ParallelScope.None)]
-    public override Task executePayloadV1_accepts_already_known_block()
+    [TestCase(true)]
+    [TestCase(false)]
+    public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor)
     {
-        return base.executePayloadV1_accepts_already_known_block();
+        await base.executePayloadV1_accepts_already_known_block(throttleBlockProcessor);
     }
 
     class MergeAuRaTestBlockchain : EngineModuleTests.MergeTestBlockchain

@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -172,7 +173,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}.");
                 }
 
-                if (!isValid)
+                if (result == ValidationResult.Invalid)
                 {
                     _invalidChainTracker.OnInvalidBlock(request.BlockHash, request.ParentHash);
                     return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
