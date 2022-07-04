@@ -37,14 +37,14 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 {
-    private readonly IRefreshablePeerDifficultyPool _syncPeerPool;
+    private readonly IPeerDifficultyRefreshPool _syncPeerPool;
     private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
     private DateTime _lastRefresh = DateTime.MinValue;
     private (Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
     private readonly ILogger _logger;
 
-    public PeerRefresher(IRefreshablePeerDifficultyPool syncPeerPool, ITimerFactory timerFactory, ILogManager logManager)
+    public PeerRefresher(IPeerDifficultyRefreshPool syncPeerPool, ITimerFactory timerFactory, ILogManager logManager)
     {
         _refreshTimer = timerFactory.CreateTimer(_minRefreshDelay);
         _refreshTimer.Elapsed += TimerOnElapsed;

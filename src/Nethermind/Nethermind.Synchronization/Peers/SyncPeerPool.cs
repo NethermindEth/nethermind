@@ -45,22 +45,18 @@ namespace Nethermind.Synchronization.Peers
     ///     Eth sync peer pool is capable of returning a sync peer allocation that is best suited for the requesting
     ///     sync process. It also manages all allocations allowing to replace peers with better peers whenever they connect.
     /// </summary>
-    public class SyncPeerPool : ISyncPeerPool, IRefreshablePeerDifficultyPool
+    public class SyncPeerPool : ISyncPeerPool, IPeerDifficultyRefreshPool
     {
         public const int DefaultUpgradeIntervalInMs = 1000;
 
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
-        private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue
-            = new();
+        private readonly BlockingCollection<RefreshTotalDiffTask> _peerRefreshQueue = new();
 
-        private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers
-            = new();
+        private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
 
-        private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens
-            = new();
-        private readonly ConcurrentDictionary<SyncPeerAllocation, object?> _replaceableAllocations
-            = new();
+        private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
+        private readonly ConcurrentDictionary<SyncPeerAllocation, object?> _replaceableAllocations = new();
         
         private readonly INodeStatsManager _stats;
         private readonly IBetterPeerStrategy _betterPeerStrategy;

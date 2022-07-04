@@ -39,7 +39,7 @@ public class PeerRefresherTests
     private BlockHeader _headParentBlockHeader = null!;
     private BlockHeader _finalizedBlockHeader = null!;
     private PeerRefresher _peerRefresher = null!;
-    private IRefreshablePeerDifficultyPool _syncPeerPool = null!;
+    private IPeerDifficultyRefreshPool _syncPeerPool = null!;
     private ISyncPeer _syncPeer = null!;
 
     [SetUp]
@@ -49,7 +49,7 @@ public class PeerRefresherTests
         _headBlockHeader = Build.A.BlockHeader.WithParent(_headParentBlockHeader).TestObject;
         _finalizedBlockHeader = Build.A.BlockHeader.WithExtraData(new byte []{ 1 }).TestObject;
 
-        _syncPeerPool = Substitute.For<IRefreshablePeerDifficultyPool>();
+        _syncPeerPool = Substitute.For<IPeerDifficultyRefreshPool>();
         _syncPeer = Substitute.For<ISyncPeer>();
         _peerRefresher = new PeerRefresher(_syncPeerPool, new TimerFactory(), new TestLogManager());
     }

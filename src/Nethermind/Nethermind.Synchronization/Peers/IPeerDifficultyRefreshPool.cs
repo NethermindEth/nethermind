@@ -22,7 +22,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.Peers;
 
-public interface IRefreshablePeerDifficultyPool
+public interface IPeerDifficultyRefreshPool
 {
     /// <summary>
     /// All peers maintained by the pool

@@ -59,6 +59,7 @@ namespace Nethermind.Api
         IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         IPivot? Pivot { get; set; }
         ISyncPeerPool? SyncPeerPool { get; set; }
+        IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
         ISyncServer? SyncServer { get; set; }
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory SubscriptionFactory { get; set; }
