@@ -593,9 +593,9 @@ namespace Nethermind.Blockchain
             {
                 LowestInsertedHeader = header;
             }
-
-            bool updateBestPointers = (options & BlockTreeInsertOptions.SkipUpdateBestPointers) == 0;
-            if (updateBestPointers)
+            
+            bool beaconInsert = (options & BlockTreeInsertOptions.BeaconInsert) != 0;
+            if (!beaconInsert)
             {
                 if (header.Number > BestKnownNumber)
                 {
@@ -607,9 +607,8 @@ namespace Nethermind.Blockchain
                     BestSuggestedHeader = header;
                 }
             }
-
-            bool skipBeaconPointers = (options & BlockTreeInsertOptions.UpdateBeaconPointers) == 0;
-            if (!skipBeaconPointers)
+            
+            if (beaconInsert)
             {
                 if (header.Number > BestKnownBeaconNumber)
                 {
@@ -630,7 +629,7 @@ namespace Nethermind.Blockchain
                 }
             }
             
-            bool addBeaconMetadata = (options & BlockTreeInsertOptions.AddBeaconMetadata) != 0;
+            bool addBeaconMetadata = (options & BlockTreeInsertOptions.BeaconInsert) != 0;
             if (addBeaconMetadata)
             {
                 blockInfo.Metadata = blockInfo.Metadata | BlockMetadata.BeaconHeader;
@@ -675,7 +674,7 @@ namespace Nethermind.Blockchain
                 Insert(block.Header, options);
             }
             
-            bool addBeaconMetadata = (options & BlockTreeInsertOptions.AddBeaconMetadata) != 0;
+            bool addBeaconMetadata = (options & BlockTreeInsertOptions.BeaconInsert) != 0;
             bool moveToBeaconMainChain = (options & BlockTreeInsertOptions.MoveToBeaconMainChain) != 0;
             if (addBeaconMetadata)
             {
@@ -1683,10 +1682,10 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    // if (number > BestKnownNumber)
-                    // {
-                    //     BestKnownNumber = number;
-                    // }
+                    if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
+                    {
+                        BestKnownNumber = number;
+                    }
 
                     level = new ChainLevelInfo(false, new[] { blockInfo });
                 }
