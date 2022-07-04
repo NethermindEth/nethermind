@@ -600,12 +600,10 @@ namespace Nethermind.Synchronization.Peers
                         }
                         else if (firstToComplete.IsFaulted)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
-                            ReportRefreshFailed(syncPeer, "faulted");
+                            ReportRefreshFailed(syncPeer, "faulted", t.Exception);
                         }
                         else if (firstToComplete.IsCanceled)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
                             ReportRefreshCancelled(syncPeer);
                             token.ThrowIfCancellationRequested();
                         }
@@ -726,9 +724,9 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public void ReportRefreshFailed(ISyncPeer syncPeer, string reason)
+        public void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception = null)
         {
-            if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}");
+            if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node:c}, {reason}, {exception}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
             syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - {reason}");
         }

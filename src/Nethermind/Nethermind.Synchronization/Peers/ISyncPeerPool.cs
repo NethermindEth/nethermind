@@ -114,7 +114,7 @@ namespace Nethermind.Synchronization.Peers
         
         void UpdateSyncPeerHeadIfHeaderIsBetter(ISyncPeer syncPeer, BlockHeader header);
         
-        void ReportRefreshFailed(ISyncPeer syncPeer, string reason);
+        void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception = null);
         
         void ReportRefreshCancelled(ISyncPeer syncPeer);
     }

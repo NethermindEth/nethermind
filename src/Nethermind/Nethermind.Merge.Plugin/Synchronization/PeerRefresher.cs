@@ -39,7 +39,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private readonly ISyncPeerPool _syncPeerPool;
     private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
     private DateTime _lastRefresh = DateTime.MinValue;
-    private (Keccak, Keccak, Keccak) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
+    private (Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
     private ILogger _logger;
 
@@ -69,7 +69,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
     private void TimerOnElapsed(object? sender, EventArgs e)
     {
-        Refresh(_lastBlockhashes.Item1, _lastBlockhashes.Item2, _lastBlockhashes.Item3);
+        Refresh(_lastBlockhashes.headBlockhash, _lastBlockhashes.headParentBlockhash, _lastBlockhashes.finalizedBlockhash);
     }
     
     private void Refresh(Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash)
@@ -119,7 +119,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
             ? Task.FromResult<BlockHeader?>(null)
             : syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
 
-        Task getHeaderTask = Task.WhenAll(getFinalizedHeaderTask, getFinalizedHeaderTask);
+        Task getHeaderTask = Task.WhenAll(getFinalizedHeaderTask, getHeadParentHeaderTask);
         Task firstToComplete = await Task.WhenAny(getHeaderTask, delayTask);
 
         if (firstToComplete == delayTask)
@@ -150,6 +150,8 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
             else if (headAndParentHeaders.Length > 0)
             {
                 if (_logger.IsTrace) _logger.Trace($"PeerRefreshForFCU unexpected response length when fetching header: {headAndParentHeaders.Length}");
+                _syncPeerPool.ReportRefreshFailed(syncPeer, "unexpected response length");
+                return;
             }
 
             finalizedBlockHeader = await getFinalizedHeaderTask;
@@ -164,26 +166,18 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
         catch (Exception exception)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"PeerRefreshForFCU failed for node: {syncPeer.Node:c}{Environment.NewLine}{exception}");
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "faulted");
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "faulted", exception);
             // TODO: how to know if exception is transient
-            syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault - faulted");
             return;
         }
 
         if (_logger.IsTrace)
         {
-            _logger.Trace($"PeerRefreshForFCU received block info from {syncPeer.Node:c}");
-            _logger.Trace($"PeerRefreshForFCU headHeader: {headBlockHeader}");
-            _logger.Trace($"PeerRefreshForFCU headParentHeader: {headParentBlockHeader}");
-            _logger.Trace($"PeerRefreshForFCU finalizedBlockHeader: {finalizedBlockHeader}");
+            _logger.Trace($"PeerRefreshForFCU received block info from {syncPeer.Node:c} headHeader: {headBlockHeader} headParentHeader: {headParentBlockHeader} finalizedBlockHeader: {finalizedBlockHeader}");
         }
 
         if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader == null)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"PeerRefreshForFCU failed for node: {syncPeer.Node:c}{Environment.NewLine} - Finalized block header not found");
             _syncPeerPool.ReportRefreshFailed(syncPeer, "no finalized block header");
             return;
         }
@@ -198,8 +192,6 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         {
             if (!HeaderValidator.ValidateHash(header))
             {
-                if (_logger.IsTrace)
-                    _logger.Trace($"PeerRefreshForFCU failed for node: {syncPeer.Node:c}{Environment.NewLine} Invalid block hash. Header: {header}");
                 _syncPeerPool.ReportRefreshFailed(syncPeer, "invalid header hash");
                 return;
             }
