@@ -115,7 +115,7 @@ public class ChainLevelHelper : IChainLevelHelper
             for (int i = 0; i < hashesToRequest.Count; i++)
             {
                 Block? block = _blockTree.FindBlock(hashesToRequest[i], BlockTreeLookupOptions.None);
-                if (block == null) continue;
+                if (block == null) return false;
                 BlockBody blockBody = new(block.Transactions, block.Uncles);
                 context.SetBody(i + offset, blockBody);
             }
