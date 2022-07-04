@@ -495,7 +495,7 @@ namespace Nethermind.Consensus.Processing
 
             finally
             {
-                if (_options.LogProducedBlocks && (options & ProcessingOptions.ProducingBlock) != 0)
+                if (_options.LogProducedBlocks && options == ProcessingOptions.ProducingBlock)
                 {
                     TraceBranch(processingBranch, options);
                 }
