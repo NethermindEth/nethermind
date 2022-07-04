@@ -300,8 +300,9 @@ namespace Nethermind.Consensus.Processing
                         BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                     }
                 }
-                catch
+                catch (Exception exception)
                 {
+                    if (_logger.IsDebug) _logger.Debug($"Processing loop threw an exception. Block: {blockRef}, Exception: {exception}");
                     BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Exception));
                 }
                 finally
