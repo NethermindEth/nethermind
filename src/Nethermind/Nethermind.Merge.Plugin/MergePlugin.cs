@@ -310,7 +310,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
 
                 // ToDo strange place for validators initialization
-                PeerRefresher peerRefresher = new(_api.SyncPeerPool, _api.TimerFactory);
+                PeerRefresher peerRefresher = new(_api.SyncPeerPool, _api.TimerFactory, _api.LogManager);
                 _peerRefresher = peerRefresher;
                 _api.DisposeStack.Push(peerRefresher);
                 _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);

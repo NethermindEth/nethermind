@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -93,16 +94,6 @@ namespace Nethermind.Synchronization.Peers
         void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash);
         
         /// <summary>
-        /// FCU have a slightly different handling in determining if the node should get disconnected. In particular,
-        /// if the node does not have a finalizedBlockhash, then we disconnect the node
-        /// </summary>
-        /// <param name="peerSyncPeer"></param>
-        /// <param name="headBlockhash"></param>
-        /// <param name="headParentBlockhash"></param>
-        /// <param name="finalizedBlockhash"></param>
-        void RefreshTotalDifficultyForFcu(ISyncPeer peerSyncPeer, Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash);
-
-        /// <summary>
         /// Starts the pool loops.
         /// </summary>
         void Start();
@@ -118,5 +109,13 @@ namespace Nethermind.Synchronization.Peers
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
         
         event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
+        
+        void SignalPeersChanged();
+        
+        void UpdateSyncPeerHeadIfHeaderIsBetter(ISyncPeer syncPeer, BlockHeader header);
+        
+        void ReportRefreshFailed(ISyncPeer syncPeer, string reason);
+        
+        void ReportRefreshCancelled(ISyncPeer syncPeer);
     }
 }

@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -122,6 +123,22 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
             public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
             public event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
+            
+            public void SignalPeersChanged()
+            {
+            }
+
+            public void UpdateSyncPeerHeadIfHeaderIsBetter(ISyncPeer syncPeer, BlockHeader header)
+            {
+            }
+
+            public void ReportRefreshFailed(ISyncPeer syncPeer, string reason)
+            {
+            }
+
+            public void ReportRefreshCancelled(ISyncPeer syncPeer)
+            {
+            }
         }
 
         private class TestBatch
