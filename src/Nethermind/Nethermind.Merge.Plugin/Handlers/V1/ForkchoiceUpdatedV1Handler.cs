@@ -105,8 +105,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()))
+            BlockInfo blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
+            if (!blockInfo.WasProcessed)
             {
+                if (!blockInfo.IsBeaconMainChain)
+                    ReorgBeaconChainDuringSync(newHeadBlock, blockInfo);
+                
                 _peerRefresher.RefreshPeers(newHeadBlock.ParentHash);
                 _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
@@ -117,8 +121,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed.");
-
-
+            
             BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
             if (finalizationErrorMsg is not null)
             {
@@ -311,5 +314,38 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             blocks = blocksList.ToArray();
             return true;
         }
+   
+        private void ReorgBeaconChainDuringSync(Block newHeadBlock, BlockInfo newHeadBlockInfo)
+        {
+            if (_logger.IsInfo) _logger.Info("BeaconChain reorged during the sync");
+            BlockInfo[] beaconMainChainBranch = GetBeaconChainBranch(newHeadBlock, newHeadBlockInfo);
+            _blockTree.UpdateBeaconMainChain(beaconMainChainBranch);
+        }     
+        private BlockInfo[] GetBeaconChainBranch(Block newHeadBlock, BlockInfo newHeadBlockInfo)
+        {
+            newHeadBlockInfo.BlockNumber = newHeadBlock.Number;
+            List<BlockInfo> blocksList = new() { newHeadBlockInfo };
+            BlockInfo? predecessorInfo = newHeadBlockInfo;
+            Block? predecessor = newHeadBlock;
+
+            while (true)
+            {
+                predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+                // ToDo add logger
+                if (predecessor == null)
+                {
+                    break;
+                }
+                predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
+                predecessorInfo.BlockNumber = predecessor.Number;
+                if (predecessorInfo.IsBeaconMainChain) break;
+                blocksList.Add(predecessorInfo);
+            }
+
+            blocksList.Reverse();
+            return blocksList.ToArray();;
+        }
+        
     }
 }

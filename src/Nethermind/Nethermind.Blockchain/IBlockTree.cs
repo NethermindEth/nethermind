@@ -181,5 +181,7 @@ namespace Nethermind.Blockchain
         int DeleteChainSlice(in long startNumber, long? endNumber = null);
 
         bool IsBetterThanHead(BlockHeader? header);
+
+        void UpdateBeaconMainChain(BlockInfo[]? blockInfos);
     }
 }

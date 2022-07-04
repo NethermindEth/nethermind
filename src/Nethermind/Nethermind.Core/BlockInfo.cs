@@ -73,6 +73,11 @@ namespace Nethermind.Core
             get => (Metadata & BlockMetadata.BeaconBody) != 0;
         }
         
+        public bool IsBeaconMainChain
+        {
+            get => (Metadata & BlockMetadata.BeaconMainChain) != 0;
+        }
+        
         public bool IsBeaconInfo
         {
             get => (Metadata & (BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader)) != 0;

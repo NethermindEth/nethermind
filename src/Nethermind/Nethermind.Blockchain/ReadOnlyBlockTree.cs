@@ -198,9 +198,10 @@ namespace Nethermind.Blockchain
         }
 
         public bool IsBetterThanHead(BlockHeader? header) => _wrapped.IsBetterThanHead(header);
+        public void UpdateBeaconMainChain(BlockInfo[]? blockInfos) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateBeaconMainChain)} calls");
 
         public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(UpdateMainChain)} calls");
         
-        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) => _wrapped.ForkChoiceUpdated(finalizedBlockHash,safeBlockBlockHash);
+        public void ForkChoiceUpdated(Keccak? finalizedBlockHash, Keccak? safeBlockBlockHash) =>  throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ForkChoiceUpdated)} calls");
     }
 }

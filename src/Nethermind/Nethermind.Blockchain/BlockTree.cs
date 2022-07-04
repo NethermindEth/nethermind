@@ -620,6 +620,7 @@ namespace Nethermind.Blockchain
             {
                 blockInfo.Metadata |= BlockMetadata.BeaconHeader;
             }
+
             bool moveToBeaconMainChain = (options & BlockTreeInsertOptions.MoveToBeaconMainChain) != 0;
             if (moveToBeaconMainChain)
             {
@@ -661,7 +662,6 @@ namespace Nethermind.Blockchain
             }
             
             bool addBeaconMetadata = (options & BlockTreeInsertOptions.BeaconInsert) != 0;
-            bool moveToBeaconMainChain = (options & BlockTreeInsertOptions.MoveToBeaconMainChain) != 0;
             if (addBeaconMetadata)
             {
                 // we're manipulating level when we're inserting header
@@ -1362,6 +1362,31 @@ namespace Nethermind.Blockchain
                 // we only force update head block for last block in processed blocks
                 bool lastProcessedBlock = i == blocks.Count - 1;
                 MoveToMain(blocks[i], batch, wereProcessed, forceUpdateHeadBlock && lastProcessedBlock);
+            }
+        }
+
+        public void UpdateBeaconMainChain(BlockInfo[]? blockInfos)
+        {
+            if (blockInfos == null)
+                return;
+            
+            using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+            foreach (BlockInfo blockInfo in blockInfos)
+            {
+                var levelNumber = blockInfo.BlockNumber;
+                ChainLevelInfo? level = LoadLevel(levelNumber);
+                if (level is not null)
+                {
+                    for (int i = 0; i < level.BlockInfos.Length; ++i)
+                    {
+                        if (level.BlockInfos[i].BlockHash == blockInfo.BlockHash)
+                            blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+                        else
+                            blockInfo.Metadata &= ~BlockMetadata.BeaconMainChain;
+                    }
+                    
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                }
             }
         }
         

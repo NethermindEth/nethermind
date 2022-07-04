@@ -41,7 +41,7 @@ public enum BlockTreeInsertOptions
     NotOnMainChain = 4,
     MoveToBeaconMainChain = 32,
     
-    BeaconBlockInsert = TotalDifficultyNotNeeded | BeaconInsert | MoveToBeaconMainChain | NotOnMainChain
+    BeaconBlockInsert = TotalDifficultyNotNeeded | BeaconInsert | NotOnMainChain
 }
 
 [Flags]
