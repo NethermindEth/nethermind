@@ -976,11 +976,6 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies);
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
             public async Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 bool consistent = Flags.HasFlag(Response.Consistent);

@@ -29,7 +29,7 @@ public partial class BlockTreeTests
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertHeaders(4, 6)
-            .InsertBeaconBlocks(7, 9)
+            .InsertBeaconBlocks(8, 9)
             .AssertMetadata(0, 4, BlockMetadata.None)
             .AssertMetadata(5, 6, BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain)
             .AssertMetadata(7, 9, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
@@ -41,8 +41,8 @@ public partial class BlockTreeTests
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
-            .InsertHeaders(3, 6)
-            .InsertBeaconBlocks(7, 9)
+            .InsertHeaders(4, 6)
+            .InsertBeaconBlocks(8, 9)
             .SuggestBlocksUsingChainLevels()
             .AssertMetadata(0, 9, BlockMetadata.None);
     }
@@ -53,12 +53,10 @@ public partial class BlockTreeTests
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10, false)
             .InsertBeaconPivot(7)
-            .InsertHeaders(3, 6)
-            .InsertBeaconBlocks(7, 9)
+            .InsertHeaders(4, 6)
+            .InsertBeaconBlocks(8, 9)
             .SuggestBlocksUsingChainLevels()
-            .AssertMetadata(0, 3, BlockMetadata.None)
-            .AssertMetadata(4, 6, BlockMetadata.None)
-            .AssertMetadata(7, 9, BlockMetadata.None);
+            .AssertMetadata(0, 9, BlockMetadata.None);
     }
     
     [Test]
