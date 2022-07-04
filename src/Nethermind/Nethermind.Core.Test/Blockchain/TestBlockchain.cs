@@ -300,8 +300,8 @@ namespace Nethermind.Core.Test.Blockchain
             await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
         }
 
-        protected virtual BlockProcessor CreateBlockProcessor() =>
-            new(
+        protected virtual IBlockProcessor CreateBlockProcessor() =>
+            new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,

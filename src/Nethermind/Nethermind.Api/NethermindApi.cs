@@ -191,6 +191,7 @@ namespace Nethermind.Api
         public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
+        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
         public IStateProvider? StateProvider { get; set; }
