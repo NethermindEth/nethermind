@@ -102,11 +102,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void RefreshTotalDifficultyForFcu(ISyncPeer peerSyncPeer, Keccak headBlockhash, Keccak headParentBlockhash,
-                Keccak finalizedBlockhash)
-            {
-            }
-
             public void Start()
             {
             }
@@ -132,7 +127,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public void ReportRefreshFailed(ISyncPeer syncPeer, string reason)
+            public void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception)
             {
             }
 
