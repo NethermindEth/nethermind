@@ -44,6 +44,7 @@ namespace Nethermind.Blockchain.Synchronization
         void Disconnect(DisconnectReason reason, string details);
         Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
+        Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader?> GetHeadBlockHeader(Keccak hash, CancellationToken token);
         void NotifyOfNewBlock(Block block, SendBlockPriority priority);
         Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token);

@@ -203,6 +203,23 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers.Length > 0 ? headers[0] : null;
         }
+        
+        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+        {
+            if (maxBlocks == 0)
+            {
+                return Array.Empty<BlockHeader>();
+            }
+
+            GetBlockHeadersMessage msg = new();
+            msg.StartBlockHash = startHash;
+            msg.MaxHeaders = maxBlocks;
+            msg.Reverse = 0;
+            msg.Skip = skip;
+
+            BlockHeader[] headers = await SendRequest(msg, token);
+            return headers;
+        }
 
         public virtual Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
         {

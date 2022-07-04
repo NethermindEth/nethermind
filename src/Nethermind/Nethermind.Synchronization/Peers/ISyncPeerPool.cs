@@ -91,7 +91,7 @@ namespace Nethermind.Synchronization.Peers
         /// <param name="syncPeer"></param>
         /// <param name="hash">Hash of a block that we know might be the head block of the peer</param>
         void RefreshTotalDifficulty(ISyncPeer syncPeer, Keccak hash);
-
+        
         /// <summary>
         /// Starts the pool loops.
         /// </summary>
