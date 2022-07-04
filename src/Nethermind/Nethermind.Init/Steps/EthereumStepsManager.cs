@@ -101,9 +101,12 @@ namespace Nethermind.Init.Steps
 
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
-            while (_allSteps.Any(s =>
-                       s.Stage != StepInitializationStage.Complete && s.Stage != StepInitializationStage.Failed))
+            while (_allSteps.Any(s => s.Stage != StepInitializationStage.Complete))
             {
+                if (_allSteps.Any(s => s.Stage == StepInitializationStage.Failed))
+                {
+                    break;
+                }
                 cancellationToken.ThrowIfCancellationRequested();
 
                 RunOneRoundOfInitialization(cancellationToken);
