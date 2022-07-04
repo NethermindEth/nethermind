@@ -101,7 +101,8 @@ namespace Nethermind.Init.Steps
 
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
-            while (_allSteps.Any(s => s.Stage != StepInitializationStage.Complete))
+            while (_allSteps.Any(s =>
+                       s.Stage != StepInitializationStage.Complete && s.Stage != StepInitializationStage.Failed))
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -110,6 +111,11 @@ namespace Nethermind.Init.Steps
             }
 
             await Task.WhenAll(_allPending);
+        }
+
+        public bool IsFailed()
+        {
+            return _allSteps.Any(s => s.Stage == StepInitializationStage.Failed);
         }
 
         private readonly ConcurrentQueue<Task> _allPending = new();
@@ -148,8 +154,12 @@ namespace Nethermind.Init.Steps
                         if (_logger.IsError) _logger.Error(
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
                             t.Exception);
+                        stepInfo.Stage = StepInitializationStage.Failed;
+                        _autoResetEvent.Set();
+                        return;
                     }
-                    else if(t.IsFaulted)
+                    
+                    if(t.IsFaulted)
                     {
                         if (_logger.IsWarn) _logger.Warn(
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms");

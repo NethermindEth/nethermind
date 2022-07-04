@@ -152,7 +152,7 @@ namespace Nethermind.Runner.Test
                 
                 try
                 {
-                    Task task = runner.Start(cts.Token);
+                    Task task = runner.Initialize(cts.Token);
                     if (cancel)
                     {
                         cts.Cancel();

@@ -36,22 +36,35 @@ namespace Nethermind.Runner.Ethereum
 
         private ILogger _logger;
 
+        private EthereumStepsLoader _stepsLoader;
+        private EthereumStepsManager _stepsManager;
+
         public EthereumRunner(INethermindApi api)
         {
             _api = api;
             _logger = api.LogManager.GetClassLogger();
+            _stepsLoader = new EthereumStepsLoader(GetStepsAssemblies(_api));
+            _stepsManager = new EthereumStepsManager(_stepsLoader, _api, _api.LogManager);
         }
 
-        public async Task Start(CancellationToken cancellationToken)
+        public async Task Initialize(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
 
-            EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetStepsAssemblies(_api));
-            EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _api, _api.LogManager);
-            await stepsManager.InitializeAll(cancellationToken);
+            await _stepsManager.InitializeAll(cancellationToken);
+        }
 
+        public async Task<int> Run(params Task<object?>[] tasks)
+        {
+            if (_stepsManager.IsFailed())
+            {
+                _logger.Error("Failed to initialize client. Terminating");
+                return 1;
+            }
             string infoScreen = ThisNodeInfo.BuildNodeInfoScreen();
             if (_logger.IsInfo) _logger.Info(infoScreen);
+            _ = await Task.WhenAny(tasks);
+            return 0;
         }
 
         private IEnumerable<Assembly> GetStepsAssemblies(INethermindApi api)

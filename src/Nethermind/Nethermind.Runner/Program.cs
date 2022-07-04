@@ -176,24 +176,25 @@ namespace Nethermind.Runner
                 ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
 
                 EthereumRunner ethereumRunner = new(nethermindApi);
-                await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
+                await ethereumRunner.Initialize(_processCloseCancellationSource.Token).ContinueWith(x =>
                 {
                     if (x.IsFaulted && _logger.IsError)
                         _logger.Error("Error during ethereum runner start", x.Exception);
                 });
-
-                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
+                
+                int errorCode = await ethereumRunner.Run(_cancelKeySource.Task, _processExit.Task);
 
                 _logger.Info("Closing, please wait until all functions are stopped properly...");
                 await ethereumRunner.StopAsync();
                 _logger.Info("All done, goodbye!");
                 _appClosed.Set();
 
-                return 0;
+                return errorCode;
             });
 
-            _ = app.Execute(args);
+            int errorCode = app.Execute(args);
             _appClosed.Wait();
+            Environment.ExitCode = errorCode;
         }
 
         private static void BuildOptionsFromConfigFiles(CommandLineApplication app)
