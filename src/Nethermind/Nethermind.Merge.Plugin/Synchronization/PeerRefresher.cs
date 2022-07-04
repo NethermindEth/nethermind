@@ -18,19 +18,19 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers;
 
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public class PeerRefresher : IPeerRefresher, IAsyncDisposable
@@ -88,14 +88,13 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         Keccak finalizedBlockhash
     )
     {
-        Task.Run(() =>
+        Task.Run(async () =>
         {
             CancellationTokenSource delaySource = new();
             Task delayTask = Task.Delay(RefreshTimeout, delaySource.Token);
             try
             {
-                ExecuteRefreshTaskForFcu(syncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash,
-                    delayTask, delaySource.Token);
+                await RefreshPeerForFcu(syncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash, delayTask, delaySource.Token);
             }
             catch (Exception exception)
             {
@@ -108,7 +107,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         });
     }
 
-    private async Task ExecuteRefreshTaskForFcu(
+    internal async Task RefreshPeerForFcu(
         ISyncPeer syncPeer,
         Keccak headBlockhash,
         Keccak headParentBlockhash,
@@ -138,7 +137,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         try
         {
             BlockHeader[] headAndParentHeaders = await getHeadParentHeaderTask;
-            if (headAndParentHeaders.Length == 1)
+            if (headAndParentHeaders.Length == 1 && headAndParentHeaders[0].Hash == headParentBlockhash)
             {
                 headParentBlockHeader = headAndParentHeaders[0];
             }
