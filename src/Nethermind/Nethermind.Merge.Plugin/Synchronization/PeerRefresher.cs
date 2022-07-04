@@ -88,23 +88,20 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         Keccak finalizedBlockhash
     )
     {
-        Task.Run(async () =>
+        CancellationTokenSource delaySource = new();
+        Task delayTask = Task.Delay(RefreshTimeout, delaySource.Token);
+        try
         {
-            CancellationTokenSource delaySource = new();
-            Task delayTask = Task.Delay(RefreshTimeout, delaySource.Token);
-            try
-            {
-                await RefreshPeerForFcu(syncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash, delayTask, delaySource.Token);
-            }
-            catch (Exception exception)
-            {
-                if (_logger.IsError) _logger.Error($"Exception in peer refresh. This is unexpected. {syncPeer}", exception);
-            }
-            finally
-            {
-                delaySource.Cancel();
-            }
-        });
+            await RefreshPeerForFcu(syncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash, delayTask, delaySource.Token);
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) _logger.Error($"Exception in peer refresh. This is unexpected. {syncPeer}", exception);
+        }
+        finally
+        {
+            delaySource.Cancel();
+        }
     }
 
     internal async Task RefreshPeerForFcu(
