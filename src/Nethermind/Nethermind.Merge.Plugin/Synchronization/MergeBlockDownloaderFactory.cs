@@ -48,11 +48,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ILogManager _logManager;
         private readonly ISyncReport _syncReport;
         private readonly IInvalidChainTracker _invalidChainTracker;
-        private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IChainLevelHelper _chainLevelHelper;
 
-        public MergeBlockDownloaderFactory(
-            IPoSSwitcher poSSwitcher,
+        public MergeBlockDownloaderFactory(IPoSSwitcher poSSwitcher,
             IBeaconPivot beaconPivot,
             ISpecProvider specProvider,
             IBlockTree blockTree,
@@ -64,7 +62,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             ISyncReport syncReport,
             IInvalidChainTracker invalidChainTracker,
-            ISyncProgressResolver syncProgressResolver,
             ILogManager logManager)
         {
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
@@ -78,7 +75,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));;
             _chainLevelHelper = new ChainLevelHelper(_blockTree, syncConfig, _logManager);
             _invalidChainTracker = invalidChainTracker;
         }
@@ -86,7 +82,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public BlockDownloader Create(ISyncFeed<BlocksRequest?> syncFeed)
         {
             return new MergeBlockDownloader(_poSSwitcher, _beaconPivot, syncFeed, _syncPeerPool, _blockTree, _blockValidator,
-                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper, _invalidChainTracker, _syncProgressResolver,
+                _sealValidator, _syncReport, _receiptStorage, _specProvider, _betterPeerStrategy, _chainLevelHelper, _invalidChainTracker,
                 _logManager);
         }
     }
