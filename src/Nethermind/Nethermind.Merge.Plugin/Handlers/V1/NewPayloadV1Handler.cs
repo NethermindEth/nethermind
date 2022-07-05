@@ -58,6 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ProcessingOptions _processingOptions;
+        internal static TimeSpan Timeout = TimeSpan.FromSeconds(7);
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
@@ -254,7 +255,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
             try
             {
-                Task timeout = Task.Delay(TimeSpan.FromSeconds(5));
+                Task timeout = Task.Delay(Timeout);
                 ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain);
                 await Task.WhenAny(timeout, addResult.AsTask());
                 if (addResult.IsCompletedSuccessfully)
@@ -385,7 +386,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             Invalid = 0,
             Valid = 1,
             AlreadyKnown = 2,
-            Syncing = 3
+            Syncing = 4
         }
     }
 }
