@@ -97,7 +97,7 @@ namespace Nethermind.Consensus.Processing
                the previous head state.*/
             Keccak previousBranchStateRoot = CreateCheckpoint();
             InitBranch(newBranchStateRoot);
-
+            
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];

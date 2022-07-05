@@ -35,16 +35,15 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        [Ignore("You can execute this test for target node")]
+        [Ignore("You need specify rpc for this test")]
         public async Task CanonicalTreeIsConsistent()
         {
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-            int destinationBlockNumber = 12000;
+            int destinationBlockNumber = 5000;
             long? currentBlockNumber = null;
             Keccak? currentHash = null;
-            JsonRpcClient? client = new($"http://localhost:8550");
-            do
-            {
+            JsonRpcClient? client = new($"http://127.0.0.1:8545");
+            do {
                 string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
                 JsonRpcResponse<JObject>? requestResponse =
                     await client.PostAsync<JObject>("eth_getBlockByNumber", new object[] {requestedBlockNumber!, false});
@@ -60,14 +59,14 @@ namespace Nethermind.Merge.Plugin.Test
         }
         
         [Test]
-        [Ignore("You can execute this test for target node")]
+        [Ignore("You need specify rpc for this test")]
         public async Task ParentTimestampIsAlwaysLowerThanChildTimestamp()
         {
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
-            int destinationBlockNumber = 12000;
+            int destinationBlockNumber = 5000;
             long? currentBlockNumber = null;
             UInt256? childTimestamp = null;
-            JsonRpcClient? client = new($"http://localhost:8550");
+            JsonRpcClient? client = new($"http://127.0.0.1:8545");
             do
             {
                 string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);

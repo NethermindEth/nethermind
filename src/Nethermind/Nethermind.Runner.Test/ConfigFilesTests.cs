@@ -299,8 +299,8 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
-        [TestCase("^aura", false)]
-        [TestCase("aura ^archive", true)]
+        [TestCase("^aura ^ropsten ^sepolia", false)]
+        [TestCase("aura ^archive ropsten sepolia", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
         {
             Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);

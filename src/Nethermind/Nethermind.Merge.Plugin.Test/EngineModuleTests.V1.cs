@@ -482,7 +482,7 @@ namespace Nethermind.Merge.Plugin.Test
             }
 
             ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
-            executePayloadResult.Data.Status.Should().Be(PayloadStatus.Accepted);
+            executePayloadResult.Data.Status.Should().Be(PayloadStatus.Syncing);
         }
 
         [TestCaseSource(nameof(WrongInputTestsV1))]
@@ -1294,7 +1294,7 @@ namespace Nethermind.Merge.Plugin.Test
             TryCalculateHash(executionPayloadV12A, out Keccak? hash);
             executionPayloadV12A.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> newPayloadResult2A = await rpc.engine_newPayloadV1(executionPayloadV12A);
-            newPayloadResult2A.Data.Status.Should().Be(PayloadStatus.Accepted);
+            newPayloadResult2A.Data.Status.Should().Be(PayloadStatus.Syncing);
 
             // Fork choice updated with unknown parent hash
             ForkchoiceStateV1 forkChoiceState2A = new ForkchoiceStateV1(executionPayloadV12A.BlockHash,
@@ -1317,7 +1317,7 @@ namespace Nethermind.Merge.Plugin.Test
             // New payload unknown parent hash
             ExecutionPayloadV1 executionPayloadV13A = CreateBlockRequest(executionPayloadV12A, TestItem.AddressA);
             ResultWrapper<PayloadStatusV1> newPayloadResult3A = await rpc.engine_newPayloadV1(executionPayloadV13A);
-            newPayloadResult3A.Data.Status.Should().Be(PayloadStatus.Accepted);
+            newPayloadResult3A.Data.Status.Should().Be(PayloadStatus.Syncing);
 
             // Fork choice updated with unknown parent hash
             ForkchoiceStateV1 forkChoiceState3A = new ForkchoiceStateV1(executionPayloadV13A.BlockHash,
