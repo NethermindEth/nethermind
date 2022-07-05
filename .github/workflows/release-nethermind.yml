@@ -313,3 +313,35 @@ jobs:
       if: always()
       run: |
         rm -f ${HOME}/.docker/config.json
+
+  publish-ppa:
+    name: Publishing Nethermind to PPA repository
+    runs-on: ubuntu-latest
+    needs: trigger-publish
+    env:
+      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
+      PPA_GPG_KEYID: ${{ secrets.PPA_GPG_KEYID }}
+      VERSION: ${{ github.event.inputs.tag }}
+    steps:
+    - run: echo "$GPG_SECRET_KEY" > SECRET_KEY
+      shell: bash
+      env:
+        GPG_SECRET_KEY: ${{secrets.PPA_GPG_SECRET_KEY}}
+    - run: echo "$GPG_PASSPHRASE" > /home/runner/work/nethermind/PASSPHRASE
+      shell: bash
+      env:
+        GPG_PASSPHRASE: ${{secrets.PPA_GPG_PASSPHRASE}}
+    - name: Import GPG key
+      run: base64 --decode -i SECRET_KEY | gpg --import --no-tty --batch --yes
+    - name: Import GPG Owner Trust
+      run: echo ${{secrets.GPG_OWNERTRUST}} | base64 --decode | gpg --import-ownertrust
+    - name: Install dependencies for PPA
+      run: sudo apt update > /dev/null 2>&1 && sudo apt install debhelper devscripts -y > /dev/null 2>&1
+    - name: Checking out Nethermind repository
+      uses: actions/checkout@master
+      with:
+        path: nethermind
+    - name: Run publish PPA script
+      run: | 
+        chmod +x ./nethermind/scripts/deployment/publish-ppa.sh
+        ./nethermind/scripts/deployment/publish-ppa.sh
