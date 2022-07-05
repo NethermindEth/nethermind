@@ -1,0 +1,21 @@
+name: '[RUN] Discord new release announcement'
+   
+on:
+  workflow_dispatch:
+  #release:
+    #types: [published]
+
+jobs:
+  push-announcement:
+    name: Pushing release announcement to Discord
+    runs-on: ubuntu-latest
+    env:      
+      WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    steps:
+    - name: REST API with curl
+      shell: bash
+      run: |
+        CHANGELOG=$(curl -s https://api.github.com/repos/nethermindeth/nethermind/releases | jq '.[0].body' | grep -Po '(?<=\\n\\r\\n)(.*?)(?=\##)')
+        read VERSION LINK < <(echo $(curl -s 'https://api.github.com/repos/nethermindeth/nethermind/releases' | jq -r '.[0].name, .[0].html_url'))
+        MESSAGE="**${VERSION} RELEASE CHANGELOG**\n\n${CHANGELOG}<${LINK}>"
+        curl -H "Content-Type: application/json" -d '{"username": "Nethermind", "content": "'"$MESSAGE"'"}' $WEBHOOK_URL > /dev/null 2>&1
