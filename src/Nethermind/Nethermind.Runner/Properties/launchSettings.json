@@ -1,214 +1,285 @@
 {
   "profiles": {
-    "Docker": {
-      "commandName": "Docker",
-      "commandLineArgs": "-c goerli -dd /data --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0"
-    },
-    "Ropsten": {
+    "Aura (test miner)": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\ropsten.cfg --baseDbPath C:\\nethermind_db",
+      "commandLineArgs": "-c AuraTest -dd %NETHERMIND_DATA_DIR% --Init.IsMining true --JsonRpc.Enabled true --KeyStore.TestNodeKey 0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38",
       "environmentVariables": {
-        " ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Mainnet": {
+    "Aura (test miner 2)": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet.cfg --Sync.FastSync true",
+      "commandLineArgs": "-c AuraTest -dd %NETHERMIND_DATA_DIR% --Init.IsMining true --JsonRpc.Enabled true --JsonRpc.Port 8548 --KeyStore.TestNodeKey 0xcb807c162517bfb179adfeee0d440b81e0bba770e377be4f887e0a4e6c27575d --Network.DiscoveryPort 30305 --Network.P2PPort 30305",
       "environmentVariables": {
-        " ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Mainnet_archive": {
+    "Aura (test downloader)": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet_archive.cfg",
+      "commandLineArgs": "-c AuraTest -dd %NETHERMIND_DATA_DIR% --Init.IsMining false --JsonRpc.Enabled true --JsonRpc.Port 8547 --KeyStore.TestNodeKey 0x57e4b69f7ba48336b5669d17f5141b24ebcbf998fe2bc86bed2c673487d4b4ac --Network.DiscoveryPort 30304 --Network.P2PPort 30304",
       "environmentVariables": {
-        " ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Rinkeby": {
+    "Catalyst": {
       "commandName": "Project",
-      "commandLineArgs": "--config rinkeby --baseDbPath D:\\rinkeby_fast --SyncConfig.FastSync true",
+      "commandLineArgs": "-c catalyst -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true --Merge.BlockAuthorAccount 0x1000000000000000000000000000000000000000",
       "environmentVariables": {
-        " ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Energy Web": {
+      "commandName": "Project",
+      "commandLineArgs": "-c energyweb -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Goerli": {
-        "commandName": "Project",
-        "commandLineArgs": "--config configs\\goerli.cfg --baseDbPath C:\\goerli_mem_fast --JsonRpc.Enabled true"
-    },
-    "Goerli_archive": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\goerli_archive --JsonRpc.Enabled true"
-    },
-    "Hacknet_v2": {
-      "commandName": "Project",
-      "commandLineArgs": "--config configs\\hacknet_v2.cfg --baseDbPath C:\\hacknet --JsonRpc.Enabled true"
-    },
-    "Hacknet_v3": {
-      "commandName": "Project",
-      "commandLineArgs": "--config configs\\hacknet_v3.cfg --baseDbPath C:\\hacknet --JsonRpc.Enabled true"
-    },
-    "Sokol": {
-      "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db"
-    },
-    "Poacore": {
-      "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\poacore.cfg --baseDbPath C:\\nethermind_db"
-    },
-    "xDai": {
-      "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath C:\\nethermind_db"
-    },
-    "xDai_archive": {
-      "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai_archive.cfg --baseDbPath C:\\nethermind_db"
-    },
-    "AuRaTestMiner": {
-      "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Miner --KeyStore.TestNodeKey 0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38 --Init.IsMining true --Init.LogFileName C:\\temp\\AuraMiner.log.txt"
-    },
-    "AuRaTestMiner2": {
-      "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Miner2 --KeyStore.TestNodeKey 0xcb807c162517bfb179adfeee0d440b81e0bba770e377be4f887e0a4e6c27575d --Init.IsMining true --Network.DiscoveryPort 30305 --Network.P2PPort 30305 --JsonRpc.Port 8548 --Init.LogFileName C:\\temp\\AuraMiner2.log.txt"
-    },
-    "AuRaTestDownloader": {
-      "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Downloader --KeyStore.TestNodeKey 0x57e4b69f7ba48336b5669d17f5141b24ebcbf998fe2bc86bed2c673487d4b4ac --Init.IsMining false --Network.DiscoveryPort 30304 --Network.P2PPort 30304 --JsonRpc.Port 8547 --Init.LogFileName C:\\temp\\AuraDownloader.log.txt --Sync.FastSync true"
-    },
-    "Volta": {
-      "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\volta.cfg --baseDbPath C:\\nethermind_db"
-    },
-    "Spaceneth": {
-      "commandName": "Project",
-      "commandLineArgs": "--config configs\\spaceneth.cfg --baseDbPath C:\\nethermind_db",
+      "commandLineArgs": "-c goerli -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
-        " ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "EnergyWeb": {
+    "Goerli (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\energyWeb.cfg",
+      "commandLineArgs": "-c goerli_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
       "environmentVariables": {
-        " ASPNETCORE_ENVIRONMENT": "Development"
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Goerli (shadow fork)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c goerli_shadowfork -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Hacknet v2": {
+      "commandName": "Project",
+      "commandLineArgs": "-c hacknet_v2 -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Hacknet v3": {
+      "commandName": "Project",
+      "commandLineArgs": "-c hacknet_v3 -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true"
+    },
+    "Hive": {
+      "commandName": "Project",
+      "commandLineArgs": "-c hive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Kiln": {
+      "commandName": "Project",
+      "commandLineArgs": "-c kiln -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Kiln (devnet)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c kiln_devnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Kiln (fast sync)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c kiln_fastsync -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Kiln (pre-TTD)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c kiln_pre_ttd_pivot -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Kovan": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\kovan.cfg"
+      "commandLineArgs": "-c kovan -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Catalyst": {
+    "Mainnet": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\catalyst.cfg --Merge.BlockAuthorAccount 0x1000000000000000000000000000000000000000"
+      "commandLineArgs": "-c mainnet -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "xdai1559": {
+    "Mainnet (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\xdai1559.cfg --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c mainnet_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Hive": {
+    "Mainnet (shadow fork)": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\hive.cfg --Init.DiagnosticMode MemDb"
-    },
-    "TheMergeDevnet": {
-      "commandName": "Project",
-      "commandLineArgs": "--config configs\\themerge_devnet.cfg --Init.DiagnosticMode MemDb"
-    },
-    "TheMergeDevnet M3": {
-      "commandName": "Project",
-      "commandLineArgs": "--config themerge_devnet_m3.cfg --Init.DiagnosticMode MemDb"
-    },
-    "TheMergeDevnet M4": {
-      "commandName": "Project",
-      "commandLineArgs": "--config themerge_devnet_m4.cfg --Init.DiagnosticMode MemDb"
-    },
-    "Hacknet V2": {
-      "commandName": "Project",
-      "commandLineArgs": "--config hacknet_v2.cfg --Init.DiagnosticMode MemDb"
-    },
-    "Hacknet V3": {
-      "commandName": "Project",
-      "commandLineArgs": "--config hacknet_v3.cfg --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c mainnet_shadowfork -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
     "Pithos": {
       "commandName": "Project",
-      "commandLineArgs": "--config pithos.cfg --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c pithos -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "TheMerge_Kinstugi_TestVectors": {
+    "POA Core": {
       "commandName": "Project",
-      "commandLineArgs": "--config themerge_kiln_testvectors.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false --Merge.FeeRecipient 0x0000000000000000000000000000000000000000"
+      "commandLineArgs": "-c poacore -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "TheMerge_Kinstugi_M2": {
+    "Rinkeby": {
       "commandName": "Project",
-      "commandLineArgs": "--config themerge_kiln_m2.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 100"
+      "commandLineArgs": "-c rinkeby -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "TheMerge_Kinstugi_Mev": {
+    "Ropsten": {
       "commandName": "Project",
-      "commandLineArgs": "--config themerge_kiln_mev.cfg --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false"
+      "commandLineArgs": "-c ropsten -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Kintsugi": {
+    "Ropsten (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln.cfg --Init.DiagnosticMode MemDb"
-    },
-    "xDai_testnet": {
-      "commandName": "Project",
-      "commandLineArgs": "--config configs\\xdai_testnet.cfg --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c ropsten_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
     "Sepolia": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\sepolia.cfg --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c sepolia -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Sepolia Archive": {
+    "Sepolia (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\sepolia_archive.cfg --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c sepolia_archive -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Kiln_devnet": {
+    "Sokol": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln_devnet.cfg  --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c sokol -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "kiln_fastSync": {
+    "Spaceneth": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln_fastsync.cfg  --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c spaceneth -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "TheMerge_Kiln_TestVectors" : {
+    "The Merge (devnet)": {
       "commandName": "Project",
-      "commandLineArgs": "--config themerge_kiln_testvectors.cfg --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c themerge_devnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "themerge_hivetests": {
+    "The Merge (devnet M3)": {
       "commandName": "Project",
-      "commandLineArgs": "--config themerge_hivetests.cfg  --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c themerge_devnet_m3 -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "xDai_themerge": {
+    "The Merge (devnet M4)": {
       "commandName": "Project",
-      "commandLineArgs": "--config xdai_themerge.cfg  --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "--config themerge_devnet_m4.cfg --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Kiln": {
+    "The Merge (hive tests)": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln.cfg  --Init.DiagnosticMode MemDb --Merge.TerminalBlockNumber null"
+      "commandLineArgs": "-c themerge_hivetests -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "KilnPreTTD": {
+    "The Merge (Kiln M2)": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln_pre_ttd_pivot.cfg  --Init.DiagnosticMode MemDb"
+      "commandLineArgs": "-c themerge_kiln_m2 -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 100",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Kiln_FastSync": {
+    "The Merge (Kiln MEV)": {
       "commandName": "Project",
-      "commandLineArgs": "--config kiln_fastsync.cfg"
+      "commandLineArgs": "-c themerge_kiln_mev -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Goerli ShadowFork": {
+    "The Merge (Kiln test vectors)": {
       "commandName": "Project",
-      "commandLineArgs": "--config goerli_shadowfork.cfg"
+      "commandLineArgs": "-c themerge_kiln_testvectors -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb --Merge.TerminalTotalDifficulty 0 --Sync.SynchronizationEnabled false --Merge.FeeRecipient 0x0000000000000000000000000000000000000000",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Mainnet_ShadowFork": {
+    "Volta": {
       "commandName": "Project",
-      "commandLineArgs": "--config mainnet_shadowfork.cfg  --baseDbPath D:\\shadowfork_db"
+      "commandLineArgs": "-c volta -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Ropsten Archive": {
+    "xDai": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\ropsten_archive.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "-c xdai -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
     },
-    "Gnosis_Merge_Devnet": {
+    "xDai (archive)": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\gnosis_merge_devnet.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "-c xdai_archive -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "xDai (testnet)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c xdai_testnet -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "xDai (The Merge)": {
+      "commandName": "Project",
+      "commandLineArgs": "-c xdai_themerge -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Docker": {
+      "commandName": "Docker",
+      "commandLineArgs": "-c goerli -dd /data --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0"
     }
   }
 }
