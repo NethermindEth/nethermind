@@ -88,6 +88,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
 
                 EnsureJsonRpcUrl();
+                EnsureReceiptAvailable();
                 
                 _blockCacheService = new BlockCacheService();
                 _poSSwitcher = new PoSSwitcher(
@@ -115,6 +116,18 @@ namespace Nethermind.Merge.Plugin
             }
 
             return Task.CompletedTask;
+        }
+
+        private void EnsureReceiptAvailable()
+        {
+            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
+            if (syncConfig.FastSync)
+            {
+                if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
+                {
+                    throw new InvalidOperationException("Receipt and body must be available for merge to function");
+                }
+            }
         }
 
         private void EnsureJsonRpcUrl()
