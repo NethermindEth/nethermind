@@ -35,7 +35,7 @@ namespace Nethermind.Store.Test.Witnesses
         {
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
             
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Add(Keccak.Zero);
                 witnessCollector.Add(Keccak.Zero);
@@ -48,7 +48,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Can_collect_many()
         {
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Add(TestItem.KeccakA);
                 witnessCollector.Add(TestItem.KeccakB);
@@ -62,7 +62,7 @@ namespace Nethermind.Store.Test.Witnesses
         {
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
             
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Add(TestItem.KeccakA);
                 witnessCollector.Add(TestItem.KeccakB);
@@ -77,7 +77,7 @@ namespace Nethermind.Store.Test.Witnesses
         {
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
 
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Add(TestItem.KeccakA);
                 witnessCollector.Add(TestItem.KeccakB);
@@ -92,7 +92,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Collects_what_it_should_collect()
         {
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Add(TestItem.KeccakA);
                 witnessCollector.Add(TestItem.KeccakB);
@@ -106,7 +106,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Can_reset_empty()
         {
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Reset();
             }
@@ -118,7 +118,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Can_reset_empty_many_times()
         {
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Reset();
                 witnessCollector.Reset();
@@ -132,7 +132,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Can_reset_non_empty_many_times()
         {
             WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Add(TestItem.KeccakA);
                 witnessCollector.Reset();
@@ -160,7 +160,7 @@ namespace Nethermind.Store.Test.Witnesses
         {
             IKeyValueStore keyValueStore = new MemDb();
             WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Add(TestItem.KeccakA);
                 witnessCollector.Add(TestItem.KeccakB);
@@ -177,7 +177,7 @@ namespace Nethermind.Store.Test.Witnesses
             IKeyValueStore keyValueStore = new MemDb();
             WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
             
-            using (witnessCollector.Track())
+            using (witnessCollector.TrackOnThisThread())
             {
                 witnessCollector.Add(TestItem.KeccakA);
                 witnessCollector.Add(TestItem.KeccakB);

@@ -36,8 +36,7 @@ namespace Nethermind.State.Witnesses
         [ThreadStatic]
         private static bool _collectWitness;
         
-        private readonly LruCache<Keccak, Keccak[]> _witnessCache
-            = new(256, "Witnesses");
+        private readonly LruCache<Keccak, Keccak[]> _witnessCache = new(256, "Witnesses");
         
         public IReadOnlyCollection<Keccak> Collected => _collected;
 
@@ -91,20 +90,11 @@ namespace Nethermind.State.Witnesses
 
         class WitnessCollectorTrackingScope: IDisposable
         {
-            public WitnessCollectorTrackingScope()
-            {
-                _collectWitness = true;
-            }
-            public void Dispose()
-            {
-                _collectWitness = false;
-            }
+            public WitnessCollectorTrackingScope() => _collectWitness = true;
+            public void Dispose() => _collectWitness = false;
         }
         
-        public IDisposable Track()
-        {
-            return new WitnessCollectorTrackingScope();
-        }
+        public IDisposable TrackOnThisThread() => new WitnessCollectorTrackingScope();
 
         public Keccak[]? Load(Keccak blockHash)
         {

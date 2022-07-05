@@ -46,7 +46,7 @@ namespace Nethermind.State
             }
         }
         
-        public IDisposable Track() { return new EmptyDisposable(); }
+        public IDisposable TrackOnThisThread() { return new EmptyDisposable(); }
 
         public Keccak[]? Load(Keccak blockHash)
         {

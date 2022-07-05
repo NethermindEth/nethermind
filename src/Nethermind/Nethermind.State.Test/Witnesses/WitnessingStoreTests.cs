@@ -38,7 +38,7 @@ namespace Nethermind.Store.Test.Witnesses
         {
             Context context = new();
             context.Wrapped[Key1].Returns(Value1);
-            using (context.WitnessCollector.Track())
+            using (context.WitnessCollector.TrackOnThisThread())
             {
                 _ = context.Database[Key1];
             }
@@ -62,7 +62,7 @@ namespace Nethermind.Store.Test.Witnesses
             context.Wrapped[Key2].Returns(Value2);
             context.Wrapped[Key3].Returns(Value3);
             
-            using (context.WitnessCollector.Track())
+            using (context.WitnessCollector.TrackOnThisThread())
             {
                 _ = context.Database[Key1];
                 _ = context.Database[Key2];
@@ -71,7 +71,7 @@ namespace Nethermind.Store.Test.Witnesses
 
             context.WitnessCollector.Collected.Should().HaveCount(3);
             
-            using (context.WitnessCollector.Track())
+            using (context.WitnessCollector.TrackOnThisThread())
             {
                 context.WitnessCollector.Reset();
                 _ = context.Database[Key1];
@@ -86,7 +86,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Collects_on_reads_when_cached_underneath_and_previously_populated()
         {
             Context context = new(3);
-            using (context.WitnessCollector.Track())
+            using (context.WitnessCollector.TrackOnThisThread())
             {
                 context.Database[Key1] = Value1;
                 context.Database[Key2] = Value1;

@@ -34,6 +34,6 @@ namespace Nethermind.State
         
         void Persist(Keccak blockHash);
 
-        IDisposable Track();
+        IDisposable TrackOnThisThread();
     }
 }
