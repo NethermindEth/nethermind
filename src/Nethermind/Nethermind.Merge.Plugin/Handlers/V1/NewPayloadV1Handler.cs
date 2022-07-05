@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -124,13 +125,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
                 {
                     bool inserted = TryInsertDanglingBlock(block);
-                    if (_logger.IsInfo) _logger.Info(inserted ? $"BeaconSync not finished - block {block} inserted" : $"BeaconSync not finished - block {block} accepted.");
-                    return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
+                    if (_logger.IsInfo) _logger.Info(inserted ? $"BeaconSync not finished - block {block} inserted" : $"BeaconSync not finished - block {block} added to cache.");
+                    return NewPayloadV1Result.Syncing;
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
                 _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
-                return NewPayloadV1Result.Accepted;
+                return NewPayloadV1Result.Syncing;
             }
             
             // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
@@ -172,7 +173,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}.");
                 }
 
-                if (!isValid)
+                if (result == ValidationResult.Invalid)
                 {
                     _invalidChainTracker.OnInvalidBlock(request.BlockHash, request.ParentHash);
                     return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));

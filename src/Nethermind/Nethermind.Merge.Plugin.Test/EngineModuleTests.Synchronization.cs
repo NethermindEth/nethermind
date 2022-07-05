@@ -99,7 +99,7 @@ public partial class EngineModuleTests
         foreach (ExecutionPayloadV1 r in requests)
         {
             payloadStatus = await rpc.engine_newPayloadV1(r);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
+            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
             chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
             chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
             chain.BeaconPivot.BeaconPivotExists().Should().BeFalse();
@@ -142,7 +142,7 @@ public partial class EngineModuleTests
         for (int i = 4; i < requests.Length - 1; i++)
         {
             payloadStatus = await rpc.engine_newPayloadV1(requests[i]);
-            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
+            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         }
         // use third last block request as beacon pivot so there are blocks in cache
         ForkchoiceStateV1 forkchoiceStateV1 = new(requests[^3].BlockHash, startingHead, startingHead);
@@ -151,8 +151,7 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
             .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // complete headers sync
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.UpdateBeaconPointers
-                                         | BlockTreeInsertOptions.SkipUpdateBestPointers
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconInsert
                                          | BlockTreeInsertOptions.TotalDifficultyNotNeeded;
         for (int i = 0; i < requests.Length - 2; i++)
         {
@@ -219,9 +218,8 @@ public partial class EngineModuleTests
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // simulate headers sync by inserting 3 headers from pivot backwards
         int filledNum = 3;
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers |
-                                         BlockTreeInsertOptions.TotalDifficultyNotNeeded |
-                                         BlockTreeInsertOptions.UpdateBeaconPointers;
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconInsert |
+                                         BlockTreeInsertOptions.TotalDifficultyNotNeeded;
         for (int i = missingBlocks.Length; i --> missingBlocks.Length - filledNum;)
         {
             chain.BlockTree.Insert(missingBlocks[i].Header, options);
@@ -295,7 +293,7 @@ public partial class EngineModuleTests
         // setting up beacon pivot
         ExecutionPayloadV1 pivotRequest = CreateBlockRequest(requests[^1], Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
+        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         pivotRequest.TryGetBlock(out Block? pivotBlock);
         // check block tree pointers
         BlockTreePointers pointers = new BlockTreePointers
@@ -320,9 +318,8 @@ public partial class EngineModuleTests
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // fill in beacon headers until fast headers pivot
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.SkipUpdateBestPointers |
-                                         BlockTreeInsertOptions.TotalDifficultyNotNeeded |
-                                         BlockTreeInsertOptions.UpdateBeaconPointers;
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconInsert |
+                                         BlockTreeInsertOptions.TotalDifficultyNotNeeded;
         for (int i = requests.Length; i --> 0;)
         {
             requests[i].TryGetBlock(out Block? block);

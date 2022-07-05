@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;

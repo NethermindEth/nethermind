@@ -16,6 +16,8 @@
 // 
 
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -27,11 +29,13 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -49,8 +53,11 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
+        protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
+            => new MergeTestBlockchain(mergeConfig, mockedPayloadService);
+        
         protected virtual async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
-            => await new MergeTestBlockchain(mergeConfig, mockedPayloadService)
+            => await CreateBaseBlockChain(mergeConfig, mockedPayloadService)
                 .Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
@@ -114,6 +121,14 @@ namespace Nethermind.Merge.Plugin.Test
             
             public BeaconSync BeaconSync { get; set; }
 
+            private int _blockProcessingThrottle = 0;
+
+            public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
+            {
+                _blockProcessingThrottle = delayMs;
+                return this;
+            }
+
             public MergeTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             {
                 GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(UInt256.One);
@@ -173,10 +188,10 @@ namespace Nethermind.Merge.Plugin.Test
                 return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
             }
             
-            protected override BlockProcessor CreateBlockProcessor()
+            protected override IBlockProcessor CreateBlockProcessor()
             {
                 BlockValidator = CreateBlockValidator();
-                return new BlockProcessor(
+                IBlockProcessor processor = new BlockProcessor(
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
@@ -186,6 +201,13 @@ namespace Nethermind.Merge.Plugin.Test
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
+
+                if (_blockProcessingThrottle > 0)
+                {
+                    processor = new ThrottledBlockProcessor(processor, _blockProcessingThrottle);
+                }
+
+                return processor;
             }
 
             private IBlockValidator CreateBlockValidator()
@@ -215,4 +237,42 @@ namespace Nethermind.Merge.Plugin.Test
                 (MergeTestBlockchain) await Build(specProvider, null);
         }
     }
+
+    internal class ThrottledBlockProcessor: IBlockProcessor
+    {
+        private IBlockProcessor _blockProcessorImplementation;
+        private int _delayMs;
+
+        public ThrottledBlockProcessor(IBlockProcessor baseBlockProcessor, int delayMs)
+        {
+            _blockProcessorImplementation = baseBlockProcessor;
+            _delayMs = delayMs;
+        }
+        
+        public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
+            IBlockTracer blockTracer)
+        {
+            Thread.Sleep(_delayMs);
+            return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);
+        }
+
+        public event EventHandler<BlocksProcessingEventArgs>? BlocksProcessing
+        {
+            add => _blockProcessorImplementation.BlocksProcessing += value;
+            remove => _blockProcessorImplementation.BlocksProcessing -= value;
+        }
+
+        public event EventHandler<BlockProcessedEventArgs>? BlockProcessed
+        {
+            add => _blockProcessorImplementation.BlockProcessed += value;
+            remove => _blockProcessorImplementation.BlockProcessed -= value;
+        }
+
+        public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
+        {
+            add => _blockProcessorImplementation.TransactionProcessed += value;
+            remove => _blockProcessorImplementation.TransactionProcessed -= value;
+        }
+    }
+
 }

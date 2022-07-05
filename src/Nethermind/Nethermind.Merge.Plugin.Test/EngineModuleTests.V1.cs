@@ -44,6 +44,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
 using Newtonsoft.Json;
@@ -480,7 +482,7 @@ namespace Nethermind.Merge.Plugin.Test
             }
 
             ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(getPayloadResult);
-            executePayloadResult.Data.Status.Should().Be(PayloadStatus.Accepted);
+            executePayloadResult.Data.Status.Should().Be(PayloadStatus.Syncing);
         }
 
         [TestCaseSource(nameof(WrongInputTestsV1))]
@@ -541,11 +543,14 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
 
-        [Test]
-        [Parallelizable(ParallelScope.None)]
-        public virtual async Task executePayloadV1_accepts_already_known_block()
+        [TestCase(true)]
+        [TestCase(false)]
+        public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor)
         {
-            using MergeTestBlockchain chain = await CreateBlockChain();
+            using MergeTestBlockchain chain = await CreateBaseBlockChain()
+                .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
+                .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+            
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)
                 .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
@@ -1289,7 +1294,7 @@ namespace Nethermind.Merge.Plugin.Test
             TryCalculateHash(executionPayloadV12A, out Keccak? hash);
             executionPayloadV12A.BlockHash = hash;
             ResultWrapper<PayloadStatusV1> newPayloadResult2A = await rpc.engine_newPayloadV1(executionPayloadV12A);
-            newPayloadResult2A.Data.Status.Should().Be(PayloadStatus.Accepted);
+            newPayloadResult2A.Data.Status.Should().Be(PayloadStatus.Syncing);
 
             // Fork choice updated with unknown parent hash
             ForkchoiceStateV1 forkChoiceState2A = new ForkchoiceStateV1(executionPayloadV12A.BlockHash,
@@ -1312,7 +1317,7 @@ namespace Nethermind.Merge.Plugin.Test
             // New payload unknown parent hash
             ExecutionPayloadV1 executionPayloadV13A = CreateBlockRequest(executionPayloadV12A, TestItem.AddressA);
             ResultWrapper<PayloadStatusV1> newPayloadResult3A = await rpc.engine_newPayloadV1(executionPayloadV13A);
-            newPayloadResult3A.Data.Status.Should().Be(PayloadStatus.Accepted);
+            newPayloadResult3A.Data.Status.Should().Be(PayloadStatus.Syncing);
 
             // Fork choice updated with unknown parent hash
             ForkchoiceStateV1 forkChoiceState3A = new ForkchoiceStateV1(executionPayloadV13A.BlockHash,

@@ -50,8 +50,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly IChainLevelHelper _chainLevelHelper;
 
-        public MergeBlockDownloaderFactory(
-            IPoSSwitcher poSSwitcher,
+        public MergeBlockDownloaderFactory(IPoSSwitcher poSSwitcher,
             IBeaconPivot beaconPivot,
             ISpecProvider specProvider,
             IBlockTree blockTree,

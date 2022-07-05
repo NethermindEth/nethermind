@@ -165,5 +165,28 @@ namespace Nethermind.Merge.Plugin.Test
                 "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"
             });
         }
+        
+        [TestCase(true, true, true)]
+        [TestCase(true, false, false)]
+        [TestCase(false, true, false)]
+        public async Task InitThrowExceptionIfBodiesAndReceiptIsDisabled(bool downloadBody, bool downloadReceipt, bool shouldPass)
+        {
+            _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig()
+            {
+                FastSync = true,
+                DownloadBodiesInFastSync = downloadBody,
+                DownloadReceiptsInFastSync = downloadReceipt
+            });
+
+            Func<Task>? invocation = _plugin.Invoking((plugin) => plugin.Init(_context));
+            if (shouldPass)
+            {
+                await invocation.Should().NotThrowAsync();
+            }
+            else
+            {
+                await invocation.Should().ThrowAsync<InvalidOperationException>();
+            }
+        }
     }
 }

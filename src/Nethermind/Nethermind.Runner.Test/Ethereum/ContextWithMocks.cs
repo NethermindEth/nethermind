@@ -120,6 +120,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
                 SyncModeSelector = Substitute.For<ISyncModeSelector>(),
                 SyncPeerPool = Substitute.For<ISyncPeerPool>(),
+                PeerDifficultyRefreshPool = Substitute.For<IPeerDifficultyRefreshPool>(),
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),

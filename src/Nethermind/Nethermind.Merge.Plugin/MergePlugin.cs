@@ -45,6 +45,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Merge.Plugin
@@ -59,7 +60,7 @@ namespace Nethermind.Merge.Plugin
         private IBeaconPivot? _beaconPivot;
         private BeaconSync? _beaconSync;
         private IBlockCacheService _blockCacheService = null!;
-        private InvalidChainTracker.InvalidChainTracker? _invalidChainTracker;
+        private InvalidChainTracker.InvalidChainTracker _invalidChainTracker = null!;
         private IPeerRefresher _peerRefresher = null!;
 
         private ManualBlockFinalizationManager _blockFinalizationManager = null!;
@@ -87,6 +88,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
 
                 EnsureJsonRpcUrl();
+                EnsureReceiptAvailable();
                 
                 _blockCacheService = new BlockCacheService();
                 _poSSwitcher = new PoSSwitcher(
@@ -114,6 +116,18 @@ namespace Nethermind.Merge.Plugin
             }
 
             return Task.CompletedTask;
+        }
+
+        private void EnsureReceiptAvailable()
+        {
+            ISyncConfig syncConfig = _api.Config<ISyncConfig>();
+            if (syncConfig.FastSync)
+            {
+                if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
+                {
+                    throw new InvalidOperationException("Receipt and body must be available for merge to function");
+                }
+            }
         }
 
         private void EnsureJsonRpcUrl()
@@ -168,13 +182,14 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SealValidator == null) throw new ArgumentException(nameof(_api.SealValidator));
                 if (_api.HeaderValidator == null) throw new ArgumentException(nameof(_api.HeaderValidator));
 
-                var headerValidator = new MergeHeaderValidator(
+                MergeHeaderValidator headerValidator = new(
                         _poSSwitcher,
                         _api.HeaderValidator,
                         _api.BlockTree,
                         _api.SpecProvider,
                         _api.SealValidator,
                         _api.LogManager);
+
                 _api.HeaderValidator = new InvalidHeaderInterceptor(
                     headerValidator,
                     _invalidChainTracker,
@@ -298,30 +313,30 @@ namespace Nethermind.Merge.Plugin
                 if (_api.SyncPeerPool is null) throw new ArgumentNullException(nameof(_api.SyncPeerPool));
                 if (_api.BlockTree is null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.DbProvider is null) throw new ArgumentNullException(nameof(_api.DbProvider));
-                if (_api.SyncProgressResolver is null)
-                    throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
-                if (_api.BlockProcessingQueue is null)
-                    throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
+                if (_api.SyncProgressResolver is null) throw new ArgumentNullException(nameof(_api.SyncProgressResolver));
+                if (_api.BlockProcessingQueue is null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
                 if (_blockCacheService is null) throw new ArgumentNullException(nameof(_blockCacheService));
                 if (_api.BetterPeerStrategy is null) throw new ArgumentNullException(nameof(_api.BetterPeerStrategy));
                 if (_api.SealValidator is null) throw new ArgumentNullException(nameof(_api.SealValidator));
                 if (_api.UnclesValidator is null) throw new ArgumentNullException(nameof(_api.UnclesValidator));
                 if (_api.NodeStatsManager is null) throw new ArgumentNullException(nameof(_api.NodeStatsManager));
                 if (_api.HeaderValidator is null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
+                if (_api.PeerDifficultyRefreshPool is null) throw new ArgumentNullException(nameof(_api.PeerDifficultyRefreshPool));
 
                 // ToDo strange place for validators initialization
-                PeerRefresher peerRefresher = new(_api.SyncPeerPool, _api.TimerFactory);
+                PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
                 _peerRefresher = peerRefresher;
                 _api.DisposeStack.Push(peerRefresher);
                 _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
 
-                var headerValidator = new MergeHeaderValidator(
+                MergeHeaderValidator headerValidator = new(
                         _poSSwitcher,
                         _api.HeaderValidator,
                         _api.BlockTree,
                         _api.SpecProvider,
                         _api.SealValidator,
                         _api.LogManager);
+
                 _api.HeaderValidator = new InvalidHeaderInterceptor(
                     headerValidator,
                     _invalidChainTracker,
