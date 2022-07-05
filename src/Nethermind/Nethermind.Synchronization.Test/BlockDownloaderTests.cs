@@ -1000,6 +1000,11 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
 
+            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
             public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
             {
                 throw new NotImplementedException();
