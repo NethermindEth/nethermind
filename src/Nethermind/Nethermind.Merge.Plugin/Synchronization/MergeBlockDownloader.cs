@@ -23,9 +23,11 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -50,7 +52,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IInvalidChainTracker _invalidChainTracker;
         private int _sinceLastTimeout;
 
-        public MergeBlockDownloader(IPoSSwitcher posSwitcher,
+        public MergeBlockDownloader(
+            IPoSSwitcher posSwitcher,
             IBeaconPivot beaconPivot,
             ISyncFeed<BlocksRequest?>? feed,
             ISyncPeerPool? syncPeerPool,
@@ -107,39 +110,33 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             bool HasMoreToSync()
                 => currentNumber < _blockTree.BestKnownBeaconNumber &&
-                   bestPeer.HeadNumber > currentNumber;
+                   bestPeer.HeadNumber > _blockTree.BestKnownNumber;
 
             while (HasMoreToSync())
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
                 
-                int requestSize = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
-
+                int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        $"Full sync request {currentNumber}+{requestSize} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {requestSize} more.");
+                        $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                Block[]? blocks;
-                TxReceipt[]?[]? receipts;
+                Block[]? blocks = null;
+                TxReceipt[]?[]? receipts = null;
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, RequestSize: {requestSize}");
+                        $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
                 
-                BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(requestSize);
+                BlockHeader[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
                 if (headers == null || headers.Length == 0)
                     break;
-                
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts,
-                _receiptsRecovery);
-                
-                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                    _receiptsRecovery);
 
-                if (!_chainLevelHelper.TrySetNextBlocks(requestSize, context)) {
-                    await RequestBodies(bestPeer, cancellation, context);
-                }
-                blocks = context.Blocks;
+                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                await RequestBodies(bestPeer, cancellation, context);
 
                 if (downloadReceipts)
                 {
@@ -153,7 +150,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 {
                     _syncBatchSize.Expand();
                 }
-                
+
+                blocks = context.Blocks;
                 receipts = context.ReceiptsForBlocks;
 
                 if (blocks == null || blocks.Length == 0)
@@ -186,7 +184,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                                 $"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
                     }
-                    
+
                     bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.Hash);
                     BlockTreeSuggestOptions suggestOptions =
                         shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
