@@ -209,7 +209,7 @@
     },
     "The Merge (devnet M4)": {
       "commandName": "Project",
-      "commandLineArgs": "--config themerge_devnet_m4.cfg --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c themerge_devnet_m4 --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
