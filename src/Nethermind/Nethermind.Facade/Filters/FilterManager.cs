@@ -22,6 +22,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -266,16 +267,16 @@ namespace Nethermind.Blockchain.Filters
                 || logFilter.ToBlock.Type == BlockParameterType.Earliest
                 || logFilter.ToBlock.Type == BlockParameterType.Pending)
             {
-                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry, false);
+                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
             }
 
             if (logFilter.FromBlock.Type == BlockParameterType.Latest || logFilter.ToBlock.Type == BlockParameterType.Latest)
             {
                 //TODO: check if is last mined block
-                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry, false);
+                return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
             }
 
-            return new FilterLog(index, transactionLogIndex, txReceipt, logEntry, false);
+            return new FilterLog(index, transactionLogIndex, txReceipt, logEntry);
         }
     }
 }

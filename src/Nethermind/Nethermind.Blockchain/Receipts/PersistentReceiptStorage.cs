@@ -168,7 +168,7 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
-        public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true)
+        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             int txReceiptsLength = txReceipts.Length;
@@ -185,7 +185,7 @@ namespace Nethermind.Blockchain.Receipts
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
-            _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
+            _blocksDb.Set(block.Hash!, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
 
             if (blockNumber < MigratedBlockNumber)
             {

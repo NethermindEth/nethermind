@@ -22,7 +22,8 @@ namespace Nethermind.Blockchain.Receipts
 {
     public interface IReceiptStorage : IReceiptFinder
     {
-        void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical = true);
+        void Insert(Block block, params TxReceipt[]? txReceipts) => Insert(block, txReceipts, true);
+        void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical);
         long? LowestInsertedReceiptBlockNumber { get; set; }
         long MigratedBlockNumber { get; set; }
         bool HasBlock(Keccak hash);

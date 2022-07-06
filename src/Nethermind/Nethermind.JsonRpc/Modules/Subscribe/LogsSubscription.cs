@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
@@ -107,16 +108,16 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private IEnumerable<FilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts, bool removed)
         {
-            if (_filter.Matches(blockHeader.Bloom))
+            if (_filter.Matches(blockHeader.Bloom!))
             {
                 int logIndex = 0;
                 for (int i = 0; i < receipts.Length; i++)
                 {
                     TxReceipt receipt = receipts[i];
-                    if (_filter.Matches(receipt.Bloom))
+                    if (_filter.Matches(receipt.Bloom!))
                     {
                         int transactionLogIndex = 0;
-                        for (int j = 0; j < receipt.Logs.Length; j++)
+                        for (int j = 0; j < receipt.Logs!.Length; j++)
                         {
                             var receiptLog = receipt.Logs[j];
                             if (_filter.Accepts(receiptLog))

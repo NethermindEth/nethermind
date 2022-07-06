@@ -78,7 +78,7 @@ namespace Nethermind.Init.Steps
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
             if (_api.StateReader == null) throw new StepDependencyException(nameof(_api.StateReader));
             if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
-            
+
             if (jsonRpcConfig.Enabled)
             {
                 _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, jsonRpcConfig, _api.LogManager);
@@ -204,14 +204,13 @@ namespace Nethermind.Init.Steps
             WitnessRpcModule witnessRpcModule = new(_api.WitnessRepository, _api.BlockTree);
             rpcModuleProvider.RegisterSingle<IWitnessRpcModule>(witnessRpcModule);
             
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor = new(_api.BlockTree, _api.ReceiptStorage, _api.LogManager);
-            _api.DisposeStack.Push(receiptCanonicalityMonitor);
-            
+            if (_api.ReceiptMonitor == null) throw new StepDependencyException(nameof(_api.ReceiptMonitor));
+
             SubscriptionFactory subscriptionFactory = new(
                 _api.LogManager,
                 _api.BlockTree,
                 _api.TxPool,
-                receiptCanonicalityMonitor,
+                _api.ReceiptMonitor,
                 _api.FilterStore,
                 _api.EthSyncingInfo!,
                 _api.SpecProvider,

@@ -26,7 +26,7 @@ namespace Nethermind.Blockchain.Receipts
         public BlockHeader BlockHeader { get; }
         public bool WasRemoved { get; }
 
-        public ReceiptsEventArgs(BlockHeader blockHeader, TxReceipt[] txReceipts, bool wasRemoved)
+        public ReceiptsEventArgs(BlockHeader blockHeader, TxReceipt[] txReceipts, bool wasRemoved = false)
         {
             BlockHeader = blockHeader;
             TxReceipts = txReceipts;

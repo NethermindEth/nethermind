@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using FluentAssertions;
+using FluentAssertions.Numeric;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -155,10 +156,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         public void Should_handle_inserting_null_receipts()
         {
             Block block = Build.A.Block.WithReceiptsRoot(TestItem.KeccakA).TestObject;
-
-            TxReceipt[] receipts = null;
-            
-            _storage.Insert(block, receipts);
+            _storage.Insert(block, null);
         }
         
         [Test]
@@ -175,10 +173,10 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
         
         [Test]
-        public void EnsureCanonical_should_change_tx_blockhash()
+        public void EnsureCanonical_should_change_tx_blockhash([Values(false, true)] bool ensureCanonical)
         {
             (Block block, TxReceipt[] receipts) = InsertBlock();
-            _storage.FindBlockHash(receipts[0].TxHash).Should().Be(block.Hash);
+            _storage.FindBlockHash(receipts[0].TxHash!).Should().Be(block.Hash);
             
             Block anotherBlock = Build.A.Block
                 .WithTransactions(block.Transactions)
@@ -187,10 +185,17 @@ namespace Nethermind.Blockchain.Test.Receipts
                 .TestObject;
 
             anotherBlock.Hash.Should().NotBe(block.Hash);
-            _storage.Insert(anotherBlock, new []{ Build.A.Receipt.TestObject });
-            
-            _storage.EnsureCanonical(anotherBlock);
-            _storage.FindBlockHash(receipts[0].TxHash).Should().Be(anotherBlock.Hash);
+            _storage.Insert(anotherBlock, new []{ Build.A.Receipt.TestObject }, ensureCanonical);
+
+            Keccak findBlockHash = _storage.FindBlockHash(receipts[0].TxHash);
+            if (ensureCanonical)
+            {
+                findBlockHash.Should().Be(anotherBlock.Hash);
+            }
+            else
+            {
+                findBlockHash.Should().NotBe(anotherBlock.Hash);
+            }
         }
 
         private (Block block, TxReceipt[] receipts) InsertBlock(Block block = null)

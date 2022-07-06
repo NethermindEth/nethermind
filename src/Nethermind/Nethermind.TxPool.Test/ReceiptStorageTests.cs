@@ -102,16 +102,16 @@ namespace Nethermind.TxPool.Test
 
         private void TestAddAndCheckLowest(IReceiptStorage storage, bool updateLowest)
         {
-            var transaction = GetSignedTransaction();
-            var block = GetBlock(transaction);
-            var receipt = GetReceipt(transaction, block);
-            storage.Insert(block, new []{receipt});
+            Transaction transaction = GetSignedTransaction();
+            Block block = GetBlock(transaction);
+            TxReceipt receipt = GetReceipt(transaction, block);
+            storage.Insert(block, receipt);
             if (updateLowest)
             {
                 storage.LowestInsertedReceiptBlockNumber = block.Number;
             }
 
-            storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? (long?)0 : null);
+            storage.LowestInsertedReceiptBlockNumber.Should().Be(updateLowest ? 0 : null);
         }
         
         private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder receiptFinder = null)
@@ -123,7 +123,7 @@ namespace Nethermind.TxPool.Test
             transaction.SenderAddress = null;
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
-            storage.Insert(block, new []{receipt});
+            storage.Insert(block, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
@@ -141,7 +141,7 @@ namespace Nethermind.TxPool.Test
             var transaction = GetSignedTransaction();
             var block = GetBlock(transaction);
             var receipt = GetReceipt(transaction, block);
-            storage.Insert(block, new [] {receipt});
+            storage.Insert(block, receipt);
             var blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
             var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);

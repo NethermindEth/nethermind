@@ -33,6 +33,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Filters;
 using NSubstitute;
 using NUnit.Framework;
 

@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain
         private readonly IReceiptStorage _receiptStorage;
         private readonly ILogger _logger;
         
-        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
+        public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 
         public ReceiptCanonicalityMonitor(IBlockTree? blockTree, IReceiptStorage? receiptStorage, ILogManager? logManager)
         {
@@ -52,18 +52,18 @@ namespace Nethermind.Blockchain
             Task.Run(() => TriggerReceiptInsertedEvent(e.Block, e.PreviousBlock));
         }
 
-        private void TriggerReceiptInsertedEvent(Block newBlock, Block previousBlock)
+        private void TriggerReceiptInsertedEvent(Block newBlock, Block? previousBlock)
         {
             try
             {
-                if (previousBlock != null)
+                if (previousBlock is not null)
                 {
                     TxReceipt[] removedReceipts = _receiptStorage.Get(previousBlock);
                     ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(previousBlock.Header, removedReceipts, true));
                 }
                 
                 TxReceipt[] insertedReceipts = _receiptStorage.Get(newBlock);
-                ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(newBlock.Header, insertedReceipts, false));
+                ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(newBlock.Header, insertedReceipts));
             }
             catch (Exception exception)
             {

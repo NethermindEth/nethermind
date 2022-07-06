@@ -20,6 +20,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Trie;
 using Block = Nethermind.Core.Block;

@@ -17,7 +17,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Facade.Filters
 {
     public class FilterLog
     {
@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Filters
         public long TransactionIndex { get; }
         public long TransactionLogIndex { get; }
         
-        public FilterLog(long logIndex, long transactionLogIndex, TxReceipt txReceipt, LogEntry logEntry, bool removed)
+        public FilterLog(long logIndex, long transactionLogIndex, TxReceipt txReceipt, LogEntry logEntry, bool removed = false)
             : this(
                 logIndex,
                 transactionLogIndex,
