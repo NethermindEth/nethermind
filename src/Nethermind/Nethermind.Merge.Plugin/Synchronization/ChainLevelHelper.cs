@@ -74,7 +74,7 @@ public class ChainLevelHelper : IChainLevelHelper
             if (newHeader == null)
             {
                 if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper - header {startingPoint} not found");
-                continue;
+                break;
             }
             if (_logger.IsTrace)
             {
