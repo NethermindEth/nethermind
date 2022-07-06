@@ -57,7 +57,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             catch (TimeoutException)
             {
-                if (Logger.IsDebug) Logger.Debug($"{batch} - request block header timeout {batch.RequestTime:F2}");
+                if (Logger.IsDebug) Logger.Debug($"{batch} - request receipts timeout {batch.RequestTime:F2}");
                 return;
             }
 
