@@ -23,12 +23,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
 {
-    public interface IReceiptCanonicalityMonitor : IDisposable
+    public interface IReceiptMonitor : IDisposable
     {
         event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
     }
 
-    public class ReceiptCanonicalityMonitor : IReceiptCanonicalityMonitor
+    public class ReceiptCanonicalityMonitor : IReceiptMonitor
     {
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;

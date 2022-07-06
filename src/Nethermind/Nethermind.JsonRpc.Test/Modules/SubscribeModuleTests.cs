@@ -61,7 +61,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IJsonRpcDuplexClient _jsonRpcDuplexClient;
         private IJsonSerializer _jsonSerializer;
         private ISpecProvider _specProvider;
-        private IReceiptCanonicalityMonitor _receiptCanonicalityMonitor;
+        private IReceiptMonitor _receiptCanonicalityMonitor;
             
 
         [SetUp]

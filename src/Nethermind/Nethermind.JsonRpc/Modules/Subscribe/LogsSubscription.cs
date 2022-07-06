@@ -32,13 +32,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 {
     public class LogsSubscription : Subscription
     {
-        private readonly IReceiptCanonicalityMonitor _receiptCanonicalityMonitor;
+        private readonly IReceiptMonitor _receiptCanonicalityMonitor;
         private readonly IBlockTree _blockTree;
         private readonly LogFilter _filter;
 
         public LogsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
-            IReceiptCanonicalityMonitor receiptCanonicalityMonitor,
+            IReceiptMonitor receiptCanonicalityMonitor,
             IFilterStore? store,
             IBlockTree? blockTree,
             ILogManager? logManager,

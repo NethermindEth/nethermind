@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public SubscriptionFactory(ILogManager? logManager,
             IBlockTree? blockTree,
             ITxPool? txPool,
-            IReceiptCanonicalityMonitor receiptCanonicalityMonitor,
+            IReceiptMonitor receiptCanonicalityMonitor,
             IFilterStore? filterStore,
             IEthSyncingInfo ethSyncingInfo,
             ISpecProvider specProvider, 
