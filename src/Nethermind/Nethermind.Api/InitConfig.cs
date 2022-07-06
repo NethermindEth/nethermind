@@ -40,7 +40,6 @@ namespace Nethermind.Api
         public bool ReceiptsMigration { get; set; } = false;
         public DiagnosticMode DiagnosticMode { get; set; } = DiagnosticMode.None;
         public DumpOptions AutoDump { get; set; } = DumpOptions.Receipts;
-        public DumpOptions LogProducedBlocks { get; set; } = DumpOptions.None;
 
         public string RpcDbUrl { get; set; } = String.Empty;
         public long? MemoryHint { get; set; }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -29,5 +30,7 @@ namespace Nethermind.Consensus
         public UInt256 MinGasPrice { get; set; } = 1.GWei();
         
         public bool RandomizedBlocks { get; set; }
+        
+        public DumpOptions LogProducedBlocks { get; set; } = DumpOptions.None;
     }
 }

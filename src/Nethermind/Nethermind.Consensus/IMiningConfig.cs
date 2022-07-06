@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus
@@ -41,5 +42,11 @@ namespace Nethermind.Consensus
             Description = "Only used in NethDev. Setting this to true will change the difficulty of the block randomly within the constraints.",
             DefaultValue = "false")]
         bool RandomizedBlocks { get; set; }
+        
+        [ConfigItem(
+            Description = "Setting this to value different than None will log all produced blocks to files. Possible options: Receipts, Parity, Geth, All.",
+            DefaultValue = "None",
+            HiddenFromDocs = true)]
+        DumpOptions LogProducedBlocks { get; set; }
     }
 }

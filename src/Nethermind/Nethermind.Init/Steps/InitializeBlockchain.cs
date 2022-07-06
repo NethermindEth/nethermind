@@ -261,7 +261,7 @@ namespace Nethermind.Init.Steps
                 {
                     StoreReceiptsByDefault = initConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump,
-                    LogProducedBlocks = initConfig.LogProducedBlocks
+                    LogProducedBlocks = miningConfig.LogProducedBlocks
                 });
 
             setApi.BlockProcessingQueue = blockchainProcessor;
