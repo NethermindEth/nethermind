@@ -253,7 +253,8 @@ namespace Nethermind.Consensus.Processing
         // TODO: block processor pipeline
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
-            _receiptStorage.Insert(block, txReceipts);
+            // Setting canonical is done by ReceiptCanonicalityMonitor on block move to main
+            _receiptStorage.Insert(block, txReceipts, false);
         }
 
         // TODO: block processor pipeline

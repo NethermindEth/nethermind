@@ -22,6 +22,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -227,9 +228,9 @@ namespace Nethermind.Blockchain.Filters
             List<FilterLog> logs = _logs.GetOrAdd(filter.Id, i => new List<FilterLog>());
             for (int i = 0; i < txReceipt.Logs.Length; i++)
             {
-                var logEntry = txReceipt.Logs[i];
-                var filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, i);
-                if (!(filterLog is null))
+                LogEntry? logEntry = txReceipt.Logs[i];
+                FilterLog? filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++, i);
+                if (filterLog is not null)
                 {
                     logs.Add(filterLog);
                 }
@@ -243,7 +244,7 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {logs.Count} logs.");
         }
 
-        private FilterLog CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)
+        private FilterLog? CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index, int transactionLogIndex)
         {
             if (logFilter.FromBlock.Type == BlockParameterType.BlockNumber &&
                 logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)
