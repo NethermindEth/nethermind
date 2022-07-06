@@ -16,11 +16,11 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -72,7 +72,25 @@ namespace Nethermind.Benchmarks.Core
         [Benchmark]
         public void SwapVersion()
         {
-            Span<ulong> ulongs = MemoryMarshal.Cast<byte, ulong>(_a);
+            if (_a.Length == 32)
+            {
+                Swap(_a);
+            }
+            else
+            {
+                Span<byte> bytesPadded = stackalloc byte[32];
+                _a.CopyTo(bytesPadded);
+                
+                Swap(bytesPadded);
+                
+                bytesPadded.Slice(32 - _a.Length);
+            }
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Swap(Span<byte> bytes)
+        {
+            Span<ulong> ulongs = MemoryMarshal.Cast<byte, ulong>(bytes);
             (ulongs[0], ulongs[3]) = (BinaryPrimitives.ReverseEndianness(ulongs[3]), BinaryPrimitives.ReverseEndianness(ulongs[0]));
             (ulongs[1], ulongs[2]) = (BinaryPrimitives.ReverseEndianness(ulongs[2]), BinaryPrimitives.ReverseEndianness(ulongs[1]));
         }

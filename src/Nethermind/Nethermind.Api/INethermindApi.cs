@@ -16,6 +16,7 @@
 // 
 
 #nullable enable
+using Nethermind.Blockchain;
 using Nethermind.Config;
 
 namespace Nethermind.Api

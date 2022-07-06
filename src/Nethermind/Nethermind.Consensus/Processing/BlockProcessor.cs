@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.Processing
         public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
             if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
-            
+
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
             /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
@@ -101,13 +101,14 @@ namespace Nethermind.Consensus.Processing
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
+            using IDisposable tracker = _witnessCollector.TrackOnThisThread();
             try
             {
                 for (int i = 0; i < blocksCount; i++)
                 {
                     if (blocksCount > 64 && i % 8 == 0)
                     {
-                        if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
+                        if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
                     }
 
                     _witnessCollector.Reset();
@@ -252,7 +253,8 @@ namespace Nethermind.Consensus.Processing
         // TODO: block processor pipeline
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
-            _receiptStorage.Insert(block, txReceipts);
+            // Setting canonical is done by ReceiptCanonicalityMonitor on block move to main
+            _receiptStorage.Insert(block, txReceipts, false);
         }
 
         // TODO: block processor pipeline

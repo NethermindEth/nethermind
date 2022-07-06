@@ -53,12 +53,11 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public partial class EngineModuleTests
     {
-        protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
-            => new MergeTestBlockchain(mergeConfig, mockedPayloadService);
+        protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) =>
+            new(mergeConfig, mockedPayloadService);
         
-        protected virtual async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
-            => await CreateBaseBlockChain(mergeConfig, mockedPayloadService)
-                .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+        protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
+            => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
         {
@@ -94,6 +93,7 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BlockFinalizationManager,
                     chain.PoSSwitcher,
                     chain.PayloadPreparationService!,
+                    chain.BlockProcessingQueue,
                     blockCacheService,
                     invalidChainTracker,
                     chain.BeaconSync,
@@ -126,6 +126,10 @@ namespace Nethermind.Merge.Plugin.Test
             public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
             {
                 _blockProcessingThrottle = delayMs;
+                if (BlockProcessor is ThrottledBlockProcessor throttledBlockProcessor)
+                {
+                    throttledBlockProcessor.DelayMs = delayMs;
+                }
                 return this;
             }
 
@@ -202,12 +206,7 @@ namespace Nethermind.Merge.Plugin.Test
                     NullWitnessCollector.Instance,
                     LogManager);
 
-                if (_blockProcessingThrottle > 0)
-                {
-                    processor = new ThrottledBlockProcessor(processor, _blockProcessingThrottle);
-                }
-
-                return processor;
+                return new ThrottledBlockProcessor(processor, _blockProcessingThrottle);
             }
 
             private IBlockValidator CreateBlockValidator()
@@ -240,19 +239,23 @@ namespace Nethermind.Merge.Plugin.Test
 
     internal class ThrottledBlockProcessor: IBlockProcessor
     {
-        private IBlockProcessor _blockProcessorImplementation;
-        private int _delayMs;
+        private readonly IBlockProcessor _blockProcessorImplementation;
+        public int DelayMs { get; set; }
 
         public ThrottledBlockProcessor(IBlockProcessor baseBlockProcessor, int delayMs)
         {
             _blockProcessorImplementation = baseBlockProcessor;
-            _delayMs = delayMs;
+            DelayMs = delayMs;
         }
         
         public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
             IBlockTracer blockTracer)
         {
-            Thread.Sleep(_delayMs);
+            if (DelayMs > 0)
+            {
+                Thread.Sleep(DelayMs);
+            }
+
             return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);
         }
 

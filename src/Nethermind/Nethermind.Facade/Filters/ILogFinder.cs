@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Facade.Filters;
 
 namespace Nethermind.Blockchain.Find
 {

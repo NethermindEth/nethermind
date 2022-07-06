@@ -38,10 +38,22 @@ namespace Nethermind.Store.Test.Witnesses
         {
             Context context = new();
             context.Wrapped[Key1].Returns(Value1);
+            
+            using IDisposable tracker = context.WitnessCollector.TrackOnThisThread();
             _ = context.Database[Key1];
+            
             context.WitnessCollector.Collected.Should().HaveCount(1);
         }
         
+        [Test]
+        public void Does_not_collect_if_no_tracking()
+        {
+            Context context = new();
+            context.Wrapped[Key1].Returns(Value1);
+            _ = context.Database[Key1];
+            context.WitnessCollector.Collected.Should().HaveCount(0);
+        }
+
         [Test]
         public void Collects_on_reads_when_cached_underneath()
         {
@@ -49,14 +61,19 @@ namespace Nethermind.Store.Test.Witnesses
             context.Wrapped[Key1].Returns(Value1);
             context.Wrapped[Key2].Returns(Value2);
             context.Wrapped[Key3].Returns(Value3);
+            
+            using IDisposable tracker = context.WitnessCollector.TrackOnThisThread();
             _ = context.Database[Key1];
             _ = context.Database[Key2];
             _ = context.Database[Key3];
+
             context.WitnessCollector.Collected.Should().HaveCount(3);
+            
             context.WitnessCollector.Reset();
             _ = context.Database[Key1];
             _ = context.Database[Key2];
             _ = context.Database[Key3];
+
             context.WitnessCollector.Collected.Should().HaveCount(3);
         }
         
@@ -64,6 +81,8 @@ namespace Nethermind.Store.Test.Witnesses
         public void Collects_on_reads_when_cached_underneath_and_previously_populated()
         {
             Context context = new(3);
+            
+            using IDisposable tracker = context.WitnessCollector.TrackOnThisThread();
             context.Database[Key1] = Value1;
             context.Database[Key2] = Value1;
             context.Database[Key3] = Value1;
@@ -71,6 +90,7 @@ namespace Nethermind.Store.Test.Witnesses
             _ = context.Database[Key1];
             _ = context.Database[Key2];
             _ = context.Database[Key3];
+
             context.WitnessCollector.Collected.Should().HaveCount(3);
         }
         

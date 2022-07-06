@@ -135,7 +135,8 @@ namespace Nethermind.Runner.Test.Ethereum
                 UnclesValidator = Substitute.For<IUnclesValidator>(),
                 BlockProductionPolicy = Substitute.For<IBlockProductionPolicy>(),
                 SyncProgressResolver = Substitute.For<ISyncProgressResolver>(),
-                BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>()
+                BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
+                ReceiptMonitor = Substitute.For<IReceiptMonitor>()
             };
     }
 }

@@ -43,6 +43,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.Handlers.V1;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -649,8 +650,8 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak startingHead = chain.BlockTree.HeadHash;
             ExecutionPayloadV1 executionPayload = await SendNewBlockV1(rpc, chain);
 
-            Keccak newHeadHash = executionPayload.BlockHash;
-            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, newHeadHash!, Keccak.Zero);
+            Keccak newHeadHash = executionPayload.BlockHash!;
+            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, newHeadHash, Keccak.Zero);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
@@ -658,7 +659,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
             actualHead.Should().Be(newHeadHash);
-            AssertExecutionStatusChanged(rpc, newHeadHash!, newHeadHash!, Keccak.Zero);
+            AssertExecutionStatusChanged(rpc, newHeadHash!, newHeadHash, Keccak.Zero);
         }
 
         [Test]
@@ -669,8 +670,8 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak startingHead = chain.BlockTree.HeadHash;
             ExecutionPayloadV1 executionPayload = await SendNewBlockV1(rpc, chain);
 
-            Keccak newHeadHash = executionPayload.BlockHash;
-            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, startingHead!);
+            Keccak newHeadHash = executionPayload.BlockHash!;
+            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, startingHead, startingHead);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
             forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
             forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
@@ -678,7 +679,7 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak actualHead = chain.BlockTree.HeadHash;
             actualHead.Should().NotBe(startingHead);
             actualHead.Should().Be(newHeadHash);
-            AssertExecutionStatusChangedV1(rpc, newHeadHash!, startingHead, startingHead);
+            AssertExecutionStatusChangedV1(rpc, newHeadHash, startingHead, startingHead);
         }
 
         [Test]
@@ -700,8 +701,8 @@ namespace Nethermind.Merge.Plugin.Test
             Keccak startingHead = chain.BlockTree.HeadHash;
             ExecutionPayloadV1 executionPayload = await SendNewBlockV1(rpc, chain);
 
-            Keccak newHeadHash = executionPayload.BlockHash;
-            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash!, startingHead, TestItem.KeccakF);
+            Keccak newHeadHash = executionPayload.BlockHash!;
+            ForkchoiceStateV1 forkchoiceStateV1 = new(newHeadHash, startingHead, TestItem.KeccakF);
             ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
             forkchoiceUpdatedResult.ErrorCode.Should().Be(MergeErrorCodes.InvalidForkchoiceState);
 
@@ -731,7 +732,28 @@ namespace Nethermind.Merge.Plugin.Test
             forkchoiceUpdatedResult_1.Data.PayloadStatus.Status.Should().Be("SYNCING");
             
             AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
+        }
 
+        [Test]
+        public async Task forkChoiceUpdatedV1_block_still_processing()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain();
+
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Keccak startingHead = chain.BlockTree.HeadHash;
+            Block blockTreeHead = chain.BlockTree.Head!;
+            Block block = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead).WithNonce(0).WithDifficulty(0).TestObject;
+
+            NewPayloadV1Handler.Timeout = TimeSpan.FromMilliseconds(100);
+            chain.ThrottleBlockProcessor(200);
+            ResultWrapper<PayloadStatusV1> newPayloadV1 = await rpc.engine_newPayloadV1(new ExecutionPayloadV1(block));
+            newPayloadV1.Data.Status.Should().Be("SYNCING");
+
+            ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+            ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+            forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be("SYNCING");
+
+            AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
         }
 
         [Test]

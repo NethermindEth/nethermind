@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using FluentAssertions;
+using FluentAssertions.Numeric;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -152,40 +153,10 @@ namespace Nethermind.Blockchain.Test.Receipts
         }
         
         [Test]
-        public void Should_not_overwrite_reference_from_tx_to_block_when_adding_rollbacked_receipts()
-        {
-            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-            
-            Block oldBlock = Build.A.Block
-                .WithTransactions(transaction)
-                .WithReceiptsRoot(TestItem.KeccakA).TestObject;
-
-            Block newBlock = Build.A.Block
-                .WithTransactions(transaction)
-                .WithReceiptsRoot(TestItem.KeccakB).TestObject;
-            
-            TxReceipt[] receipts = {Build.A.Receipt.TestObject};
-            
-            _storage.Insert(oldBlock, receipts);
-            
-            foreach (TxReceipt receipt in receipts)
-            {
-                receipt.Removed = true;
-            }
-            
-            _storage.Insert(newBlock, receipts);
-
-            _storage.FindBlockHash(transaction.Hash).Should().Be(oldBlock.Hash);
-        }
-
-        [Test]
         public void Should_handle_inserting_null_receipts()
         {
             Block block = Build.A.Block.WithReceiptsRoot(TestItem.KeccakA).TestObject;
-
-            TxReceipt[] receipts = null;
-            
-            _storage.Insert(block, receipts);
+            _storage.Insert(block, null);
         }
         
         [Test]
@@ -199,6 +170,32 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             var (block, receipts) = InsertBlock();
             _storage.HasBlock(block.Hash).Should().BeTrue();
+        }
+        
+        [Test]
+        public void EnsureCanonical_should_change_tx_blockhash([Values(false, true)] bool ensureCanonical)
+        {
+            (Block block, TxReceipt[] receipts) = InsertBlock();
+            _storage.FindBlockHash(receipts[0].TxHash!).Should().Be(block.Hash);
+            
+            Block anotherBlock = Build.A.Block
+                .WithTransactions(block.Transactions)
+                .WithReceiptsRoot(TestItem.KeccakA)
+                .WithExtraData(new byte[]{1})
+                .TestObject;
+
+            anotherBlock.Hash.Should().NotBe(block.Hash);
+            _storage.Insert(anotherBlock, new []{ Build.A.Receipt.TestObject }, ensureCanonical);
+
+            Keccak findBlockHash = _storage.FindBlockHash(receipts[0].TxHash);
+            if (ensureCanonical)
+            {
+                findBlockHash.Should().Be(anotherBlock.Hash);
+            }
+            else
+            {
+                findBlockHash.Should().NotBe(anotherBlock.Hash);
+            }
         }
 
         private (Block block, TxReceipt[] receipts) InsertBlock(Block block = null)

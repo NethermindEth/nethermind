@@ -37,6 +37,7 @@ namespace Nethermind.Api
         ProtectedPrivateKey? NodeKey { get; set; }
         IReceiptStorage? ReceiptStorage { get; set; }
         IReceiptFinder? ReceiptFinder { get; set; }
+        IReceiptMonitor? ReceiptMonitor { get; set; }
         IWallet? Wallet { get; set; }
     }
 }
