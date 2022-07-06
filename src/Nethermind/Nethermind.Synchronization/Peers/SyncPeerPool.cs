@@ -282,6 +282,7 @@ namespace Nethermind.Synchronization.Peers
             if (header is not null)
             {
                 syncPeer.HeadNumber = header.Number;
+                UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
             }
             else
             {
