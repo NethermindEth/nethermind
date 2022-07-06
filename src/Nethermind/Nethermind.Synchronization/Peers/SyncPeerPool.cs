@@ -282,6 +282,7 @@ namespace Nethermind.Synchronization.Peers
             if (header is not null)
             {
                 syncPeer.HeadNumber = header.Number;
+                UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
             }
             else
             {
@@ -625,7 +626,6 @@ namespace Nethermind.Synchronization.Peers
 
                             UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
 
-                            syncPeer.IsInitialized = true;
                             SignalPeersChanged();
                         }
                     }
@@ -691,6 +691,7 @@ namespace Nethermind.Synchronization.Peers
                 syncPeer.HeadNumber = header.Number;
                 syncPeer.HeadHash = header.Hash!;
             }
+            syncPeer.IsInitialized = true;
         }
 
         public void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception = null)

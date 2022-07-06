@@ -288,6 +288,7 @@ namespace Nethermind.Merge.Plugin
                         _blockFinalizationManager,
                         _poSSwitcher,
                         payloadPreparationService,
+                        _api.BlockProcessingQueue,
                         _blockCacheService,
                         _invalidChainTracker,
                         _beaconSync,
