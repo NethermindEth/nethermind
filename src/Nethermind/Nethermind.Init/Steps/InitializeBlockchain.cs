@@ -249,7 +249,7 @@ namespace Nethermind.Init.Steps
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
-            setApi.GasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, miningConfig.MinGasPrice);
+            setApi.GasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, _api.LogManager, miningConfig.MinGasPrice);
             IBlockProcessor? mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(

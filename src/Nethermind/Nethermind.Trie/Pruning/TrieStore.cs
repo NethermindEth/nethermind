@@ -321,11 +321,6 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void HackPersistOnShutdown()
-        {
-            PersistOnShutdown();
-        }
-
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
         internal byte[] LoadRlp(Keccak keccak, IKeyValueStore? keyValueStore)
