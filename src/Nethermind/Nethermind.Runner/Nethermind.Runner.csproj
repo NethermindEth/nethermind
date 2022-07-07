@@ -8,6 +8,10 @@
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
     <Nullable>annotations</Nullable>
     <UseAppHost>true</UseAppHost>
+    <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <DockerfileFile>Dockerfile.debug</DockerfileFile>
+    <DockerfileRunArguments>-v $(NETHERMIND_DATA_DIR):/data -p 8545:8545 -p 30303:30303</DockerfileRunArguments>
+    <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <WarningsAsErrors />
@@ -21,6 +25,7 @@
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="6.0.5" />
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="6.0.0" />
+    <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.16.1" />
     <PackageReference Include="NLog.Targets.Seq" Version="2.1.0" />
     <PackageReference Include="NLog" Version="5.0.0" />
     <PackageReference Include="Seq.Api" Version="2022.1.0" />
@@ -121,14 +126,14 @@
 
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue"/>
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" ContinueOnError="WarnAndContinue"/>
+    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue" />
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(OutDir)\git-hash" ContinueOnError="WarnAndContinue" />
   </Target>
 
   <Target Name="StoreGitHashBeforePublish" BeforeTargets="BeforePublish">
     <Message Text="---&gt; Generating Git Hash file Before Publish" Importance="High" />
-    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue"/>
-    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" ContinueOnError="WarnAndContinue"/>
+    <Exec Command="git describe --tags --long --always &gt; git-hash" ContinueOnError="WarnAndContinue" />
+    <Copy SourceFiles="@(GitHash)" DestinationFiles="$(PublishDir)\git-hash" ContinueOnError="WarnAndContinue" />
   </Target>
 
   <Target Name="CopyPluginsAfterBuild" AfterTargets="AfterBuild">
