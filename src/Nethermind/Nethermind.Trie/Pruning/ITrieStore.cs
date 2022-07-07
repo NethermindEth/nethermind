@@ -27,8 +27,6 @@ namespace Nethermind.Trie.Pruning
         void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root);
 
         bool IsPersisted(Keccak keccak);
-
-        void HackPersistOnShutdown();
         
         IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore);
         
