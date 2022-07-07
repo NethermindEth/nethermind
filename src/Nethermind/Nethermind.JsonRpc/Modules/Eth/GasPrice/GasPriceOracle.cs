@@ -153,6 +153,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
                 if (txFromCurrentBlock == 0)
                 {
+                    blocksToGoBack--;
                     yield return FallbackGasPrice(currentBlock.BaseFeePerGas);
                 }
 
