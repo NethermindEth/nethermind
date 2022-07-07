@@ -114,7 +114,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             {
                 while (currentBlockNumber >= 0)
                 {
-                    if (_logger.IsInfo) _logger.Info($"GasPriceOracle - searching for block number {currentBlockNumber}");
+                    if (_logger.IsTrace) _logger.Trace($"GasPriceOracle - searching for block number {currentBlockNumber}");
                     yield return _blockFinder.FindBlock(currentBlockNumber)!;
                     currentBlockNumber--;
                 }
