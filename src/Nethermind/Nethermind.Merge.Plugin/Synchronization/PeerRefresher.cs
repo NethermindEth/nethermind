@@ -91,7 +91,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         Keccak finalizedBlockhash
     )
     {
-        using CancellationTokenSource delaySource = new(Timeouts.RefreshDifficulty);
+        using CancellationTokenSource delaySource = new(Timeouts.Eth);
         try
         {
             await RefreshPeerForFcu(syncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash, delaySource.Token);
