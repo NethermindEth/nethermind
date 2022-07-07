@@ -137,14 +137,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false);
             BlockFinder ??= BlockTree;
-            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
+            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             ReceiptFinder ??= ReceiptStorage;
             
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
             TxSender ??= new TxPoolSender(TxPool, txSealer0, txSealer1);
-            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider);
+            GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
             EthRpcModule = new EthRpcModule(
                 new JsonRpcConfig(),

@@ -25,12 +25,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
     public class GasPriceOracle : IGasPriceOracle
     {
         private readonly IBlockFinder _blockFinder;
+        private readonly ILogger _logger;
         private readonly UInt256 _minGasPrice;
         internal PriceCache _gasPriceEstimation;
         internal PriceCache _maxPriorityFeePerGasEstimation;
@@ -44,9 +46,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         public GasPriceOracle(
             IBlockFinder blockFinder,
             ISpecProvider specProvider,
+            ILogManager logManager,
             UInt256? minGasPrice = null)
         {
             _blockFinder = blockFinder;
+            _logger = logManager.GetClassLogger();
             _minGasPrice = minGasPrice ?? new MiningConfig().MinGasPrice;
             SpecProvider = specProvider;
         }
@@ -110,6 +114,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             {
                 while (currentBlockNumber >= 0)
                 {
+                    if (_logger.IsInfo) _logger.Info($"GasPriceOracle - searching for block number {currentBlockNumber}");
                     yield return _blockFinder.FindBlock(currentBlockNumber)!;
                     currentBlockNumber--;
                 }
