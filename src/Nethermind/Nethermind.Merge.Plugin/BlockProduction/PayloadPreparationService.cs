@@ -166,10 +166,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
             {
-                using (blockContext)
-                {
-                    return blockContext.CurrentBestBlock;
-                }
+                return blockContext.CurrentBestBlock;
             }
 
             return null;
