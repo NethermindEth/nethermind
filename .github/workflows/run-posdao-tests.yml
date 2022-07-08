@@ -80,5 +80,4 @@ jobs:
       name: Upload nodes logs
       with:
         name: posdao-tests-logs
-        path: |
-          posdao-test-setup/node-logs.zip
+        path: posdao-logs.zip
