@@ -57,8 +57,8 @@ namespace Nethermind.State
         {
             TrieType = TrieType.Storage;
         }
-        
-        public static Span<byte> GetKey(in UInt256 index)
+
+        private static Span<byte> GetKey(in UInt256 index)
         {
             if (index < CacheSize)
             {
@@ -68,26 +68,24 @@ namespace Nethermind.State
             Span<byte> span = stackalloc byte[32];
             index.ToBigEndian(span);
 
-            // (1% allocations on archive sync) this ToArray can be pooled or just directly converted to nibbles
-            return ValueKeccak.Compute(span).BytesAsSpan.ToArray();
+            return ValueKeccak.Compute(span).BytesAsSpan;
         }
 
         public byte[] Get(in UInt256 index, Keccak? storageRoot = null)
         {
             Span<byte> key = GetKey(index);
-            byte[]? value = Get(key, storageRoot);
-            if (value is null)
+            Span<byte> value = Get(key, storageRoot);
+            if (value.IsEmpty)
             {
-                return new byte[] {0};
+                return Bytes.ZeroByte;
             }
-
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
         }
 
         public void Set(in UInt256 index, byte[] value)
         {
-            var key = GetKey(index);
+            Span<byte> key = GetKey(index);
             SetInternal(key, value);
         }
 

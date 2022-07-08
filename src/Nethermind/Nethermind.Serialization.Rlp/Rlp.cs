@@ -1360,6 +1360,11 @@ namespace Nethermind.Serialization.Rlp
                 Position += length;
             }
 
+            public bool IsNextItemEmptyArray()
+            {
+                return PeekByte() == EmptyArrayByte;
+            }
+
             public string DecodeString()
             {
                 Span<byte> bytes = DecodeByteArraySpan();

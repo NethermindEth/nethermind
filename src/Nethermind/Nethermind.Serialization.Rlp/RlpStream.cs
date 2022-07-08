@@ -692,8 +692,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (prefix != 128 + 32)
             {
-                throw new RlpException(
-                    $"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
+                throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
             }
 
             Span<byte> keccakSpan = Read(32);
@@ -1028,7 +1027,7 @@ namespace Nethermind.Serialization.Rlp
             int prefix = ReadByte();
             if (prefix == 0)
             {
-                return new byte[] {0};
+                return Bytes.ZeroByte;
             }
 
             if (prefix < 128)

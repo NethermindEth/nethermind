@@ -1863,14 +1863,7 @@ namespace Nethermind.Evm
                         stack.PopUInt256(out UInt256 storageIndex);
                         Span<byte> newValue = stack.PopBytes();
                         bool newIsZero = newValue.IsZero();
-                        if (!newIsZero)
-                        {
-                            newValue = newValue.WithoutLeadingZeros().ToArray();
-                        }
-                        else
-                        {
-                            newValue = new byte[] {0};
-                        }
+                        newValue = !newIsZero ? newValue.WithoutLeadingZeros() : Bytes.ZeroByte;
 
                         StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
 

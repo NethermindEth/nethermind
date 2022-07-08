@@ -168,8 +168,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return;
             }
 
-            UInt256 effectiveGasPrice =
-                transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
+            UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, block.BaseFeePerGas);
 
             long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.IsContractCreation ? transaction.Data : null;

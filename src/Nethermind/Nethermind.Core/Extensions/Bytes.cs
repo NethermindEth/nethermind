@@ -112,7 +112,9 @@ namespace Nethermind.Core.Extensions
 
         public static readonly byte[] Zero32 = new byte[32];
 
-        public static readonly byte[] Empty = new byte[0];
+        public static readonly byte[] Empty = Array.Empty<byte>();
+
+        public static readonly byte[] ZeroByte = new byte[] {0};
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte b, int bitNumber)
@@ -219,7 +221,7 @@ namespace Nethermind.Core.Extensions
                 }
             }
 
-            return new byte[] {0};
+            return ZeroByte;
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)

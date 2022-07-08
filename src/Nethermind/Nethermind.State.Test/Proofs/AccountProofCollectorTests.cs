@@ -711,7 +711,7 @@ storage: 10075208144087594565017167249218046892267736431914869828855077415926031
                 StorageTree storageTree = new(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
                 for (int j = 0; j < i; j++)
                 {
-                    storageTree.Set(addressesWithStorage[i].StorageCells[j].Index, new byte[1] {1});
+                    storageTree.Set(addressesWithStorage[i].StorageCells[j].Index, new byte[] {1});
                 }
 
                 storageTree.UpdateRootHash();

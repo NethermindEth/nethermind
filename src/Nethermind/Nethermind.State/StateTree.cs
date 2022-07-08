@@ -14,9 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -48,31 +50,22 @@ namespace Nethermind.State
         [DebuggerStepThrough]
         public Account? Get(Address address, Keccak? rootHash = null)
         {
-            byte[]? bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
-            if (bytes is null)
-            {
-                return null;
-            }
-
-            return _decoder.Decode(bytes.AsRlpStream());
+            Span<byte> bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
+            return bytes.IsEmpty ? null : _decoder.Decode(bytes.AsRlpValueContext());
         }
 
         [DebuggerStepThrough]
         internal Account? Get(Keccak keccak) // for testing
         {
-            byte[]? bytes = Get(keccak.Bytes);
-            if (bytes is null)
-            {
-                return null;
-            }
-
-            return _decoder.Decode(bytes.AsRlpStream());
+            Span<byte> bytes = Get(keccak.Bytes);
+            return bytes.IsEmpty ? null : _decoder.Decode(bytes.AsRlpValueContext());
         }
 
         public void Set(Address address, Account? account)
         {
             ValueKeccak keccak = ValueKeccak.Compute(address.Bytes);
-            Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
+            Rlp rlp = account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account);
+            Set(keccak.BytesAsSpan, rlp);
         }
         
         [DebuggerStepThrough]

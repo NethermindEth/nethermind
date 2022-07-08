@@ -125,8 +125,8 @@ namespace Nethermind.Synchronization.LesSync
         
         public (Keccak?, UInt256) Get(Span<byte> key)
         {
-            byte[]? val = base.Get(key);
-            if (val == null)
+            Span<byte> val = base.Get(key);
+            if (val.IsEmpty)
             {
                 throw new InvalidDataException("Missing CHT data");
             }

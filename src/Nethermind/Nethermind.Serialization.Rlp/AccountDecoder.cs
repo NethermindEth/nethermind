@@ -184,36 +184,52 @@ namespace Nethermind.Serialization.Rlp
             return contentLength;
         }
         
-        private Keccak DecodeStorageRoot(RlpStream rlpStream)
+        private Keccak DecodeStorageRoot(RlpStream rlpStream) => DecodeKeccakWithFallback(rlpStream, Keccak.EmptyTreeHash);
+
+        private Keccak DecodeCodeHash(RlpStream rlpStream) => DecodeKeccakWithFallback(rlpStream, Keccak.OfAnEmptyString);
+
+        private Keccak DecodeKeccakWithFallback(RlpStream rlpStream, Keccak fallback)
         {
-            Keccak storageRoot = null;
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
-                storageRoot = Keccak.EmptyTreeHash;
-            }
-            else
-            {
-                storageRoot = rlpStream.DecodeKeccak();
+                return fallback;
             }
 
-            return storageRoot;
+            return rlpStream.DecodeKeccak()!;
         }
-        
-        private Keccak DecodeCodeHash(RlpStream rlpStream)
+
+        public Account? Decode(Rlp.ValueDecoderContext rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            Keccak codeHash = null;
+            int length = rlpStream.ReadSequenceLength();
+            if (length == 1)
+            {
+                return null;
+            }
+
+            UInt256 nonce = rlpStream.DecodeUInt256();
+            UInt256 balance = rlpStream.DecodeUInt256();
+
+
+            Keccak storageRoot = DecodeStorageRoot(ref rlpStream);
+            Keccak codeHash = DecodeCodeHash(ref rlpStream);
+            Account account = new(nonce, balance, storageRoot, codeHash);
+            return account;
+        }
+
+        private Keccak DecodeCodeHash(ref Rlp.ValueDecoderContext rlpStream) => DecodeKeccakWithFallback(ref rlpStream, Keccak.OfAnEmptyString);
+
+        private Keccak DecodeKeccakWithFallback(ref Rlp.ValueDecoderContext rlpStream, Keccak fallback)
+        {
             if (_slimFormat && rlpStream.IsNextItemEmptyArray())
             {
                 rlpStream.ReadByte();
-                codeHash = Keccak.OfAnEmptyString;
-            }
-            else
-            {
-                codeHash = rlpStream.DecodeKeccak();
+                return fallback;
             }
 
-            return codeHash;
+            return rlpStream.DecodeKeccak()!;
         }
+
+        private Keccak DecodeStorageRoot(ref Rlp.ValueDecoderContext rlpStream)  => DecodeKeccakWithFallback(ref rlpStream, Keccak.EmptyTreeHash);
     }
 }
