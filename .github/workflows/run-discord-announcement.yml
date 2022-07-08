@@ -1,9 +1,8 @@
 name: '[RUN] Discord new release announcement'
    
 on:
-  workflow_dispatch:
-  #release:
-    #types: [published]
+  release:
+    types: [released]
 
 jobs:
   push-announcement:
@@ -12,7 +11,7 @@ jobs:
     env:      
       WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
     steps:
-    - name: REST API with curl
+    - name: CURL Discord API with announcement
       shell: bash
       run: |
         CHANGELOG=$(curl -s https://api.github.com/repos/nethermindeth/nethermind/releases | jq '.[0].body' | grep -Po '(?<=\\n\\r\\n)(.*?)(?=\##)')
