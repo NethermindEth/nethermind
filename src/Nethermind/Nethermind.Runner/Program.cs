@@ -426,6 +426,7 @@ namespace Nethermind.Runner
             }
 
             logger.Info($"Reading config file from {configFilePath}");
+            configProvider.SetLogger(_logger);
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
             var incorrectSettings = configProvider.FindIncorrectSettings();

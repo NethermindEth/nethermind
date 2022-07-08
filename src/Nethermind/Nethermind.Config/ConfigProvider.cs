@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -21,19 +21,27 @@ using System.Linq;
 using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 
 namespace Nethermind.Config
 {
     public class ConfigProvider : IConfigProvider
     {
+        private static ILogger _logger;
+
         private readonly ConcurrentDictionary<Type, object> _instances = new();
-        
+
         private readonly List<IConfigSource> _configSource = new();
         private Dictionary<string, object> Categories { get; set; } = new(StringComparer.InvariantCultureIgnoreCase);
 
         private readonly Dictionary<Type, Type> _implementations = new();
 
         private readonly TypeDiscovery _typeDiscovery = new();
+
+        public void SetLogger(ILogger logger)
+        {
+            _logger = logger;
+        }
 
         public T GetConfig<T>() where T : IConfig
         {
@@ -43,7 +51,7 @@ namespace Nethermind.Config
         public object GetConfig(Type configType)
         {
             if (!typeof(IConfig).IsAssignableFrom(configType)) throw new ArgumentException($"Type {configType} is not {typeof(IConfig)}");
-                
+
             if (!_instances.ContainsKey(configType))
             {
                 if (!_implementations.ContainsKey(configType))
@@ -51,7 +59,7 @@ namespace Nethermind.Config
                     Initialize();
                 }
             }
-            
+
             return _instances[configType];
         }
 
@@ -76,7 +84,7 @@ namespace Nethermind.Config
         {
             _configSource.Add(configSource);
         }
-        
+
         public void Initialize()
         {
             Type type = typeof(IConfig);
@@ -100,11 +108,19 @@ namespace Nethermind.Config
                         {
                             string category = @interface.IsAssignableFrom(typeof(INoCategoryConfig)) ? null : config.GetType().Name;
                             string name = propertyInfo.Name;
+
                             (bool isSet, object value) = _configSource[i].GetValue(propertyInfo.PropertyType, category, name);
                             if (isSet)
                             {
                                 try
                                 {
+                                    foreach (CustomAttributeData ad in propertyInfo.CustomAttributes)
+                                    {
+                                        if (ad.AttributeType == typeof(ObsoleteAttribute))
+                                        {
+                                            _logger.Warn($"Boolean attribute {name} is going to be deprecated. Please use SyncMode={name} in your config instead.");
+                                        }
+                                    }
                                     propertyInfo.SetValue(config, value);
                                 }
                                 catch (Exception e)

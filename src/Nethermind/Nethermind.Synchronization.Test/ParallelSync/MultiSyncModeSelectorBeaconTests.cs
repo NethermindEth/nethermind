@@ -17,6 +17,7 @@
 
 using Nethermind.Synchronization.ParallelSync;
 using NUnit.Framework;
+//using SyncMode = Nethermind.Synchronization.ParallelSync.SyncMode;
 
 namespace Nethermind.Synchronization.Test.ParallelSync;
 

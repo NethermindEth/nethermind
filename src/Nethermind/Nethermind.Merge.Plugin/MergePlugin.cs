@@ -121,7 +121,7 @@ namespace Nethermind.Merge.Plugin
         private void EnsureReceiptAvailable()
         {
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            if (syncConfig.FastSync)
+            if (syncConfig.SyncMode == StateSyncMode.FastSync)
             {
                 if (!syncConfig.DownloadReceiptsInFastSync || !syncConfig.DownloadBodiesInFastSync)
                 {

@@ -171,7 +171,7 @@ public class ChainLevelHelper : IChainLevelHelper
                     $"Searching for starting point on level {startingPoint}. Header: {header.ToString(BlockHeader.Format.FullHashAndNumber)}, BlockInfo: {blockInfo?.ToString()}");
             --startingPoint;
             currentHash = header.ParentHash!;
-            if (_syncConfig.FastSync && startingPoint <= _syncConfig.PivotNumberParsed)
+            if ((_syncConfig.SyncMode == StateSyncMode.FastSync) && startingPoint <= _syncConfig.PivotNumberParsed)
             {
                 if (_logger.IsTrace) _logger.Trace($"Reached syncConfig pivot. Starting point: {startingPoint}");
                 break;

@@ -30,6 +30,7 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using SyncMode = Nethermind.Synchronization.ParallelSync.SyncMode;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 

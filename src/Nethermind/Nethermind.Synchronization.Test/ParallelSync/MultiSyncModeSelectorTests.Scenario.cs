@@ -652,7 +652,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 {
                     _configActions.Add(() =>
                     {
-                        SyncConfig.FastSync = true;
+                        SyncConfig.SyncMode = StateSyncMode.FastSync;
                         SyncConfig.FastBlocks = true;
                         return "fast sync with fast blocks";
                     });
@@ -664,7 +664,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 {
                     _configActions.Add(() =>
                     {
-                        SyncConfig.FastSync = true;
+                        SyncConfig.SyncMode = StateSyncMode.FastSync;
                         SyncConfig.FastBlocks = false;
                         return "fast sync without fast blocks";
                     });
@@ -702,6 +702,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 {
                     _configActions.Add(() =>
                     {
+                        SyncConfig.SyncMode = StateSyncMode.FullSync;
                         SyncConfig.FastSync = false;
                         SyncConfig.FastBlocks = false;
                         return "full archive";

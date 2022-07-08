@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Diagnostics;
@@ -30,7 +30,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Init
 {
     /// <summary>
-    /// Applies changes to the NetworkConfig and the DbConfig so to adhere to the max memory limit hint. 
+    /// Applies changes to the NetworkConfig and the DbConfig so to adhere to the max memory limit hint.
     /// </summary>
     public class MemoryHintMan
     {
@@ -279,7 +279,7 @@ namespace Nethermind.Init
 
         private DbNeeds GetStateNeeds(uint cpuCount, ISyncConfig syncConfig)
         {
-            uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastSync ? 8u : 4u);
+            uint preferredBuffers = Math.Min(cpuCount, (syncConfig.SyncMode == StateSyncMode.FastSync) ? 8u : 4u);
             // remove optimize for point lookup here?
             return new DbNeeds(
                 preferredBuffers,
@@ -352,7 +352,7 @@ namespace Nethermind.Init
 
         private DbNeeds GetCodeNeeds(uint cpuCount, ISyncConfig syncConfig)
         {
-            uint preferredBuffers = Math.Min(cpuCount, syncConfig.FastSync ? 4u : 2u);
+            uint preferredBuffers = Math.Min(cpuCount, (syncConfig.SyncMode == StateSyncMode.FastSync) ? 4u : 2u);
             return new DbNeeds(
                 preferredBuffers,
                 1.MB(), // min buffer size
