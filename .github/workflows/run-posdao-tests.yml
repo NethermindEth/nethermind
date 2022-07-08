@@ -51,7 +51,7 @@ jobs:
     - name: Setup the Node.js
       uses: actions/setup-node@v1.4.4
       with:
-        node-version: '18'
+        node-version: '16'
     - name: Setup Docker
       if: contains(github.event.inputs.branch, 'merge')
       run: curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh; rm get-docker.sh
