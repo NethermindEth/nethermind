@@ -92,19 +92,20 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         private Block ProduceEmptyBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes)
         {
-            if (_logger.IsTrace) _logger.Trace($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
+            if (_logger.IsDebug) _logger.Debug($"Preparing empty block from payload {payloadId} with parent {parentHeader}");
             Block emptyBlock = _blockProducer.PrepareEmptyBlock(parentHeader, payloadAttributes);
-            if (_logger.IsTrace) _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
+            if (_logger.IsDebug) _logger.Debug($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
             return emptyBlock;
         }
 
         private void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block emptyBlock)
         {
-            if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader}");
+            if (_logger.IsDebug) _logger.Debug($"Start improving block from payload {payloadId} with parent {parentHeader} and empty block {emptyBlock}");
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(emptyBlock, parentHeader, payloadAttributes);
             blockImprovementContext.ImprovementTask.ContinueWith(LogProductionResult);
             if (!_payloadStorage.TryAdd(payloadId, blockImprovementContext))
             {
+                if (_logger.IsDebug) _logger.Debug($"BlockImprovementContext for {payloadId} already registered");
                 blockImprovementContext.Dispose();
             }
         }

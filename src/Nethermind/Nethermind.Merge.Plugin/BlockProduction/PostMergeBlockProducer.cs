@@ -70,7 +70,21 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             // processing is only done here to apply block rewards in AuRa
             if (TrySetState(parent.StateRoot))
             {
-                block = ProcessPreparedBlock(block, null) ?? block;
+                var processedBlock = ProcessPreparedBlock(block, null);
+                if (processedBlock != null)
+                {
+                    block = processedBlock;
+                    if (Logger.IsDebug) Logger.Debug($"Processed empty block {block.Hash}");
+                }
+                else
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Failed to process empty block {block.Hash}");
+                }
+                // block = ProcessPreparedBlock(block, null) ?? block;
+            }
+            else
+            {
+                if (Logger.IsDebug) Logger.Debug($"Failed to set state to {parent.StateRoot}, to process empty block");
             }
             
             return block;
