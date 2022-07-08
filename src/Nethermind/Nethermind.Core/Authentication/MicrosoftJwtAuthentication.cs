@@ -52,7 +52,7 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
         if (!fileInfo.Exists || fileInfo.Length == 0)
         {
             // Generate secret;
-            if (logger.IsInfo) logger.Info("Generating jwt secret");
+            if (logger.IsInfo) logger.Info("Generating authentication secret.");
             byte[] secret = new byte[JwtSecretLength / 2];
             Random rnd = new();
             rnd.NextBytes(secret);
@@ -66,23 +66,31 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             }
             catch (IOException e)
             {
-                if (logger.IsError) logger.Error($"Can't write JWT secret to file '{fileInfo.FullName}': {e.Message}");
+                if (logger.IsError)
+                {
+                    logger.Error($"Can't write authentication secret to file '{fileInfo.FullName}': {e.Message}");
+                    logger.Error( "To change file location set property 'JsonRpc.JwtSecretFile'");
+                }
                 throw;
             }
             catch (UnauthorizedAccessException e)
             {
-                if (logger.IsError) logger.Error($"Can't write JWT secret to file '{fileInfo.FullName}': access denied");
+                if (logger.IsError)
+                {
+                    logger.Error($"Can't write authentication secret to file '{fileInfo.FullName}': access denied");
+                    logger.Error( "To change file location set property 'JsonRpc.JwtSecretFile'");
+                }
                 throw;
             }
 
-            logger.Info($"Secret have been written to {fileInfo.FullName}");
+            if (logger.IsInfo) logger.Info($"Authentication secret has been written to file '{fileInfo.FullName}'.");
             return new MicrosoftJwtAuthentication(secret, timestamper, logger);
             
         }
         else
         {
             // Secret exists read from file
-            if (logger.IsInfo) logger.Info($"Reading JWT secret from file: {fileInfo.FullName}");
+            if (logger.IsInfo) logger.Info($"Reading authentication secret from file '{fileInfo.FullName}'");
             string hexSecret;
             try
             {
@@ -92,12 +100,20 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             }
             catch (IOException e)
             {
-                if (logger.IsError) logger.Error($"Can't read JWT secret from file '{fileInfo.FullName}': {e.Message}");
+                if (logger.IsError)
+                {
+                    logger.Error($"Can't read authentication secret from file '{fileInfo.FullName}': {e.Message}");
+                    logger.Error( "To change file location set property 'JsonRpc.JwtSecretFile'");
+                }
                 throw;
             }
             catch (UnauthorizedAccessException e)
             {
-                if (logger.IsError) logger.Error($"Can't read JWT secret from file '{fileInfo.FullName}': access denied");
+                if (logger.IsError)
+                {
+                    logger.Error($"Can't read authentication secret from file '{fileInfo.FullName}': access denied");
+                    logger.Error( "To change file location set property 'JsonRpc.JwtSecretFile'");
+                }
                 throw;
             }
 
@@ -105,8 +121,11 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             if (!System.Text.RegularExpressions.Regex.IsMatch(hexSecret, @"^(0x)?[0-9a-fA-F]{64}$"))
             {
                 if (logger.IsError)
-                    logger.Error(
-                        $"Specified JWT secret is not a 64 digit hexadecimal number. Please, delete file '{fileInfo.FullName}' to generate new secret");
+                {
+                    logger.Error("Specified authentication secret is not a 64 digit hexadecimal number.");
+                    logger.Error( $"Delete file '{fileInfo.FullName}' to generate new secret or set property 'JsonRpc.JwtSecretFile'");
+                }
+
                 throw new FormatException("JWT secret should be a 64 digit hexadecimal number");
             }
             return CreateFromHexSecret(hexSecret, timestamper, logger);
@@ -122,13 +141,13 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
     {
         if (token == null)
         {
-            if (_logger.IsInfo) _logger.Info("Can't find authentication token"); 
+            if (_logger.IsWarn) _logger.Warn("Message authentication error: Can't find authentication token"); 
             return false;
         }
 
         if (!token.StartsWith(JwtMessagePrefix))
         {
-            if (_logger.IsInfo) _logger.Info("Authentication token should start with 'Bearer '");
+            if (_logger.IsWarn) _logger.Warn("Message authentication error: Authentication token should start with 'Bearer '");
             return false;
         }
         token = token.Remove(0, JwtMessagePrefix.Length);
@@ -149,37 +168,36 @@ public class MicrosoftJwtAuthentication : IRpcAuthentication
             handler.ValidateToken(token, tokenValidationParameters, out securityToken);
             JwtSecurityToken jwtToken = handler.ReadJwtToken(token);
             long iat = ((DateTimeOffset)jwtToken.IssuedAt).ToUnixTimeSeconds();
-            long now = _timestamper.UnixTime.SecondsLong;
-            if (Math.Abs(iat - now) <= JwtTokenTtl)
+            DateTime now = _timestamper.UtcNow;
+            if (Math.Abs(iat - ((DateTimeOffset)now).ToUnixTimeSeconds()) <= JwtTokenTtl)
             {
                 if (_logger.IsTrace)
-                    _logger.Trace($"Message authenticated. Token: {token}, iat: {iat}, time: {now}");
+                    _logger.Trace($"Message authenticated. Token: {token}, iat: {jwtToken.IssuedAt}, time: {now}");
                 return true;
             }
 
-            if (_logger.IsInfo)
-                _logger.Info(
-                    $"Authentication token is outdated. Now is {now} UNIX time, token issued at {iat}");
+            if (_logger.IsWarn)
+                _logger.Warn($"Authentication token is outdated. Now is {now}, token issued at {jwtToken.IssuedAt}");
             return false;
         }
         catch (SecurityTokenDecryptionFailedException)
         {
-            if (_logger.IsInfo) _logger.Info("Message authentication error: Can't decrypt provided security token");
+            if (_logger.IsWarn) _logger.Warn("Message authentication error: Can't decrypt provided security token");
             return false;
         }
         catch (SecurityTokenReplayDetectedException)
         {
-            if (_logger.IsInfo) _logger.Info("Message authentication error: Token has been used multiple times");
+            if (_logger.IsWarn) _logger.Warn("Message authentication error: Token has been used multiple times");
             return false;
         }
         catch (SecurityTokenInvalidSignatureException)
         {
-            if (_logger.IsInfo) _logger.Info("Message authentication error: Invalid signature");
+            if (_logger.IsWarn) _logger.Warn("Message authentication error: Invalid signature");
             return false;
         }
         catch (Exception e)
         {
-            if (_logger.IsInfo) _logger.Info($"Message authentication error: {e.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Message authentication error: {e.Message}");
             return false;
         }
     }
