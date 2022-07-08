@@ -51,31 +51,34 @@ jobs:
     - name: Setup the Node.js
       uses: actions/setup-node@v1.4.4
       with:
-        node-version: '12'
+        node-version: '18'
+    - name: Setup Docker
+      if: contains(github.event.inputs.branch, 'merge')
+      run: curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh; rm get-docker.sh
     - name: Running POSDAO tests
       run: |
         cd posdao-test-setup
         npm run all-nethermind-no-watcher
-    - name: Stopping and compressing logs
+    - name: Collecting EL logs      
       run: |
-        cd posdao-test-setup
-        npm run stop-test-setup
+        mkdir "posdao-logs"
 
-        mkdir -p posdao-logs
-
-        cp "./data/node0/nethermind.logs.txt" "posdao-logs/node0.logs.txt"
-        cp "./data/node1/nethermind.logs.txt" "posdao-logs/node1.logs.txt"
-        cp "./data/node2/nethermind.logs.txt" "posdao-logs/node2.logs.txt"
-        cp "./data/node3/nethermind.logs.txt" "posdao-logs/node3.logs.txt"
-
-        (cd "./bc/launcher" && docker-compose logs node > "../../posdao-logs/cl-node.logs.txt" || true)
-        (cd "./bc/launcher" && docker-compose logs node2 > "../../posdao-logs/cl-node2.logs.txt" || true)
-        (cd "./bc/launcher" && docker-compose logs validator > "../../posdao-logs/cl-validator.logs.txt" || true)
-
-        zip -r posdao-logs.zip posdao-logs
-    - uses: actions/upload-artifact@master
+        cp "posdao-test-setup/data/node0/nethermind.logs.txt" "posdao-logs/node0.logs.txt"
+        cp "posdao-test-setup/data/node1/nethermind.logs.txt" "posdao-logs/node1.logs.txt"
+        cp "posdao-test-setup/data/node2/nethermind.logs.txt" "posdao-logs/node2.logs.txt"
+        cp "posdao-test-setup/data/node3/nethermind.logs.txt" "posdao-logs/node3.logs.txt"
+    - name: Collecting CL logs
+      if: contains(github.event.inputs.branch, 'merge')
+      run: |
+        LOGS_FOLDER="$PWD/posdao-logs"
+        (cd "posdao-test-setup/bc/launcher" && docker-compose logs node > "$LOGS_FOLDER/cl-node.logs.txt")
+        (cd "posdao-test-setup/bc/launcher" && docker-compose logs node2 > "$LOGS_FOLDER/cl-node2.logs.txt")
+        (cd "posdao-test-setup/bc/launcher" && docker-compose logs validator > "$LOGS_FOLDER/cl-validator.logs.txt")
+    - name: Compress posdao logs
+      run: zip -r posdao-logs.zip posdao-logs
+    - uses: actions/upload-artifact@master      
       name: Upload nodes logs
       with:
         name: posdao-tests-logs
         path: |
-          posdao-test-setup/posdao-logs.zip
+          posdao-test-setup/node-logs.zip
