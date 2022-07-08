@@ -164,7 +164,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         public Block? GetPayload(string payloadId)
         {
-            if (_payloadStorage.TryRemove(payloadId, out IBlockImprovementContext? blockContext))
+            if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
             {
                 using (blockContext)
                 {
