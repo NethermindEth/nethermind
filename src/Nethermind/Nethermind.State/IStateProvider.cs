@@ -27,7 +27,7 @@ namespace Nethermind.State
     {
         void RecalculateStateRoot();
 
-        Keccak StateRoot { get; set; }
+        new Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
 
@@ -64,10 +64,5 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="codeHash"></param>
         void TouchCode(Keccak codeHash);
-
-        /// <summary>
-        /// pruning hack
-        /// </summary>
-        void CommitCode();
     }
 }

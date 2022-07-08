@@ -72,9 +72,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             for (int i = 1; i < chainLength; i++)
             {
                 Block block = context.BlockTree.FindBlock(i);
-                inMemoryReceiptStorage.Insert(block,
-                    Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject,
-                    Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject);
+                inMemoryReceiptStorage.Insert(block, new[] {
+                        Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject,
+                        Core.Test.Builders.Build.A.Receipt.WithTransactionHash(TestItem.Keccaks[txIndex++]).TestObject
+                    });
             }
             
             ManualResetEvent guard = new(false);
@@ -117,10 +118,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             public bool CanGetReceiptsByHash(long blockNumber) => _inStorage.CanGetReceiptsByHash(blockNumber);
             public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _outStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
 
-            public void Insert(Block block, params TxReceipt[] txReceipts)
-            {
-                _outStorage.Insert(block, txReceipts);
-            }
+            public void Insert(Block block, TxReceipt[] txReceipts, bool ensureCanonical) => _outStorage.Insert(block, txReceipts);
 
             public long? LowestInsertedReceiptBlockNumber
             {
@@ -136,6 +134,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             public bool HasBlock(Keccak hash)
             {
                 return _outStorage.HasBlock(hash);
+            }
+
+            public void EnsureCanonical(Block block)
+            {
             }
 
             public event EventHandler<ReceiptsEventArgs> ReceiptsInserted { add { } remove { } }

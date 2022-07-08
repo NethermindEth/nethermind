@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.State.Proofs;

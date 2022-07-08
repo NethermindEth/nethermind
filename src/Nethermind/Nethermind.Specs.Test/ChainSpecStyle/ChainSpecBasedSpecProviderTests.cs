@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -52,6 +52,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             };
 
             CompareSpecProviders(sepolia, provider, blockNumbersToTest);
+            Assert.AreEqual(SepoliaSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
             Assert.AreEqual(0, provider.GenesisSpec.Eip1559TransitionBlock);
             Assert.AreEqual(long.MaxValue, provider.GenesisSpec.DifficultyBombDelay);
         }
@@ -148,6 +149,8 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
                 MainnetSpecProvider.LondonBlockNumber,
                 MainnetSpecProvider.ArrowGlacierBlockNumber - 1,
                 MainnetSpecProvider.ArrowGlacierBlockNumber,
+                MainnetSpecProvider.GrayGlacierBlockNumber - 1,
+                MainnetSpecProvider.GrayGlacierBlockNumber,
                 99_000_000, // far in the future
             };
 
@@ -166,7 +169,9 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(9_700_000, provider.GetSpec(12_965_000).DifficultyBombDelay);
             Assert.AreEqual(9_700_000, provider.GetSpec(13_772_999).DifficultyBombDelay);
             Assert.AreEqual(10_700_000, provider.GetSpec(13_773_000).DifficultyBombDelay);
-            Assert.AreEqual(10_700_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
+            Assert.AreEqual(10_700_000, provider.GetSpec(15_049_999).DifficultyBombDelay);
+            Assert.AreEqual(11_400_000, provider.GetSpec(15_050_000).DifficultyBombDelay);
+            Assert.AreEqual(11_400_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
         }
 
         private static void CompareSpecProviders(

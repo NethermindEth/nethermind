@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.Processing
         public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
         {
             if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
-            
+
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
             /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
@@ -97,17 +97,18 @@ namespace Nethermind.Consensus.Processing
                the previous head state.*/
             Keccak previousBranchStateRoot = CreateCheckpoint();
             InitBranch(newBranchStateRoot);
-
-            bool readOnly = (options & ProcessingOptions.ReadOnlyChain) != 0;
+            
+            bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
+            using IDisposable tracker = _witnessCollector.TrackOnThisThread();
             try
             {
                 for (int i = 0; i < blocksCount; i++)
                 {
                     if (blocksCount > 64 && i % 8 == 0)
                     {
-                        if(_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
+                        if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
                     }
 
                     _witnessCollector.Reset();
@@ -116,7 +117,7 @@ namespace Nethermind.Consensus.Processing
 
                     // be cautious here as AuRa depends on processing
                     PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
-                    if (!readOnly)
+                    if (notReadOnly)
                     {
                         _witnessCollector.Persist(processedBlock.Hash!);
                         BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
@@ -127,24 +128,18 @@ namespace Nethermind.Consensus.Processing
                     bool isLastInBatch = i == blocksCount - 1;
                     bool isNotAtTheEdge = !isFirstInBatch && !isLastInBatch;
                     bool isCommitPoint = i % MaxUncommittedBlocks == 0 && isNotAtTheEdge;
-                    if (isCommitPoint && readOnly == false)
+                    if (isCommitPoint && notReadOnly)
                     {
                         if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
-                        CommitBranch();
                         previousBranchStateRoot = CreateCheckpoint();
                         Keccak? newStateRoot = suggestedBlocks[i].StateRoot;
                         InitBranch(newStateRoot, false);
                     }
                 }
 
-                if (readOnly)
+                if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
                 {
                     RestoreBranch(previousBranchStateRoot);
-                }
-                else
-                {
-                    // TODO: move to branch processor
-                    CommitBranch();
                 }
 
                 return processedBlocks;
@@ -193,13 +188,6 @@ namespace Nethermind.Consensus.Processing
         }
 
         // TODO: move to branch processor
-        private void CommitBranch()
-        {
-            _stateProvider.CommitCode();
-            // nowadays we could commit branch via TrieStore or similar (after this responsibility has been moved
-        }
-
-        // TODO: move to branch processor
         private void RestoreBranch(Keccak branchingPointStateRoot)
         {
             if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
@@ -218,7 +206,7 @@ namespace Nethermind.Consensus.Processing
             Block block = PrepareBlockForProcessing(suggestedBlock);
             TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
-            if ((options & ProcessingOptions.StoreReceipts) != 0)
+            if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
             {
                 StoreTxReceipts(block, receipts);
             }
@@ -229,7 +217,7 @@ namespace Nethermind.Consensus.Processing
         // TODO: block processor pipeline
         private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
         {
-            if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
+            if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (_logger.IsError) _logger.Error($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
@@ -265,7 +253,8 @@ namespace Nethermind.Consensus.Processing
         // TODO: block processor pipeline
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
-            _receiptStorage.Insert(block, txReceipts);
+            // Setting canonical is done by ReceiptCanonicalityMonitor on block move to main
+            _receiptStorage.Insert(block, txReceipts, false);
         }
 
         // TODO: block processor pipeline

@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Builders
         {
         }
 
-        public BlockTreeBuilder(Block genesisBlock)
+        public BlockTreeBuilder(Block genesisBlock, ISpecProvider? specProvider = null)
         {
             BlocksDb = new MemDb();
             HeadersDb = new MemDb();
@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Builders
             BlocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             _genesisBlock = genesisBlock;
             ChainLevelInfoRepository = new ChainLevelInfoRepository(BlockInfoDb);
-            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, RopstenSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            TestObjectInternal = new BlockTree(BlocksDb, HeadersDb, BlockInfoDb, ChainLevelInfoRepository, specProvider ?? MainnetSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
         }
 
         public MemDb BlocksDb { get; set; }
@@ -168,10 +168,10 @@ namespace Nethermind.Core.Test.Builders
                 }
 
                 currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
-                var txReceipts = receipts.ToArray();
+                TxReceipt[] txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot = new ReceiptTrie(_specProvider.GetSpec(currentBlock.Number), txReceipts).RootHash;
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
-                foreach (var txReceipt in txReceipts)
+                foreach (TxReceipt txReceipt in txReceipts)
                 {
                     txReceipt.BlockHash = currentBlock.Hash;
                 }

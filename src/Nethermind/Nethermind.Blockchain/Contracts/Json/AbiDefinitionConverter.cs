@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using FastEnumUtility;
 using Nethermind.Abi;
 using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
@@ -73,8 +74,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                     continue;
                 }
                 
-                AbiDescriptionType type = Enum.Parse<AbiDescriptionType>(
-                    typeToken.Value<string>(), true);
+                AbiDescriptionType type = FastEnum.Parse<AbiDescriptionType>(typeToken.Value<string>(), true);
                 
                 if (type == AbiDescriptionType.Event)
                 {

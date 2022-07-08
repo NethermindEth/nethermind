@@ -14,11 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -41,22 +43,28 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            var hashes = batch.Infos.Where(i => i != null).Select(i => i!.BlockHash).ToArray();
-            Task<TxReceipt[][]> getReceiptsTask = peer.GetReceipts(hashes, cancellationToken);
-            await getReceiptsTask.ContinueWith(
-                (t, state) =>
-                {
-                    ReceiptsSyncBatch batchLocal = (ReceiptsSyncBatch)state!;
-                    if (t.IsCompletedSuccessfully)
-                    {
-                        if (batchLocal.RequestTime > 1000)
-                        {
-                            if (Logger.IsDebug) Logger.Debug($"{batchLocal} - peer is slow {batchLocal.RequestTime:F2}");
-                        }
+            
+            Keccak[]? hashes = batch.Infos.Where(i => i != null).Select(i => i!.BlockHash).ToArray();
+            if (hashes.Length == 0)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{batch} - attempted send a request with no hash.");
+                return;
+            }
 
-                        batchLocal.Response = t.Result;
-                    }
-                }, batch);
+            try
+            {
+                batch.Response = await peer.GetReceipts(hashes, cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{batch} - request receipts timeout {batch.RequestTime:F2}");
+                return;
+            }
+
+            if (batch.RequestTime > 1000)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
+            }
         }
     }
 }

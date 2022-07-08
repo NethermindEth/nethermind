@@ -121,28 +121,12 @@ namespace Nethermind.Merge.Plugin
             _finalizedBlockHash = LoadHashFromDb(MetadataDbKeys.FinalizedBlockHash) ?? Keccak.Zero;
         }
 
-        // Terminal PoW block: A PoW block that satisfies the following conditions pow_block.total_difficulty >= TERMINAL_TOTAL_DIFFICULTY and pow_block.parent_block.total_difficulty < TERMINAL_TOTAL_DIFFICULTY
-        // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#specification
-        public bool IsTerminalBlock(BlockHeader header)
-        {
-            bool isTerminalBlock = false;
-            bool ttdRequirement = header.TotalDifficulty >= TerminalTotalDifficulty;
-            if (ttdRequirement && header.IsGenesis)
-                return true;
-            
-            if (ttdRequirement && header.Difficulty != 0)
-            {
-                UInt256? parentTotalDifficulty = header.TotalDifficulty >= header.Difficulty ? header.TotalDifficulty - header.Difficulty : 0;
-                isTerminalBlock = parentTotalDifficulty < TerminalTotalDifficulty;
-            }
-
-            return isTerminalBlock;
-        }
-
         public bool TryUpdateTerminalBlock(BlockHeader header)
         {
-            if (_terminalBlockExplicitSpecified || TransitionFinished || IsTerminalBlock(header) == false)
+            if (_terminalBlockExplicitSpecified || TransitionFinished || !header.IsTerminalBlock(_specProvider))
+            {
                 return false;
+            }
 
             _terminalBlockNumber = header.Number;
             _terminalBlockHash = header.Hash;
@@ -157,7 +141,10 @@ namespace Nethermind.Merge.Plugin
                 _hasEverReachedTerminalDifficulty = true;
                 if (_logger.IsInfo) _logger.Info($"Reached terminal block {header}");
             }
-            else if (_logger.IsInfo) _logger.Info($"Updated terminal block {header}");
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"Updated terminal block {header}");
+            }
 
             return true;
         }
@@ -182,7 +169,7 @@ namespace Nethermind.Merge.Plugin
         }
 
         public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
-
+        
         public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
         {
             if (_logger.IsTrace)
@@ -219,7 +206,7 @@ namespace Nethermind.Merge.Plugin
                 }
                 else
                 {
-                    isTerminal = IsTerminalBlock(header); // we're checking if block is terminal if not it should be PostMerge block
+                    isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
                     isPostMerge = !isTerminal;
                 }
             }

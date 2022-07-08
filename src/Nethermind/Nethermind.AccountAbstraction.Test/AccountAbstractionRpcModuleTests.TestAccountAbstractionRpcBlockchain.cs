@@ -158,7 +158,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             private void OnBlockProduced(object? sender, BlockEventArgs e)
             {
-                BlockTree.SuggestBlock(e.Block, BlockTreeSuggestOptions.None, false);
+                BlockTree.SuggestBlock(e.Block, BlockTreeSuggestOptions.ForceDontSetAsMain);
                 BlockchainProcessor.Process(e.Block!, GetProcessingOptions(), NullBlockTracer.Instance);
                 BlockTree.UpdateMainChain(new[] { e.Block! }, true);
             }
@@ -221,23 +221,19 @@ namespace Nethermind.AccountAbstraction.Test
                         EntryPointContractAbi,
                         Signer,
                         entryPoint!,
-                        SpecProvider,
-                        State);
+                        SpecProvider);
                 }
 
                 foreach (Address entryPoint in entryPointContractAddresses)
                 {
                     UserOperationSimulator[entryPoint] = new(
                         UserOperationTxBuilder[entryPoint],
-                        State,
-                        StateReader,
+                        ReadOnlyState,
+                        new ReadOnlyTxProcessingEnvFactory(DbProvider, ReadOnlyTrieStore, BlockTree, SpecProvider, LogManager),
                         EntryPointContractAbi,
                         entryPoint!,
                         WhitelistedPayamsters,
                         SpecProvider, 
-                        BlockTree, 
-                        DbProvider, 
-                        ReadOnlyTrieStore, 
                         Timestamper,
                         LogManager);
                 }

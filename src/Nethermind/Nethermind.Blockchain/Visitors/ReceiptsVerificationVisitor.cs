@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Visitors
         public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken) =>
             Task.FromResult(HeaderVisitOutcome.None);
 
-        public async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
+        public virtual async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
         {
             int txReceiptsLength = GetTxReceiptsLength(block, true);
             int transactionsLength = block.Transactions.Length;

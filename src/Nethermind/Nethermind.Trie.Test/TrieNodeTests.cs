@@ -927,6 +927,25 @@ namespace Nethermind.Trie.Test
             restoredLeaf1.Value.Should().BeEquivalentTo(leaf1.Value);
         }
 
+        [Test]
+        public void Can_parallel_read_unresolved_children()
+        {
+            TrieNode node = new(NodeType.Branch);
+            for (int i = 0; i < 16; i++)
+            {
+                TrieNode randomTrieNode = new(NodeType.Leaf);
+                randomTrieNode.Key = new HexPrefix(true, new byte[] {(byte)i, 2, 3});
+                randomTrieNode.Value = new byte[] {1, 2, 3};
+                node.SetChild(i, randomTrieNode);
+            }
+
+            byte[] rlp = node.RlpEncode(NullTrieNodeResolver.Instance);
+
+            TrieNode restoredNode = new(NodeType.Branch, rlp);
+
+            Parallel.For(0, 32, (index, _) => restoredNode.GetChild(NullTrieNodeResolver.Instance, index % 3));
+        }
+
         private class Context
         {
             public TrieNode TiniestLeaf { get; }

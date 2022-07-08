@@ -35,6 +35,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -51,7 +52,7 @@ namespace Nethermind.AccountAbstraction.Source
         private readonly IPaymasterThrottler _paymasterThrottler;
         private readonly ILogFinder _logFinder;
         private readonly ISigner _signer;
-        private readonly IStateProvider _stateProvider;
+        private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ITimestamper _timestamper;
         private readonly Keccak _userOperationEventTopic;
@@ -77,7 +78,7 @@ namespace Nethermind.AccountAbstraction.Source
             IPaymasterThrottler paymasterThrottler,
             ILogFinder logFinder,
             ISigner signer,
-            IStateProvider stateProvider,
+            IReadOnlyStateProvider stateProvider,
             ISpecProvider specProvider,
             ITimestamper timestamper,
             IUserOperationSimulator userOperationSimulator,

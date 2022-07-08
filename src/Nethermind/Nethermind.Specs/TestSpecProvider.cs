@@ -42,10 +42,7 @@ namespace Nethermind.Specs
 
         public IReleaseSpec GenesisSpec { get; set; }
 
-        public IReleaseSpec GetSpec(long blockNumber)
-        {
-            return SpecToReturn;
-        }
+        public IReleaseSpec GetSpec(long blockNumber) => SpecToReturn;
 
         public IReleaseSpec SpecToReturn { get; set; }
 

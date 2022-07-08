@@ -132,7 +132,9 @@ namespace Nethermind.Init.Steps
             
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
-            _api.SyncPeerPool = new SyncPeerPool(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
+            SyncPeerPool apiSyncPeerPool = new(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
+            _api.SyncPeerPool = apiSyncPeerPool;
+            _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
             _api.DisposeStack.Push(_api.SyncPeerPool);
             
             IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
@@ -189,6 +191,7 @@ namespace Nethermind.Init.Steps
                 _api.Config<ISyncConfig>(),
                 _api.WitnessRepository,
                 _api.GossipPolicy,
+                _api.SpecProvider!,
                 _api.LogManager,
                 cht);
 

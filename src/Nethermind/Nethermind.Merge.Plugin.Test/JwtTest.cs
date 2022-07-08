@@ -15,9 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
+using Nethermind.Core;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -40,14 +43,9 @@ public class JwtTest
     [TestCase("Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2NDQ5OTQ5NzEsImlhdCI6MTY0NDk5NDk3MX0.wU4z8ROPW-HaOgrUBG0FqTEutt7rWVsWMqXLvdEl_wI", "false")]
     public void long_key_tests(string token, bool expected)
     {
-        var mock = Substitute.For<IClock>();
-        mock.GetCurrentTime().Returns(1644994971);
-        IRpcAuthentication authentication =
-            MicrosoftJwtAuthentication.CreateFromHexSecret(
-                "5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", mock, new TestLogger());
-        IRpcAuthentication authenticationWithPrefix =
-            MicrosoftJwtAuthentication.CreateFromHexSecret(
-                "0x5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", mock, new TestLogger());
+        ManualTimestamper manualTimestamper = new() { UtcNow = DateTimeOffset.FromUnixTimeSeconds(1644994971).UtcDateTime };
+        IRpcAuthentication authentication = MicrosoftJwtAuthentication.CreateFromHexSecret("5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
+        IRpcAuthentication authenticationWithPrefix = MicrosoftJwtAuthentication.CreateFromHexSecret("0x5166546A576E5A7234753778214125442A472D4A614E645267556B5870327335", manualTimestamper, LimboTraceLogger.Instance);
         bool actual = authentication.Authenticate(token);
         Assert.AreEqual(expected, actual);
         actual = authenticationWithPrefix.Authenticate(token);

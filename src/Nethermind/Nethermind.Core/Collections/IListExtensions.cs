@@ -21,6 +21,14 @@ namespace Nethermind.Core.Collections
 {
     public static class ListExtensions
     {
+        public static void ForEach<T>(this IReadOnlyList<T> list, Action<T> action)
+        {
+            for (int i = 0; i < list.Count; i++)
+            {
+                action(list[i]);
+            }
+        }
+
         public static T? GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int) (index % array.Count)];
 
         /// <summary>

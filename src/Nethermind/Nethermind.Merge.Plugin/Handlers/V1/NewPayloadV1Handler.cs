@@ -18,8 +18,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -27,10 +29,8 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
-using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -47,7 +47,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     {
         private readonly IBlockValidator _blockValidator;
         private readonly IBlockTree _blockTree;
-        private readonly IBlockchainProcessor _processor;
+        private readonly ISyncConfig _syncConfig;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IBeaconSyncStrategy _beaconSyncStrategy;
         private readonly IBeaconPivot _beaconPivot;
@@ -58,12 +58,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ProcessingOptions _processingOptions;
+        internal static TimeSpan Timeout = TimeSpan.FromSeconds(7);
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
             IBlockTree blockTree,
-            IBlockchainProcessor processor,
             IInitConfig initConfig,
+            ISyncConfig syncConfig,
             IPoSSwitcher poSSwitcher,
             IBeaconSyncStrategy beaconSyncStrategy,
             IBeaconPivot beaconPivot,
@@ -75,7 +76,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
-            _processor = processor;
+            _syncConfig = syncConfig;
             _poSSwitcher = poSSwitcher;
             _beaconSyncStrategy = beaconSyncStrategy;
             _beaconPivot = beaconPivot;
@@ -109,24 +110,29 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
             }
+
+            if (block.Header.Number <= _syncConfig.PivotNumberParsed)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
+                return NewPayloadV1Result.Syncing;
+            }
             
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
-            // ToDo if block is below syncPivot, we can return SYNCING and ignore block
 
-            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.None);
+            BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
             if (parentHeader is null)
             {
                 // possible that headers sync finished before this was called, so blocks in cache weren't inserted
                 if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
                 {
                     bool inserted = TryInsertDanglingBlock(block);
-                    if (_logger.IsInfo) _logger.Info(inserted ? $"BeaconSync not finished - block {block} inserted" : $"BeaconSync not finished - block {block} accepted.");
-                    return inserted ? NewPayloadV1Result.Syncing : NewPayloadV1Result.Accepted;
+                    if (_logger.IsInfo) _logger.Info(inserted ? $"BeaconSync not finished - block {block} inserted" : $"BeaconSync not finished - block {block} added to cache.");
+                    return NewPayloadV1Result.Syncing;
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
                 _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
-                return NewPayloadV1Result.Accepted;
+                return NewPayloadV1Result.Syncing;
             }
             
             // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
@@ -157,7 +163,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _mergeSyncController.StopSyncing();
             
             // Try to execute block
-            ValidationResult result = ValidateBlockAndProcess(block, parentHeader, out Block? processedBlock, out string? message);
+            (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader);
             
             if ((result & ValidationResult.AlreadyKnown) == ValidationResult.AlreadyKnown || result == ValidationResult.Invalid)
             {
@@ -168,7 +174,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}.");
                 }
 
-                if (!isValid)
+                if (result == ValidationResult.Invalid)
                 {
                     _invalidChainTracker.OnInvalidBlock(request.BlockHash, request.ParentHash);
                     return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
@@ -183,63 +189,126 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Syncing;
             }
 
-            if (processedBlock is null)
-            {
-                if (_logger.IsInfo) _logger.Info($"Invalid block processed. Result of {requestStr}.");
-                return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, $"Processed block is null, request {request}"));
-            }
-
             if (_logger.IsInfo) _logger.Info($"Valid. Result of {requestStr}.");
             return NewPayloadV1Result.Valid(request.BlockHash);
         }
 
-        private ValidationResult ValidateBlockAndProcess(Block block, BlockHeader parent, out Block? processedBlock, out string? validationMessage)
+        private async Task<(ValidationResult, string? Message)> ValidateBlockAndProcess(Block block, BlockHeader parent)
         {
             ValidationResult ToValid(bool valid) => valid ? ValidationResult.Valid : ValidationResult.Invalid;
+            string? validationMessage = null;
             
-            validationMessage = null;
-            processedBlock = null;
-
             // If duplicate, reuse results
             bool isRecentBlock = _latestBlocks.TryGet(block.Hash!, out bool isValid);
             if (isRecentBlock)
             {
                 if (!isValid && _logger.IsWarn)
                 {
-                    validationMessage = $"Invalid block {block} sent from latestBlock cache";
+                    validationMessage = $"Invalid block found in latestBlock cache.";
                     if (_logger.IsWarn) _logger.Warn(validationMessage);
                 }
 
-                return ValidationResult.AlreadyKnown | ToValid(isValid);
+                return (ValidationResult.AlreadyKnown | ToValid(isValid), validationMessage);
             }
 
             // Validate
             bool validAndProcessed = ValidateWithBlockValidator(block, parent);
-            if (validAndProcessed)
+            ValidationResult? result = ValidationResult.Syncing;
+
+            if (!validAndProcessed)
             {
-                if (_processingQueue.IsEmpty)
+                return (ValidationResult.Invalid, string.Empty);
+            }
+
+            TaskCompletionSource<ValidationResult> blockProcessedTaskCompletionSource = new();
+            Task<ValidationResult> blockProcessed = blockProcessedTaskCompletionSource.Task;
+
+            void GetProcessingQueueOnBlockRemoved(object? o, BlockHashEventArgs e)
+            {
+                if (e.BlockHash == block.Hash)
                 {
-                    // processingQueue is empty so we can process the block in synchronous way
-                    _blockTree.SuggestBlock(block, BlockTreeSuggestOptions.None, false);
-                    // ToDo this operation is not thread safe - we should modify it to use queue or make sure that nothing will be processed during execution of this method
-                    processedBlock = _processor.Process(block, _processingOptions, NullBlockTracer.Instance);
-                }
-                else
-                {
-                    // this is needed for restarts. We have blocks in queue so we should add it to queue and return SYNCING
-                    _blockTree.SuggestBlock(block);
-                    return ValidationResult.Syncing;
-                }
-            
-                if (processedBlock is null)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
-                    validAndProcessed = false;
+                    _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+
+                    ValidationResult validationResult = e.ProcessingResult switch
+                    {
+                        ProcessingResult.Success => ValidationResult.Valid,
+                        ProcessingResult.QueueException => ValidationResult.Syncing,
+                        ProcessingResult.MissingBlock => ValidationResult.Syncing,
+                        ProcessingResult.Exception => ValidationResult.Invalid,
+                        ProcessingResult.ProcessingError => ValidationResult.Invalid,
+                        _ => ValidationResult.Syncing
+                    };
+
+                    validationMessage = e.ProcessingResult switch
+                    {
+                        ProcessingResult.QueueException => "Block cannot be added to processing queue.",
+                        ProcessingResult.MissingBlock => "Block wasn't found in tree.",
+                        ProcessingResult.Exception => "Block processing threw exception.",
+                        ProcessingResult.ProcessingError => "Block processing failed.",
+                        _ => null
+                    };
+
+                    blockProcessedTaskCompletionSource.TrySetResult(validationResult);
                 }
             }
 
+            _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
+            try
+            {
+                Task timeout = Task.Delay(Timeout);
+                ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain);
+                await Task.WhenAny(timeout, addResult.AsTask());
+                if (addResult.IsCompletedSuccessfully)
+                {
+                    result = addResult.Result switch
+                    {
+                        AddBlockResult.InvalidBlock => ValidationResult.Invalid,
+                        AddBlockResult.AlreadyKnown => ValidationResult.AlreadyKnown,
+                        _ => null
+                    };
+
+                    validationMessage = addResult.Result switch
+                    {
+                        AddBlockResult.InvalidBlock => "Block couldn't be added to the tree.",
+                        AddBlockResult.AlreadyKnown => "Block was already known in the tree.",
+                        _ => null
+                    };
+
+                    if (!result.HasValue)
+                    {
+                        _processingQueue.Enqueue(block, _processingOptions);
+                        await Task.WhenAny(blockProcessed, timeout);
+                        if (blockProcessed.IsCompletedSuccessfully)
+                        {
+                            result = blockProcessed.Result;
+                        }
+                        else if (addResult.IsFaulted || addResult.IsCanceled)
+                        {
+                            result = ValidationResult.Invalid;
+                        }
+                        else // timeout
+                        {
+                            result = ValidationResult.Syncing;
+                        }
+                    }
+                }
+                else if (addResult.IsFaulted || addResult.IsCanceled)
+                {
+                    result = ValidationResult.Invalid;
+                }
+
+                if ((result & ValidationResult.Valid) == 0 && (result & ValidationResult.Syncing) == 0)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
+                }
+            }
+            finally
+            {
+                _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
+            }
+
             _latestBlocks.Set(block.Hash!, validAndProcessed);
-            return ToValid(validAndProcessed);
+            return (result.Value, validationMessage);
         }
 
         private bool ValidateWithBlockValidator(Block block, BlockHeader parent)
@@ -317,7 +386,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             Invalid = 0,
             Valid = 1,
             AlreadyKnown = 2,
-            Syncing = 3
+            Syncing = 4
         }
     }
 }

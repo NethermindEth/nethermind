@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -43,6 +44,7 @@ using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
+using Nethermind.JsonRpc.Modules.Rpc;
 
 namespace Nethermind.Init.Steps
 {
@@ -76,7 +78,7 @@ namespace Nethermind.Init.Steps
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
             if (_api.StateReader == null) throw new StepDependencyException(nameof(_api.StateReader));
             if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
-            
+
             if (jsonRpcConfig.Enabled)
             {
                 _api.RpcModuleProvider = new RpcModuleProvider(_api.FileSystem, jsonRpcConfig, _api.LogManager);
@@ -202,12 +204,13 @@ namespace Nethermind.Init.Steps
             WitnessRpcModule witnessRpcModule = new(_api.WitnessRepository, _api.BlockTree);
             rpcModuleProvider.RegisterSingle<IWitnessRpcModule>(witnessRpcModule);
             
+            if (_api.ReceiptMonitor == null) throw new StepDependencyException(nameof(_api.ReceiptMonitor));
+
             SubscriptionFactory subscriptionFactory = new(
                 _api.LogManager,
                 _api.BlockTree,
                 _api.TxPool,
-                _api.ReceiptStorage,
-                _api.ReceiptFinder,
+                _api.ReceiptMonitor,
                 _api.FilterStore,
                 _api.EthSyncingInfo!,
                 _api.SpecProvider,
@@ -231,6 +234,9 @@ namespace Nethermind.Init.Steps
                 await plugin.InitRpcModules();
             }
             
+            RpcRpcModule rpcRpcModule = new(rpcModuleProvider.Enabled);
+            rpcModuleProvider.RegisterSingle<IRpcRpcModule>(rpcRpcModule);
+
             if (logger.IsDebug) logger.Debug($"RPC modules  : {string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
             ThisNodeInfo.AddInfo("RPC modules  :", $"{string.Join(", ", rpcModuleProvider.Enabled.OrderBy(x => x))}");
         }

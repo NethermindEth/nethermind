@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Filters;
 
 namespace Nethermind.Blockchain.Filters
 {

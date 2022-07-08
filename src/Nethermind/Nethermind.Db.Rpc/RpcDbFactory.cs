@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -42,7 +43,7 @@ namespace Nethermind.Db.Rpc
             _logManager = logManager;
         }
 
-        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings)
+        public IColumnsDb<T> CreateColumnsDb<T>(RocksDbSettings rocksDbSettings) where T : struct, Enum
         {
             var rocksDb = _wrappedRocksDbFactory.CreateColumnsDb<T>(rocksDbSettings);
             return new ReadOnlyColumnsDb<T>(new RpcColumnsDb<T>(rocksDbSettings.DbName, _jsonSerializer, _jsonRpcClient, _logManager, rocksDb), true);

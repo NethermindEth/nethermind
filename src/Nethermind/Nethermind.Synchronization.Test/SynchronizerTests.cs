@@ -173,6 +173,11 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(result);
             }
 
+            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
             public async Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
             {
                 if (_causeTimeoutOnInit)
@@ -439,6 +444,7 @@ namespace Nethermind.Synchronization.Test
                     syncConfig,
                     new WitnessCollector(new MemDb(), LimboLogs.Instance),
                     Policy.FullGossip,
+                    MainnetSpecProvider.Instance,
                     _logManager);
                 
                 SyncPeerPool.Start();

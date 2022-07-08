@@ -26,6 +26,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Org.BouncyCastle.Asn1.Cms;
@@ -342,7 +343,7 @@ namespace Nethermind.AccountAbstraction.Test
             _logFinder.FindLogs(Arg.Any<LogFilter>()).Returns(new[]
             {
                 new FilterLog(0, 0, receipt,
-                    new LogEntry(new Address(_entryPointContractAddress), 
+                    new LogEntry(new Address(_entryPointContractAddress),
                         Bytes.Zero32,
                         new[] {_userOperationEventTopic, uops[0].RequestId!, Keccak.Zero, Keccak.Zero}))
             });

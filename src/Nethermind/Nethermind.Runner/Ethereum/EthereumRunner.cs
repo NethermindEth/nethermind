@@ -46,7 +46,7 @@ namespace Nethermind.Runner.Ethereum
         {
             if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
 
-            EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetStepsAssemblies());
+            EthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetStepsAssemblies(_api));
             EthereumStepsManager stepsManager = new EthereumStepsManager(stepsLoader, _api, _api.LogManager);
             await stepsManager.InitializeAll(cancellationToken);
 
@@ -54,21 +54,21 @@ namespace Nethermind.Runner.Ethereum
             if (_logger.IsInfo) _logger.Info(infoScreen);
         }
 
-        private IEnumerable<Assembly> GetStepsAssemblies()
+        private IEnumerable<Assembly> GetStepsAssemblies(INethermindApi api)
         {
             yield return typeof(IStep).Assembly;
             yield return GetType().Assembly;
-            foreach (IConsensusPlugin consensus in _api.Plugins.OfType<IConsensusPlugin>())
+            IEnumerable<IInitializationPlugin> enabledInitializationPlugins = 
+                _api.Plugins.OfType<IInitializationPlugin>().Where(p => p.ShouldRunSteps(api));
+            
+            foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
             {
-                yield return consensus.GetType().Assembly;
+                yield return initializationPlugin.GetType().Assembly;
             }
         }
 
         public async Task StopAsync()
         {
-            if (_logger.IsInfo) _logger.Info("Persisting trie...");
-            _api.TrieStore?.HackPersistOnShutdown();
-            
             Stop(() => _api.SessionMonitor?.Stop(), "Stopping session monitor");
             Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
             Task blockProducerTask = Stop(() => _api.BlockProducer?.StopAsync(), "Stopping block producer");

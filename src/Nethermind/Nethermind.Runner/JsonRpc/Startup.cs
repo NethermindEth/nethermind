@@ -97,7 +97,7 @@ namespace Nethermind.Runner.JsonRpc
             app.UseResponseCompression();
 
             IConfigProvider? configProvider = app.ApplicationServices.GetService<IConfigProvider>();
-            IRpcAuthentication? auth = app.ApplicationServices.GetService<IRpcAuthentication>();
+            IRpcAuthentication? rpcAuthentication = app.ApplicationServices.GetService<IRpcAuthentication>();
 
             if (configProvider == null)
             {
@@ -155,7 +155,7 @@ namespace Nethermind.Runner.JsonRpc
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
-                    if (jsonRpcUrl.IsAuthenticated && !auth.Authenticate(ctx.Request.Headers["Authorization"]))
+                    if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers["Authorization"]))
                     {
                         var response = jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Authentication error");
                         ctx.Response.ContentType = "application/json";

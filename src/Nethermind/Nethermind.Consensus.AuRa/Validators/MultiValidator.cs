@@ -119,7 +119,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             {
                 bool ValidatorWasAlreadyFinalized(KeyValuePair<long, AuRaParameters.Validator> validatorInfo) => _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key;
 
-                bool isProducingBlock = options.IsProducingBlock();
+                bool isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
                 long previousBlockNumber = block.Number - 1;
                 bool isNotConsecutive = previousBlockNumber != _lastProcessedBlock;
 
@@ -163,7 +163,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             if (!block.IsGenesis)
             {
-                var notProducing = !options.IsProducingBlock();
+                bool notProducing = !options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
                 if (TryGetValidator(block.Number, out var validator))
                 {

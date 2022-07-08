@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using FastEnumUtility;
 using Nethermind.Blockchain;
 using Nethermind.Int256;
 using Nethermind.Stats;
@@ -38,7 +39,7 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
 
         public TotalDiffStrategy(IPeerAllocationStrategy strategy, TotalDiffSelectionType selectionType = TotalDiffSelectionType.Better)
         {
-            if (!Enum.IsDefined(typeof(TotalDiffSelectionType), selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int) selectionType, typeof(TotalDiffSelectionType));
+            if (!FastEnum.IsDefined(selectionType)) throw new InvalidEnumArgumentException(nameof(selectionType), (int) selectionType, typeof(TotalDiffSelectionType));
             _strategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
             _selectionType = selectionType;
         }

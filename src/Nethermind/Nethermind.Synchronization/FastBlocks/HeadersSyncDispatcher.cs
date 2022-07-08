@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -43,23 +44,20 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
             batch.MarkSent();
-            Task<BlockHeader[]> getHeadersTask
-                = peer.GetBlockHeaders(batch.StartNumber, batch.RequestSize, 0, cancellationToken);
-            
-            await getHeadersTask.ContinueWith(
-                (t, state) =>
-                {
-                    HeadersSyncBatch batchLocal = (HeadersSyncBatch)state!;
-                    if (t.IsCompletedSuccessfully)
-                    {
-                        if (batchLocal.RequestTime > 1000)
-                        {
-                            if (Logger.IsDebug) Logger.Debug($"{batchLocal} - peer is slow {batchLocal.RequestTime:F2}");
-                        }
 
-                        batchLocal.Response = t.Result;
-                    }
-                }, batch);
+            try
+            {
+                batch.Response = await peer.GetBlockHeaders(batch.StartNumber, batch.RequestSize, 0, cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{batch} - request block header timeout {batch.RequestTime:F2}");
+                return;
+            }
+            if (batch.RequestTime > 1000)
+            {
+                if (Logger.IsDebug) Logger.Debug($"{batch} - peer is slow {batch.RequestTime:F2}");
+            }
         }
     }
 }

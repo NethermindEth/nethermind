@@ -65,10 +65,11 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly bool _needToWaitForHeaders;
         private readonly ILogger _logger;
+        private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
 
         private readonly long _pivotNumber;
         private bool FastSyncEnabled => _syncConfig.FastSync;
-        private bool SnapSyncEnabled => _syncConfig.SnapSync;
+        private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
         private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
         private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;
@@ -111,8 +112,9 @@ namespace Nethermind.Synchronization.ParallelSync
             }
 
             _pivotNumber = _syncConfig.PivotNumberParsed;
+            _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
 
-            _timer = StartUpdateTimer();
+            _timer = StartUpdateTimer();           
         }
 
         private Timer StartUpdateTimer()
@@ -603,9 +605,8 @@ namespace Nethermind.Synchronization.ParallelSync
             long state = _syncProgressResolver.FindBestFullState();
             long block = _syncProgressResolver.FindBestFullBlock();
             long header = _syncProgressResolver.FindBestHeader();
-            long beaconHeader = _syncProgressResolver.FindBestBeaconHeader();
 
-            Snapshot best = new(processed, state, block, header, beaconHeader, peerBlock, peerDifficulty, inBeaconControl);
+            Snapshot best = new(processed, state, block, header, peerBlock, peerDifficulty, inBeaconControl);
             VerifySnapshot(best);
             return best;
         }
@@ -641,13 +642,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private struct Snapshot
         {
-            public Snapshot(long processed, long state, long block, long header, long beaconHeader, long peerBlock, in UInt256 peerDifficulty, bool isInBeaconControl)
+            public Snapshot(long processed, long state, long block, long header, long peerBlock, in UInt256 peerDifficulty, bool isInBeaconControl)
             {
                 Processed = processed;
                 State = state;
                 Block = block;
                 Header = header;
-                BeaconHeader = beaconHeader;
                 PeerBlock = peerBlock;
                 PeerDifficulty = peerDifficulty;
                 IsInBeaconControl = isInBeaconControl;
@@ -687,11 +687,6 @@ namespace Nethermind.Synchronization.ParallelSync
             /// Best block header - may be missing body if we just insert headers
             /// </summary>
             public long Header { get; }
-            
-            /// <summary>
-            /// Beacon header - 
-            /// </summary>
-            public long BeaconHeader { get; }
 
             /// <summary>
             /// Best peer block - this is what other peers are advertising - it may be lower than our best block if we get disconnected from best peers

@@ -94,6 +94,11 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
+            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            {
+                return Task.FromResult(Array.Empty<BlockHeader>());
+            }
+
             public async Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
             {
                 if (_shouldFail)

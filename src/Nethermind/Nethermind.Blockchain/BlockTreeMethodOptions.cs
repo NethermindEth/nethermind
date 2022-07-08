@@ -28,7 +28,8 @@ public enum BlockTreeLookupOptions
     None = 0,
     TotalDifficultyNotNeeded = 1,
     RequireCanonical = 2,
-    All = 3
+    DoNotCalculateTotalDifficulty = 4,
+    All = 7
 }
 
 [Flags]
@@ -36,19 +37,47 @@ public enum BlockTreeInsertOptions
 {
     None = 0,
     TotalDifficultyNotNeeded = 1,
-    SkipUpdateBestPointers = 2,
+    BeaconInsert = 2,
     NotOnMainChain = 4,
-    UpdateBeaconPointers = 8,
-    AddBeaconMetadata = 16,
     MoveToBeaconMainChain = 32,
     
-    BeaconBlockInsert = TotalDifficultyNotNeeded | SkipUpdateBestPointers | UpdateBeaconPointers | AddBeaconMetadata | MoveToBeaconMainChain | NotOnMainChain
+    BeaconBlockInsert = TotalDifficultyNotNeeded | BeaconInsert | MoveToBeaconMainChain | NotOnMainChain
 }
 
 [Flags]
 public enum BlockTreeSuggestOptions
 {
+    /// <summary>
+    /// No options, just add to tree
+    /// </summary>
     None = 0,
+
+    /// <summary>
+    /// If block should be processed.
+    /// </summary>
+    /// <remarks>
+    /// If <see cref="ForceSetAsMain"/> and <see cref="ForceDontSetAsMain"/> are absent, then
+    /// if <see cref="ShouldProcess"/> is set, block won't be set as main, if <see cref="ShouldProcess"/> is absent it will be set as main block.
+    /// </remarks>
     ShouldProcess = 1,
-    FillBeaconBlock = 2
+
+    /// <summary>
+    /// Add blocks during sync
+    /// </summary>
+    FillBeaconBlock = 2,
+
+    /// <summary>
+    /// Force to set as main block
+    /// </summary>
+    ForceSetAsMain = 4,
+
+    /// <summary>
+    /// Force not to set as main block
+    /// </summary>
+    ForceDontSetAsMain = 8,
+}
+
+public static class BlockTreeSuggestOptionsExtensions
+{
+    public static bool ContainsFlag(this BlockTreeSuggestOptions value, BlockTreeSuggestOptions flag) => (value & flag) == flag;
 }

@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -36,7 +37,10 @@ public partial class BlockTreeTests
     private (BlockTree notSyncedTree, BlockTree syncedTree) BuildBlockTrees(
         int notSyncedTreeSize, int syncedTreeSize)
     {
-        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize);
+        Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = 0;;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(notSyncedTreeSize);
         BlockTree notSyncedTree = new(
             treeBuilder.BlocksDb,
             treeBuilder.HeadersDb,
@@ -54,7 +58,7 @@ public partial class BlockTreeTests
             treeBuilder.BlockInfoDb,
             treeBuilder.MetadataDb,
             treeBuilder.ChainLevelInfoRepository,
-            MainnetSpecProvider.Instance,
+            specProvider,
             NullBloomStorage.Instance,
             new SyncConfig(),
             LimboLogs.Instance);
@@ -75,7 +79,10 @@ public partial class BlockTreeTests
     [Test]
     public void Can_build_correct_block_tree()
     {
-        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
+        Block genesisBlock = Build.A.Block.WithNumber(0).TestObject; 
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = 0;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(10);
         BlockTree tree = new(
             treeBuilder.BlocksDb,
             treeBuilder.HeadersDb,
@@ -90,6 +97,113 @@ public partial class BlockTreeTests
         Assert.AreEqual(9, tree.BestKnownNumber);
         Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
         Assert.AreEqual(9, tree.Head!.Number);
+    }
+    
+       [Test]
+    public void Can_suggest_terminal_block_correctly()
+    {
+        // every block has difficulty 1000000, block 9 TD: 10000000 
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = (UInt256)9999900;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
+        BlockTree tree = new(
+            treeBuilder.BlocksDb,
+            treeBuilder.HeadersDb,
+            treeBuilder.BlockInfoDb,
+            treeBuilder.MetadataDb,
+            treeBuilder.ChainLevelInfoRepository,
+            specProvider,
+            NullBloomStorage.Instance,
+            new SyncConfig(),
+            LimboLogs.Instance);
+        PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
+
+        Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
+        Assert.False(block8!.IsTerminalBlock(specProvider));
+        Assert.AreEqual(9, tree.BestKnownNumber);
+        Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
+        Assert.AreEqual(9, tree.Head!.Number);
+        Assert.True(tree.Head.IsTerminalBlock(specProvider));
+    }
+
+    [Test]
+    public void Suggest_terminal_block_with_lower_number_and_lower_total_difficulty()
+    {
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = (UInt256)9999900;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
+        BlockTree tree = new(
+            treeBuilder.BlocksDb,
+            treeBuilder.HeadersDb,
+            treeBuilder.BlockInfoDb,
+            treeBuilder.MetadataDb,
+            treeBuilder.ChainLevelInfoRepository,
+            specProvider,
+            NullBloomStorage.Instance,
+            new SyncConfig(),
+            LimboLogs.Instance);
+        PoSSwitcher poSSwitcher = new(new MergeConfig(),  new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
+
+        Block? block7 = tree.FindBlock(7, BlockTreeLookupOptions.None);
+        Block newTerminalBlock = Build.A.Block
+                .WithHeader(Build.A.BlockHeader.WithParent(block7!.Header).TestObject)
+                .WithParent(block7!)
+                .WithTotalDifficulty((UInt256)9999950)
+                .WithNumber(block7!.Number + 1).WithDifficulty(1999950).TestObject;
+        // current Head TD: 10000000, block7 TD: 8000000, TTD 9999900, newTerminalBlock 9999950
+        tree.SuggestBlock(newTerminalBlock);
+        Assert.True(newTerminalBlock.IsTerminalBlock(specProvider));
+        Assert.AreEqual(9, tree.BestKnownNumber);
+        Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
+        Assert.AreEqual(9, tree.Head!.Number);
+        Assert.True(tree.Head.IsTerminalBlock(specProvider));
+    }
+    
+    [Test]
+    public void Cannot_change_best_suggested_to_terminal_block_after_merge_block()
+    {
+        // every block has difficulty 1000000, block 9 TD: 10000000 
+        TestSpecProvider specProvider = new(London.Instance);
+        specProvider.TerminalTotalDifficulty = (UInt256)9999900;
+        BlockTreeBuilder treeBuilder = Build.A.BlockTree().OfChainLength(10);
+        BlockTree tree = new(
+            treeBuilder.BlocksDb,
+            treeBuilder.HeadersDb,
+            treeBuilder.BlockInfoDb,
+            treeBuilder.MetadataDb,
+            treeBuilder.ChainLevelInfoRepository,
+            specProvider,
+            NullBloomStorage.Instance,
+            new SyncConfig(),
+            LimboLogs.Instance);
+        PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), tree, specProvider, LimboLogs.Instance);
+
+        Block? block8 = tree.FindBlock(8, BlockTreeLookupOptions.None);
+        Assert.False(block8!.Header.IsTerminalBlock(specProvider));
+        Assert.AreEqual(9, tree.BestKnownNumber);
+        Assert.AreEqual(9, tree.BestSuggestedBody!.Number);
+        Assert.AreEqual(9, tree.Head!.Number);
+        Assert.True(tree.Head.IsTerminalBlock(specProvider));
+        
+        Block firstPoSBlock = Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithParent(tree.Head!.Header).TestObject)
+            .WithParent(tree.Head.Header)
+            .WithDifficulty(0)
+            .WithNumber(tree.Head!.Number + 1).TestObject;
+        tree.SuggestBlock(firstPoSBlock);
+        tree.UpdateMainChain(new []{ firstPoSBlock }, true, true); // simulating fcU
+        Assert.AreEqual(10, tree.BestKnownNumber);
+        Assert.AreEqual(10, tree.BestSuggestedBody!.Number);
+        
+        Block newTerminalBlock = Build.A.Block
+            .WithHeader(Build.A.BlockHeader.WithParent(block8!.Header).TestObject)
+            .WithParent(block8!)
+            .WithTotalDifficulty((UInt256)10000001)
+            .WithNumber(block8!.Number + 1).WithDifficulty(2000001).TestObject;
+        Assert.True(newTerminalBlock.IsTerminalBlock(specProvider));
+        tree.SuggestBlock(newTerminalBlock);
+        Assert.AreEqual(10, tree.BestKnownNumber);
+        Assert.AreEqual(10, tree.BestSuggestedBody!.Number);
     }
 
     [Test]
@@ -159,8 +273,10 @@ public partial class BlockTreeTests
                 private BlockTreeBuilder? _syncedTreeBuilder;
                 private IChainLevelHelper? _chainLevelHelper;
 
-                public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1, bool moveBlocksToMainChain = true)
+                public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1, bool moveBlocksToMainChain = true, UInt256? ttd = null)
                 {
+                    var testSpecProvider = new TestSpecProvider(London.Instance);
+                    if (ttd != null) testSpecProvider.TerminalTotalDifficulty = ttd;
                     NotSyncedTreeBuilder = Build.A.BlockTree().OfChainLength(notSyncedTreeSize);
                     NotSyncedTree = new(
                         NotSyncedTreeBuilder.BlocksDb,
@@ -168,7 +284,7 @@ public partial class BlockTreeTests
                         NotSyncedTreeBuilder.BlockInfoDb,
                         NotSyncedTreeBuilder.MetadataDb,
                         NotSyncedTreeBuilder.ChainLevelInfoRepository,
-                        MainnetSpecProvider.Instance,
+                        testSpecProvider,
                         NullBloomStorage.Instance,
                         new SyncConfig(),
                         LimboLogs.Instance);
@@ -182,7 +298,7 @@ public partial class BlockTreeTests
                             _syncedTreeBuilder.BlockInfoDb,
                             _syncedTreeBuilder.MetadataDb,
                             _syncedTreeBuilder.ChainLevelInfoRepository,
-                            MainnetSpecProvider.Instance,
+                            testSpecProvider,
                             NullBloomStorage.Instance,
                             new SyncConfig(),
                             LimboLogs.Instance);
@@ -237,7 +353,7 @@ public partial class BlockTreeTests
                         {
                             Block? beaconBlock = SyncedTree.FindBlock(headers[i].Hash!, BlockTreeLookupOptions.None);
                             beaconBlock.Header.TotalDifficulty = null;
-                            AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock, true);
+                            AddBlockResult insertResult = NotSyncedTree.SuggestBlock(beaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock | BlockTreeSuggestOptions.ForceSetAsMain);
                             Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
                         }
                         
@@ -413,6 +529,18 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9);
+    }
+    
+    [Test]
+    public void BeaconBlockInsert_does_not_change_best_blocks()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertBeaconBlocks(8, 9)
+            .AssertBestSuggestedBody(3)
+            .AssertBestSuggestedHeader(3)
+            .AssertBestKnownNumber(3);
     }
     
     [Test]

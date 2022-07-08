@@ -2017,6 +2017,80 @@ namespace Nethermind.Evm
 
                         break;
                     }
+                    case Instruction.TLOAD:
+                    {
+                        Metrics.TloadOpcode++;
+                        if (!spec.TransientStorageEnabled)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                            return CallResult.InvalidInstructionException;
+                        }
+                        var gasCost = GasCostOf.TLoad;
+
+                        if (!UpdateGas(gasCost, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+
+                        stack.PopUInt256(out UInt256 storageIndex);
+                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+
+                        byte[] value = _storage.GetTransientState(storageCell);
+                        stack.PushBytes(value);
+
+                        if (_txTracer.IsTracingOpLevelStorage)
+                        {
+                            _txTracer.LoadOperationTransientStorage(storageCell.Address, storageIndex, value);
+                        }
+
+                        break;
+                    }
+                    case Instruction.TSTORE:
+                    {
+                        Metrics.TstoreOpcode++;
+                        if (!spec.TransientStorageEnabled)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.BadInstruction);
+                            return CallResult.InvalidInstructionException;
+                        }
+
+                        if (vmState.IsStatic)
+                        {
+                            EndInstructionTraceError(EvmExceptionType.StaticCallViolation);
+                            return CallResult.StaticCallViolationException;
+                        }
+                        
+                        long gasCost = GasCostOf.TStore;
+                        if (!UpdateGas(gasCost, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(EvmExceptionType.OutOfGas);
+                            return CallResult.OutOfGasException;
+                        }
+
+                        stack.PopUInt256(out UInt256 storageIndex);
+                        Span<byte> newValue = stack.PopBytes();
+                        bool newIsZero = newValue.IsZero();
+                        if (!newIsZero)
+                        {
+                            newValue = newValue.WithoutLeadingZeros().ToArray();
+                        }
+                        else
+                        {
+                            newValue = BytesZero;
+                        }
+
+                        StorageCell storageCell = new(env.ExecutingAccount, storageIndex);
+                        byte[] currentValue = newValue.ToArray();
+                        _storage.SetTransientState(storageCell, currentValue);
+
+                        if (_txTracer.IsTracingOpLevelStorage)
+                        {
+                            _txTracer.SetOperationTransientStorage(storageCell.Address, storageIndex, newValue, currentValue);
+                        }
+
+                        break;
+                    }
                     case Instruction.JUMP:
                     {
                         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))

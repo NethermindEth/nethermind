@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.ComponentModel;
+using Nethermind.Int256;
 
 namespace Nethermind.Blockchain
 {
@@ -43,6 +44,12 @@ namespace Nethermind.Blockchain
         
         [Description("Total number of failed block seals")]
         public static long FailedBlockSeals { get; set; }
+
+        [Description("Total difficulty on the chain")]
+        public static UInt256 TotalDifficulty { get; set; }
+        
+        [Description("Difficulty of the last block")]
+        public static UInt256 LastDifficulty { get; set; }
 
         [Description("Indicator if blocks can be produced")]
         public static long CanProduceBlocks;

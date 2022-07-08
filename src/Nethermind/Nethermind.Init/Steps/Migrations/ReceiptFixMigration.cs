@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
@@ -66,6 +67,7 @@ namespace Nethermind.Init.Steps.Migrations
                     _api.ReceiptStorage!,
                     _api.LogManager,
                     _api.SyncPeerPool!,
+                    _api.BlockTree,
                     cancellationToken);
                 
                 _fixTask = _api.BlockTree.Accept(visitor, cancellationToken).ContinueWith(t =>
@@ -88,18 +90,39 @@ namespace Nethermind.Init.Steps.Migrations
             private readonly ISyncPeerPool _syncPeerPool;
             private readonly CancellationToken _cancellationToken;
             private readonly TimeSpan _delay;
-            private readonly ILogManager _logManager;
+            private readonly IBlockTree _blockTree;
+            private readonly ILogManager _logManager;			
 
-            public MissingReceiptsFixVisitor(long startLevel, long endLevel, IReceiptStorage receiptStorage, ILogManager logManager, ISyncPeerPool syncPeerPool, CancellationToken cancellationToken) 
-                : base(startLevel, endLevel, receiptStorage, logManager)
+            public MissingReceiptsFixVisitor(
+                long startLevel,
+                long endLevel, 
+                IReceiptStorage receiptStorage,
+                ILogManager logManager,
+                ISyncPeerPool syncPeerPool,
+                IBlockTree blockTree,
+                CancellationToken cancellationToken
+            ) : base(startLevel, endLevel, receiptStorage, logManager)
             {
                 _logManager = logManager;
                 _receiptStorage = receiptStorage;
                 _syncPeerPool = syncPeerPool;
                 _cancellationToken = cancellationToken;
                 _delay = TimeSpan.FromSeconds(5);
+                _blockTree = blockTree;
             }
+            
+            public override async Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
+            {
+                BlockVisitOutcome outcome = await base.VisitBlock(block, cancellationToken);
 
+                if (_blockTree.IsMainChain(block.Header))
+                {
+                    _receiptStorage.EnsureCanonical(block);
+                }
+                
+                return outcome;
+            }
+        
             protected override async Task OnBlockWithoutReceipts(Block block, int transactionsLength, int txReceiptsLength)
             {
                 if (_logger.IsInfo) _logger.Info($"Missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}, expected {transactionsLength} but got {txReceiptsLength}.");
@@ -116,7 +139,7 @@ namespace Nethermind.Init.Steps.Migrations
                     throw new ArgumentException("Cannot download receipts for a block without a known hash.");
                 }
                 
-                FastBlocksAllocationStrategy strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true, _logManager);
+                FastBlocksAllocationStrategy strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true);
                 SyncPeerAllocation peer = await _syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
                 ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
                 if (currentSyncPeer != null)
