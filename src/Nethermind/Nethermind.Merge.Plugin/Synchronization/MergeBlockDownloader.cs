@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Threading;
@@ -119,7 +119,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-                
+
                 int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
                 if (_logger.IsTrace)
                     _logger.Trace(
@@ -131,7 +131,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
-                
+
                 BlockHeader[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
                 if (headers == null || headers.Length == 0)
                     break;
@@ -187,19 +187,19 @@ namespace Nethermind.Merge.Plugin.Synchronization
                                 $"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
                     }
-                    
+
                     if (shouldProcess)
                     {
-                        // 
+                        // covering edge case during fastSyncTransition when we're trying to SuggestBlock without the state
                         bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
                         bool toBeProcessedIsNotBlockOne = currentBlock.Number > 1;
                         bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
                         if (isFastSyncTransition)
                         {
                             long bestFullState = _syncProgressResolver.FindBestFullState();
-                            shouldProcess = currentBlock.Number >= bestFullState;
+                            shouldProcess = currentBlock.Number >= bestFullState && bestFullState!=0;
                             if (!shouldProcess)
-                                if (_logger.IsInfo) _logger.Info("Skipping processing fastSyncTransition"); // ToDo
+                                if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}");
                         }
                     }
 
@@ -209,10 +209,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
-                    
+
                     if (isKnownBeaconBlock)
                         suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
-                    
+
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isKnownBeaconBlock} ShouldProcess: {shouldProcess}");
@@ -222,7 +222,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     {
                         _invalidChainTracker.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
                     }
-                    
+
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
                     {
                         if (shouldProcess == false)
@@ -238,7 +238,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             }
                             else
                             {
-                                // this shouldn't now happen with new validation above, still lets keep this check 
+                                // this shouldn't now happen with new validation above, still lets keep this check
                                 if (currentBlock.Header.HasBody)
                                 {
                                     if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
