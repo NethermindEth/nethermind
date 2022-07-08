@@ -767,7 +767,7 @@ namespace Nethermind.Trie
                 if (traverseContext.IsDelete)
                 {
                     ConnectNodes(null);
-                    return traverseContext.UpdateValue.ToArray();
+                    return traverseContext.UpdateValue;
                 }
 
                 if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
