@@ -583,7 +583,7 @@ namespace Nethermind.Synchronization.Peers
             Task<BlockHeader?> getHeadHeaderTask = syncPeer.GetHeadBlockHeader(refreshTotalDiffTask.BlockHash ?? syncPeer.HeadHash, token);
             CancellationTokenSource delaySource = new();
             CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(delaySource.Token, token);
-            Task delayTask = Task.Delay(Timeouts.RefreshDifficulty, linkedSource.Token);
+            Task delayTask = Task.Delay(Timeouts.Eth, linkedSource.Token);
             Task firstToComplete = await Task.WhenAny(getHeadHeaderTask, delayTask);
             await firstToComplete.ContinueWith(
                 t =>

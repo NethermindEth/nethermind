@@ -13,6 +13,13 @@
 # top-most EditorConfig file
 root = true
 
+[*]
+end_of_line = lf
+indent_size = 4
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
 ###############################
 # Other file type settings    #
 ###############################
@@ -26,7 +33,7 @@ indent_size = 2
 indent_size = 2
 
 # JSON files, other XML files
-[*.json, *.xml]
+[*.{json,xml}]
 indent_size = 2
 
 # Powershell files
@@ -35,7 +42,6 @@ indent_size = 2
 
 # Shell script files
 [*.sh]
-end_of_line = lf
 indent_size = 2
 
 ###############################
@@ -122,13 +128,8 @@ dotnet_naming_style.async_methods_style.required_suffix = Async
 ###############################
 # Core EditorConfig Options   #
 ###############################
-# All files
-[*]
-indent_style = space
+
 # Code files
-[*.{cs,csx,vb,vbx}]
-indent_size = 4
-insert_final_newline = true
 #charset = utf-8-bom
 ###############################
 # .NET Coding Conventions     #
