@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Concurrent;
@@ -45,14 +45,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private readonly List<string> _payloadsToRemove = new();
-        
+
         // by default we will cleanup the old payload once per six slot. There is no need to fire it more often
         public const int SlotsPerOldPayloadCleanup = 6;
         private readonly TimeSpan _cleanupOldPayloadDelay;
 
         // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
         private readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
-        
+
         public PayloadPreparationService(
             PostMergeBlockProducer blockProducer,
             IBlockImprovementContextFactory blockImprovementContextFactory,
@@ -108,7 +108,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 blockImprovementContext.Dispose();
             }
         }
-        
+
         private void CleanupOldPayloads(object? sender, EventArgs e)
         {
             if (_logger.IsTrace) _logger.Trace($"Started old payloads cleanup");
@@ -131,7 +131,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                     if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
                 }
             }
-            
+
             _payloadsToRemove.Clear();
             if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
         }
@@ -156,7 +156,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             }
             else if (t.IsCanceled)
             {
-                if (_logger.IsInfo) _logger.Info($"Post-merge block producing was canceled");
+                if (_logger.IsInfo) _logger.Info($"Post-merge block improvement was canceled");
             }
 
             return t.Result;
