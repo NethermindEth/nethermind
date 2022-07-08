@@ -16,5 +16,5 @@ jobs:
       run: |
         CHANGELOG=$(curl -s https://api.github.com/repos/nethermindeth/nethermind/releases | jq '.[0].body' | grep -Po '(?<=\\n\\r\\n)(.*?)(?=\##)')
         read VERSION LINK < <(echo $(curl -s 'https://api.github.com/repos/nethermindeth/nethermind/releases' | jq -r '.[0].name, .[0].html_url'))
-        MESSAGE="**${VERSION} RELEASE CHANGELOG**\n\n${CHANGELOG}<${LINK}>"
+        MESSAGE="**New Nethermind release version: ${VERSION}**\n\n${CHANGELOG}<${LINK}>"
         curl -s -H "Content-Type: application/json" -d '{"username": "Nethermind", "content": "'"$MESSAGE"'"}' $WEBHOOK_URL > /dev/null 2>&1
