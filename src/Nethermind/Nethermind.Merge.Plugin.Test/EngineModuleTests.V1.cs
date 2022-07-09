@@ -238,6 +238,32 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        public async Task getPayloadV1_should_allow_asking_multiple_times_by_same_payload_id()
+        {
+            using var chain = await CreateBlockChain();
+            var rpc = CreateEngineModule(chain);
+
+            var startingHead = chain.BlockTree.HeadHash;
+            var forkchoiceState = new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead);
+            var payload = new PayloadAttributes
+            {
+                Timestamp = Timestamper.UnixTime.Seconds,
+                SuggestedFeeRecipient = Address.Zero,
+                PrevRandao = Keccak.Zero
+            };
+            var forkchoiceResponse = rpc.engine_forkchoiceUpdatedV1(forkchoiceState, payload);
+            var payloadId = Bytes.FromHexString(forkchoiceResponse.Result.Data.PayloadId!);
+            var responseFirst = await rpc.engine_getPayloadV1(payloadId);
+            responseFirst.Should().NotBeNull();
+            responseFirst.Result.ResultType.Should().Be(ResultType.Success);
+            var responseSecond = await rpc.engine_getPayloadV1(payloadId);
+            responseSecond.Should().NotBeNull();
+            responseSecond.Result.ResultType.Should().Be(ResultType.Success);
+
+            responseSecond.Data!.BlockHash!.Should().Be(responseFirst.Data!.BlockHash!);
+        }
+
+        [Test]
         public async Task getPayloadV1_should_return_error_if_called_after_cleanup_timer()
         {
             MergeConfig mergeConfig = new() { Enabled = true, SecondsPerSlot = 1, TerminalTotalDifficulty = "0" };
