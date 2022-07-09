@@ -832,7 +832,7 @@ namespace Nethermind.Synchronization.Test
         private IBetterPeerStrategy CreatePeerChoiceStrategy()
         {
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-            return new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, LimboLogs.Instance);
+            return new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
         }
 
         [Flags]
@@ -883,8 +883,8 @@ namespace Nethermind.Synchronization.Test
                     progressTracker,
                     syncConfig,
                     LimboLogs.Instance);
-                TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy =
-                    new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, LimboLogs.Instance);
+                TotalDifficultyBetterPeerStrategy bestPeerStrategy =
+                    new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
                 SyncModeSelector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
                 Feed = new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
 
