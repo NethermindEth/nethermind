@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -485,7 +485,7 @@ namespace Nethermind.Synchronization.Test
             task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), cancellation.Token);
             await task.ContinueWith(t => Assert.True(t.IsCanceled, "blocks"));
         }
-        
+
         [Test]
         public async Task Validate_always_the_last_seal_and_random_seal_in_the_package()
         {
@@ -505,7 +505,7 @@ namespace Nethermind.Synchronization.Test
 
             Task task = downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.WithBodies, 0), CancellationToken.None);
             await task;
-            
+
             sealValidator.Received(2).ValidateSeal(Arg.Any<BlockHeader>(), true);
             sealValidator.Received(510).ValidateSeal(Arg.Any<BlockHeader>(), false);
             sealValidator.Received().ValidateSeal(blockHeaders[^1], true);
@@ -717,7 +717,7 @@ namespace Nethermind.Synchronization.Test
 
             syncPeerInternal.ExtendTree(chainLength * 2);
             Func<Task> action = async () => await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-            
+
             if (shouldThrow)
             {
                 await action.Should().ThrowAsync<EthSyncException>();
@@ -828,7 +828,7 @@ namespace Nethermind.Synchronization.Test
             InMemoryReceiptStorage receiptStorage = new();
             return new BlockDownloader(ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance, new BlocksSyncPeerAllocationStrategyFactory(), CreatePeerChoiceStrategy(), LimboLogs.Instance);
         }
-        
+
         private IBetterPeerStrategy CreatePeerChoiceStrategy()
         {
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
@@ -872,7 +872,7 @@ namespace Nethermind.Synchronization.Test
                 Feed = Substitute.For<ISyncFeed<BlocksRequest>>();
 
                 MemDb stateDb = new();
-                
+
                 SyncConfig syncConfig = new();
                 ProgressTracker progressTracker = new(BlockTree, stateDb, LimboLogs.Instance);
                 SyncProgressResolver syncProgressResolver = new(
@@ -883,8 +883,7 @@ namespace Nethermind.Synchronization.Test
                     progressTracker,
                     syncConfig,
                     LimboLogs.Instance);
-                TotalDifficultyBetterPeerStrategy bestPeerStrategy =
-                    new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
+                TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
                 SyncModeSelector = new MultiSyncModeSelector(syncProgressResolver, PeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
                 Feed = new FullSyncFeed(SyncModeSelector, LimboLogs.Instance);
 
@@ -933,7 +932,7 @@ namespace Nethermind.Synchronization.Test
 
                 builder = builder.OfChainLength((int) chainLength);
                 BlockTree = builder.TestObject;
-                
+
                 HeadNumber = BlockTree.Head.Number;
                 HeadHash = BlockTree.HeadHash;
                 TotalDifficulty = BlockTree.Head.TotalDifficulty ?? 0;
