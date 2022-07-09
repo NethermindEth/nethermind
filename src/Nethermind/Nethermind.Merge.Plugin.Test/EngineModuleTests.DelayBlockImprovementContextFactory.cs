@@ -20,6 +20,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Merge.Plugin.BlockProduction;
 
@@ -84,16 +85,7 @@ public partial class EngineModuleTests
 
         public void Dispose()
         {
-            CancellationTokenSource? source = _cancellationTokenSource;
-            if (source is not null)
-            {
-                source = Interlocked.CompareExchange(ref _cancellationTokenSource, null, source);
-                if (source is not null)
-                {
-                    source.Cancel();
-                    source.Dispose();
-                }
-            }
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
         }
     }
 }

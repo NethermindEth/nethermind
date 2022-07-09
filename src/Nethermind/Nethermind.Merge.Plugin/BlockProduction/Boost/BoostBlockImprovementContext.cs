@@ -21,6 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy;
 using Nethermind.Int256;
@@ -53,10 +54,11 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
 
     private async Task<Block?> StartImprovingBlock(
         IManualBlockProductionTrigger blockProductionTrigger,
-        BlockHeader parentHeader, 
+        BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
         CancellationToken cancellationToken)
     {
+
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
         UInt256 balanceBefore = _stateReader.GetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
         Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, NullBlockTracer.Instance, payloadAttributes);
@@ -76,15 +78,6 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
 
     public void Dispose()
     {
-        CancellationTokenSource? source = _cancellationTokenSource;
-        if (source is not null)
-        {
-            source = Interlocked.CompareExchange(ref _cancellationTokenSource, null, source);
-            if (source is not null)
-            {
-                source.Cancel();
-                source.Dispose();
-            }
-        }
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
     }
 }
