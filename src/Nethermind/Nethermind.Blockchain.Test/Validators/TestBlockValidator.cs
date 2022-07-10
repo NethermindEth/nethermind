@@ -23,21 +23,14 @@ namespace Nethermind.Blockchain.Test.Validators
 {
     public class TestBlockValidator : IBlockValidator
     {
-        public static TestBlockValidator AlwaysValid = new(true, true);
+        public static TestBlockValidator AlwaysValid = new();
         public static TestBlockValidator NeverValid = new(false, false);
-        private readonly Queue<bool> _processedValidationResults;
+        private readonly Queue<bool> _processedValidationResults = null!;
+        private readonly Queue<bool> _suggestedValidationResults = null!;
+        private readonly bool? _alwaysSameResultForProcessed;
+        private readonly bool? _alwaysSameResultForSuggested;
 
-        private readonly Queue<bool> _suggestedValidationResults;
-        private bool? _alwaysSameResultForProcessed;
-
-        private bool? _alwaysSameResultForSuggested;
-
-        public TestBlockValidator()
-            : this(true, true)
-        {
-        }
-
-        public TestBlockValidator(bool suggestedValidationResult, bool processedValidationResult)
+        public TestBlockValidator(bool suggestedValidationResult = true, bool processedValidationResult  = true)
         {
             _alwaysSameResultForSuggested = suggestedValidationResult;
             _alwaysSameResultForProcessed = processedValidationResult;
@@ -49,12 +42,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _processedValidationResults = processedValidationResults ?? throw new ArgumentNullException(nameof(processedValidationResults));
         }
 
-        public bool ValidateHash(BlockHeader header)
-        {
-            return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
-        }
-
-        public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle)
+        public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
         {
             return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         }

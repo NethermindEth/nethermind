@@ -273,7 +273,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+            public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
             {
                 return Task.FromResult(BlockTree.Head?.Header);
             }

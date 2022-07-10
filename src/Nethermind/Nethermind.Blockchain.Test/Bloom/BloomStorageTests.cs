@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -30,9 +29,9 @@ namespace Nethermind.Blockchain.Test.Bloom
 {
     public class BloomStorageTests
     {
-        private IBloomConfig _config;
-        private MemDb _bloomDb;
-        private InMemoryDictionaryFileStoreFactory _fileStoreFactory;
+        private IBloomConfig _config = null!;
+        private MemDb _bloomDb = null!;
+        private InMemoryDictionaryFileStoreFactory _fileStoreFactory = null!;
 
 
         [SetUp]
@@ -111,10 +110,10 @@ namespace Nethermind.Blockchain.Test.Bloom
             
             var bloomEnumeration = storage.GetBlooms(from, to);
             IList<long> ranges = new List<long>();
-            foreach (var bloom in bloomEnumeration)
+            foreach (Core.Bloom unused in bloomEnumeration)
             {
                 bloomsChecked++;
-                if (isMatch && bloomEnumeration.TryGetBlockNumber(out var blockNumber))
+                if (isMatch && bloomEnumeration.TryGetBlockNumber(out long blockNumber))
                 {
                     ranges.Add(blockNumber);
                 }
@@ -124,22 +123,22 @@ namespace Nethermind.Blockchain.Test.Bloom
             bloomsChecked.Should().Be(expectedBloomsChecked);
         }
         
-        [TestCase(1, 10, new long[] {4}, new int[] {4})]
-        [TestCase(0, 4, new long[] {4}, new int[] {4})]
-        [TestCase(1, 10, new long[] {1, 4, 6, 8}, new int[] {4})]
-        [TestCase(1, 10, new long[] {4, 6, 8}, new int[] {4, 4})]
-        [TestCase(1, 10, new long[] {4, 8, 16, 32}, new int[] {4, 4})]
-        [TestCase(1, 48, new long[] {4, 8, 16, 32}, new int[] {4, 4})]
-        [TestCase(5, 60, new long[] {4, 8, 49}, new int[] {8, 3})]
-        [TestCase(1, 120, new long[] {4, 8, 64, 65}, new int[] {4, 4, 4})]
-        [TestCase(0, 120, new long[] {0, 1, 2, 3, 5, 7, 11, 120}, new int[] {9, 3})]
+        [TestCase(1, 10, new long[] {4}, new[] {4})]
+        [TestCase(0, 4, new long[] {4}, new[] {4})]
+        [TestCase(1, 10, new long[] {1, 4, 6, 8}, new[] {4})]
+        [TestCase(1, 10, new long[] {4, 6, 8}, new[] {4, 4})]
+        [TestCase(1, 10, new long[] {4, 8, 16, 32}, new[] {4, 4})]
+        [TestCase(1, 48, new long[] {4, 8, 16, 32}, new[] {4, 4})]
+        [TestCase(5, 60, new long[] {4, 8, 49}, new[] {8, 3})]
+        [TestCase(1, 120, new long[] {4, 8, 64, 65}, new[] {4, 4, 4})]
+        [TestCase(0, 120, new long[] {0, 1, 2, 3, 5, 7, 11, 120}, new[] {9, 3})]
         public void Can_find_bloom_with_fromBlock_offset(long from, long to, long[] blocksSet, int[] levels)
         {
-            var storage = CreateBloomStorage(new BloomConfig() {IndexLevelBucketSizes = levels});
-            var bloom = new Core.Bloom();
+            BloomStorage storage = CreateBloomStorage(new BloomConfig {IndexLevelBucketSizes = levels});
+            Core.Bloom bloom = new();
             byte[] bytes = {1, 2, 3};
             bloom.Set(bytes);
-            foreach (var blockNumber in blocksSet)
+            foreach (long blockNumber in blocksSet)
             {
                 if (blockNumber > storage.MaxBlockNumber + 1)
                 {
@@ -148,26 +147,25 @@ namespace Nethermind.Blockchain.Test.Bloom
                 storage.Store(blockNumber, bloom);
             }
             
-            var bloomEnumeration = storage.GetBlooms(from, to);
+            IBloomEnumeration bloomEnumeration = storage.GetBlooms(from, to);
             IList<long> foundBlocks = new List<long>(blocksSet.Length);
-            foreach (var b in bloomEnumeration)
+            foreach (Core.Bloom b in bloomEnumeration)
             {
-                if (b.Matches(bytes) && bloomEnumeration.TryGetBlockNumber(out var block))
+                if (b.Matches(bytes) && bloomEnumeration.TryGetBlockNumber(out long block))
                 {
                     foundBlocks.Add(block);
                 }
             }
 
-            var expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
+            long[] expectedFoundBlocks = blocksSet.Where(b => b >= from && b <= to).ToArray();
             TestContext.Out.WriteLine($"Expected found blocks: {string.Join(", ", expectedFoundBlocks)}");
             foundBlocks.Should().BeEquivalentTo(expectedFoundBlocks);
         }
 
         private const int Buckets = 3;
-        private const int Levels = 3;
         private const int LevelMultiplier = 16;
 
-        private static BloomStorage CreateBloomStorage(BloomConfig bloomConfig = null)
+        private static BloomStorage CreateBloomStorage(BloomConfig? bloomConfig = null)
         {
             var storage = new BloomStorage(bloomConfig ?? new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
             var bucketItems = storage.MaxBucketSize * Buckets;
@@ -179,32 +177,7 @@ namespace Nethermind.Blockchain.Test.Bloom
 
             return storage;
         }
-        
-        private class MockFileStore : IFileStore
-        {
-            public void Dispose()
-            {
-                
-            }
 
-            public void Write(long index, ReadOnlySpan<byte> element)
-            {
-                
-            }
-
-            public int Read(long index, Span<byte> element)
-            {
-                return Core.Bloom.ByteLength;
-            }
-
-            public IFileReader CreateFileReader()
-            {
-                return new InMemoryDictionaryFileReader(this);
-            }
-
-            public int Flushes { get; private set; }
-        }
-        
         [Test]
         public void Can_safely_insert_concurrently()
         {

@@ -43,7 +43,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
-using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -115,7 +114,7 @@ namespace Nethermind.Init.Steps
 
             CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-            ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager);
+            ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
             _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
             SyncProgressResolver syncProgressResolver = new(
@@ -144,7 +143,7 @@ namespace Nethermind.Init.Steps
             }
 
             _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
-            _api.DisposeStack.Push(_api.SyncModeSelector!);
+            _api.DisposeStack.Push(_api.SyncModeSelector);
 
             _api.Pivot ??= new Pivot(_syncConfig);
 
@@ -296,6 +295,7 @@ namespace Nethermind.Init.Steps
         {
             if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
             if (_api.SessionMonitor == null) throw new StepDependencyException(nameof(_api.SessionMonitor));
+            if (_api.PeerPool == null) throw new StepDependencyException(nameof(_api.PeerPool));
 
             if (!_api.Config<IInitConfig>().PeerManagerEnabled)
             {
@@ -317,6 +317,7 @@ namespace Nethermind.Init.Steps
             if (_api.Timestamper == null) throw new StepDependencyException(nameof(_api.Timestamper));
             if (_api.NodeKey == null) throw new StepDependencyException(nameof(_api.NodeKey));
             if (_api.CryptoRandom == null) throw new StepDependencyException(nameof(_api.CryptoRandom));
+            if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
 
             if (!_api.Config<IInitConfig>().DiscoveryEnabled)
             {
@@ -423,21 +424,15 @@ namespace Nethermind.Init.Steps
 
                 if (syncConfig.SynchronizationEnabled)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
-                            $"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
+                    if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)}.");
                     _api.Synchronizer!.Start();
                 }
                 else
                 {
-                    if (_logger.IsWarn)
-                        _logger.Warn(
-                            $"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
+                    if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
                 }
             }
-            else if (_logger.IsWarn)
-                _logger.Warn(
-                    $"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
+            else if (_logger.IsWarn) _logger.Warn($"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
 
 
             return Task.CompletedTask;
@@ -461,19 +456,18 @@ namespace Nethermind.Init.Steps
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
-            if (_api.EthereumJsonSerializer == null)
-                throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
+            if (_api.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
+            if (_api.DiscoveryApp == null) throw new StepDependencyException(nameof(_api.DiscoveryApp));
 
             /* rlpx */
             EciesCipher eciesCipher = new(_api.CryptoRandom);
             Eip8MessagePad eip8Pad = new(_api.CryptoRandom);
             _api.MessageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _api.MessageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
+            _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer))!);
             ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
             _api.MessageSerializationService.Register(receiptsMessageSerializer);
-            _api.MessageSerializationService.Register(
-                new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
+            _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
 
             HandshakeService encryptionHandshakeServiceA = new(
                 _api.MessageSerializationService,

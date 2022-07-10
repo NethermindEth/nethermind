@@ -122,11 +122,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                Block[]? blocks = null;
-                TxReceipt[]?[]? receipts = null;
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
+                if (_logger.IsTrace) _logger.Trace($"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
                 
                 BlockHeader[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
                 if (headers == null || headers.Length == 0)
@@ -150,11 +146,13 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     _syncBatchSize.Expand();
                 }
 
-                blocks = context.Blocks;
-                receipts = context.ReceiptsForBlocks;
+                Block[]? blocks = context.Blocks;
+                TxReceipt[]?[]? receipts = context.ReceiptsForBlocks;
 
-                if (blocks == null || blocks.Length == 0)
+                if (!(blocks?.Length > 0))
+                {
                     break;
+                }
 
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
@@ -170,8 +168,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
-                        throw new EthSyncException(
-                            $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
+                        throw new EthSyncException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
 
                     if (downloadReceipts)
@@ -179,42 +176,43 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
                         if (currentBlock.Header.HasBody && contextReceiptsForBlock == null)
                         {
-                            throw new EthSyncException(
-                                $"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
+                            throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
                     }
 
-                    bool blockExists =
-                        _blockTree.FindBlock(currentBlock.Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) !=
-                        null;
-                    bool isKnownBlock = _blockTree.IsKnownBlock(currentBlock.Number, currentBlock.Hash) != null;
+                    Keccak currentBlockHash = currentBlock.Hash!;
+                    bool blockExists = _blockTree.FindBlock(currentBlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null;
+                    bool isKnownBlock = _blockTree.IsKnownBlock(currentBlock.Number, currentBlockHash);
 
-                    BlockTreeSuggestOptions suggestOptions =
-                        shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"Current block {currentBlock}, BlockExists {blockExists} BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBlock: {isKnownBlock}");
+                    BlockTreeSuggestOptions suggestOptions = shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
+                    if (_logger.IsTrace) _logger.Trace($"Current block {currentBlock}, BlockExists {blockExists} BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBlock: {isKnownBlock}");
 
 
                     if (blockExists == false && isKnownBlock)
+                    {
                         _blockTree.Insert(currentBlock);
+                    }
+
                     if (isKnownBlock && shouldProcess)
+                    {
                         suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
-                    
-                    if (_logger.IsTrace)
-                        _logger.Trace(
-                            $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBlock} ShouldProcess: {shouldProcess}");
+                    }
+
+                    if (_logger.IsTrace) _logger.Trace($"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBlock} ShouldProcess: {shouldProcess}");
 
                     AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
                     if (addResult == AddBlockResult.InvalidBlock)
                     {
-                        _invalidChainTracker.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
+                        _invalidChainTracker.OnInvalidBlock(currentBlockHash, currentBlock.ParentHash);
                     }
-                    
+
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
                     {
                         if (shouldProcess == false)
+                        {
                             _blockTree.UpdateMainChain(new[] { currentBlock }, false);
+                        }
+
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
 
                         if (downloadReceipts)
@@ -226,7 +224,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             }
                             else
                             {
-                                // this shouldn't now happen with new validation above, still lets keep this check 
+                                // this shouldn't now happen with new validation above, still lets keep this check
                                 if (currentBlock.Header.HasBody)
                                 {
                                     if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");

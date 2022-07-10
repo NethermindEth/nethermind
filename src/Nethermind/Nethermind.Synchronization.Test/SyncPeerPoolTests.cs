@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
-            public async Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+            public async Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
             {
                 if (_shouldFail)
                 {

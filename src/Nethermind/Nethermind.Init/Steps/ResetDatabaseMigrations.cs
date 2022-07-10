@@ -30,12 +30,9 @@ namespace Nethermind.Init.Steps
     public class ResetDatabaseMigrations : IStep
     {
         private readonly IApiWithNetwork _api;
-        [NotNull]
-        private IReceiptStorage? _receiptStorage;
-        [NotNull]
-        private IBlockTree? _blockTree;
-        [NotNull]
-        private IChainLevelInfoRepository? _chainLevelInfoRepository;
+        private IReceiptStorage _receiptStorage = null!;
+        private IBlockTree _blockTree = null!;
+        private IChainLevelInfoRepository _chainLevelInfoRepository = null!;
 
         public ResetDatabaseMigrations(INethermindApi api)
         {
@@ -67,12 +64,12 @@ namespace Nethermind.Init.Steps
                 long blockNumber = _blockTree.Head?.Number ?? 0;
                 while (blockNumber > 0)
                 {
-                    ChainLevelInfo level = _chainLevelInfoRepository.LoadLevel(blockNumber);
-                    BlockInfo firstBlockInfo = level?.BlockInfos.FirstOrDefault();
+                    ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(blockNumber);
+                    BlockInfo? firstBlockInfo = level?.BlockInfos.FirstOrDefault();
                     if (firstBlockInfo != null)
                     {
                         TxReceipt[] receipts = _receiptStorage.Get(firstBlockInfo.BlockHash);
-                        if (receipts?.Length > 0)
+                        if (receipts.Length > 0)
                         {
                             if (recovery.NeedRecover(receipts))
                             {

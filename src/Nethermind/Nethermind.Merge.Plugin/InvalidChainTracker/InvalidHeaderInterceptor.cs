@@ -23,9 +23,9 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
 public class InvalidHeaderInterceptor: IHeaderValidator
 {
-    private IHeaderValidator _baseValidator;
-    private IInvalidChainTracker _invalidChainTracker;
-    private ILogger _logger;
+    private readonly IHeaderValidator _baseValidator;
+    private readonly IInvalidChainTracker _invalidChainTracker;
+    private readonly ILogger _logger;
 
     public InvalidHeaderInterceptor(
         IHeaderValidator headerValidator,
@@ -39,24 +39,24 @@ public class InvalidHeaderInterceptor: IHeaderValidator
     
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
     {
-        _invalidChainTracker.SetChildParent(header.Hash, header.ParentHash);
+        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         bool result = _baseValidator.Validate(header, parent, isUncle);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
-            _invalidChainTracker.OnInvalidBlock(header.Hash, header.ParentHash);
+            _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
         return result;
     }
 
     public bool Validate(BlockHeader header, bool isUncle = false)
     {
-        _invalidChainTracker.SetChildParent(header.Hash, header.ParentHash);
+        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         bool result = _baseValidator.Validate(header, isUncle);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
-            _invalidChainTracker.OnInvalidBlock(header.Hash, header.ParentHash);
+            _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
         return result;
     }

@@ -39,9 +39,14 @@ namespace Nethermind.Init.Steps
         public virtual Task Execute(CancellationToken _)
         {
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
-            
-           Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
-           HeaderDecoder.Eip1559TransitionBlock = _api.SpecProvider.GenesisSpec.Eip1559TransitionBlock;
+
+            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+            if (assembly is not null)
+            {
+                Rlp.RegisterDecoders(assembly);
+            }
+
+            HeaderDecoder.Eip1559TransitionBlock = _api.SpecProvider.GenesisSpec.Eip1559TransitionBlock;
            
            return Task.CompletedTask;
         }

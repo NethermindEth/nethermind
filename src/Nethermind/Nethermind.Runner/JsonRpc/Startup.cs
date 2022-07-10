@@ -49,8 +49,7 @@ namespace Nethermind.Runner.JsonRpc
     {
         public void ConfigureServices(IServiceCollection services)
         {
-            // ReSharper disable once ASP0000
-            ServiceProvider sp = services.BuildServiceProvider()!;
+            ServiceProvider sp = Build(services);
             IConfigProvider? configProvider = sp.GetService<IConfigProvider>();
             if (configProvider == null)
             {
@@ -78,6 +77,8 @@ namespace Nethermind.Runner.JsonRpc
                 options.EnableForHttps = true;
             });
         }
+
+        private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
         {
