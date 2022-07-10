@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
@@ -44,8 +44,8 @@ namespace Nethermind.Monitoring.Test
             {
                 typeof(Nethermind.Mev.Metrics), typeof(Nethermind.TxPool.Metrics), typeof(Nethermind.Blockchain.Metrics),
                 typeof(Nethermind.Consensus.AuRa.Metrics), typeof(Nethermind.Evm.Metrics), typeof(Nethermind.JsonRpc.Metrics),
-                typeof(Nethermind.Db.Metrics), typeof(Nethermind.Network.Metrics), typeof(Init.Metrics), 
-                typeof(Nethermind.Synchronization.Metrics), typeof(Nethermind.Trie.Metrics), typeof(Nethermind.Trie.Pruning.Metrics), 
+                typeof(Nethermind.Db.Metrics), typeof(Nethermind.Network.Metrics), typeof(Init.Metrics),
+                typeof(Nethermind.Synchronization.Metrics), typeof(Nethermind.Trie.Metrics), typeof(Nethermind.Trie.Pruning.Metrics),
             };
             MetricsUpdater metricsUpdater = new(metricsConfig);
             MonitoringService monitoringService = new(metricsUpdater, metricsConfig, LimboLogs.Instance);
@@ -62,7 +62,7 @@ namespace Nethermind.Monitoring.Test
                 metricsUpdater.UpdateMetrics(null);
             });
         }
-        
+
         [Test]
         public void All_config_items_have_descriptions()
         {
@@ -85,19 +85,16 @@ namespace Nethermind.Monitoring.Test
             string[] dlls = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll");
             foreach (string dll in dlls)
             {
-                TestContext.WriteLine($"Verify {nameof(MetricsTests)} on {Path.GetFileName(dll)}");
                 Assembly assembly = Assembly.LoadFile(dll);
                 Type[] configs = assembly.GetExportedTypes().Where(t => t.Name == "Metrics").ToArray();
 
                 foreach (Type metricsType in configs)
                 {
-                    TestContext.WriteLine($"  Verifying type {metricsType.FullName}");
                     PropertyInfo[] properties = metricsType.GetProperties(BindingFlags.Static | BindingFlags.Public);
                     foreach (PropertyInfo property in properties)
                     {
                         try
                         {
-                            TestContext.WriteLine($"    Verifying property {property.Name}");
                             verifier(property);
                         }
                         catch (Exception e)
