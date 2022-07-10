@@ -60,7 +60,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Output Inputs
-        run: echo "${{ toJSON(github.event.inputs) }}"
+        env: 
+            PARAMS_ENTERED: ${{ toJSON(github.event.inputs) }}
+        run: echo $PARAMS_ENTERED
       - name: Checking out Nethermind
         uses: actions/checkout@v2
       - name: Unshallow fetching
