@@ -20,6 +20,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin;
@@ -28,15 +29,18 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
 {
     private readonly IBetterPeerStrategy _preMergeBetterPeerStrategy;
     private readonly IPoSSwitcher _poSSwitcher;
+    private readonly IBeaconPivot _beaconPivot;
     private readonly ILogger _logger;
 
     public MergeBetterPeerStrategy(
         IBetterPeerStrategy preMergeBetterPeerStrategy,
         IPoSSwitcher poSSwitcher,
+        IBeaconPivot beaconPivot,
         ILogManager logManager)
     {
         _preMergeBetterPeerStrategy = preMergeBetterPeerStrategy;
         _poSSwitcher = poSSwitcher;
+        _beaconPivot = beaconPivot;
         _logger = logManager.GetClassLogger();
     }
 
@@ -50,7 +54,7 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
         if (_logger.IsTrace) _logger.Trace($"IsBetterThanLocalChain BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {bestBlock.TotalDifficulty} LocalChainBestFullBlock: {bestBlock.Number} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty}");
         return ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestBlock.TotalDifficulty)
             ? _preMergeBetterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo, bestBlock)
-            : bestPeerInfo.Number > bestBlock.Number;
+            : _beaconPivot.BeaconPivotExists() && bestPeerInfo.Number > _beaconPivot.PivotNumber;
     }
 
     public bool IsDesiredPeer(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)

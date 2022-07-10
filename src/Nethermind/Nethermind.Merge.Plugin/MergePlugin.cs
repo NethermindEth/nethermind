@@ -348,7 +348,7 @@ namespace Nethermind.Merge.Plugin
                     _api.SpecProvider, _api.LogManager);
                 _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.LogManager);
 
-                _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _api.LogManager);
+                _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _beaconPivot, _api.LogManager);
 
                 _api.SyncModeSelector = new MultiSyncModeSelector(
                     _api.SyncProgressResolver,

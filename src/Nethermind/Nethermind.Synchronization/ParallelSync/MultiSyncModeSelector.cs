@@ -164,9 +164,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
                     if (!FastSyncEnabled)
                     {
-                        best.IsInWaitingForBlock = ShouldBeInFullSyncMode(best);
+                        // best.IsInWaitingForBlock = ShouldBeInFullSyncMode(best);
                         best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
-                        
+
                         if (best.IsInWaitingForBlock)
                         {
                             newModes = SyncMode.WaitingForBlock;
@@ -220,7 +220,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             reason = "Snapshot Misalignment";
                         }
                     }
-                    
+
                     if (IsTheModeSwitchWorthMentioning(newModes))
                     {
                         string stateString = BuildStateString(best);
