@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.Test
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
-            _pool = new SyncPeerPool(_blockTree, stats, new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance), 25, LimboLogs.Instance);
+            _pool = new SyncPeerPool(_blockTree, stats, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25, LimboLogs.Instance);
             SyncConfig syncConfig = new();
             ProgressTracker progressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.Test
                 progressTracker,
                 syncConfig,
                 LimboLogs.Instance);
-            TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(resolver, LimboLogs.Instance);
+            TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             MultiSyncModeSelector syncModeSelector = new(resolver, _pool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
             Pivot pivot = new (syncConfig);
             SyncReport syncReport = new(_pool, stats, syncModeSelector, syncConfig, pivot, LimboLogs.Instance);
@@ -89,7 +89,7 @@ namespace Nethermind.Synchronization.Test
                 Always.Valid,
                 Always.Valid,
                 _pool,
-                new TotalDifficultyBasedBetterPeerStrategy(resolver, LimboLogs.Instance),
+                new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance),
                 syncReport,
                 LimboLogs.Instance);
             _synchronizer = new Synchronizer(

@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.ParallelSync
             // In fast sync we never save the state root unless all the descendant nodes have been stored in the DB.
             return stateRootIsInMemory || _stateDb.Get(stateRoot) != null;
         }
-        
+
         public long FindBestFullState()
         {
             // so the full state can be in a few places but there are some best guesses
@@ -136,22 +136,16 @@ namespace Nethermind.Synchronization.ParallelSync
                     break;
                 }
 
-                startHeader = _blockTree.FindHeader(startHeader.ParentHash,
-                    BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                startHeader = _blockTree.FindHeader(startHeader.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             }
 
             return bestFullState;
         }
 
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
-        public long FindBestFullBlock() =>
-            Math.Min(FindBestHeader(),
-                _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
+        public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
 
-        public bool IsLoadingBlocksFromDb()
-        {
-            return !_blockTree.CanAcceptNewBlocks;
-        }
+        public bool IsLoadingBlocksFromDb() => !_blockTree.CanAcceptNewBlocks;
 
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
 

@@ -734,7 +734,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             overwrite.Invoke();
                         }
                         
-                        TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new(SyncProgressResolver, LimboLogs.Instance);
+                        TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
                         MultiSyncModeSelector selector = new(SyncProgressResolver, SyncPeerPool, SyncConfig, BeaconSyncStrategy, bestPeerStrategy, LimboLogs.Instance, _needToWaitForHeaders);
                         selector.DisableTimer();
                         selector.Update();
