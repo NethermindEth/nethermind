@@ -180,7 +180,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 if (stage == "END")
                 {
                     Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
-                    TrieStatsCollector collector = new TrieStatsCollector(LocalCodeDb, new OneLoggerLogManager(_logger));
+                    TrieStatsCollector collector = new(LocalCodeDb, LimboLogs.Instance);
                     LocalStateTree.Accept(collector, LocalStateTree.RootHash);
                     Assert.AreEqual(0, collector.Stats.MissingNodes);
                     Assert.AreEqual(0, collector.Stats.MissingCode);

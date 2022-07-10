@@ -101,13 +101,13 @@ namespace Nethermind.Synchronization.Test
             PeerInfo peerInfo = new(syncPeer);
 
             await downloader.DownloadHeaders(peerInfo, new BlocksRequest(DownloaderOptions.None, threshold), CancellationToken.None);
-            BlockHeader bestSuggestedHeader = ctx.BlockTree!.BestSuggestedHeader!;
-            bestSuggestedHeader.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
+
+            ctx.BlockTree!.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, Math.Min(headNumber, headNumber - threshold)));
 
             syncPeer.ExtendTree(chainLength * 2);
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
-            bestSuggestedHeader.Number.Should().Be(Math.Max(0, peerInfo.HeadNumber));
-            ctx.BlockTree.IsMainChain(bestSuggestedHeader.Hash!).Should().Be(downloaderOptions != DownloaderOptions.Process);
+            ctx.BlockTree!.BestSuggestedHeader!.Number.Should().Be(Math.Max(0, peerInfo.HeadNumber));
+            ctx.BlockTree.IsMainChain(ctx.BlockTree!.BestSuggestedHeader!.Hash!).Should().Be(downloaderOptions != DownloaderOptions.Process);
 
             int receiptCount = 0;
             for (int i = (int) Math.Max(0, headNumber - threshold); i < peerInfo.HeadNumber; i++)
