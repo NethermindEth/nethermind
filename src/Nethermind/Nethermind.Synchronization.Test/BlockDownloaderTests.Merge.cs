@@ -141,7 +141,7 @@ public partial class BlockDownloaderTests
     private IBetterPeerStrategy CreateMergePeerChoiceStrategy(IPoSSwitcher poSSwitcher)
     {
         ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-        TotalDifficultyBasedBetterPeerStrategy preMergePeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
-        return new MergeBetterPeerStrategy(preMergePeerStrategy, syncProgressResolver, poSSwitcher, LimboLogs.Instance);
+        TotalDifficultyBetterPeerStrategy preMergePeerStrategy = new(LimboLogs.Instance);
+        return new MergeBetterPeerStrategy(preMergePeerStrategy, poSSwitcher, LimboLogs.Instance);
     }
 }

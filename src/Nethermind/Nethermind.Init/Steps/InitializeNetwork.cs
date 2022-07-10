@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -59,7 +59,7 @@ namespace Nethermind.Init.Steps
     {
         // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
         private const uint PageSize = 8192;
-        
+
         public static long Estimate(uint cpuCount, int arenaOrder)
         {
             // do not remember why there is 2 in front
@@ -126,23 +126,23 @@ namespace Nethermind.Init.Steps
                 progressTracker,
                 _syncConfig,
                 _api.LogManager);
-            
+
             _api.SyncProgressResolver = syncProgressResolver;
-            _api.BetterPeerStrategy = new TotalDifficultyBasedBetterPeerStrategy(_api.SyncProgressResolver, _api.LogManager);
-            
+            _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
+
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
             SyncPeerPool apiSyncPeerPool = new(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
             _api.SyncPeerPool = apiSyncPeerPool;
             _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
             _api.DisposeStack.Push(_api.SyncPeerPool);
-            
+
             IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
             foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
             {
                 await plugin.InitSynchronization();
             }
-            
+
             _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
             _api.DisposeStack.Push(_api.SyncModeSelector!);
 
@@ -178,7 +178,7 @@ namespace Nethermind.Init.Steps
             }
 
             _api.DisposeStack.Push(_api.Synchronizer);
-            
+
             _api.SyncServer = new SyncServer(
                 _api.DbProvider.StateDb,
                 _api.DbProvider.CodeDb,
@@ -196,8 +196,8 @@ namespace Nethermind.Init.Steps
                 cht);
 
             _ = _api.SyncServer.BuildCHT();
-            
-            
+
+
             _api.DisposeStack.Push(_api.SyncServer);
 
             InitDiscovery();
@@ -357,7 +357,7 @@ namespace Nethermind.Init.Steps
                 "DiscoveryDB",
                 DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
                 _api.LogManager);
-            
+
             NetworkStorage discoveryStorage = new(
                 discoveryDb,
                 _api.LogManager);
@@ -486,9 +486,9 @@ namespace Nethermind.Init.Steps
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
             // TODO: hack, but changing it in all the documentation would be a nightmare
             _networkConfig.Bootnodes = discoveryConfig.Bootnodes;
-            
+
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            
+
             _api.DisconnectsAnalyzer = new MetricsDisconnectsAnalyzer();
             _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
             _api.RlpxPeer = new RlpxHost(
@@ -530,16 +530,16 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider!,
                 _api.GossipPolicy,
                 _api.LogManager);
-            
+
             if (_syncConfig.WitnessProtocolEnabled)
             {
                 _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
             }
-            
+
             _api.ProtocolValidator = protocolValidator;
-            
+
             NodesLoader nodesLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.RlpxPeer, _api.LogManager);
-            
+
             // I do not use the key here -> API is broken - no sense to use the node signer here
             NodeRecordSigner nodeRecordSigner = new(_api.EthereumEcdsa, new PrivateKeyGenerator().Generate());
             EnrRecordParser enrRecordParser = new(nodeRecordSigner);
@@ -563,7 +563,7 @@ namespace Nethermind.Init.Steps
                     _logger.Error($"ENR discovery failed: {t.Exception}");
                 }
             });
-            
+
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
                 await plugin.InitNetworkProtocol();
