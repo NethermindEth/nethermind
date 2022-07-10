@@ -3,12 +3,9 @@
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
         <Nullable>enable</Nullable>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-      <WarningsAsErrors />
-    </PropertyGroup>
-  
+
     <ItemGroup>
       <PackageReference Include="FluentAssertions" Version="6.7.0" />
       <PackageReference Include="NSubstitute" Version="4.3.0" />
@@ -16,7 +13,7 @@
       <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
       <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.2.0" />
     </ItemGroup>
-  
+
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.AccountAbstraction\Nethermind.AccountAbstraction.csproj" />
       <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
@@ -40,7 +37,7 @@
       <EmbeddedResource Include="TestContracts\TestCounter.json" />
       <EmbeddedResource Include="TestContracts\TokenPaymaster.json" />
     </ItemGroup>
-  
+
     <ItemGroup>
       <Content Include="Tests\*.json">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

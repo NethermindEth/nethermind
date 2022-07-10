@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Threading;
@@ -105,7 +105,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             long currentNumber = _blockTree.BestKnownNumber;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
+                    $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
             bool HasMoreToSync()
                 => currentNumber < _blockTree.BestKnownBeaconNumber &&
@@ -115,7 +115,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-                
+
                 int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
                 if (_logger.IsTrace)
                     _logger.Trace(
@@ -123,7 +123,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 if (_logger.IsTrace) _logger.Trace($"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
-                
+
                 BlockHeader[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
                 if (headers == null || headers.Length == 0)
                     break;

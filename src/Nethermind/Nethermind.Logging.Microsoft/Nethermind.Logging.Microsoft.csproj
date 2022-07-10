@@ -7,11 +7,7 @@
         <Version>0.0.1</Version>
         <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
-    </PropertyGroup>
-
-    <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-      <WarningsAsErrors />
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>
