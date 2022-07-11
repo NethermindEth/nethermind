@@ -20,12 +20,9 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Consensus;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -36,12 +33,12 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization
 {
     public class Synchronizer : ISynchronizer
     {
+        private const int FeedsTerminationTimeout = 5_000;
         
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
@@ -129,12 +126,6 @@ namespace Nethermind.Synchronization
                 
                 StartStateSyncComponents();
             }
-        }
-
-        public Task StopAsync()
-        {
-            _syncCancellation?.Cancel();
-            return Task.CompletedTask;
         }
 
         private void StartFullSyncComponents()
@@ -284,6 +275,32 @@ namespace Nethermind.Synchronization
             SyncEvent?.Invoke(this, e);
         }
 
+        public async Task StopAsync()
+        {
+            _syncCancellation?.Cancel();
+            
+            await Task.WhenAny(
+                Task.Delay(FeedsTerminationTimeout),
+                Task.Run(async () =>
+                {
+                    bool IsFinished<T>(ISyncFeed<T>? feed)
+                    {
+                        return feed is null || feed.CurrentState == SyncFeedState.Finished;
+                    }
+
+                    while (!(IsFinished(_fastSyncFeed) &&
+                             IsFinished(_stateSyncFeed) &&
+                             IsFinished(_snapSyncFeed) &&
+                             IsFinished(_fullSyncFeed) &&
+                             IsFinished(_headersFeed) &&
+                             IsFinished(_bodiesFeed) &&
+                             IsFinished(_receiptsFeed)))
+                    {
+                        await Task.Delay(50);
+                    }
+                }));
+        }
+
         public void Dispose()
         {
             _syncCancellation?.Cancel();
@@ -292,7 +309,9 @@ namespace Nethermind.Synchronization
 
             _fastSyncFeed?.Dispose();
             _stateSyncFeed?.Dispose();
+            _snapSyncFeed?.Dispose();
             _fullSyncFeed?.Dispose();
+            _headersFeed?.Dispose();
             _bodiesFeed?.Dispose();
             _receiptsFeed?.Dispose();
         }

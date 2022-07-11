@@ -47,7 +47,7 @@ namespace Nethermind.Synchronization.ParallelSync
             ChangeState(SyncFeedState.Active);
         }
 
-        protected virtual void Finish()
+        public virtual void Finish()
         {
             if (CurrentState == SyncFeedState.Finished)
             {

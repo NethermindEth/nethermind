@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class SyncDispatcher<T>
     {
-        private object _feedStateManipulation = new();
+        private readonly object _feedStateManipulation = new();
         private SyncFeedState _currentFeedState = SyncFeedState.Dormant;
 
         private IPeerAllocationStrategyFactory<T> PeerAllocationStrategyFactory { get; }
@@ -50,8 +50,6 @@ namespace Nethermind.Synchronization.ParallelSync
         private TaskCompletionSource<object?>? _dormantStateTask = new();
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
-
-        private bool isCanceled;
         
         public async Task Start(CancellationToken cancellationToken)
         {
@@ -59,7 +57,6 @@ namespace Nethermind.Synchronization.ParallelSync
             {
                 lock (_feedStateManipulation)
                 {
-                    isCanceled = true;
                     _dormantStateTask?.SetCanceled();
                 }
             });
@@ -67,101 +64,99 @@ namespace Nethermind.Synchronization.ParallelSync
             UpdateState(Feed.CurrentState);
             while (true)
             {
-                if (cancellationToken.IsCancellationRequested)
+                try
                 {
-                    break;
-                }
-
-                SyncFeedState currentStateLocal;
-                TaskCompletionSource<object?>? dormantTaskLocal;
-                lock (_feedStateManipulation)
-                {
-                    currentStateLocal = _currentFeedState;
-                    dormantTaskLocal = _dormantStateTask;
-                    if (isCanceled)
+                    SyncFeedState currentStateLocal;
+                    TaskCompletionSource<object?>? dormantTaskLocal;
+                    lock (_feedStateManipulation)
                     {
+                        currentStateLocal = _currentFeedState;
+                        dormantTaskLocal = _dormantStateTask;
+                    }
+
+                    if (currentStateLocal == SyncFeedState.Dormant)
+                    {
+                        if (Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
+                        if (dormantTaskLocal == null)
+                        {
+                            if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
+                        }
+
+                        await (dormantTaskLocal?.Task ?? Task.CompletedTask);
+                        if (Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
+                    }
+                    else if (currentStateLocal == SyncFeedState.Active)
+                    {
+                        T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default!)); // just to avoid null refs
+                        if (request == null)
+                        {
+                            if (!Feed.IsMultiFeed)
+                            {
+                                if (Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
+                            }
+
+                            await Task.Delay(10, cancellationToken);
+                            continue;
+                        }
+
+                        SyncPeerAllocation allocation = await Allocate(request);
+                        PeerInfo? allocatedPeer = allocation.Current;
+                        if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
+                        if (allocatedPeer != null)
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
+                            Task task = Dispatch(allocatedPeer, request, cancellationToken)
+                                .ContinueWith(t =>
+                            {
+                                if (t.IsFaulted)
+                                {
+                                    if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
+                                }
+
+                                try
+                                {
+                                    SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
+                                    ReactToHandlingResult(request, result, allocatedPeer);
+                                }
+                                catch (ObjectDisposedException)
+                                {
+                                    if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
+                                }
+                                catch (Exception e)
+                                {
+                                    // possibly clear the response and handle empty response batch here (to avoid missing parts)
+                                    // this practically corrupts sync
+                                    if (Logger.IsError) Logger.Error("Error when handling response", e);
+                                }
+                                finally
+                                {
+                                    Free(allocation);
+                                }
+                            }, cancellationToken);
+
+                            if (!Feed.IsMultiFeed)
+                            {
+                                if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
+                                await task;
+                                if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
+                            }
+                        }
+                        else
+                        {
+                            Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
+                            SyncResponseHandlingResult result = Feed.HandleResponse(request);
+                            ReactToHandlingResult(request, result, null);
+                        }
+                    }
+                    else if (currentStateLocal == SyncFeedState.Finished)
+                    {
+                        if (Logger.IsInfo) Logger.Info($"{GetType().Name} has finished work.");
                         break;
                     }
                 }
-
-                if (currentStateLocal == SyncFeedState.Dormant)
+                catch (TaskCanceledException)
                 {
-                    if (Logger.IsDebug) Logger.Debug($"{GetType().Name} is going to sleep.");
-                    if (dormantTaskLocal == null)
-                    {
-                        if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
-                    }
-
-                    await (dormantTaskLocal?.Task ?? Task.CompletedTask);
-                    if (Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
-                }
-                else if (currentStateLocal == SyncFeedState.Active)
-                {
-                    T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default!)); // just to avoid null refs
-                    if (request == null)
-                    {
-                        if (!Feed.IsMultiFeed)
-                        {
-                            if (Logger.IsTrace) Logger.Trace($"{Feed.GetType().Name} enqueued a null request.");
-                        }
-
-                        await Task.Delay(10, cancellationToken);
-                        continue;
-                    }
-
-                    SyncPeerAllocation allocation = await Allocate(request);
-                    PeerInfo? allocatedPeer = allocation.Current;
-                    if (Logger.IsTrace) Logger.Trace($"Allocated peer: {allocatedPeer}");
-                    if (allocatedPeer != null)
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
-                        Task task = Dispatch(allocatedPeer, request, cancellationToken)
-                            .ContinueWith(t =>
-                        {
-                            if (t.IsFaulted)
-                            {
-                                if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
-                            }
-
-                            try
-                            {
-                                SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
-                                ReactToHandlingResult(request, result, allocatedPeer);
-                            }
-                            catch (ObjectDisposedException)
-                            {
-                                if (Logger.IsInfo) Logger.Info("Ignoring sync response as the DB has already closed.");
-                            }
-                            catch (Exception e)
-                            {
-                                // possibly clear the response and handle empty response batch here (to avoid missing parts)
-                                // this practically corrupts sync
-                                if (Logger.IsError) Logger.Error("Error when handling response", e);
-                            }
-                            finally
-                            {
-                                Free(allocation);
-                            }
-                        }, cancellationToken);
-
-                        if (!Feed.IsMultiFeed)
-                        {
-                            if (Logger.IsDebug) Logger.Debug($"Awaiting single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer}");
-                            await task;
-                            if (Logger.IsDebug) Logger.Debug($"Single dispatch from {Feed.GetType().Name} with allocated {allocatedPeer} has been processed");
-                        }
-                    }
-                    else
-                    {
-                        Logger.Debug($"DISPATCHER - {this.GetType().Name}: peer NOT allocated");
-                        SyncResponseHandlingResult result = Feed.HandleResponse(request);
-                        ReactToHandlingResult(request, result, null);
-                    }
-                }
-                else if (currentStateLocal == SyncFeedState.Finished)
-                {
-                    if (Logger.IsInfo) Logger.Info($"{GetType().Name} has finished work.");
-                    break;
+                    Feed.Finish();
                 }
             }
         }
