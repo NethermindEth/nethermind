@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Threading;
@@ -23,9 +23,11 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -48,9 +50,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IInvalidChainTracker _invalidChainTracker;
+        private readonly ISyncProgressResolver _syncProgressResolver;
         private int _sinceLastTimeout;
 
-        public MergeBlockDownloader(IPoSSwitcher posSwitcher,
+        public MergeBlockDownloader(
+            IPoSSwitcher posSwitcher,
             IBeaconPivot beaconPivot,
             ISyncFeed<BlocksRequest?>? feed,
             ISyncPeerPool? syncPeerPool,
@@ -63,6 +67,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             IChainLevelHelper chainLevelHelper,
             IInvalidChainTracker invalidChainTracker,
+            ISyncProgressResolver syncProgressResolver,
             ILogManager logManager)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
                 specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, logManager),
@@ -78,6 +83,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _beaconPivot = beaconPivot;
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, logManager), specProvider);
             _invalidChainTracker = invalidChainTracker;
+            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _logger = logManager.GetClassLogger();
         }
 
@@ -107,39 +113,33 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             bool HasMoreToSync()
                 => currentNumber < _blockTree.BestKnownBeaconNumber &&
-                   bestPeer.HeadNumber > currentNumber;
+                   bestPeer.HeadNumber > _blockTree.BestKnownNumber;
 
             while (HasMoreToSync())
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-                
-                int requestSize = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
 
+                int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        $"Full sync request {currentNumber}+{requestSize} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {requestSize} more.");
+                        $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                Block[]? blocks;
-                TxReceipt[]?[]? receipts;
+                Block[]? blocks = null;
+                TxReceipt[]?[]? receipts = null;
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, RequestSize: {requestSize}");
-                
-                BlockHeader[] headers = _chainLevelHelper.GetNextHeaders(requestSize);
+                        $"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
+
+                BlockHeader[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
                 if (headers == null || headers.Length == 0)
                     break;
-                
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts,
-                _receiptsRecovery);
-                
-                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                    _receiptsRecovery);
 
-                if (!_chainLevelHelper.TrySetNextBlocks(requestSize, context)) {
-                    await RequestBodies(bestPeer, cancellation, context);
-                }
-                blocks = context.Blocks;
+                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                await RequestBodies(bestPeer, cancellation, context);
 
                 if (downloadReceipts)
                 {
@@ -153,7 +153,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 {
                     _syncBatchSize.Expand();
                 }
-                
+
+                blocks = context.Blocks;
                 receipts = context.ReceiptsForBlocks;
 
                 if (blocks == null || blocks.Length == 0)
@@ -186,17 +187,32 @@ namespace Nethermind.Merge.Plugin.Synchronization
                                 $"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
                     }
-                    
+
+                    if (shouldProcess)
+                    {
+                        // covering edge case during fastSyncTransition when we're trying to SuggestBlock without the state
+                        bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
+                        bool toBeProcessedIsNotBlockOne = currentBlock.Number > 1;
+                        bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
+                        if (isFastSyncTransition)
+                        {
+                            long bestFullState = _syncProgressResolver.FindBestFullState();
+                            shouldProcess = currentBlock.Number >= bestFullState && bestFullState!=0;
+                            if (!shouldProcess)
+                                if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}");
+                        }
+                    }
+
                     bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.Hash);
                     BlockTreeSuggestOptions suggestOptions =
                         shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
-                    
+
                     if (isKnownBeaconBlock)
                         suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
-                    
+
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBeaconBlock {isKnownBeaconBlock} ShouldProcess: {shouldProcess}");
@@ -206,7 +222,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     {
                         _invalidChainTracker.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
                     }
-                    
+
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
                     {
                         if (shouldProcess == false)
@@ -222,7 +238,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             }
                             else
                             {
-                                // this shouldn't now happen with new validation above, still lets keep this check 
+                                // this shouldn't now happen with new validation above, still lets keep this check
                                 if (currentBlock.Header.HasBody)
                                 {
                                     if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");

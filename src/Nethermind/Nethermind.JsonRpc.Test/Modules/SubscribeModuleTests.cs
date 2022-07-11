@@ -56,12 +56,13 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IBlockTree _blockTree;
         private ITxPool _txPool;
         private IReceiptStorage _receiptStorage;
-        private IReceiptFinder _receiptFinder;
         private IFilterStore _filterStore;
         private ISubscriptionManager _subscriptionManager;
         private IJsonRpcDuplexClient _jsonRpcDuplexClient;
         private IJsonSerializer _jsonSerializer;
         private ISpecProvider _specProvider;
+        private IReceiptMonitor _receiptCanonicalityMonitor;
+            
 
         [SetUp]
         public void Setup()
@@ -70,11 +71,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
-            _receiptFinder = Substitute.For<IReceiptFinder>();
             _specProvider = Substitute.For<ISpecProvider>();
             _filterStore = new FilterStore();
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _jsonSerializer = new EthereumJsonSerializer();
+            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
             
             JsonSerializer jsonSerializer = new();
             jsonSerializer.Converters.AddRange(EthereumJsonSerializer.CommonConverters);
@@ -83,8 +84,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _logManager,
                 _blockTree,
                 _txPool,
-                _receiptStorage,
-                _receiptFinder,
+                _receiptCanonicalityMonitor,
                 _filterStore,
                 new EthSyncingInfo(_blockTree),
                 _specProvider,
@@ -124,9 +124,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             return jsonRpcResult;
         }
         
-        private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, BlockEventArgs blockEventArgs, out string subscriptionId)
+        private List<JsonRpcResult> GetLogsSubscriptionResult(Filter filter, BlockReplacementEventArgs blockEventArgs, out string subscriptionId)
         {
-            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptStorage, _receiptFinder, _filterStore, _blockTree, _logManager, filter);
+            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
             
             List<JsonRpcResult> jsonRpcResults = new();
 
@@ -136,7 +136,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 jsonRpcResults.Add(j);
             }));
             
-            _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             semaphoreSlim.Wait(TimeSpan.FromMilliseconds(100));
 
             subscriptionId = logsSubscription.Id;
@@ -440,10 +440,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
-            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
-            BlockEventArgs blockEventArgs = new(block);
+            BlockReplacementEventArgs blockEventArgs = new(block);
         
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
@@ -464,7 +464,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
-            BlockEventArgs blockEventArgs = new(block);
+            BlockReplacementEventArgs blockEventArgs = new(block);
         
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
@@ -482,10 +482,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
 
             TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryB, logEntryC).TestObject};
-            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
-            BlockEventArgs blockEventArgs = new(block);
+            BlockReplacementEventArgs blockEventArgs = new(block);
         
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
@@ -520,10 +520,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithIndex(33).WithLogs(logEntryB, logEntryC).TestObject
             };
             
-            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
-            BlockEventArgs blockEventArgs = new(block);
+            BlockReplacementEventArgs blockEventArgs = new(block);
         
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
@@ -574,10 +574,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
             };
             
-            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
-            BlockEventArgs blockEventArgs = new(block);
+            BlockReplacementEventArgs blockEventArgs = new(block);
         
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
@@ -621,10 +621,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryA, logEntryC, logEntryB, logEntryA, logEntryC).TestObject,
             };
 
-            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
-            BlockEventArgs blockEventArgs = new(block);
+            BlockReplacementEventArgs blockEventArgs = new(block);
         
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
@@ -671,10 +671,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntryC, logEntryB, logEntryE, logEntryA, logEntryB).TestObject,
             };
             
-            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
             
             Block block = Build.A.Block.WithNumber(blockNumber).WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
-            BlockEventArgs blockEventArgs = new(block);
+            BlockReplacementEventArgs blockEventArgs = new(block);
         
             List<JsonRpcResult> jsonRpcResults = GetLogsSubscriptionResult(filter, blockEventArgs, out var subscriptionId);
 
@@ -698,30 +698,30 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 55555;
             Filter filter = null;
             
-            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptStorage, _receiptFinder, _filterStore, _blockTree, _logManager, filter);
+            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = {Build.A.Receipt.WithBlockNumber(blockNumber).WithLogs(logEntry).TestObject};
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
             Block block = Build.A.Block.WithHeader(blockHeader).TestObject;
-            _receiptFinder.Get(Arg.Any<Block>()).Returns(txReceipts);
+            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
 
             List<JsonRpcResult> jsonRpcResults = new();
             
             ManualResetEvent manualResetEvent = new(false);
-            ReceiptsEventArgs receiptsEventArgs = new(blockHeader, txReceipts, txReceipts[0].Removed);
+            ReceiptsEventArgs receiptsEventArgs = new(blockHeader, txReceipts, false);
             logsSubscription.JsonRpcDuplexClient.SendJsonRpcResult(Arg.Do<JsonRpcResult>(j =>
             {
                 jsonRpcResults.Add(j);
                 manualResetEvent.Set();
             }));
-            _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
+            _receiptCanonicalityMonitor.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
             
             jsonRpcResults.Count.Should().Be(0);
             
-            BlockEventArgs blockEventArgs = new(block);
-            _blockTree.NewHeadBlock += Raise.EventWith(new object(), blockEventArgs);
+            BlockReplacementEventArgs blockEventArgs = new(block);
+            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
             manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
             
             jsonRpcResults.Count.Should().Be(1);
@@ -1021,56 +1021,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void ReceiptCanonicalityMonitor_can_change_removed_flag_of_receipt()
-        {
-            TxReceipt[] GetTxReceipts(LogEntry logEntry, LogEntry logEntryB1, LogEntry logEntryC1, bool removed = false) =>
-                new[]
-                {
-                    Build.A.Receipt.WithIndex(11).WithLogs(logEntry).WithRemoved(removed).TestObject,
-                    Build.A.Receipt.WithIndex(22).WithLogs(logEntry, logEntryB1).WithRemoved(removed).TestObject,
-                    Build.A.Receipt.WithIndex(33).WithLogs(logEntryB1, logEntryC1).WithRemoved(removed).TestObject
-                };
-
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor =
-                new(_blockTree, _receiptStorage, _logManager);
-            
-            LogEntry logEntryA = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
-            LogEntry logEntryB = Build.A.LogEntry.WithAddress(TestItem.AddressB).WithTopics(TestItem.KeccakB).TestObject;
-            LogEntry logEntryC = Build.A.LogEntry.WithData(TestItem.RandomDataC).TestObject;
-
-            TxReceipt[] txReceipts = GetTxReceipts(logEntryA, logEntryB, logEntryC);
-            
-            _receiptStorage.Get(Arg.Any<Block>()).Returns(txReceipts);
-
-            Block block = Build.A.Block.TestObject;
-            Block previousBlock = Build.A.Block.WithBloom(new Bloom(txReceipts.Select(r => r.Bloom).ToArray())).TestObject;
-            BlockReplacementEventArgs blockEventArgs = new(block, previousBlock);
-
-            TxReceipt[] receiptsRemoved = GetTxReceipts(logEntryA, logEntryB, logEntryC, true);
-            TxReceipt[] changedReceipts = Array.Empty<TxReceipt>();
-            ManualResetEvent manualResetEvent = new(false);
-            _receiptStorage.Insert(Arg.Any<Block>(), Arg.Do<TxReceipt[]>(r =>
-            {
-                changedReceipts = r;
-                manualResetEvent.Set();
-            }));
-            _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);
-            manualResetEvent.WaitOne(TimeSpan.FromMilliseconds(200));
-
-            txReceipts.Should().BeEquivalentTo(txReceipts);
-            changedReceipts.Should().BeEquivalentTo(receiptsRemoved);
-        }
-
-        [Test]
         public void LogsSubscription_can_send_logs_with_removed_txs_when_inserted()
         {
-            ReceiptCanonicalityMonitor receiptCanonicalityMonitor =
-                new(_blockTree, _receiptStorage, _logManager);
-            
             int blockNumber = 55555;
             Filter filter = null;
             
-            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptStorage, _receiptFinder, _filterStore, _blockTree, _logManager, filter);
+            LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, _receiptCanonicalityMonitor, _filterStore, _blockTree, _logManager, filter);
 
             LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).WithTopics(TestItem.KeccakA).WithData(TestItem.RandomDataA).TestObject;
             TxReceipt[] txReceipts = {Build.A.Receipt.WithLogs(logEntry).WithBlockNumber(blockNumber).TestObject};
@@ -1086,12 +1042,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 jsonRpcResults.Add(j);
                 manualResetEvent.Set();
-            }));
-            
-            _receiptStorage.Insert(Arg.Any<Block>(), Arg.Do<TxReceipt[]>(r =>
-            {
-                ReceiptsEventArgs receiptsEventArgs = new(blockHeader, r, r[0].Removed);
-                _receiptStorage.ReceiptsInserted += Raise.EventWith(new object(), receiptsEventArgs);
             }));
             
             _blockTree.BlockAddedToMain += Raise.EventWith(new object(), blockEventArgs);

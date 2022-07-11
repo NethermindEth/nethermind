@@ -161,6 +161,7 @@ namespace Nethermind.Api
         public IWitnessCollector? WitnessCollector { get; set; }
         public IWitnessRepository? WitnessRepository { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
+        public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
         public IRlpxHost? RlpxPeer { get; set; }
         public IRpcModuleProvider RpcModuleProvider { get; set; } = NullModuleProvider.Instance;
@@ -191,6 +192,7 @@ namespace Nethermind.Api
         public IBlockDownloaderFactory? BlockDownloaderFactory { get; set; }
         public IPivot? Pivot { get; set; }
         public ISyncPeerPool? SyncPeerPool { get; set; }
+        public IPeerDifficultyRefreshPool? PeerDifficultyRefreshPool { get; set; }
         public ISynchronizer? Synchronizer { get; set; }
         public ISyncServer? SyncServer { get; set; }
         public IStateProvider? StateProvider { get; set; }

@@ -71,8 +71,9 @@ public partial class BlockDownloaderTests
         beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
         MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
-            CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
+            CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(),  LimboLogs.Instance),
             new NoopInvalidChainTracker(),
+            Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
         Response responseOptions = Response.AllCorrect;
@@ -126,6 +127,7 @@ public partial class BlockDownloaderTests
             Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
             CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
             new NoopInvalidChainTracker(),
+            Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
         SyncPeerMock syncPeer = new(syncedTree, false,  Response.AllCorrect, 16000000);
@@ -137,7 +139,7 @@ public partial class BlockDownloaderTests
     private IBetterPeerStrategy CreateMergePeerChoiceStrategy(IPoSSwitcher poSSwitcher)
     {
         ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
-        TotalDifficultyBasedBetterPeerStrategy preMergePeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
-        return new MergeBetterPeerStrategy(preMergePeerStrategy, syncProgressResolver, poSSwitcher, LimboLogs.Instance);
+        TotalDifficultyBetterPeerStrategy preMergePeerStrategy = new(LimboLogs.Instance);
+        return new MergeBetterPeerStrategy(preMergePeerStrategy, poSSwitcher, LimboLogs.Instance);
     }
 }

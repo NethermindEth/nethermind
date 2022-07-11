@@ -157,13 +157,14 @@ namespace Nethermind.Core.Test.Blockchain
             TxPool = CreateTxPool();
 
             _trieStoreWatcher = new TrieStoreBoundaryWatcher(TrieStore, BlockTree, LogManager);
-            
 
             ReceiptStorage = new InMemoryReceiptStorage();
             VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
             TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
             BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
             HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
+            
+            new ReceiptCanonicalityMonitor(BlockTree, ReceiptStorage, LogManager);
                 
             BlockValidator = new BlockValidator(
                 new TxValidator(SpecProvider.ChainId),
@@ -300,8 +301,8 @@ namespace Nethermind.Core.Test.Blockchain
             await AddBlock(BuildSimpleTransaction.WithNonce(1).TestObject, BuildSimpleTransaction.WithNonce(2).TestObject);
         }
 
-        protected virtual BlockProcessor CreateBlockProcessor() =>
-            new(
+        protected virtual IBlockProcessor CreateBlockProcessor() =>
+            new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
                 NoBlockRewards.Instance,

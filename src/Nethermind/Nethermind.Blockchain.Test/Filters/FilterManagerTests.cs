@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Filters;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using NSubstitute;

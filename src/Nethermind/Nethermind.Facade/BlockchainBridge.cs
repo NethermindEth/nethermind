@@ -35,6 +35,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Filters;
 using Nethermind.State;
 
 namespace Nethermind.Facade

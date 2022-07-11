@@ -26,6 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -43,7 +44,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             Block testHeadBlock = Build.A.Block.Genesis.TestObject;
-            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider)
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance)
             {
                 _gasPriceEstimation = new(testHeadBlock.Hash, 7)
             };
@@ -59,7 +60,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, gasPrice);
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
 
             UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
             UInt256 expectedGasPrice = 110 * (gasPrice ?? 1.GWei()) / 100;
@@ -72,7 +73,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider)
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance)
             {
                 _gasPriceEstimation = new(null, (UInt256) lastGasPrice)
             };
@@ -92,7 +93,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockFinder.FindBlock(0).Returns(headBlock);
             blockFinder.Head.Returns(headBlock);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, gasPrice);
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance, gasPrice);
 
             UInt256 estimate = testGasPriceOracle.GetGasPriceEstimate();
             estimate.Should().Be((baseFeePerGas + (gasPrice ?? 1.GWei())) * 110 / 100);
@@ -107,7 +108,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockFinder.FindBlock(0).Returns(headBlock);
             blockFinder.Head.Returns(headBlock);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider);
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance);
 
             UInt256 result = testGasPriceOracle.GetGasPriceEstimate();
             
@@ -120,7 +121,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             int blockNumber = 8;
             IBlockFinder blockFinder = BuildTree(blockNumber);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider);
+            GasPriceOracle testGasPriceOracle = new(blockFinder, specProvider, LimboLogs.Instance);
 
             testGasPriceOracle.GetGasPriceEstimate();
 
@@ -149,7 +150,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetGasPricesFromRecentBlocks_IfLastFiveBlocksWithThreeTxAndFirstFourWithOne_CheckSixBlocks()
         {
             IBlockFinder blockFinder = GetBlockFinderForLastFiveBlocksWithThreeTxAndFirstFourWithOne();
-            GasPriceOracle testGasPriceOracle = new(blockFinder,Substitute.For<ISpecProvider>())
+            GasPriceOracle testGasPriceOracle = new(blockFinder,Substitute.For<ISpecProvider>(), LimboLogs.Instance)
             {
                 IgnoreUnder = 1,
                 BlockLimit = 6
@@ -188,7 +189,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void GetGasPriceEstimate_IfLastGasPriceIsNull_WillNotReturnLastGasPrice()
         {
-            GasPriceOracle testGasPriceOracle = new(Substitute.For<IBlockFinder>(), Substitute.For<ISpecProvider>());
+            GasPriceOracle testGasPriceOracle = new(Substitute.For<IBlockFinder>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance);
             
             Action act = () => testGasPriceOracle.GetGasPriceEstimate();
 
@@ -203,7 +204,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block headBlock = Build.A.Block.Genesis.WithTransactions(tx,tx,tx,tx,tx).TestObject;
             blockFinder.FindHeadBlock().Returns(headBlock);
             blockFinder.FindBlock(0).Returns(headBlock);
-            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
+            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
             
             IEnumerable<UInt256> results = testGasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
 
@@ -216,7 +217,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block testBlock = Build.A.Block.WithTransactions(GetFiveTransactionsWithDifferentGasPrices()).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(testBlock);
-            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
+            GasPriceOracle testGasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
             List<UInt256> expected = new() {2,3,4};
             
             IEnumerable<UInt256> results = testGasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
@@ -250,7 +251,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.Genesis.WithBeneficiary(minerAddress).WithTransactions(transactions).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(block);
-            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>());
+            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
             List<UInt256> expected = new() {8,9};
             
             IEnumerable<UInt256>  results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
@@ -269,7 +270,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block eip1559Block = Build.A.Block.Genesis.WithTransactions(eip1559TxGroup).WithBaseFeePerGas(1).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(eip1559Block);
-            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled));
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
 
             IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
 
@@ -289,7 +290,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block nonEip1559Block = Build.A.Block.Genesis.WithTransactions(nonEip1559TxGroup).WithBaseFeePerGas(1).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(nonEip1559Block);
-            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled));
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(eip1559Enabled), LimboLogs.Instance);
 
             IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
 
@@ -312,7 +313,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.Genesis.WithTransactions(transactions).WithBeneficiary(TestItem.PrivateKeyA.Address).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(block);
-            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>()) { _gasPriceEstimation = new(null, 7) };
+            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance) { _gasPriceEstimation = new(null, 7) };
             List<UInt256> expected = new() { 7 };
         
             IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
@@ -327,7 +328,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.Genesis.WithTransactions(transactions).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(block);
-            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>()) { _gasPriceEstimation = new(null, 7) };
+            GasPriceOracle gasPriceOracle = new(blockFinder, Substitute.For<ISpecProvider>(), LimboLogs.Instance) { _gasPriceEstimation = new(null, 7) };
             List<UInt256> expected = new() { 7 };
         
             IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
@@ -347,7 +348,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block testBlock = Build.A.Block.Genesis.WithBaseFeePerGas(1).WithTransactions(transactions).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(testBlock);
-            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(false));
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(false), LimboLogs.Instance);
             List<UInt256> expected = new() { 2, 3 };
 
             IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);
@@ -367,7 +368,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block testBlock = Build.A.Block.Genesis.WithBaseFeePerGas(1).WithTransactions(transactions).TestObject;
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(0).Returns(testBlock);
-            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true));
+            GasPriceOracle gasPriceOracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance);
             List<UInt256> expected = new() { 3, 4 };
 
             IEnumerable<UInt256> results = gasPriceOracle.GetSortedGasPricesFromRecentBlocks(0);

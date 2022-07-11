@@ -22,6 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 #pragma warning disable 618
 
@@ -167,7 +168,7 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
-        public void Insert(Block block, params TxReceipt[] txReceipts)
+        public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true)
         {
             txReceipts ??= Array.Empty<TxReceipt>();
             int txReceiptsLength = txReceipts.Length;
@@ -184,17 +185,7 @@ namespace Nethermind.Blockchain.Receipts
             var blockNumber = block.Number;
             var spec = _specProvider.GetSpec(blockNumber);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
-            _blocksDb.Set(block.Hash, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
-
-            bool wasRemoved = txReceiptsLength > 0 && txReceipts[0].Removed;
-            if (!wasRemoved)
-            {
-                for (int i = 0; i < txReceiptsLength; i++)
-                {
-                    var txHash = block.Transactions[i].Hash;
-                    _transactionDb.Set(txHash, block.Hash.Bytes);
-                }
-            }
+            _blocksDb.Set(block.Hash!, StorageDecoder.Encode(txReceipts, behaviors).Bytes);
 
             if (blockNumber < MigratedBlockNumber)
             {
@@ -203,7 +194,10 @@ namespace Nethermind.Blockchain.Receipts
             
             _receiptsCache.Set(block.Hash, txReceipts);
 
-            ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(block.Header, txReceipts, wasRemoved));
+            if (ensureCanonical)
+            {
+                EnsureCanonical(block);
+            }
         }
 
         public long? LowestInsertedReceiptBlockNumber
@@ -238,7 +232,14 @@ namespace Nethermind.Blockchain.Receipts
         {
             return _receiptsCache.Contains(hash) || _blocksDb.KeyExists(hash);
         }
-        
-        public event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
+
+        public void EnsureCanonical(Block block)
+        {
+            TxReceipt[] receipts = Get(block);
+            foreach (TxReceipt txReceipt in receipts)
+            {
+                _transactionDb.Set(txReceipt.TxHash, block.Hash.Bytes);
+            }
+        }
     }
 }

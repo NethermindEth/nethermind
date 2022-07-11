@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Db.Blooms;
+using Nethermind.Facade.Filters;
 
 namespace Nethermind.Blockchain.Find
 {
@@ -283,7 +284,7 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Keccak blockHash, long blockNumber, CancellationToken cancellationToken)
         {
-            TxReceipt[] GetReceipts(Keccak hash, long number)
+            TxReceipt[]? GetReceipts(Keccak hash, long number)
             {
                 var canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
                 if (canUseHash)

@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using FastEnumUtility;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -57,6 +58,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ProcessingOptions _processingOptions;
+        internal static TimeSpan Timeout = TimeSpan.FromSeconds(7);
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
@@ -106,6 +108,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _invalidChainTracker.SetChildParent(request.BlockHash, request.ParentHash);
             if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
             {
+                if (_logger.IsInfo) _logger.Info($"Invalid - block {request} is known to be a part of an invalid chain.");
                 return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
             }
 
@@ -172,7 +175,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}.");
                 }
 
-                if (!isValid)
+                if (result == ValidationResult.Invalid)
                 {
                     _invalidChainTracker.OnInvalidBlock(request.BlockHash, request.ParentHash);
                     return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
@@ -253,7 +256,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
             try
             {
-                Task timeout = Task.Delay(TimeSpan.FromSeconds(5));
+                Task timeout = Task.Delay(Timeout);
                 ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain);
                 await Task.WhenAny(timeout, addResult.AsTask());
                 if (addResult.IsCompletedSuccessfully)
@@ -384,7 +387,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             Invalid = 0,
             Valid = 1,
             AlreadyKnown = 2,
-            Syncing = 3
+            Syncing = 4
         }
     }
 }

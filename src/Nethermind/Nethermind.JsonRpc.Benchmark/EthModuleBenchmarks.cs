@@ -70,6 +70,7 @@ namespace Nethermind.JsonRpc.Benchmark
             StateProvider stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             stateProvider.Commit(spec);
+            stateProvider.CommitTree(0);
 
             StorageProvider storageProvider = new(trieStore, stateProvider, LimboLogs.Instance);
             StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
@@ -135,7 +136,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 specProvider,
                 false);
 
-            GasPriceOracle gasPriceOracle = new(blockTree, specProvider);
+            GasPriceOracle gasPriceOracle = new(blockTree, specProvider, LimboLogs.Instance);
             FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
             EthSyncingInfo ethSyncingInfo = new(blockTree);
             

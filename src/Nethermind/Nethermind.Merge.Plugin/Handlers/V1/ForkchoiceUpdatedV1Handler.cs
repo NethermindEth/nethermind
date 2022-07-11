@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -44,6 +45,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IPayloadPreparationService _payloadPreparationService;
+        private readonly IBlockProcessingQueue _processingQueue;
         private readonly IBlockCacheService _blockCacheService;
         private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly IMergeSyncController _mergeSyncController;
@@ -55,6 +57,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IManualBlockFinalizationManager manualBlockFinalizationManager,
             IPoSSwitcher poSSwitcher,
             IPayloadPreparationService payloadPreparationService,
+            IBlockProcessingQueue processingQueue,
             IBlockCacheService blockCacheService,
             IInvalidChainTracker invalidChainTracker,
             IMergeSyncController mergeSyncController,
@@ -65,6 +68,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
             _payloadPreparationService = payloadPreparationService;
+            _processingQueue = processingQueue;
             _blockCacheService = blockCacheService;
             _invalidChainTracker = invalidChainTracker;
             _mergeSyncController = mergeSyncController;
@@ -88,7 +92,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     _mergeSyncController.InitBeaconHeaderSync(block.Header);
-                    _peerRefresher.RefreshPeers(block.ParentHash);
+                    _peerRefresher.RefreshPeers(block.Hash, block.ParentHash, forkchoiceState.FinalizedBlockHash);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
 
@@ -110,12 +114,21 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (!blockInfo.IsBeaconMainChain)
                     ReorgBeaconChainDuringSync(newHeadBlock, blockInfo);
-                
-                _peerRefresher.RefreshPeers(newHeadBlock.ParentHash);
-                _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
-                _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
-                _mergeSyncController.StopBeaconModeControl();
-                if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}."); }
+
+                int processingQueueCount = _processingQueue.Count;
+                if (processingQueueCount == 0)
+                {
+                    _peerRefresher.RefreshPeers(newHeadBlock.Hash, newHeadBlock.ParentHash, forkchoiceState.FinalizedBlockHash);
+                    _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
+                    _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                    _mergeSyncController.StopBeaconModeControl();
+
+                    if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}."); }
+                }
+                else
+                {
+                    if (_logger.IsInfo) { _logger.Info($"Processing {_processingQueue.Count} blocks... Request: {requestStr}."); }
+                }
 
                 return ForkchoiceUpdatedV1Result.Syncing;
             }

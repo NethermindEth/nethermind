@@ -173,6 +173,11 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(result);
             }
 
+            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
             public async Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
             {
                 if (_causeTimeoutOnInit)
@@ -340,19 +345,18 @@ namespace Nethermind.Synchronization.Test
                 if (IsMerge(synchronizerType))
                     SyncPeerPool = new SyncPeerPool(BlockTree, stats,
                         new MergeBetterPeerStrategy(
-                            new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, LimboLogs.Instance),
-                            syncProgressResolver, poSSwitcher, LimboLogs.Instance), 25, _logManager);
+                            new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), poSSwitcher, LimboLogs.Instance), 25, _logManager);
                 else
                     SyncPeerPool = new SyncPeerPool(BlockTree, stats,
-                        new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, LimboLogs.Instance), 25,
+                        new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), 25,
                         _logManager);
 
-                TotalDifficultyBasedBetterPeerStrategy totalDifficultyBasedBetterPeerStrategy = new(syncProgressResolver, LimboLogs.Instance);
+                TotalDifficultyBetterPeerStrategy totalDifficultyBetterPeerStrategy = new(LimboLogs.Instance);
                 IBetterPeerStrategy bestPeerStrategy;
                 bestPeerStrategy = IsMerge(synchronizerType)
-                    ? new MergeBetterPeerStrategy(totalDifficultyBasedBetterPeerStrategy, syncProgressResolver,
+                    ? new MergeBetterPeerStrategy(totalDifficultyBetterPeerStrategy,
                         poSSwitcher, LimboLogs.Instance)
-                    : totalDifficultyBasedBetterPeerStrategy;
+                    : totalDifficultyBetterPeerStrategy;
                 
                 MultiSyncModeSelector syncModeSelector = new(syncProgressResolver, SyncPeerPool,
                     syncConfig, No.BeaconSync, bestPeerStrategy, _logManager);
@@ -378,6 +382,7 @@ namespace Nethermind.Synchronization.Test
                         bestPeerStrategy,
                         syncReport,
                         invalidChainTracker,
+                        syncProgressResolver,
                         _logManager
                     );
                     Synchronizer = new MergeSynchronizer(
@@ -407,7 +412,7 @@ namespace Nethermind.Synchronization.Test
                         Always.Valid,
                         Always.Valid,
                         SyncPeerPool,
-                        new TotalDifficultyBasedBetterPeerStrategy(syncProgressResolver, _logManager),
+                        new TotalDifficultyBetterPeerStrategy(_logManager),
                         syncReport,
                         _logManager);
                     

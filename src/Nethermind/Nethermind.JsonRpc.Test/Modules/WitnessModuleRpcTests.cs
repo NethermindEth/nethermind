@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -63,12 +64,12 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             _blockFinder.FindHeader((BlockParameter)null).ReturnsForAnyArgs(_block.Header);
             _blockFinder.Head.Returns(_block);
-
+            
+            using IDisposable tracker = _witnessRepository.TrackOnThisThread();
             _witnessRepository.Add(_block.Hash);
             _witnessRepository.Persist(_block.Hash);
 
-            string serialized =
-                RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", _block.CalculateHash().ToString());
+            string serialized = RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", _block.CalculateHash().ToString());
             serialized.Should().Be(GetOneWitnessHashResponse);
         }
 

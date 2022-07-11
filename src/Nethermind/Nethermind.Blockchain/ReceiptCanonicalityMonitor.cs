@@ -23,11 +23,18 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
 {
-    public class ReceiptCanonicalityMonitor : IDisposable
+    public interface IReceiptMonitor : IDisposable
+    {
+        event EventHandler<ReceiptsEventArgs> ReceiptsInserted;
+    }
+
+    public class ReceiptCanonicalityMonitor : IReceiptMonitor
     {
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ILogger _logger;
+        
+        public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 
         public ReceiptCanonicalityMonitor(IBlockTree? blockTree, IReceiptStorage? receiptStorage, ILogManager? logManager)
         {
@@ -39,27 +46,28 @@ namespace Nethermind.Blockchain
 
         private void OnBlockAddedToMain(object sender, BlockReplacementEventArgs e)
         {
+            _receiptStorage.EnsureCanonical(e.Block);
+            
             // we don't want this to be on main processing thread
-            Task.Run(() => RollbackReceipts(e.PreviousBlock))
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error($"Couldn't correctly insert updated receipts from removed block {e.PreviousBlock?.ToString(Block.Format.FullHashAndNumber)} to receipt storage.", t.Exception);
-                    }
-                });
+            Task.Run(() => TriggerReceiptInsertedEvent(e.Block, e.PreviousBlock));
         }
 
-        private void RollbackReceipts(Block? previousBlock)
+        private void TriggerReceiptInsertedEvent(Block newBlock, Block? previousBlock)
         {
-            if (previousBlock != null)
+            try
             {
-                TxReceipt[] txReceipts = _receiptStorage.Get(previousBlock);
-                foreach (var txReceipt in txReceipts)
+                if (previousBlock is not null)
                 {
-                    txReceipt.Removed = true;
+                    TxReceipt[] removedReceipts = _receiptStorage.Get(previousBlock);
+                    ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(previousBlock.Header, removedReceipts, true));
                 }
-                _receiptStorage.Insert(previousBlock, txReceipts);
+                
+                TxReceipt[] insertedReceipts = _receiptStorage.Get(newBlock);
+                ReceiptsInserted?.Invoke(this, new ReceiptsEventArgs(newBlock.Header, insertedReceipts));
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError) _logger.Error($"Couldn't correctly trigger receipt event. New block {newBlock.ToString(Block.Format.FullHashAndNumber)}, Prev block {previousBlock?.ToString(Block.Format.FullHashAndNumber)}.", exception);
             }
         }
 
