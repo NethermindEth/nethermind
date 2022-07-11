@@ -67,7 +67,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             IInvalidChainTracker invalidChainTracker,
             ILogManager logManager)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
-                specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, logManager),
+                specProvider, new MergeBlocksSyncPeerAllocationStrategyFactory(posSwitcher, beaconPivot, logManager),
                 betterPeerStrategy, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

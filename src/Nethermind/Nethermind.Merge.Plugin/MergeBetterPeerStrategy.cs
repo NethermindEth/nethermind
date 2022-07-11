@@ -61,7 +61,7 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
     {
         bool isDesiredPeer = ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestHeader.TotalDifficulty)
             ? _preMergeBetterPeerStrategy.IsDesiredPeer(bestPeerInfo, bestHeader)
-            : _beaconPivot.BeaconPivotExists() && bestPeerInfo.Number >= _beaconPivot.PivotNumber - 1;
+            : _beaconPivot.BeaconPivotExists() && bestPeerInfo.Number >= _beaconPivot.PivotNumber - 1; // we need  to guarantee the peer can have all the block prior to beacon pivot
         if (_logger.IsTrace) _logger.Trace($"IsDesiredPeer {isDesiredPeer} BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {bestHeader.TotalDifficulty} LocalChainBestFullBlock: {bestHeader.Number} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty} BeaconPivotExists {_beaconPivot.BeaconPivotExists()} BeaconPivotNumber {_beaconPivot.PivotNumber}");
         return isDesiredPeer;
     }
