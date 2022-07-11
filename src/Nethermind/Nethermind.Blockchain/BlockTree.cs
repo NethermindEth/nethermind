@@ -882,7 +882,7 @@ namespace Nethermind.Blockchain
                         SetTotalDifficulty(header);
                     }
                     blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? UInt256.Zero);
-                    level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, false, false);
+                    level = UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
                 }
                 else
                 {
@@ -1630,7 +1630,7 @@ namespace Nethermind.Blockchain
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
         }
 
-        private ChainLevelInfo UpdateOrCreateLevel(long number, Keccak hash, BlockInfo blockInfo, bool setAsMain = false, bool updateBestKnown = true)
+        private ChainLevelInfo UpdateOrCreateLevel(long number, Keccak hash, BlockInfo blockInfo, bool setAsMain = false)
         {
             using (BatchWrite? batch = _chainLevelInfoRepository.StartBatch())
             {
@@ -1662,7 +1662,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (updateBestKnown && !blockInfo.IsBeaconInfo && number > BestKnownNumber)
+                    if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
                     {
                         BestKnownNumber = number;
                     }
@@ -1868,7 +1868,7 @@ namespace Nethermind.Blockchain
                         SetTotalDifficulty(block.Header);
                     }
                     blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty ?? UInt256.Zero);
-                    level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo, false, false);
+                    level = UpdateOrCreateLevel(block.Number, block.Hash, blockInfo, false);
                 }
                 else
                 {
