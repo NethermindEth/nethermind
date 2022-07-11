@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -285,6 +286,25 @@ namespace Nethermind.Synchronization.Test
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
 
             Assert.AreEqual(0, ctx.BlockTree.BestSuggestedHeader.Number);
+        }
+
+        [Test]
+        public async Task Peer_only_advertise_one_header()
+        {
+            Context ctx = new();
+            BlockDownloader downloader = CreateBlockDownloader(ctx);
+
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(0, 1, Response.AllCorrect));
+
+            PeerInfo peerInfo = new(syncPeer);
+            syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+            syncPeer.HeadNumber.Returns(1);
+
+            long blockSynced = await downloader.DownloadBlocks(peerInfo, new BlocksRequest(), CancellationToken.None);
+
+            Assert.AreEqual(0, blockSynced);
         }
 
         [TestCase(33L)]
