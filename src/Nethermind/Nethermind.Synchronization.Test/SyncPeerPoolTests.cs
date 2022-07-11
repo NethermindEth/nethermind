@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.Test
             {
                 BlockTree = Substitute.For<IBlockTree>();
                 Stats = Substitute.For<INodeStatsManager>();
-                PeerStrategy = new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance);
+                PeerStrategy = new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
                 Pool = new SyncPeerPool(BlockTree, Stats, PeerStrategy, 25, 50, LimboLogs.Instance);
             }
 

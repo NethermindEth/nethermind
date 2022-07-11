@@ -99,7 +99,7 @@ public class BeaconHeadersSyncTests
                 progressTracker,
                 _syncConfig,
                 LimboLogs.Instance);
-            TotalDifficultyBasedBetterPeerStrategy bestPeerStrategy = new (syncProgressResolver, LimboLogs.Instance);
+            TotalDifficultyBetterPeerStrategy bestPeerStrategy = new (LimboLogs.Instance);
             BeaconPivot = beaconPivot ?? new BeaconPivot(_syncConfig, _metadataDb, BlockTree, LimboLogs.Instance);
             BeaconSync = new(BeaconPivot, BlockTree, _syncConfig,  new BlockCacheService(), LimboLogs.Instance);
             ISyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, peerPool, _syncConfig, BeaconSync, bestPeerStrategy, LimboLogs.Instance);
