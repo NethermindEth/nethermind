@@ -103,10 +103,8 @@ namespace Nethermind.Db.Rocks
                 InitCache(dbConfig);
 
                 // ReSharper disable once VirtualMemberCallInConstructor
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
-                var db = _dbsByPath.GetOrAdd(_fullPath, Open, (DbOptions, columnFamilies));
+                if (_logger.IsDebug) _logger.Debug($"Loading DB {Name.PadRight(13)} from {_fullPath} with max memory footprint of {_maxThisDbSize / 1000 / 1000}MB");
+                RocksDb db = _dbsByPath.GetOrAdd(_fullPath, static (s, tuple) => Open(s, tuple), (DbOptions, columnFamilies));
 
                 if (dbConfig.EnableMetricsUpdater)
                 {
@@ -124,9 +122,7 @@ namespace Nethermind.Db.Rocks
             }
             catch (RocksDbException x) when (x.Message.Contains("LOCK"))
             {
-                if (_logger.IsWarn)
-                    _logger.Warn(
-                        "If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
+                if (_logger.IsWarn) _logger.Warn("If your database did not close properly you need to call 'find -type f -name '*LOCK*' -delete' from the databse folder");
                 throw;
             }
         }
@@ -147,20 +143,20 @@ namespace Nethermind.Db.Rocks
                 Metrics.OtherDbWrites++;
         }
 
-        private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
+        private T? ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
             return ReadConfig<T>(dbConfig, propertyName, Name);
         }
 
-        protected static T ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
+        protected static T? ReadConfig<T>(IDbConfig dbConfig, string propertyName, string tableName)
         {
             string prefixed = string.Concat(tableName.StartsWith("State") ? string.Empty : string.Concat(tableName, "Db"),
                 propertyName);
             try
             {
-                return (T)dbConfig.GetType()
-                    .GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)
-                    ?.GetValue(dbConfig);
+                return (T?)dbConfig.GetType()
+                    .GetProperty(prefixed, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?
+                    .GetValue(dbConfig);
             }
             catch (Exception e)
             {
@@ -176,7 +172,7 @@ namespace Nethermind.Db.Rocks
             tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
             tableOptions.SetCacheIndexAndFilterBlocks(GetCacheIndexAndFilterBlocks(dbConfig));
 
-            tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
+            tableOptions.SetFilterPolicy(BloomFilterPolicy.Create());
             tableOptions.SetFormatVersion(4);
 
             ulong blockCacheSize = GetBlockCacheSize(dbConfig);
@@ -187,7 +183,7 @@ namespace Nethermind.Db.Rocks
             // tableOptions.SetBlockCache(cache);
 
             DbOptions options = new();
-            options.SetCreateIfMissing(true);
+            options.SetCreateIfMissing();
             options.SetAdviseRandomOnOpen(true);
             options.OptimizeForPointLookup(
                 blockCacheSize); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
@@ -511,7 +507,7 @@ namespace Nethermind.Db.Rocks
                 Handle = RocksDbSharp.Native.Instance.rocksdb_flushoptions_create();
             }
 
-            public IntPtr Handle { get; protected set; }
+            public IntPtr Handle { get; private set; }
 
             ~FlushOptions()
             {

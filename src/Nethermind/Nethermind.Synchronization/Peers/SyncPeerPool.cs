@@ -658,7 +658,7 @@ namespace Nethermind.Synchronization.Peers
                 INodeStatsManager stats = _stats;
                 lock (_isAllocatedChecks)
                 {
-                    var unallocatedPeers = InitializedPeers.Where(p => p.CanBeAllocated(allocation.Contexts));
+                    IEnumerable<PeerInfo> unallocatedPeers = InitializedPeers.Where(p => p.CanBeAllocated(allocation.Contexts));
                     allocation.AllocateBestPeer(unallocatedPeers, stats, _blockTree);
                 }
             }

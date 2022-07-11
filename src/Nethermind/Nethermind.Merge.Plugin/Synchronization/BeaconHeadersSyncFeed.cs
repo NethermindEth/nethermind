@@ -78,7 +78,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         long startNumber = lowestInserted?.Number - 1 ?? _pivotNumber;
-        Keccak? startHeaderHash = lowestInserted?.ParentHash ?? pivotHash;
+        Keccak startHeaderHash = lowestInserted?.ParentHash ?? pivotHash ?? Keccak.Zero;
         UInt256? startTotalDifficulty = lowestInserted is not null 
             ? lowestInserted.TotalDifficulty - lowestInserted.Difficulty 
             : _poSSwitcher.FinalTotalDifficulty ?? null;
@@ -112,7 +112,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
         }
 
-        AddBlockResult insertOutcome = _blockTree.IsKnownBlock(header.Number, header.Hash)
+        AddBlockResult insertOutcome = _blockTree.IsKnownBlock(header.Number, header.Hash!)
             ? AddBlockResult.AlreadyKnown
             : _blockTree.Insert(header, options);
         // Found existing block in the block tree
@@ -124,14 +124,14 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             if (_logger.IsTrace)
                 _logger.Trace(
                     " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
-                    $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader.Number}");
+                    $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader?.Number}");
             // beacon header set to (global) lowest inserted header
             //   _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
             if (header.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
             {
                 if (_logger.IsTrace)
                     _logger.Trace(
-                        $"LowestInsertedBeaconHeader AlreadyKnown changed, old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {header?.Number}");
+                        $"LowestInsertedBeaconHeader AlreadyKnown changed, old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {header.Number}");
                 _blockTree.LowestInsertedBeaconHeader = header;
             }
             //}

@@ -22,6 +22,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction.Boost;
 
 public class BoostExecutionPayloadV1
 {
-    public ExecutionPayloadV1 Block { get; set; }
-    public UInt256 Profit { get; set; }
+    public ExecutionPayloadV1 Block { get; init; } = null!;
+    public UInt256 Profit { get; init; }
 }

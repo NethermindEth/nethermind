@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.Test.Mocks
 {
     public class FirstFree : IPeerAllocationStrategy
     {
-        private static FirstFree _instance;
+        private static FirstFree? _instance;
 
         public static FirstFree Instance
         {

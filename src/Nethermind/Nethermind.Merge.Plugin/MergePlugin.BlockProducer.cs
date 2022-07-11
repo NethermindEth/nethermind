@@ -92,7 +92,7 @@ namespace Nethermind.Merge.Plugin
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
             }
 
-            return _api.BlockProducer;
+            return _api.BlockProducer!;
         }
 
         // this looks redundant but Enabled actually comes from IConsensusWrapperPlugin

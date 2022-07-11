@@ -101,6 +101,11 @@ namespace Nethermind.Init.Steps
             ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
             ThreadPool.SetMinThreads(workerThreads + Environment.ProcessorCount, completionPortThreads + Environment.ProcessorCount);
 
+            if (_api.ReceiptStorage == null) throw new StepDependencyException(nameof(_api.ReceiptStorage));
+            if (_api.GasPriceOracle == null) throw new StepDependencyException(nameof(_api.GasPriceOracle));
+            if (_api.EthSyncingInfo == null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
+            if (_api.ReadOnlyTrieStore == null) throw new StepDependencyException(nameof(_api.ReadOnlyTrieStore));
+
             EthModuleFactory ethModuleFactory = new(
                 _api.TxPool,
                 _api.TxSender,
@@ -121,6 +126,9 @@ namespace Nethermind.Init.Steps
             if (_api.BlockPreprocessor == null) throw new StepDependencyException(nameof(_api.BlockPreprocessor));
             if (_api.BlockValidator == null) throw new StepDependencyException(nameof(_api.BlockValidator));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.KeyStore == null) throw new StepDependencyException(nameof(_api.KeyStore));
+            if (_api.PeerPool == null) throw new StepDependencyException(nameof(_api.PeerPool));
+            if (_api.WitnessRepository == null) throw new StepDependencyException(nameof(_api.WitnessRepository));
             
             ProofModuleFactory proofModuleFactory = new(_api.DbProvider, _api.BlockTree, _api.ReadOnlyTrieStore, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
             rpcModuleProvider.RegisterBounded(proofModuleFactory, 2, rpcConfig.Timeout);

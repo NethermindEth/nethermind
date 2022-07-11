@@ -18,7 +18,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using FastEnumUtility;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -41,7 +40,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
     /// <summary>
     /// Verifies the payload according to the execution environment rule set (EIP-3675) and returns the <see cref="PayloadStatusV1"/> of the verification and the hash of the last valid block.
     /// 
-    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_newpayloadv1"/>
+    /// <seealso cref="http://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_newpayloadv1"/>
     /// </summary>
     public class NewPayloadV1Handler : IAsyncHandler<ExecutionPayloadV1, PayloadStatusV1>
     {
@@ -99,14 +98,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
             }
 
-            if (!HeaderValidator.ValidateHash(block.Header))
+            if (!HeaderValidator.ValidateHash(block!.Header))
             {
                 if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
                 return NewPayloadV1Result.InvalidBlockHash;
             }
-            
-            _invalidChainTracker.SetChildParent(request.BlockHash, request.ParentHash);
-            if (_invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash, out Keccak? lastValidHash))
+
+            Keccak blockHash = block.Hash!;
+            _invalidChainTracker.SetChildParent(blockHash, request.ParentHash);
+            if (_invalidChainTracker.IsOnKnownInvalidChain(blockHash, out Keccak? lastValidHash))
             {
                 return NewPayloadV1Result.Invalid(lastValidHash, $"Block {request} is known to be a part of an invalid chain.");
             }
@@ -131,7 +131,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
 
                 if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
-                _blockCacheService.BlockCache.TryAdd(request.BlockHash, block);
+                _blockCacheService.BlockCache.TryAdd(blockHash, block);
                 return NewPayloadV1Result.Syncing;
             }
             
@@ -153,7 +153,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader))
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader!.TotalDifficulty}. Request: {requestStr}.");
+                if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.");
                 
                 // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
                 return NewPayloadV1Result.Invalid(Keccak.Zero);
@@ -176,7 +176,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 if (result == ValidationResult.Invalid)
                 {
-                    _invalidChainTracker.OnInvalidBlock(request.BlockHash, request.ParentHash);
+                    _invalidChainTracker.OnInvalidBlock(blockHash, request.ParentHash);
                     return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
                 }
 
@@ -351,20 +351,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     while (current != null)
                     {
                         stack.Push(current);
-                        if (current.Hash == _beaconPivot.PivotHash ||
-                            _blockTree.IsKnownBeaconBlock(current.Number, current.Hash))
+                        Keccak currentHash = current.Hash!;
+                        if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
                         {
                             break;
                         }
 
-                        _blockCacheService.BlockCache.TryGetValue(current.ParentHash, out Block? parentBlock);
+                        _blockCacheService.BlockCache.TryGetValue(current.ParentHash!, out Block? parentBlock);
                         current = parentBlock;
                     }
 
                     if (current == null)
                     {
                         // block not part of beacon pivot chain, save in cache
-                        _blockCacheService.BlockCache.TryAdd(block.Hash, block);
+                        _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
                         return false;
                     }
 

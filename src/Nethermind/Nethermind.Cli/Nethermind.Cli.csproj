@@ -9,8 +9,9 @@
         <PackageVersion>1.0.0</PackageVersion>
         <LangVersion>latest</LangVersion>
         <Nullable>enable</Nullable>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
-    
+
     <ItemGroup>
       <PackageReference Include="Colorful.Console" Version="1.2.15" />
       <PackageReference Include="Jint" Version="2.11.58" />

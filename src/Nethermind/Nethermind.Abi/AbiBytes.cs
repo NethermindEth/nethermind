@@ -26,7 +26,7 @@ namespace Nethermind.Abi
         private const int MaxLength = 32;
         private const int MinLength = 0;
 
-        public static AbiBytes Bytes32 { get; } = new(32);
+        public static new AbiBytes Bytes32 { get; } = new(32);
 
         public AbiBytes(int length)
         {

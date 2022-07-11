@@ -71,7 +71,7 @@ public class InvalidChainTracker: IInvalidChainTracker
     public void SetChildParent(Keccak child, Keccak parent)
     {
         Node parentNode = GetNode(parent);
-        bool needPropagate = false;
+        bool needPropagate;
         lock (parentNode)
         {
             parentNode.Children.Add(child);
@@ -127,7 +127,7 @@ public class InvalidChainTracker: IInvalidChainTracker
 
     private BlockHeader? TryGetBlockHeader(Keccak hash)
     {
-        if (_blockCacheService.BlockCache.TryGetValue(hash, out Block block))
+        if (_blockCacheService.BlockCache.TryGetValue(hash, out Block? block))
         {
             return block.Header;
         }
@@ -146,7 +146,7 @@ public class InvalidChainTracker: IInvalidChainTracker
                 return;
             }
 
-            parent = failedBlockHeader.ParentHash;
+            parent = failedBlockHeader.ParentHash!;
         }
         
         Keccak effectiveParent = parent;

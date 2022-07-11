@@ -178,7 +178,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public async Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+            public async Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
             {
                 if (_causeTimeoutOnInit)
                 {
@@ -292,7 +292,7 @@ namespace Nethermind.Synchronization.Test
             private ISyncPeerPool SyncPeerPool { get; }
 
 //            ILogManager _logManager = LimboLogs.Instance;
-            ILogManager _logManager = new OneLoggerLogManager(new ConsoleAsyncLogger(LogLevel.Debug));
+            ILogManager _logManager = LimboLogs.Instance;
 
             private ILogger _logger;
 
@@ -438,14 +438,8 @@ namespace Nethermind.Synchronization.Test
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();
-                Synchronizer.SyncEvent += SynchronizerOnSyncEvent;
 
                 AllInstances.Enqueue(this);
-            }
-
-            private void SynchronizerOnSyncEvent(object sender, SyncEventArgs e)
-            {
-                TestContext.WriteLine(e.SyncEvent);
             }
 
             public SyncingContext BestKnownNumberIs(long number)
@@ -598,7 +592,6 @@ namespace Nethermind.Synchronization.Test
 
             public void Stop()
             {
-                Synchronizer.SyncEvent -= SynchronizerOnSyncEvent;
                 Task task = new(async () =>
                 {
                     await Synchronizer.StopAsync();

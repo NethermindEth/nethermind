@@ -54,14 +54,15 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
         if (_logger.IsTrace) _logger.Trace($"IsBetterThanLocalChain BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {bestBlock.TotalDifficulty} LocalChainBestFullBlock: {bestBlock.Number} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty}");
         return ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestBlock.TotalDifficulty)
             ? _preMergeBetterPeerStrategy.IsBetterThanLocalChain(bestPeerInfo, bestBlock)
-            : _beaconPivot.BeaconPivotExists() && bestPeerInfo.Number > _beaconPivot.PivotNumber;
+            : bestPeerInfo.Number > bestBlock.Number;
     }
 
     public bool IsDesiredPeer(in (UInt256 TotalDifficulty, long Number) bestPeerInfo, in (UInt256 TotalDifficulty, long Number) bestHeader)
     {
+        if (_logger.IsTrace) _logger.Trace($"IsDesiredPeer BestPeerInfo.TD: {bestPeerInfo.TotalDifficulty}, BestPeerInfo.Number: {bestPeerInfo.Number}, LocalChainDifficulty {bestHeader.TotalDifficulty} LocalChainBestFullBlock: {bestHeader.Number} TerminalTotalDifficulty {_poSSwitcher.TerminalTotalDifficulty} BeaconPivotExists {_beaconPivot.BeaconPivotExists()} BeaconPivotNumber {_beaconPivot.PivotNumber}");
         return ShouldApplyPreMergeLogic(bestPeerInfo.TotalDifficulty, bestHeader.TotalDifficulty)
             ? _preMergeBetterPeerStrategy.IsDesiredPeer(bestPeerInfo, bestHeader)
-            : bestPeerInfo.Number > bestHeader.Number;
+            : _beaconPivot.BeaconPivotExists() && bestPeerInfo.Number > _beaconPivot.PivotNumber;
     }
 
     public bool IsLowerThanTerminalTotalDifficulty(UInt256 totalDifficulty) =>

@@ -169,19 +169,21 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
-            using (Timer timer = new Timer(1000) {Enabled = true})
+            using (Timer timer = new(1000) {Enabled = true})
             {
-                timer.Elapsed += (ElapsedEventHandler) ((o, e) =>
+                timer.Elapsed += (_, _) =>
                 {
                     if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
-                });
+                };
 
                 try
                 {
                     foreach (Block block in GetBlockBodiesForMigration())
                     {
                         TxReceipt?[] receipts = _receiptStorage.Get(block);
-                        TxReceipt[] notNullReceipts = receipts.Length == 0 ? receipts : receipts.Where(r => r != null).ToArray();
+                        TxReceipt[] notNullReceipts = receipts.Length == 0
+                            ? Array.Empty<TxReceipt>()
+                            : receipts.Where(r => r is not null).Cast<TxReceipt>().ToArray();
 
                         if (receipts.Length == 0 || notNullReceipts.Length != 0) // if notNullReceipts.Length is 0 and receipts are not 0 - we are missing all receipts, they are not processed yet.
                         {
@@ -215,7 +217,7 @@ namespace Nethermind.Init.Steps.Migrations
                     bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
                     {
                         using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
-                        ChainLevelInfo level = _chainLevelInfoRepository.LoadLevel(number);
+                        ChainLevelInfo? level = _chainLevelInfoRepository.LoadLevel(number);
                         if (level != null)
                         {
                             if (!level.HasBlockOnMainChain)
@@ -248,7 +250,7 @@ namespace Nethermind.Init.Steps.Migrations
                         
                         if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                         {
-                            Block header = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+                            Block? header = _blockTree.FindBlock(blockHash!, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlock(i, blockHash);
                         }
 

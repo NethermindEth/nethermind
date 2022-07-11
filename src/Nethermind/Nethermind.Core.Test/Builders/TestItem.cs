@@ -122,7 +122,7 @@ namespace Nethermind.Core.Test.Builders
             return new Keccak(bytes);
         }
 
-        public static Account GenerateRandomAccount(Random random = null)
+        public static Account GenerateRandomAccount(Random? random = null)
         {
             random ??= Random;
 
@@ -135,7 +135,7 @@ namespace Nethermind.Core.Test.Builders
             return account;
         }
 
-        public static byte[] GenerateRandomAccountRlp(AccountDecoder accountDecoder = null)
+        public static byte[] GenerateRandomAccountRlp(AccountDecoder? accountDecoder = null)
         {
             accountDecoder ??= _accountDecoder;
             Account account = GenerateRandomAccount();
@@ -154,7 +154,7 @@ namespace Nethermind.Core.Test.Builders
             return account;
         }
 
-        public static byte[] GenerateIndexedAccountRlp(int index, AccountDecoder accountDecoder = null)
+        public static byte[] GenerateIndexedAccountRlp(int index, AccountDecoder? accountDecoder = null)
         {
             accountDecoder ??= _accountDecoder;
 

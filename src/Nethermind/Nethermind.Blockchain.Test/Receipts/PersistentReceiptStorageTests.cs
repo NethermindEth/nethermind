@@ -17,41 +17,28 @@
 using System;
 using System.Linq;
 using FluentAssertions;
-using FluentAssertions.Numeric;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using NSubstitute;
 using NUnit.Framework;
-using Org.BouncyCastle.Asn1.X509;
 
 namespace Nethermind.Blockchain.Test.Receipts
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
     public class PersistentReceiptStorageTests
     {
-        private readonly bool _useEip2718;
-        private MemColumnsDb<ReceiptsColumns> _receiptsDb;
-        private PersistentReceiptStorage _storage;
+        private MemColumnsDb<ReceiptsColumns> _receiptsDb = null!;
+        private PersistentReceiptStorage _storage = null!;
 
-        public PersistentReceiptStorageTests(bool useEip2718)
-        {
-            _useEip2718 = useEip2718;
-        }
-        
         [SetUp]
         public void SetUp()
         {
-            var specProvider = RopstenSpecProvider.Instance;
-            var ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
+            RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
+            EthereumEcdsa ethereumEcdsa = new(specProvider.ChainId, LimboLogs.Instance);
             ReceiptsRecovery receiptsRecovery = new(ethereumEcdsa, specProvider);
             _receiptsDb = new MemColumnsDb<ReceiptsColumns>();
             _storage = new PersistentReceiptStorage(_receiptsDb, MainnetSpecProvider.Instance, receiptsRecovery) {MigratedBlockNumber = 0};
@@ -75,7 +62,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test]
         public void ReceiptsIterator_doesnt_throw_on_null()
         {
-            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, null);
+            _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, null!);
             _storage.TryGetReceiptsIterator(1, Keccak.Zero, out var iterator);
             iterator.TryGetNext(out _).Should().BeFalse();
         }
@@ -118,7 +105,7 @@ namespace Nethermind.Blockchain.Test.Receipts
         {
             var (block, receipts) = InsertBlock();
 
-            _storage.TryGetReceiptsIterator(0, block.Hash, out var iterator).Should().BeTrue();
+            _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
             iterator.TryGetNext(out var receiptStructRef).Should().BeTrue();
             receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
             receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
@@ -131,8 +118,8 @@ namespace Nethermind.Blockchain.Test.Receipts
             var (block, _) = InsertBlock();
 
             _storage.ClearCache();
-            _storage.TryGetReceiptsIterator(0, block.Hash, out var iterator).Should().BeTrue();
-            iterator.TryGetNext(out var receiptStructRef).Should().BeTrue();
+            _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
+            iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
             receiptStructRef.LogsRlp.ToArray().Should().NotBeEmpty();
             receiptStructRef.Logs.Should().BeNullOrEmpty();
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
@@ -145,8 +132,8 @@ namespace Nethermind.Blockchain.Test.Receipts
 
             _storage.ClearCache();
             _storage.Get(block);
-            _storage.TryGetReceiptsIterator(0, block.Hash, out var iterator).Should().BeTrue();
-            iterator.TryGetNext(out var receiptStructRef).Should().BeTrue();
+            _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
+            iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
             receiptStructRef.LogsRlp.ToArray().Should().BeEmpty();
             receiptStructRef.Logs.Should().BeEquivalentTo(receipts.First().Logs);
             iterator.TryGetNext(out receiptStructRef).Should().BeFalse();
@@ -168,15 +155,15 @@ namespace Nethermind.Blockchain.Test.Receipts
         [Test]
         public void HasBlock_should_returnTrueForKnownHash()
         {
-            var (block, receipts) = InsertBlock();
-            _storage.HasBlock(block.Hash).Should().BeTrue();
+            var (block, _) = InsertBlock();
+            _storage.HasBlock(block.Hash!).Should().BeTrue();
         }
         
         [Test]
         public void EnsureCanonical_should_change_tx_blockhash([Values(false, true)] bool ensureCanonical)
         {
             (Block block, TxReceipt[] receipts) = InsertBlock();
-            _storage.FindBlockHash(receipts[0].TxHash!).Should().Be(block.Hash);
+            _storage.FindBlockHash(receipts[0].TxHash!).Should().Be(block.Hash!);
             
             Block anotherBlock = Build.A.Block
                 .WithTransactions(block.Transactions)
@@ -184,28 +171,28 @@ namespace Nethermind.Blockchain.Test.Receipts
                 .WithExtraData(new byte[]{1})
                 .TestObject;
 
-            anotherBlock.Hash.Should().NotBe(block.Hash);
+            anotherBlock.Hash.Should().NotBe(block.Hash!);
             _storage.Insert(anotherBlock, new []{ Build.A.Receipt.TestObject }, ensureCanonical);
 
-            Keccak findBlockHash = _storage.FindBlockHash(receipts[0].TxHash);
+            Keccak findBlockHash = _storage.FindBlockHash(receipts[0].TxHash!);
             if (ensureCanonical)
             {
-                findBlockHash.Should().Be(anotherBlock.Hash);
+                findBlockHash.Should().Be(anotherBlock.Hash!);
             }
             else
             {
-                findBlockHash.Should().NotBe(anotherBlock.Hash);
+                findBlockHash.Should().NotBe(anotherBlock.Hash!);
             }
         }
 
-        private (Block block, TxReceipt[] receipts) InsertBlock(Block block = null)
+        private (Block block, TxReceipt[] receipts) InsertBlock(Block? block = null)
         {
             block ??= Build.A.Block
                 .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
                 .WithReceiptsRoot(TestItem.KeccakA)
                 .TestObject;
 
-            var receipts = new TxReceipt[] {Build.A.Receipt.TestObject};
+            var receipts = new[] {Build.A.Receipt.TestObject};
             _storage.Insert(block, receipts);
             return (block, receipts);
         }

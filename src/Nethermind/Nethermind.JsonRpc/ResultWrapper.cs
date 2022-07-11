@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc.Modules;
@@ -24,7 +25,7 @@ namespace Nethermind.JsonRpc
     public class ResultWrapper<T> : IResultWrapper
     {
         public T Data { get; set; }
-        public Result Result { get; set; }
+        public Result Result { get; set; } = null!;
         public int ErrorCode { get; set; }
 
         private ResultWrapper()
@@ -71,7 +72,7 @@ namespace Nethermind.JsonRpc
             return Result;
         }
 
-        public object GetData()
+        public object? GetData()
         {
             return Data;
         }
@@ -81,7 +82,7 @@ namespace Nethermind.JsonRpc
             return ErrorCode;
         }
         
-        public static ResultWrapper<T> From(RpcResult<T> rpcResult)
+        public static ResultWrapper<T> From(RpcResult<T>? rpcResult)
         {
             if (rpcResult is null)
             {
@@ -90,5 +91,7 @@ namespace Nethermind.JsonRpc
 
             return rpcResult.IsValid ? Success(rpcResult.Result) : Fail(rpcResult.Error.Message);
         }
+
+        public static implicit operator Task<ResultWrapper<T>>(ResultWrapper<T> resultWrapper) => Task.FromResult(resultWrapper);
     }
 }
