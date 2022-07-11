@@ -111,19 +111,20 @@ namespace Nethermind.Init.Steps
         {
             if (_api.StateProvider == null) throw new StepDependencyException(nameof(_api.StateProvider));
             if (_api.BlockTree == null) throw new StepDependencyException(nameof(_api.BlockTree));
-            
-            if (expectedGenesisHash != null && _api.BlockTree.Genesis.Hash != expectedGenesisHash)
+
+            BlockHeader genesis = _api.BlockTree.Genesis!;
+            if (expectedGenesisHash != null && genesis.Hash != expectedGenesisHash)
             {
                 if (_logger.IsWarn) _logger.Warn(_api.StateProvider.DumpState());
-                if (_logger.IsWarn) _logger.Warn(_api.BlockTree.Genesis.ToString(BlockHeader.Format.Full));
-                if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {_api.BlockTree.Genesis.Hash}");
+                if (_logger.IsWarn) _logger.Warn(genesis.ToString(BlockHeader.Format.Full));
+                if (_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {genesis.Hash}");
             }
             else
             {
-                if (_logger.IsDebug) _logger.Info($"Genesis hash :  {_api.BlockTree.Genesis.Hash}");
+                if (_logger.IsDebug) _logger.Info($"Genesis hash :  {genesis.Hash}");
             }
             
-            ThisNodeInfo.AddInfo("Genesis hash :", $"{_api.BlockTree.Genesis.Hash}");
+            ThisNodeInfo.AddInfo("Genesis hash :", $"{genesis.Hash}");
         }
     }
 }

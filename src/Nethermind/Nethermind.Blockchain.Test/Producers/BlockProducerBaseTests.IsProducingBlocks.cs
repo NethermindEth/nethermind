@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain.Test.Producers
         private async Task AssertIsProducingBlocks(IBlockProducer blockProducer)
         {
             Assert.AreEqual(false,blockProducer.IsProducingBlocks(null));
-            blockProducer.Start();
+            await blockProducer.Start();
             Assert.AreEqual(true,blockProducer.IsProducingBlocks(null));
             Thread.Sleep(5000);
             Assert.AreEqual(false,blockProducer.IsProducingBlocks(1));

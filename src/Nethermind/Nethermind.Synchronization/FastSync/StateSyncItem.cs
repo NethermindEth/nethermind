@@ -23,10 +23,10 @@ namespace Nethermind.Synchronization.FastSync
     [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
     public class StateSyncItem
     {
-        public StateSyncItem(Keccak hash, byte[] accountPathNibbles, byte[] pathNibbles, NodeDataType nodeType, int level = 0, uint rightness = 0)
+        public StateSyncItem(Keccak hash, byte[]? accountPathNibbles, byte[]? pathNibbles, NodeDataType nodeType, int level = 0, uint rightness = 0)
         {
             Hash = hash;
-            AccountPathNibbles = accountPathNibbles;
+            AccountPathNibbles = accountPathNibbles ?? Array.Empty<byte>();
             PathNibbles = pathNibbles ?? Array.Empty<byte>();
             NodeDataType = nodeType;
             Level = (byte)level;
@@ -43,9 +43,9 @@ namespace Nethermind.Synchronization.FastSync
 
         public byte Level { get; }
 
-        public short ParentBranchChildIndex { get; set; } = (short) -1;
+        public short ParentBranchChildIndex { get; set; } = -1;
 
-        public short BranchChildIndex { get; set; } = (short) -1;
+        public short BranchChildIndex { get; set; } = -1;
 
         public uint Rightness { get; }
 

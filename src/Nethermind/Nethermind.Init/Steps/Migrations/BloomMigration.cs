@@ -21,7 +21,6 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -163,10 +162,10 @@ namespace Nethermind.Init.Steps.Migrations
 
             using (Timer timer = new Timer(1000) {Enabled = true})
             {
-                timer.Elapsed += (ElapsedEventHandler) ((o, e) =>
+                timer.Elapsed += (_, _) =>
                 {
                     if (_logger.IsInfo) _logger.Info(GetLogMessage("in progress"));
-                });
+                };
 
                 try
                 {
@@ -183,7 +182,7 @@ namespace Nethermind.Init.Steps.Migrations
                     bool TryGetMainChainBlockHashFromLevel(long number, out Keccak? blockHash)
                     {
                         using BatchWrite batch = chainLevelInfoRepository.StartBatch();
-                        ChainLevelInfo level = chainLevelInfoRepository.LoadLevel(number);
+                        ChainLevelInfo? level = chainLevelInfoRepository.LoadLevel(number);
                         if (level != null)
                         {
                             if (!level.HasBlockOnMainChain)
@@ -216,7 +215,7 @@ namespace Nethermind.Init.Steps.Migrations
 
                         if (TryGetMainChainBlockHashFromLevel(i, out Keccak? blockHash))
                         {
-                            BlockHeader header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+                            BlockHeader? header = blockTree.FindHeader(blockHash!, BlockTreeLookupOptions.None);
                             yield return header ?? GetMissingBlockHeader(i);
                         }
                         else

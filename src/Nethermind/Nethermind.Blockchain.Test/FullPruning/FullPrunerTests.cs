@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             private readonly bool _clearPrunedDb;
             private readonly Keccak _stateRoot;
-            private long _head = 0;
+            private long _head;
             public TestFullPruningDb FullPruningDb { get; }
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
             public IBlockTree BlockTree { get; } = Substitute.For<IBlockTree>();
@@ -211,8 +211,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
             private readonly bool _successfulPruning;
             private readonly bool _clearPrunedDb;
 
-            public TestPruningContext Context { get; set; }
-            public int PruningStarted { get; private set; }
+            public TestPruningContext Context { get; set; } = null!;
+            public new int PruningStarted { get; private set; }
             public ManualResetEvent WaitForClearDb { get; } = new(false);
             
             public TestFullPruningDb(RocksDbSettings settings, IRocksDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false) 
@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     CancellationTokenSource.Dispose();
                 }
 
-                public byte[] this[byte[] key]
+                public byte[]? this[byte[] key]
                 {
                     get => _context[key];
                     set => _context[key] = value;

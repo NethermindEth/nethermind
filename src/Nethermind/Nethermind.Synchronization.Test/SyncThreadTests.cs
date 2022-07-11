@@ -63,9 +63,9 @@ namespace Nethermind.Synchronization.Test
     public class SyncThreadsTests
     {
         private readonly SynchronizerType _synchronizerType;
-        private List<SyncTestContext> _peers;
-        private SyncTestContext _originPeer;
-        private static Block _genesis;
+        private List<SyncTestContext> _peers = new();
+        private SyncTestContext _originPeer = null!;
+        private static Block _genesis = null!;
 
         public SyncThreadsTests(SynchronizerType synchronizerType)
         {
@@ -118,7 +118,7 @@ namespace Nethermind.Synchronization.Test
                     }
 
                     SyncTestContext remotePeer = _peers[remoteIndex];
-                    localPeer.PeerPool.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex],
+                    localPeer.PeerPool!.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex],
                         $"PEER{localIndex}", remotePeer.SyncServer, TestItem.PublicKeys[remoteIndex],
                         $"PEER{remoteIndex}"));
                 }
@@ -150,9 +150,10 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
+                Address headBlockBeneficiary = headBlock.Beneficiary!;
                 Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
-                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary),
-                    _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
+                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlockBeneficiary),
+                    _peers[i].StateProvider.GetBalance(headBlockBeneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB),
                     _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -221,9 +222,10 @@ namespace Nethermind.Synchronization.Test
 
             for (int i = 0; i < _peers.Count; i++)
             {
+                Address headBlockBeneficiary = headBlock.Beneficiary!;
                 Assert.AreEqual(headBlock.Header.Number, _peers[i].SyncServer.Head!.Number, i.ToString());
-                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlock.Beneficiary),
-                    _peers[i].StateProvider.GetBalance(headBlock.Beneficiary), i + " balance");
+                Assert.AreEqual(_originPeer.StateProvider.GetBalance(headBlockBeneficiary),
+                    _peers[i].StateProvider.GetBalance(headBlockBeneficiary), i + " balance");
                 Assert.AreEqual(_originPeer.StateProvider.GetBalance(TestItem.AddressB),
                     _peers[i].StateProvider.GetBalance(TestItem.AddressB), i + " balance B");
             }
@@ -231,17 +233,17 @@ namespace Nethermind.Synchronization.Test
 
         private class SyncTestContext
         {
-            public IEthereumEcdsa Ecdsa { get; set; }
-            public ITxPool TxPool { get; set; }
-            public ISyncServer SyncServer { get; set; }
-            public ISyncPeerPool PeerPool { get; set; }
-            public IBlockchainProcessor BlockchainProcessor { get; set; }
-            public ISynchronizer Synchronizer { get; set; }
-            public IBlockTree Tree { get; set; }
-            public IStateProvider StateProvider { get; set; }
+            public IEthereumEcdsa Ecdsa { get; set; } = null!;
+            public ITxPool TxPool { get; set; } = null!;
+            public ISyncServer SyncServer { get; set; } = null!;
+            public ISyncPeerPool? PeerPool { get; set; }
+            public IBlockchainProcessor? BlockchainProcessor { get; set; }
+            public ISynchronizer? Synchronizer { get; set; }
+            public IBlockTree Tree { get; set; } = null!;
+            public IStateProvider StateProvider { get; set; } = null!;
 
-            public DevBlockProducer BlockProducer { get; set; }
-            public ConsoleAsyncLogger Logger { get; set; }
+            public DevBlockProducer? BlockProducer { get; set; }
+            public ConsoleAsyncLogger? Logger { get; set; }
 
             public async Task StopAsync()
             {

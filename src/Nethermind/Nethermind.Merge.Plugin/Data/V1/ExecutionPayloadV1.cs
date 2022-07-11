@@ -34,6 +34,14 @@ namespace Nethermind.Merge.Plugin.Data.V1
     {
         public ExecutionPayloadV1()
         {
+            BlockHash = Keccak.Zero;
+            ParentHash = Keccak.Zero;
+            FeeRecipient = Address.Zero;
+            StateRoot = Keccak.Zero;
+            ReceiptsRoot = Keccak.Zero;
+            LogsBloom = Bloom.Empty;
+            PrevRandao = Keccak.Zero;
+            ExtraData = Array.Empty<byte>();
         }
 
         public ExecutionPayloadV1(Block block)

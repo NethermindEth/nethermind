@@ -6,13 +6,10 @@
     <Nullable>enable</Nullable>
     <Deterministic>true</Deterministic>
     <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\int256\src\Nethermind.Int256\Nethermind.Int256.csproj" />
     <ProjectReference Include="..\Nethermind.HashLib\Nethermind.HashLib.csproj">
