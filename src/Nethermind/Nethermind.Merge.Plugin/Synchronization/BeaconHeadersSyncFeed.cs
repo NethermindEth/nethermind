@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using Nethermind.Blockchain;
@@ -98,7 +98,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         FallAsleep();
         PostFinishCleanUp();
     }
-    
+
     protected override void PostFinishCleanUp()
     {
         HeadersSyncProgressReport.Update(_pivotNumber - HeadersDestinationNumber + 1);
@@ -118,15 +118,13 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             if (_logger.IsTrace)
                 _logger.Trace(
                     "Chain already merged, skipping header insert");
-            return AddBlockResult.AlreadyKnown; 
+            return AddBlockResult.AlreadyKnown;
         }
 
         if (_logger.IsTrace)
             _logger.Trace(
                 $"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconInsert |
-                                         BlockTreeInsertOptions.MoveToBeaconMainChain |
-                                         BlockTreeInsertOptions.NotOnMainChain;
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderInsert;
         if (_nextHeaderDiff is null)
         {
             options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;

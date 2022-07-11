@@ -1644,6 +1644,11 @@ namespace Nethermind.Blockchain
             {
                 ChainLevelInfo level = LoadLevel(number, false);
 
+                if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
+                {
+                    BestKnownNumber = number;
+                }
+
                 if (level is not null)
                 {
                     BlockInfo[] blockInfos = level.BlockInfos;
@@ -1670,10 +1675,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (!blockInfo.IsBeaconInfo && number > BestKnownNumber)
-                    {
-                        BestKnownNumber = number;
-                    }
+
 
                     if (blockInfo.IsBeaconInfo)
                         blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
@@ -1721,7 +1723,7 @@ namespace Nethermind.Blockchain
 
         private ChainLevelInfo? LoadLevel(long number, bool forceLoad = true)
         {
-            if (number > BestKnownNumber && !forceLoad)
+            if (number > Math.Max(BestKnownNumber, BestKnownBeaconNumber) && !forceLoad)
             {
                 return null;
             }
