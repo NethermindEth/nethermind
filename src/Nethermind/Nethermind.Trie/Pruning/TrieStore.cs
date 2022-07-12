@@ -1,16 +1,16 @@
 //  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -30,7 +30,7 @@ namespace Nethermind.Trie.Pruning
 {
     /// <summary>
     /// Trie store helps to manage trie commits block by block.
-    /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.  
+    /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.
     /// </summary>
     public class TrieStore : ITrieStore
     {
@@ -62,7 +62,7 @@ namespace Nethermind.Trie.Pruning
                 else
                 {
                     if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
-                    trieNode = new TrieNode(NodeType.Unknown, hash); 
+                    trieNode = new TrieNode(NodeType.Unknown, hash);
                     SaveInCache(trieNode);
                 }
 
@@ -241,7 +241,7 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 node = SaveOrReplaceInDirtyNodesCache(nodeCommitInfo, node);
-                node.LastSeen = blockNumber;
+                node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);;
 
                 if (!_pruningStrategy.PruningEnabled)
                 {
@@ -384,7 +384,7 @@ namespace Nethermind.Trie.Pruning
             }
             else
             {
-                return _dirtyNodes.FindCachedOrUnknown(hash);   
+                return _dirtyNodes.FindCachedOrUnknown(hash);
             }
         }
 
@@ -667,7 +667,7 @@ namespace Nethermind.Trie.Pruning
                     _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
                 _currentBatch[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
-                currentNode.LastSeen = blockNumber;
+                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
             }
             else
@@ -744,7 +744,7 @@ namespace Nethermind.Trie.Pruning
                 // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
                 // and we need to speed up the standard announcement procedure so we persists a block
                 // from the past (by going max reorg back)
-                
+
                 BlockCommitSet? persistenceCandidate = null;
                 bool firstCandidateFound = false;
                 while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
@@ -805,7 +805,7 @@ namespace Nethermind.Trie.Pruning
                         }
                     }
                 }
-                
+
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
                 KeyValuePair<Keccak, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
                 Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
