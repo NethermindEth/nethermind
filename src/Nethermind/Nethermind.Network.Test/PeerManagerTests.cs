@@ -316,7 +316,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             int currentCount = 0;
-            int count = 40;
+            int count = 30;
             for (int i = 0; i < 10; i++)
             {
                 currentCount += count;
@@ -339,7 +339,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            int count = 30;
+            int count = 35;
             int currentCount = 0;
             for (int i = 0; i < 10; i++)
             {
