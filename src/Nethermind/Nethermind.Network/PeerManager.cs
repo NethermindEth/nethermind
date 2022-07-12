@@ -49,6 +49,7 @@ namespace Nethermind.Network
         private readonly ManualResetEventSlim _peerUpdateRequested = new(false);
         private readonly PeerComparer _peerComparer = new();
         private readonly IPeerPool _peerPool;
+        private readonly List<PeerStats> _candidates;
 
         private int _pending;
         private int _tryCount;
@@ -80,6 +81,7 @@ namespace Nethermind.Network
             _stats = stats ?? throw new ArgumentNullException(nameof(stats));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _peerPool = peerPool;
+            _candidates = new List<PeerStats>(networkConfig.MaxActivePeers * 2);
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _peerPool.ActivePeers.Values.ToList();
@@ -851,66 +853,37 @@ namespace Nethermind.Network
                 return;
             }
 
-            PeerStats[] candidates = ArrayPool<PeerStats>.Shared.Rent(peerCount);
-            try
+            _candidates.Clear();
+            int failedValidationCandidatesCount = 0;
+
+            _candidates.AddRange(_peerPool.NonStaticPeers.Select(p =>
             {
-                int count = 0;
-                int failedValidationCandidatesCount = 0;
-                foreach (Peer peer in _peerPool.NonStaticPeers)
+                bool hasFailedValidation = _stats.HasFailedValidation(p.Node);
+                if (hasFailedValidation)
                 {
-                    bool hasFailedValidation = _stats.HasFailedValidation(peer.Node);
-                    if (hasFailedValidation)
-                    {
-                        failedValidationCandidatesCount++;
-                    }
-
-                    candidates[count++] = new PeerStats(peer, hasFailedValidation, _stats.GetCurrentReputation(peer.Node));
-
-                    if (count == peerCount)
-                    {
-                        break;
-                    }
+                    failedValidationCandidatesCount++;
                 }
 
-                int Compare(PeerStats x, PeerStats y)
-                {
-                    if (x.Peer is null)
-                    {
-                        return y.Peer is null ? 0 : 1;
-                    }
+                return new PeerStats(p, hasFailedValidation, _stats.GetCurrentReputation(p.Node));
+            }));
 
-                    if (y.Peer is null)
-                    {
-                        return -1;
-                    }
-
-                    int failedValidationCompare = y.FailedValidation.CompareTo(x.FailedValidation);
-                    return failedValidationCompare != 0
-                        ? failedValidationCompare
-                        : x.CurrentReputation.CompareTo(y.CurrentReputation);
-                }
-
-                Array.Sort(candidates, Compare);
-                int countToRemove = count - _networkConfig.MaxCandidatePeerCount;
-                if (countToRemove > 0)
-                {
-                    _logger.Info($"Removing {countToRemove} out of {count} peer candidates (candidates cleanup).");
-
-                    for (int i = 0; i < countToRemove; i++)
-                    {
-                        _peerPool.TryRemove(candidates[i].Peer!.Node.Id, out _);
-                    }
-
-                    if (_logger.IsDebug)
-                    {
-                        int failedValidationRemovedCount = Math.Min(failedValidationCandidatesCount, countToRemove);
-                        _logger.Debug($"Removing candidate peers: {countToRemove}, failedValidationRemovedCount: {failedValidationRemovedCount}, otherRemovedCount: {countToRemove - failedValidationRemovedCount}, prevCount: {count}, newCount: {peerCount}, CandidatePeerCountCleanupThreshold: {_networkConfig.CandidatePeerCountCleanupThreshold}, MaxCandidatePeerCount: {_networkConfig.MaxCandidatePeerCount}");
-                    }
-                }
-            }
-            finally
+            _candidates.Sort(PeerStatsComparer.Instance);
+            
+            int countToRemove = _candidates.Count - _networkConfig.MaxCandidatePeerCount;
+            if (countToRemove > 0)
             {
-                ArrayPool<PeerStats>.Shared.Return(candidates);
+                _logger.Info($"Removing {countToRemove} out of {_candidates.Count} peer candidates (candidates cleanup).");
+
+                for (int i = 0; i < countToRemove; i++)
+                {
+                    _peerPool.TryRemove(_candidates[i].Peer!.Node.Id, out _);
+                }
+
+                if (_logger.IsDebug)
+                {
+                    int failedValidationRemovedCount = Math.Min(failedValidationCandidatesCount, countToRemove);
+                    _logger.Debug($"Removing candidate peers: {countToRemove}, failedValidationRemovedCount: {failedValidationRemovedCount}, otherRemovedCount: {countToRemove - failedValidationRemovedCount}, prevCount: {_candidates.Count}, newCount: {peerCount}, CandidatePeerCountCleanupThreshold: {_networkConfig.CandidatePeerCountCleanupThreshold}, MaxCandidatePeerCount: {_networkConfig.MaxCandidatePeerCount}");
+                }
             }
         }
 
@@ -924,15 +897,28 @@ namespace Nethermind.Network
 
         private struct PeerStats
         {
-            public Peer? Peer { get; }
+            public Peer Peer { get; }
             public bool FailedValidation { get; }
             public long CurrentReputation { get; }
 
-            public PeerStats(Peer? peer, bool failedValidation, long currentReputation)
+            public PeerStats(Peer peer, bool failedValidation, long currentReputation)
             {
                 Peer = peer;
                 FailedValidation = failedValidation;
                 CurrentReputation = currentReputation;
+            }
+        }
+
+        private class PeerStatsComparer : IComparer<PeerStats>
+        {
+            public static readonly PeerStatsComparer Instance = new();
+
+            public int Compare(PeerStats x, PeerStats y)
+            {
+                int failedValidationCompare = y.FailedValidation.CompareTo(x.FailedValidation);
+                return failedValidationCompare != 0
+                    ? failedValidationCompare
+                    : x.CurrentReputation.CompareTo(y.CurrentReputation);
             }
         }
     }
