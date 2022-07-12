@@ -869,7 +869,7 @@ namespace Nethermind.Network
                     }
                 }
 
-                _candidates.Sort(static (x,y) => PeerStatsComparer.Compare(x, y));
+                _candidates.Sort(static (x, y) => PeerStatsComparer.Instance.Compare(x, y));
 
                 int countToRemove = _candidates.Count - _networkConfig.MaxCandidatePeerCount;
                 if (countToRemove > 0)
@@ -916,9 +916,11 @@ namespace Nethermind.Network
             }
         }
 
-        private class PeerStatsComparer
+        private class PeerStatsComparer : IComparer<PeerStats>
         {
-            public static int Compare(PeerStats x, PeerStats y)
+            public static readonly PeerStatsComparer Instance = new();
+
+            public int Compare(PeerStats x, PeerStats y)
             {
                 int failedValidationCompare = y.FailedValidation.CompareTo(x.FailedValidation);
                 return failedValidationCompare != 0
