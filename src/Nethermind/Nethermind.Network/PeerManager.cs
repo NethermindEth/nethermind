@@ -856,17 +856,18 @@ namespace Nethermind.Network
             try
             {
                 int failedValidationCandidatesCount = 0;
-
-                _candidates.AddRange(_peerPool.NonStaticPeers.Select(p =>
+                foreach ((_, Peer peer) in _peerPool.Peers)
                 {
-                    bool hasFailedValidation = _stats.HasFailedValidation(p.Node);
-                    if (hasFailedValidation)
+                    if (!peer.Node.IsStatic)
                     {
-                        failedValidationCandidatesCount++;
+                        bool hasFailedValidation = _stats.HasFailedValidation(peer.Node);
+                        if (hasFailedValidation)
+                        {
+                            failedValidationCandidatesCount++;
+                        }
+                        _candidates.Add(new PeerStats(peer, hasFailedValidation, _stats.GetCurrentReputation(peer.Node)));
                     }
-
-                    return new PeerStats(p, hasFailedValidation, _stats.GetCurrentReputation(p.Node));
-                }));
+                }
 
                 _candidates.Sort(PeerStatsComparer.Instance);
 
