@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -157,7 +157,7 @@ namespace Nethermind.Network.Test
             ConnectionDirection firstDirection)
         {
             await using Context ctx = new();
-            
+
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
@@ -168,7 +168,7 @@ namespace Nethermind.Network.Test
                 (firstDirection == ConnectionDirection.In)
                     ? (shouldLose ? TestItem.PublicKeyA : TestItem.PublicKeyC)
                     : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyA);
-                
+
 
             if (firstDirection == ConnectionDirection.In)
             {
@@ -317,11 +317,12 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             int currentCount = 0;
+            int count = 30;
             for (int i = 0; i < 10; i++)
             {
-                currentCount += 25;
+                currentCount += count;
                 await Task.Delay(_travisDelayLong);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + count);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.DisconnectAllSessions();
@@ -329,8 +330,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test, Retry(3)]
-        public async Task
-            Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
+        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
         {
             await using Context ctx = new();
             ctx.NetworkConfig.MaxCandidatePeerCount = 40;
@@ -340,12 +340,13 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
+            int count = 30;
             int currentCount = 0;
             for (int i = 0; i < 10; i++)
             {
-                currentCount += 25;
+                currentCount += count;
                 await Task.Delay(_travisDelayLong);
-                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + 25);
+                ctx.RlpxPeer.ConnectAsyncCallsCount.Should().BeInRange(currentCount, currentCount + count);
                 ctx.HandshakeAllSessions();
                 await Task.Delay(_travisDelay);
                 ctx.CreateIncomingSessions();
