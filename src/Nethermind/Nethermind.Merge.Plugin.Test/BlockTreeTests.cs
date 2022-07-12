@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -429,14 +430,23 @@ public partial class BlockTreeTests
                 return this;
             }
 
-            public ScenarioBuilder InsertFork(long low, long high)
+            public ScenarioBuilder InsertFork(long low, long high, bool moveToBeaconMainChain = false)
             {
+                List<BlockInfo> blockInfos = new();
                 for (long i = low; i <= high; i++)
                 {
                     Block parent = SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
                     NotSyncedTree.Insert(blockToInsert, true, BlockTreeInsertOptions.BeaconBlockInsert);
                     SyncedTree.Insert(blockToInsert, true);
+
+                    BlockInfo newBlockInfo = new(blockToInsert.Hash, UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+                    blockInfos.Add(newBlockInfo);
+                }
+
+                if (moveToBeaconMainChain)
+                {
+                    NotSyncedTree.UpdateBeaconMainChain(blockInfos.ToArray());
                 }
 
                 return this;
@@ -701,6 +711,15 @@ public partial class BlockTreeTests
         level6 = scenario.NotSyncedTree.FindLevel(6);
         level6.BlockInfos.Length.Should().Be(2);
         level6.BeaconMainChainBlock.BlockHash.Should().Be(previousBlockHash);
+    }
+
+    [Test]
+    public void Can_reorg_beacon_main_chain()
+    {
+        BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconBlocks(5, 9)
+            ,InsertFork(6,8);
     }
 }
 
