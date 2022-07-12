@@ -305,8 +305,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test, Retry(3)]
-        public async Task
-            Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
+        public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
         {
             await using Context ctx = new();
             ctx.NetworkConfig.MaxCandidatePeerCount = 40;
@@ -317,7 +316,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             int currentCount = 0;
-            int count = 35;
+            int count = 40;
             for (int i = 0; i < 10; i++)
             {
                 currentCount += count;
