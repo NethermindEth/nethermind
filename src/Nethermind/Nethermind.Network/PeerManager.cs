@@ -853,37 +853,43 @@ namespace Nethermind.Network
                 return;
             }
 
-            _candidates.Clear();
-            int failedValidationCandidatesCount = 0;
-
-            _candidates.AddRange(_peerPool.NonStaticPeers.Select(p =>
+            try
             {
-                bool hasFailedValidation = _stats.HasFailedValidation(p.Node);
-                if (hasFailedValidation)
+                int failedValidationCandidatesCount = 0;
+
+                _candidates.AddRange(_peerPool.NonStaticPeers.Select(p =>
                 {
-                    failedValidationCandidatesCount++;
+                    bool hasFailedValidation = _stats.HasFailedValidation(p.Node);
+                    if (hasFailedValidation)
+                    {
+                        failedValidationCandidatesCount++;
+                    }
+
+                    return new PeerStats(p, hasFailedValidation, _stats.GetCurrentReputation(p.Node));
+                }));
+
+                _candidates.Sort(PeerStatsComparer.Instance);
+
+                int countToRemove = _candidates.Count - _networkConfig.MaxCandidatePeerCount;
+                if (countToRemove > 0)
+                {
+                    _logger.Info($"Removing {countToRemove} out of {_candidates.Count} peer candidates (candidates cleanup).");
+
+                    for (int i = 0; i < countToRemove; i++)
+                    {
+                        _peerPool.TryRemove(_candidates[i].Peer!.Node.Id, out _);
+                    }
+
+                    if (_logger.IsDebug)
+                    {
+                        int failedValidationRemovedCount = Math.Min(failedValidationCandidatesCount, countToRemove);
+                        _logger.Debug($"Removing candidate peers: {countToRemove}, failedValidationRemovedCount: {failedValidationRemovedCount}, otherRemovedCount: {countToRemove - failedValidationRemovedCount}, prevCount: {_candidates.Count}, newCount: {peerCount}, CandidatePeerCountCleanupThreshold: {_networkConfig.CandidatePeerCountCleanupThreshold}, MaxCandidatePeerCount: {_networkConfig.MaxCandidatePeerCount}");
+                    }
                 }
-
-                return new PeerStats(p, hasFailedValidation, _stats.GetCurrentReputation(p.Node));
-            }));
-
-            _candidates.Sort(PeerStatsComparer.Instance);
-            
-            int countToRemove = _candidates.Count - _networkConfig.MaxCandidatePeerCount;
-            if (countToRemove > 0)
+            }
+            finally
             {
-                _logger.Info($"Removing {countToRemove} out of {_candidates.Count} peer candidates (candidates cleanup).");
-
-                for (int i = 0; i < countToRemove; i++)
-                {
-                    _peerPool.TryRemove(_candidates[i].Peer!.Node.Id, out _);
-                }
-
-                if (_logger.IsDebug)
-                {
-                    int failedValidationRemovedCount = Math.Min(failedValidationCandidatesCount, countToRemove);
-                    _logger.Debug($"Removing candidate peers: {countToRemove}, failedValidationRemovedCount: {failedValidationRemovedCount}, otherRemovedCount: {countToRemove - failedValidationRemovedCount}, prevCount: {_candidates.Count}, newCount: {peerCount}, CandidatePeerCountCleanupThreshold: {_networkConfig.CandidatePeerCountCleanupThreshold}, MaxCandidatePeerCount: {_networkConfig.MaxCandidatePeerCount}");
-                }
+                _candidates.Clear();
             }
         }
 
