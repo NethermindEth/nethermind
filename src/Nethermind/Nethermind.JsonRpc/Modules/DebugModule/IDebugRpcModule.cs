@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         [JsonRpcMethod(Description = "Returns the full stack trace of all invoked opcodes of all transactions that were included in the block specified. The parent of the block must be present or it will fail.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null);
 
-        [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block number and replays the block that is already present in the database.", IsImplemented = true, IsSharable = true)]
+        [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block number as well as \"latest\" or \"finalized\" and replays the block that is already present in the database.", IsImplemented = true, IsSharable = true)]
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BlockParameter blockParameter, GethTraceOptions options = null);
 
         [JsonRpcMethod(Description = "Similar to debug_traceBlock, this method accepts a block hash and replays the block that is already present in the database.", IsImplemented = true, IsSharable = true)]
