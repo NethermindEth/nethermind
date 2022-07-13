@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization
             _cht = cht;
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
-            
+
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
         }
@@ -146,12 +146,12 @@ namespace Nethermind.Synchronization
         public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
-            
+
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
             }
-            
+
             if (block.Hash == null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown hash");
@@ -190,8 +190,8 @@ namespace Nethermind.Synchronization
             }
 
             ValidateSeal(block, nodeWhoSentTheBlock);
-            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None
-                || (_syncModeSelector.Current & SyncMode.Full) != SyncMode.None)
+            if ((_syncModeSelector.Current & (ParallelSync.SyncMode.FastSync | ParallelSync.SyncMode.StateNodes)) == ParallelSync.SyncMode.None
+                || (_syncModeSelector.Current & ParallelSync.SyncMode.Full) != ParallelSync.SyncMode.None)
             {
                 LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                 SyncBlock(block, nodeWhoSentTheBlock);
@@ -251,7 +251,7 @@ namespace Nethermind.Synchronization
 
                     throw new EthSyncException(message);
                 }
-                
+
                 bool shouldSkipProcessing = _blockTree.Head.IsPoS();
                 if (shouldSkipProcessing)
                 {
@@ -324,7 +324,7 @@ namespace Nethermind.Synchronization
         public void HintBlock(Keccak hash, long number, ISyncPeer syncPeer)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
-            
+
             if (number > syncPeer.HeadNumber)
             {
                 if (_logger.IsTrace)
@@ -445,7 +445,7 @@ namespace Nethermind.Synchronization
 
             return null;
         }
-        
+
 
         private Random _broadcastRandomizer = new();
 
@@ -503,7 +503,7 @@ namespace Nethermind.Synchronization
         private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
-            
+
             try
             {
                 syncPeer.NotifyOfNewBlock(broadcastedBlock, priority);
@@ -513,10 +513,10 @@ namespace Nethermind.Synchronization
                 if (_logger.IsError) _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo ?? (object)syncPeer}.", e);
             }
         }
-        
+
         private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockPriority.High);
-        
-        
+
+
         public void StopNotifyingPeersAboutNewBlocks()
         {
             if (gossipStopped == false)

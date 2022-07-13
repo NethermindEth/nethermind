@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -253,7 +253,7 @@ namespace Nethermind.Runner
         {
             string shortCommand = "-pd";
             string longCommand = "--pluginsDirectory";
-            
+
             string[] GetPluginArgs()
             {
                 for (int i = 0; i < args.Length; i++)
@@ -267,7 +267,7 @@ namespace Nethermind.Runner
 
                 return Array.Empty<string>();
             }
-            
+
             CommandLineApplication pluginsApp = new() {Name = "Nethermind.Runner.Plugins"};
             CommandOption pluginsAppDirectory = pluginsApp.Option($"{shortCommand}|{longCommand} <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
             string pluginDirectory = "plugins";
@@ -380,6 +380,7 @@ namespace Nethermind.Runner
             }
 
             logger.Info($"Reading config file from {configFilePath}");
+            configProvider.SetLogger(_logger);
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
             var incorrectSettings = configProvider.FindIncorrectSettings();
@@ -462,7 +463,7 @@ namespace Nethermind.Runner
             ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
             if (seqConfig.MinLevel != "Off")
             {
-                if (_logger.IsInfo) 
+                if (_logger.IsInfo)
                     _logger.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
                 NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
             }

@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -25,6 +25,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
+using SyncMode = Nethermind.Synchronization.ParallelSync.SyncMode;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -39,7 +40,7 @@ namespace Nethermind.Synchronization.Test
             ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
             pool.InitializedPeersCount.Returns(1);
-            
+
             Queue<SyncMode> _syncModes = new();
             _syncModes.Enqueue(SyncMode.WaitingForBlock);
             _syncModes.Enqueue(SyncMode.FastSync);
@@ -51,7 +52,7 @@ namespace Nethermind.Synchronization.Test
             SyncConfig syncConfig = new();
             syncConfig.FastBlocks = fastBlocks;
             syncConfig.FastSync = fastSync;
-            
+
             SyncReport syncReport = new (pool, Substitute.For<INodeStatsManager>(), selector,  syncConfig, Substitute.For<IPivot>(), LimboLogs.Instance, 10);
             selector.Current.Returns((ci) => _syncModes.Count > 0 ? _syncModes.Dequeue() : SyncMode.Full);
             await Task.Delay(200);

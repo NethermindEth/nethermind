@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Reporting
     public class SyncReport : ISyncReport
     {
         private const int SpeedPaddingLength = 5;
-        
+
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.Reporting
             _fastBlocksPivotNumber = _syncConfig.PivotNumberParsed;
             _blockPaddingLength = _fastBlocksPivotNumber.ToString().Length;
             _paddedPivot = $"{Pad(_fastBlocksPivotNumber, _blockPaddingLength)}";
-            
+
             StartTime = DateTime.UtcNow;
 
             TickTime = tickTime;
@@ -80,12 +80,12 @@ namespace Nethermind.Synchronization.Reporting
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
-            if (e.Previous.NotSyncing() && e.Current == SyncMode.Full ||
-                e.Previous == SyncMode.Full && e.Current.NotSyncing())
+            if (e.Previous.NotSyncing() && e.Current == ParallelSync.SyncMode.Full ||
+                e.Previous == ParallelSync.SyncMode.Full && e.Current.NotSyncing())
             {
                 return;
             }
-            
+
             if (e.Previous != e.Current)
             {
                 if (_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
@@ -156,13 +156,13 @@ namespace Nethermind.Synchronization.Reporting
         private void WriteSyncReport()
         {
             UpdateMetrics();
-            
+
             if (!_logger.IsInfo)
             {
                 return;
             }
 
-            SyncMode currentSyncMode = _syncModeSelector.Current;
+            ParallelSync.SyncMode currentSyncMode = _syncModeSelector.Current;
             if (_logger.IsDebug) WriteSyncConfigReport();
 
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.Reporting
                 WriteFastBlocksReport(currentSyncMode);
             }
 
-            if ((currentSyncMode | SyncMode.Full) != SyncMode.Full)
+            if ((currentSyncMode | ParallelSync.SyncMode.Full) != ParallelSync.SyncMode.Full)
             {
                 if (_reportId % PeerCountFrequency == 0)
                 {
@@ -179,40 +179,40 @@ namespace Nethermind.Synchronization.Reporting
                 }
             }
 
-            if (currentSyncMode == SyncMode.Disconnected && _syncConfig.SynchronizationEnabled)
+            if (currentSyncMode == ParallelSync.SyncMode.Disconnected && _syncConfig.SynchronizationEnabled)
             {
                 WriteNotStartedReport();
             }
 
-            if (currentSyncMode == SyncMode.DbLoad)
+            if (currentSyncMode == ParallelSync.SyncMode.DbLoad)
             {
                 WriteDbSyncReport();
             }
 
-            if ((currentSyncMode & SyncMode.StateNodes) == SyncMode.StateNodes)
+            if ((currentSyncMode & ParallelSync.SyncMode.StateNodes) == ParallelSync.SyncMode.StateNodes)
             {
                 if (_reportId % NoProgressStateSyncReportFrequency == 0)
                 {
                     WriteStateNodesReport();
                 }
             }
-            
-            if ((currentSyncMode & SyncMode.FastBlocks) == SyncMode.FastBlocks)
+
+            if ((currentSyncMode & ParallelSync.SyncMode.FastBlocks) == ParallelSync.SyncMode.FastBlocks)
             {
                 WriteFastBlocksReport(currentSyncMode);
             }
-            
-            if ((currentSyncMode & SyncMode.Full) == SyncMode.Full)
+
+            if ((currentSyncMode & ParallelSync.SyncMode.Full) == ParallelSync.SyncMode.Full)
             {
                 WriteFullSyncReport();
             }
 
-            if ((currentSyncMode & SyncMode.FastSync) == SyncMode.FastSync)
+            if ((currentSyncMode & ParallelSync.SyncMode.FastSync) == ParallelSync.SyncMode.FastSync)
             {
                 WriteFullSyncReport();
             }
 
-            if ((currentSyncMode & SyncMode.BeaconHeaders) == SyncMode.BeaconHeaders)
+            if ((currentSyncMode & ParallelSync.SyncMode.BeaconHeaders) == ParallelSync.SyncMode.BeaconHeaders)
             {
                 WriteBeaconSyncReport();
             }
@@ -290,22 +290,22 @@ namespace Nethermind.Synchronization.Reporting
             _logger.Info($"Downloaded {Pad(FullSyncBlocksDownloaded.CurrentValue,_blockPaddingLength)} / {Pad(FullSyncBlocksKnown,_blockPaddingLength)} | current {Pad(FullSyncBlocksDownloaded.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FullSyncBlocksDownloaded.TotalPerSecond, SpeedPaddingLength)}bps");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
-    
-        private void WriteFastBlocksReport(SyncMode currentSyncMode)
+
+        private void WriteFastBlocksReport(ParallelSync.SyncMode currentSyncMode)
         {
-            if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)
+            if ((currentSyncMode & ParallelSync.SyncMode.FastHeaders) == ParallelSync.SyncMode.FastHeaders)
             {
                 _logger.Info($"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
                 FastBlocksHeaders.SetMeasuringPoint();
             }
 
-            if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies)
+            if ((currentSyncMode & ParallelSync.SyncMode.FastBodies) == ParallelSync.SyncMode.FastBodies)
             {
                 _logger.Info($"Old Bodies   {Pad(FastBlocksBodies.CurrentValue, _blockPaddingLength)} / {_paddedPivot} | queue {Pad(BodiesInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksBodies.TotalPerSecond, SpeedPaddingLength)}bps");
                 FastBlocksBodies.SetMeasuringPoint();
             }
 
-            if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts)
+            if ((currentSyncMode & ParallelSync.SyncMode.FastReceipts) == ParallelSync.SyncMode.FastReceipts)
             {
                 _logger.Info($"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedPivot} | queue {Pad(ReceiptsInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksReceipts.TotalPerSecond, SpeedPaddingLength)}bps");
                 FastBlocksReceipts.SetMeasuringPoint();

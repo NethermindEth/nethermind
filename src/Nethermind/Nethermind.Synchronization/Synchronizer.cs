@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -42,12 +42,12 @@ namespace Nethermind.Synchronization
 {
     public class Synchronizer : ISynchronizer
     {
-        
+
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockDownloaderFactory _blockDownloaderFactory;
         private readonly INodeStatsManager _nodeStatsManager;
-        
+
         protected readonly ILogger _logger;
         protected readonly IBlockTree _blockTree;
         protected readonly ISyncConfig _syncConfig;
@@ -110,9 +110,9 @@ namespace Nethermind.Synchronization
             {
                 return;
             }
-            
+
             StartFullSyncComponents();
-            
+
             if (_syncConfig.FastSync)
             {
                 if (_syncConfig.FastBlocks)
@@ -121,12 +121,12 @@ namespace Nethermind.Synchronization
                 }
 
                 StartFastSyncComponents();
-                
+
                 if (_syncConfig.SnapSync)
                 {
                     StartSnapSyncComponents();
                 }
-                
+
                 StartStateSyncComponents();
             }
         }
@@ -157,7 +157,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            TreeSync treeSync = new(ParallelSync.SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
@@ -177,7 +177,7 @@ namespace Nethermind.Synchronization
         {
             _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _blockTree, _logManager);
             SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
-            
+
             Task _ = dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -190,7 +190,7 @@ namespace Nethermind.Synchronization
                 }
             });
         }
-        
+
         private void StartFastBlocksComponents()
         {
             FastBlocksPeerAllocationStrategyFactory fastFactory = new();
