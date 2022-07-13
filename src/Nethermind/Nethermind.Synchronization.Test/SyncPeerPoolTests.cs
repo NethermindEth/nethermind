@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.Test
             {
                 BlockTree = Substitute.For<IBlockTree>();
                 Stats = Substitute.For<INodeStatsManager>();
-                PeerStrategy = new TotalDifficultyBasedBetterPeerStrategy(null, LimboLogs.Instance);
+                PeerStrategy = new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
                 Pool = new SyncPeerPool(BlockTree, Stats, PeerStrategy, 25, 50, LimboLogs.Instance);
             }
 
@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(Array.Empty<BlockHeader>());
             }
 
-            public async Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+            public async Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
             {
                 if (_shouldFail)
                 {
@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.Test
             }
 
             public PublicKey Id => Node.Id;
-            
+
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
             public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
@@ -173,7 +173,7 @@ namespace Nethermind.Synchronization.Test
         [Test]
         public async Task Cannot_add_when_not_started()
         {
-            await using Context ctx = new(); 
+            await using Context ctx = new();
             for (int i = 0; i < 3; i++)
             {
                 Assert.AreEqual(0, ctx.Pool.PeerCount);
@@ -190,7 +190,7 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.DropUselessPeers(true);
             Assert.True(peers.Any(p => p.DisconnectRequested));
         }
-        
+
         [TestCase(0)]
         [TestCase(10)]
         [TestCase(24)]
@@ -201,7 +201,7 @@ namespace Nethermind.Synchronization.Test
             await using Context ctx = new();
             ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
             var peers = await SetupPeers(ctx, peersMaxCount);
-            
+
             // setting priority to all peers except one - peers[number]
             for (int i = 0; i < priorityPeersMaxCount; i++)
             {
@@ -214,7 +214,7 @@ namespace Nethermind.Synchronization.Test
             ctx.Pool.DropUselessPeers(true);
             Assert.True(peers[number].DisconnectRequested);
         }
-        
+
         [Test]
         public async Task Can_disconnect_priority_peer_if_their_amount_is_max()
         {
@@ -223,7 +223,7 @@ namespace Nethermind.Synchronization.Test
             await using Context ctx = new();
             ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
             var peers = await SetupPeers(ctx, peersMaxCount);
-            
+
             foreach (SimpleSyncPeerMock peer in peers)
             {
                 ctx.Pool.SetPeerPriority(peer.Id);
@@ -240,17 +240,17 @@ namespace Nethermind.Synchronization.Test
             const int priorityPeersMaxCount = 1;
             await using Context ctx = new();
             ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
-            
+
             SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = true };
             ctx.Pool.Start();
             ctx.Pool.AddPeer(peer);
             await WaitForPeersInitialization(ctx);
             ctx.Pool.PriorityPeerCount.Should().Be(1);
-            
+
             ctx.Pool.RemovePeer(peer);
             ctx.Pool.PriorityPeerCount.Should().Be(0);
         }
-        
+
         [Test]
         public async Task Should_increment_PriorityPeerCount_when_called_SetPriorityPeer()
         {
@@ -258,13 +258,13 @@ namespace Nethermind.Synchronization.Test
             const int priorityPeersMaxCount = 1;
             await using Context ctx = new();
             ctx.Pool = new SyncPeerPool(ctx.BlockTree, ctx.Stats, ctx.PeerStrategy, peersMaxCount, priorityPeersMaxCount,50, LimboLogs.Instance);
-            
+
             SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { IsPriority = false };
             ctx.Pool.Start();
             ctx.Pool.AddPeer(peer);
             await WaitForPeersInitialization(ctx);
             ctx.Pool.PriorityPeerCount.Should().Be(0);
-            
+
             ctx.Pool.SetPeerPriority(peer.Id);
             ctx.Pool.PriorityPeerCount.Should().Be(1);
         }
@@ -372,7 +372,7 @@ namespace Nethermind.Synchronization.Test
 
         private void SetupSpeedStats(Context ctx, PublicKey publicKey, int transferSpeed)
         {
-            
+
             Node node = new(publicKey, "127.0.0.1", 30303);
             NodeStatsLight stats = new (node);
             stats.AddTransferSpeedCaptureEvent(TransferSpeedType.Headers, transferSpeed);
@@ -669,7 +669,7 @@ namespace Nethermind.Synchronization.Test
             var allocation = await ctx.Pool.Allocate(new BySpeedStrategy(TransferSpeedType.Headers, true));
             ctx.Pool.Free(allocation);
         }
-        
+
         [Test]
         public async Task Does_not_fail_when_receiving_a_new_block_and_allocation_has_no_peer()
         {
@@ -809,7 +809,6 @@ namespace Nethermind.Synchronization.Test
                     return;
                 }
 
-                TestContext.WriteLine($"({i}) Waiting {waitInterval} for {description}");
                 await Task.Delay(waitInterval);
             }
         }

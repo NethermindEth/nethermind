@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -43,7 +43,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
-using Nethermind.State.Snap;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -59,7 +58,7 @@ namespace Nethermind.Init.Steps
     {
         // Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", "8192");
         private const uint PageSize = 8192;
-        
+
         public static long Estimate(uint cpuCount, int arenaOrder)
         {
             // do not remember why there is 2 in front
@@ -115,7 +114,7 @@ namespace Nethermind.Init.Steps
 
             CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
-            ProgressTracker progressTracker = new(_api.BlockTree, _api.DbProvider.StateDb, _api.LogManager);
+            ProgressTracker progressTracker = new(_api.BlockTree!, _api.DbProvider.StateDb, _api.LogManager);
             _api.SnapProvider = new SnapProvider(progressTracker, _api.DbProvider, _api.LogManager);
 
             SyncProgressResolver syncProgressResolver = new(
@@ -126,25 +125,25 @@ namespace Nethermind.Init.Steps
                 progressTracker,
                 _syncConfig,
                 _api.LogManager);
-            
+
             _api.SyncProgressResolver = syncProgressResolver;
-            _api.BetterPeerStrategy = new TotalDifficultyBasedBetterPeerStrategy(_api.SyncProgressResolver, _api.LogManager);
-            
+            _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
+
             int maxPeersCount = _networkConfig.ActivePeersMaxCount;
             int maxPriorityPeersCount = _networkConfig.PriorityPeersMaxCount;
             SyncPeerPool apiSyncPeerPool = new(_api.BlockTree!, _api.NodeStatsManager!, _api.BetterPeerStrategy, maxPeersCount, maxPriorityPeersCount, SyncPeerPool.DefaultUpgradeIntervalInMs, _api.LogManager);
             _api.SyncPeerPool = apiSyncPeerPool;
             _api.PeerDifficultyRefreshPool = apiSyncPeerPool;
             _api.DisposeStack.Push(_api.SyncPeerPool);
-            
+
             IEnumerable<ISynchronizationPlugin> synchronizationPlugins = _api.GetSynchronizationPlugins();
             foreach (ISynchronizationPlugin plugin in synchronizationPlugins)
             {
                 await plugin.InitSynchronization();
             }
-            
+
             _api.SyncModeSelector ??= CreateMultiSyncModeSelector(syncProgressResolver);
-            _api.DisposeStack.Push(_api.SyncModeSelector!);
+            _api.DisposeStack.Push(_api.SyncModeSelector);
 
             _api.Pivot ??= new Pivot(_syncConfig);
 
@@ -178,7 +177,7 @@ namespace Nethermind.Init.Steps
             }
 
             _api.DisposeStack.Push(_api.Synchronizer);
-            
+
             _api.SyncServer = new SyncServer(
                 _api.DbProvider.StateDb,
                 _api.DbProvider.CodeDb,
@@ -196,8 +195,8 @@ namespace Nethermind.Init.Steps
                 cht);
 
             _ = _api.SyncServer.BuildCHT();
-            
-            
+
+
             _api.DisposeStack.Push(_api.SyncServer);
 
             InitDiscovery();
@@ -296,6 +295,7 @@ namespace Nethermind.Init.Steps
         {
             if (_api.PeerManager == null) throw new StepDependencyException(nameof(_api.PeerManager));
             if (_api.SessionMonitor == null) throw new StepDependencyException(nameof(_api.SessionMonitor));
+            if (_api.PeerPool == null) throw new StepDependencyException(nameof(_api.PeerPool));
 
             if (!_api.Config<IInitConfig>().PeerManagerEnabled)
             {
@@ -317,6 +317,7 @@ namespace Nethermind.Init.Steps
             if (_api.Timestamper == null) throw new StepDependencyException(nameof(_api.Timestamper));
             if (_api.NodeKey == null) throw new StepDependencyException(nameof(_api.NodeKey));
             if (_api.CryptoRandom == null) throw new StepDependencyException(nameof(_api.CryptoRandom));
+            if (_api.EthereumEcdsa == null) throw new StepDependencyException(nameof(_api.EthereumEcdsa));
 
             if (!_api.Config<IInitConfig>().DiscoveryEnabled)
             {
@@ -357,7 +358,7 @@ namespace Nethermind.Init.Steps
                 "DiscoveryDB",
                 DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
                 _api.LogManager);
-            
+
             NetworkStorage discoveryStorage = new(
                 discoveryDb,
                 _api.LogManager);
@@ -423,21 +424,15 @@ namespace Nethermind.Init.Steps
 
                 if (syncConfig.SynchronizationEnabled)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
-                            $"Starting synchronization from block {_api.BlockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}.");
+                    if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_api.BlockTree.Head?.Header.ToString(BlockHeader.Format.Short)}.");
                     _api.Synchronizer!.Start();
                 }
                 else
                 {
-                    if (_logger.IsWarn)
-                        _logger.Warn(
-                            $"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
+                    if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to {nameof(ISyncConfig.SynchronizationEnabled)} set to false");
                 }
             }
-            else if (_logger.IsWarn)
-                _logger.Warn(
-                    $"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
+            else if (_logger.IsWarn) _logger.Warn($"Skipping connecting to peers due to {nameof(ISyncConfig.NetworkingEnabled)} set to false");
 
 
             return Task.CompletedTask;
@@ -461,19 +456,18 @@ namespace Nethermind.Init.Steps
             if (_api.SpecProvider == null) throw new StepDependencyException(nameof(_api.SpecProvider));
             if (_api.TxPool == null) throw new StepDependencyException(nameof(_api.TxPool));
             if (_api.TxSender == null) throw new StepDependencyException(nameof(_api.TxSender));
-            if (_api.EthereumJsonSerializer == null)
-                throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
+            if (_api.EthereumJsonSerializer == null) throw new StepDependencyException(nameof(_api.EthereumJsonSerializer));
+            if (_api.DiscoveryApp == null) throw new StepDependencyException(nameof(_api.DiscoveryApp));
 
             /* rlpx */
             EciesCipher eciesCipher = new(_api.CryptoRandom);
             Eip8MessagePad eip8Pad = new(_api.CryptoRandom);
             _api.MessageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _api.MessageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
+            _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer))!);
             ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
             _api.MessageSerializationService.Register(receiptsMessageSerializer);
-            _api.MessageSerializationService.Register(
-                new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
+            _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
 
             HandshakeService encryptionHandshakeServiceA = new(
                 _api.MessageSerializationService,
@@ -486,9 +480,9 @@ namespace Nethermind.Init.Steps
             IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
             // TODO: hack, but changing it in all the documentation would be a nightmare
             _networkConfig.Bootnodes = discoveryConfig.Bootnodes;
-            
+
             IInitConfig initConfig = _api.Config<IInitConfig>();
-            
+
             _api.DisconnectsAnalyzer = new MetricsDisconnectsAnalyzer();
             _api.SessionMonitor = new SessionMonitor(_networkConfig, _api.LogManager);
             _api.RlpxPeer = new RlpxHost(
@@ -530,16 +524,16 @@ namespace Nethermind.Init.Steps
                 _api.SpecProvider!,
                 _api.GossipPolicy,
                 _api.LogManager);
-            
+
             if (_syncConfig.WitnessProtocolEnabled)
             {
                 _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
             }
-            
+
             _api.ProtocolValidator = protocolValidator;
-            
+
             NodesLoader nodesLoader = new(_networkConfig, _api.NodeStatsManager, peerStorage, _api.RlpxPeer, _api.LogManager);
-            
+
             // I do not use the key here -> API is broken - no sense to use the node signer here
             NodeRecordSigner nodeRecordSigner = new(_api.EthereumEcdsa, new PrivateKeyGenerator().Generate());
             EnrRecordParser enrRecordParser = new(nodeRecordSigner);
@@ -563,7 +557,7 @@ namespace Nethermind.Init.Steps
                     _logger.Error($"ENR discovery failed: {t.Exception}");
                 }
             });
-            
+
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
                 await plugin.InitNetworkProtocol();

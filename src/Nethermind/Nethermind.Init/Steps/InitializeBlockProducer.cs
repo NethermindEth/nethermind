@@ -45,16 +45,16 @@ namespace Nethermind.Init.Steps
 
         protected virtual async Task<IBlockProducer> BuildProducer()
         {
-            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider,
-                _api.BlockTree,
-                _api.ReadOnlyTrieStore,
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource,
-                _api.ReceiptStorage,
+            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider!,
+                _api.BlockTree!,
+                _api.ReadOnlyTrieStore!,
+                _api.SpecProvider!,
+                _api.BlockValidator!,
+                _api.RewardCalculatorSource!,
+                _api.ReceiptStorage!,
                 _api.BlockPreprocessor,
-                _api.TxPool,
-                _api.TransactionComparerProvider,
+                _api.TxPool!,
+                _api.TransactionComparerProvider!,
                 _api.Config<IMiningConfig>(),
                 _api.LogManager);
             

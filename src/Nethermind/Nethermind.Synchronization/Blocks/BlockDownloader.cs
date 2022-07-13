@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -93,7 +93,7 @@ namespace Nethermind.Synchronization.Blocks
                 if(_logger.IsError) _logger.Error("Received a new block head which is null.");
                 return;
             }
-            
+
             _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
             _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
@@ -221,7 +221,7 @@ namespace Nethermind.Synchronization.Blocks
                         throw new EthSyncException($"{bestPeer} sent a block {currentHeader.ToString(BlockHeader.Format.Short)} with an invalid header");
                     }
 
-                    // i == 0 is always false but leave it this was as it will be possible that we will change the 
+                    // i == 0 is always false but leave it this was as it will be possible that we will change the
                     // loop iterator to start with o
                     if (HandleAddResult(bestPeer, currentHeader, i == 0, _blockTree.Insert(currentHeader)))
                     {
@@ -267,7 +267,7 @@ namespace Nethermind.Synchronization.Blocks
             long currentNumber = Math.Max(0, Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
             // pivot number - 6 for uncle validation
             // long currentNumber = Math.Max(Math.Max(0, pivotNumber - 6), Math.Min(_blockTree.BestKnownNumber, bestPeer.HeadNumber - 1));
-            
+
             bool HasMoreToSync()
                 => currentNumber <= bestPeer!.HeadNumber;
             while(ImprovementRequirementSatisfied(bestPeer!) && HasMoreToSync())
@@ -287,6 +287,12 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                if (headers.Length < 2)
+                {
+                    // Peer dont have new header
+                    break;
+                }
+
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
@@ -350,7 +356,7 @@ namespace Nethermind.Synchronization.Blocks
                             throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
                     }
-                    
+
                     if (_logger.IsTrace) _logger.Trace($"BlockDownloader - SuggestBlock {currentBlock}, ShouldProcess: {true}");
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, _blockTree.SuggestBlock(currentBlock, shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None)))
                     {
@@ -364,7 +370,7 @@ namespace Nethermind.Synchronization.Blocks
                             }
                             else
                             {
-                                // this shouldn't now happen with new validation above, still lets keep this check 
+                                // this shouldn't now happen with new validation above, still lets keep this check
                                 if (currentBlock.Header.HasBody)
                                 {
                                     if (_logger.IsError) _logger.Error($"{currentBlock} is missing receipts");
@@ -465,7 +471,7 @@ namespace Nethermind.Synchronization.Blocks
                 await request.ContinueWith(_ => DownloadFailHandler(request, "receipts"), cancellation);
 
                 TxReceipt[][] result = request.Result;
-                
+
                 for (int i = 0; i < result.Length; i++)
                 {
                     TxReceipt[] txReceipts = result[i];

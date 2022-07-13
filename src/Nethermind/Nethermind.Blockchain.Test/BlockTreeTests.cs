@@ -1559,18 +1559,25 @@ namespace Nethermind.Blockchain.Test
             for (int i = chainLength - 1; i >= chainLeft; i--)
             {
                 ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
-                for (int j = 0; j < level.BlockInfos.Length; j++)
+                if (level is not null)
                 {
-                    Keccak blockHash = level.BlockInfos[j].BlockHash;
-                    BlockHeader? header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
-                    header.TotalDifficulty = null;
+                    for (int j = 0; j < level.BlockInfos.Length; j++)
+                    {
+                        Keccak blockHash = level.BlockInfos[j].BlockHash;
+                        BlockHeader? header = blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+                        if (header is not null)
+                        {
+                            header.TotalDifficulty = null;
+                        }
+                    }
+
+                    blockTreeBuilder.ChainLevelInfoRepository.Delete(i);
                 }
-                blockTreeBuilder.ChainLevelInfoRepository.Delete(i);
             }
 
             if (expectedTotalDifficulty.HasValue)
             {
-                blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None).TotalDifficulty.Should().Be(new UInt256(expectedTotalDifficulty.Value));
+                blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None)!.TotalDifficulty.Should().Be(new UInt256(expectedTotalDifficulty.Value));
                 for (int i = chainLength - 1; i >= chainLeft; i--)
                 {
                     ChainLevelInfo? level = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i);
@@ -1580,7 +1587,7 @@ namespace Nethermind.Blockchain.Test
             }
             else
             {
-                Action action = () => blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None);
+                Action action = () => blockTree.FindBlock(blockTree.Head!.Hash, BlockTreeLookupOptions.None);
                 action.Should().Throw<InvalidOperationException>();
             }
         }

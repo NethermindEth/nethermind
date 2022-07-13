@@ -136,7 +136,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 specProvider,
                 false);
 
-            GasPriceOracle gasPriceOracle = new(blockTree, specProvider);
+            GasPriceOracle gasPriceOracle = new(blockTree, specProvider, LimboLogs.Instance);
             FeeHistoryOracle feeHistoryOracle = new(blockTree, NullReceiptStorage.Instance, specProvider);
             EthSyncingInfo ethSyncingInfo = new(blockTree);
             

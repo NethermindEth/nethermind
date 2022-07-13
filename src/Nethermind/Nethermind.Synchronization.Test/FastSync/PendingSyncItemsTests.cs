@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_peek_root()
         {
             IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State, 0, 0);
+            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.PeekState().Should().Be(stateSyncItem);
         }
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Can_recalculate_and_clear_with_root_only()
         {
             IPendingSyncItems items = Init();
-            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State, 0, 0);
+            StateSyncItem stateSyncItem = new (Keccak.Zero, null, null, NodeDataType.State);
             items.PushToSelectedStream(stateSyncItem, 0);
             items.RecalculatePriorities();
             items.Clear();

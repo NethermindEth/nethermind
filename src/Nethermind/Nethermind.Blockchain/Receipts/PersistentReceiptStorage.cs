@@ -113,12 +113,12 @@ namespace Nethermind.Blockchain.Receipts
         
         public TxReceipt[] Get(Keccak blockHash)
         {
-            if (_receiptsCache.TryGet(blockHash, out var receipts))
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[]? receipts))
             {
                 return receipts ?? Array.Empty<TxReceipt>();
             }
             
-            var receiptsData = _blocksDb.GetSpan(blockHash);
+            Span<byte> receiptsData = _blocksDb.GetSpan(blockHash);
             try
             {
                 if (receiptsData.IsNullOrEmpty())

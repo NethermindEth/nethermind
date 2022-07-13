@@ -69,9 +69,6 @@ namespace Nethermind.Runner.Ethereum
 
         public async Task StopAsync()
         {
-            if (_logger.IsInfo) _logger.Info("Persisting trie...");
-            _api.TrieStore?.HackPersistOnShutdown();
-            
             Stop(() => _api.SessionMonitor?.Stop(), "Stopping session monitor");
             Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
             Task blockProducerTask = Stop(() => _api.BlockProducer?.StopAsync(), "Stopping block producer");

@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -46,8 +46,8 @@ namespace Nethermind.Blockchain
         /// <summary>
         /// Best block that has been suggested for processing
         /// </summary>
-        Block BestSuggestedBody { get; }
-        
+        Block? BestSuggestedBody { get; }
+
         BlockHeader? BestSuggestedBeaconHeader { get; }
 
         /// <summary>
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain
         /// Lowest body added in reverse fast sync insert
         /// </summary>
         long? LowestInsertedBodyNumber { get; set; }
-        
+
         /// <summary>
         /// Lowest header number added in reverse beacon sync insert
         /// </summary>
@@ -69,8 +69,8 @@ namespace Nethermind.Blockchain
         /// Best downloaded block number (highest number of chain level on the chain)
         /// </summary>
         long BestKnownNumber { get; }
-        
-        
+
+
         long BestKnownBeaconNumber { get; }
 
         /// <summary>
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain
         /// <param name="options">Options for suggesting block, whether a block should be processed or just added to the store.</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
         AddBlockResult SuggestBlock(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess);
-        
+
         /// <summary>
         /// Suggests block for inclusion in the block tree. Wait for DB unlock if needed.
         /// </summary>
@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if known, otherwise <value>False</value></returns>
         bool IsKnownBlock(long number, Keccak blockHash);
-        
+
         /// <summary>
         /// Checks if beacon block was inserted and the block RLP is in the DB
         /// </summary>
@@ -146,7 +146,7 @@ namespace Nethermind.Blockchain
         /// <param name="wereProcessed"></param>
         /// <param name="forceHeadBlock">Force updating <seealso cref="IBlockFinder.Head"/> block regardless of <see cref="Block.TotalDifficulty"/></param>
         void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false);
-        
+
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
 
         bool CanAcceptNewBlocks { get; }
