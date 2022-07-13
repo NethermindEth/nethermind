@@ -54,7 +54,7 @@ namespace Nethermind.Synchronization
         protected readonly ISyncReport _syncReport;
         protected readonly IPivot _pivot;
 
-        protected readonly CancellationTokenSource _syncCancellation = new();
+        protected readonly CancellationTokenSource? _syncCancellation = new();
 
         /* sync events are used mainly for managing sync peers reputation */
         public event EventHandler<SyncEventArgs>? SyncEvent;
@@ -68,7 +68,6 @@ namespace Nethermind.Synchronization
         private HeadersSyncFeed? _headersFeed;
         private BodiesSyncFeed? _bodiesFeed;
         private ReceiptsSyncFeed? _receiptsFeed;
-
 
         public Synchronizer(
             IDbProvider dbProvider,
@@ -133,7 +132,7 @@ namespace Nethermind.Synchronization
             _fullSyncFeed = new FullSyncFeed(_syncMode, LimboLogs.Instance);
             BlockDownloader fullSyncBlockDownloader = _blockDownloaderFactory.Create(_fullSyncFeed);
             fullSyncBlockDownloader.SyncEvent += DownloaderOnSyncEvent;
-            fullSyncBlockDownloader.Start(_syncCancellation.Token).ContinueWith(t =>
+            fullSyncBlockDownloader.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -169,7 +168,7 @@ namespace Nethermind.Synchronization
             _snapSyncFeed = new SnapSyncFeed(_syncMode, _snapProvider, _blockTree, _logManager);
             SnapSyncDispatcher dispatcher = new(_snapSyncFeed!, _syncPeerPool, new SnapSyncAllocationStrategyFactory(), _logManager);
             
-            Task _ = dispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            Task _ = dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -188,7 +187,7 @@ namespace Nethermind.Synchronization
 
             _headersFeed = new HeadersSyncFeed(_syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
             HeadersSyncDispatcher headersDispatcher = new(_headersFeed!, _syncPeerPool, fastFactory, _logManager);
-            Task headersTask = headersDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>
+            Task headersTask = headersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -244,7 +243,7 @@ namespace Nethermind.Synchronization
             BlockDownloader downloader = _blockDownloaderFactory.Create(_fastSyncFeed);
             downloader.SyncEvent += DownloaderOnSyncEvent;
 
-            downloader.Start(_syncCancellation.Token).ContinueWith(t =>
+            downloader.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -278,34 +277,24 @@ namespace Nethermind.Synchronization
         public async Task StopAsync()
         {
             _syncCancellation?.Cancel();
-            
+
             await Task.WhenAny(
                 Task.Delay(FeedsTerminationTimeout),
-                Task.Run(async () =>
-                {
-                    bool IsFinished<T>(ISyncFeed<T>? feed)
-                    {
-                        return feed is null || feed.CurrentState == SyncFeedState.Finished;
-                    }
-
-                    while (!(IsFinished(_fastSyncFeed) &&
-                             IsFinished(_stateSyncFeed) &&
-                             IsFinished(_snapSyncFeed) &&
-                             IsFinished(_fullSyncFeed) &&
-                             IsFinished(_headersFeed) &&
-                             IsFinished(_bodiesFeed) &&
-                             IsFinished(_receiptsFeed)))
-                    {
-                        await Task.Delay(50);
-                    }
-                }));
+                Task.WhenAll(
+                    _fastSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    _stateSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    _snapSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    _fullSyncFeed?.FeedTask ?? Task.CompletedTask,
+                    _headersFeed?.FeedTask ?? Task.CompletedTask,
+                    _bodiesFeed?.FeedTask ?? Task.CompletedTask,
+                    _receiptsFeed?.FeedTask ?? Task.CompletedTask));
         }
 
         public void Dispose()
         {
             _syncCancellation?.Cancel();
             _syncCancellation?.Dispose();
-            _syncReport?.Dispose();
+            _syncReport.Dispose();
 
             _fastSyncFeed?.Dispose();
             _stateSyncFeed?.Dispose();

@@ -22,9 +22,9 @@ namespace Nethermind.Synchronization.ParallelSync
 {
     public abstract class SyncFeed<T> : ISyncFeed<T>
     {
+        private readonly TaskCompletionSource _taskCompletionSource = new();
         public abstract Task<T> PrepareRequest();
         public abstract SyncResponseHandlingResult HandleResponse(T response, PeerInfo peer = null);
-
         public abstract bool IsMultiFeed { get; }
         public abstract AllocationContexts Contexts { get; }
         public int FeedId { get; } = FeedIdProvider.AssignId();
@@ -33,38 +33,25 @@ namespace Nethermind.Synchronization.ParallelSync
         
         private void ChangeState(SyncFeedState newState)
         {
+            if (CurrentState == SyncFeedState.Finished)
+            {
+                throw new InvalidOperationException($"{GetType().Name} has already finished and cannot be {newState} again.");
+            }
+
             CurrentState = newState;
             StateChanged?.Invoke(this, new SyncFeedStateEventArgs(newState));
-        }
 
-        public void Activate()
-        {
             if (CurrentState == SyncFeedState.Finished)
             {
-                throw new InvalidOperationException($"{GetType().Name} has already finished and cannot be activated again.");
+                _taskCompletionSource.SetResult();
             }
-
-            ChangeState(SyncFeedState.Active);
         }
 
-        public virtual void Finish()
-        {
-            if (CurrentState == SyncFeedState.Finished)
-            {
-                throw new InvalidOperationException($"{GetType().Name} has already finished and cannot be finished again.");
-            }
-            
-            ChangeState(SyncFeedState.Finished);
-        }
+        public void Activate() => ChangeState(SyncFeedState.Active);
 
-        public void FallAsleep()
-        {
-            if (CurrentState == SyncFeedState.Finished)
-            {
-                throw new InvalidOperationException($"{GetType().Name} has already finished and cannot be put to sleep again.");
-            }
-            
-            ChangeState(SyncFeedState.Dormant);
-        }
+        public void Finish() => ChangeState(SyncFeedState.Finished);
+        public Task FeedTask => _taskCompletionSource.Task;
+
+        public void FallAsleep() => ChangeState(SyncFeedState.Dormant);
     }
 }
