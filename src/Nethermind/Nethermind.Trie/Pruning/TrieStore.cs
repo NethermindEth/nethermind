@@ -1,16 +1,16 @@
 //  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -30,7 +30,7 @@ namespace Nethermind.Trie.Pruning
 {
     /// <summary>
     /// Trie store helps to manage trie commits block by block.
-    /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.  
+    /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.
     /// </summary>
     public class TrieStore : ITrieStore
     {
@@ -62,7 +62,7 @@ namespace Nethermind.Trie.Pruning
                 else
                 {
                     if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
-                    trieNode = new TrieNode(NodeType.Unknown, hash); 
+                    trieNode = new TrieNode(NodeType.Unknown, hash);
                     SaveInCache(trieNode);
                 }
 
@@ -384,7 +384,7 @@ namespace Nethermind.Trie.Pruning
             }
             else
             {
-                return _dirtyNodes.FindCachedOrUnknown(hash);   
+                return _dirtyNodes.FindCachedOrUnknown(hash);
             }
         }
 
@@ -410,7 +410,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
             {
-                if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
+                if (_logger.IsInfo) _logger.Info("Elevated pruning starting");
 
                 BlockCommitSet? candidateSet = null;
                 while (_commitSetQueue.TryPeek(out BlockCommitSet? frontSet))
@@ -432,14 +432,14 @@ namespace Nethermind.Trie.Pruning
 
                 if (candidateSet is not null)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {candidateSet.BlockNumber}");
+                    if (_logger.IsInfo) _logger.Info($"Elevated pruning for candidate {candidateSet.BlockNumber}");
                     Persist(candidateSet);
                     return true;
                 }
 
                 _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
-                if (_logger.IsDebug)
-                    _logger.Debug(
+                if (_logger.IsInfo)
+                    _logger.Info(
                         $"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {Reorganization.MaxDepth})");
             }
 
@@ -471,8 +471,8 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            if (_logger.IsDebug)
-                _logger.Debug(
+            if (_logger.IsInfo)
+                _logger.Info(
                     $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
             List<TrieNode> toRemove = new(); // TODO: resettable
@@ -528,8 +528,8 @@ namespace Nethermind.Trie.Pruning
 
             stopwatch.Stop();
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsDebug)
-                _logger.Debug(
+            if (_logger.IsInfo)
+                _logger.Info(
                     $"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 
@@ -540,7 +540,7 @@ namespace Nethermind.Trie.Pruning
 
         public void Dispose()
         {
-            if (_logger.IsDebug) _logger.Debug("Disposing trie");
+            if (_logger.IsInfo) _logger.Info("Disposing trie");
             PersistOnShutdown();
         }
 
@@ -550,8 +550,8 @@ namespace Nethermind.Trie.Pruning
             {
                 if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - Reorganization.MaxDepth - 1)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
+                    if (_logger.IsInfo)
+                        _logger.Info(
                             $"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {Reorganization.MaxDepth}");
                     _commitSetQueue.TryDequeue(out _);
                 }
@@ -590,7 +590,7 @@ namespace Nethermind.Trie.Pruning
 
         private void CreateCommitSet(long blockNumber)
         {
-            if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
+            if (_logger.IsInfo) _logger.Info($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
 
             // TODO: this throws on reorgs, does it not? let us recreate it in test
             Debug.Assert(CurrentPackage is null || blockNumber == CurrentPackage.BlockNumber + 1,
@@ -622,15 +622,15 @@ namespace Nethermind.Trie.Pruning
             try
             {
                 _currentBatch ??= _keyValueStore.StartBatch();
-                if (_logger.IsDebug) _logger.Debug($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
+                if (_logger.IsInfo) _logger.Info($"Persisting from root {commitSet.Root} in {commitSet.BlockNumber}");
 
                 Stopwatch stopwatch = Stopwatch.StartNew();
                 commitSet.Root?.CallRecursively(PersistNode, this, true, _logger);
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-                if (_logger.IsDebug)
-                    _logger.Debug(
+                if (_logger.IsInfo)
+                    _logger.Info(
                         $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
                 LastPersistedBlockNumber = commitSet.BlockNumber;
@@ -704,8 +704,8 @@ namespace Nethermind.Trie.Pruning
             bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
             if (isFirstCommit)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug(
+                if (_logger.IsInfo)
+                    _logger.Info(
                         $"Reached first commit - newest {LatestCommittedBlockNumber}, last persisted {LastPersistedBlockNumber}");
                 // this is important when transitioning from fast sync
                 // imagine that we transition at block 1200000
@@ -744,7 +744,7 @@ namespace Nethermind.Trie.Pruning
                 // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
                 // and we need to speed up the standard announcement procedure so we persists a block
                 // from the past (by going max reorg back)
-                
+
                 BlockCommitSet? persistenceCandidate = null;
                 bool firstCandidateFound = false;
                 while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
@@ -754,7 +754,7 @@ namespace Nethermind.Trie.Pruning
                         if (firstCandidateFound == false)
                         {
                             persistenceCandidate = blockCommitSet;
-                            if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
+                            if (_logger.IsInfo) _logger.Info($"New persistence candidate {persistenceCandidate}");
                             firstCandidateFound = true;
                             continue;
                         }
@@ -762,17 +762,17 @@ namespace Nethermind.Trie.Pruning
                         if (blockCommitSet.BlockNumber <= LatestCommittedBlockNumber - Reorganization.MaxDepth)
                         {
                             persistenceCandidate = blockCommitSet;
-                            if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
+                            if (_logger.IsInfo) _logger.Info($"New persistence candidate {persistenceCandidate}");
                         }
                     }
                     else
                     {
-                        if (_logger.IsDebug) _logger.Debug("Block commit was null...");
+                        if (_logger.IsInfo) _logger.Info("Block commit was null...");
                     }
                 }
 
-                if (_logger.IsDebug)
-                    _logger.Debug(
+                if (_logger.IsInfo)
+                    _logger.Info(
                         $"Persisting on disposal {persistenceCandidate} (cache memory at {MemoryUsedByDirtyCache})");
                 if (persistenceCandidate is not null)
                 {
@@ -805,7 +805,7 @@ namespace Nethermind.Trie.Pruning
                         }
                     }
                 }
-                
+
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache started.");
                 KeyValuePair<Keccak, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
                 Parallel.For(0, nodesCopy.Length, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount / 2 }, i =>
