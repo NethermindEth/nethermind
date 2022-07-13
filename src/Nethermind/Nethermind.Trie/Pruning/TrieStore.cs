@@ -432,7 +432,7 @@ namespace Nethermind.Trie.Pruning
 
                 if (candidateSet is not null)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Elevated pruning for candidate {candidateSet.BlockNumber}");
+                    if (_logger.IsInfo) _logger.Info($"Elevated pruning for candidate {candidateSet.BlockNumber}, Root: {candidateSet.Root}");
                     Persist(candidateSet);
                     return true;
                 }
