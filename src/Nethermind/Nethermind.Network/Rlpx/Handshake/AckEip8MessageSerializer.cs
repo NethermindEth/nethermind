@@ -14,12 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class AckEip8MessageSerializer : IMessageSerializer<AckEip8Message>
+    public class AckEip8MessageSerializer : IZeroMessageSerializer<AckEip8Message>
     {
         private readonly IMessagePad _messagePad;
         public const int EphemeralPublicKeyLength = 64;
@@ -34,20 +36,24 @@ namespace Nethermind.Network.Rlpx.Handshake
             _messagePad = messagePad;
         }
         
-        public byte[] Serialize(AckEip8Message msg)
+        public void Serialize(IByteBuffer byteBuffer, AckEip8Message msg)
         {
-            byte[] data = Rlp.Encode(
-                Rlp.Encode(msg.EphemeralPublicKey.Bytes),
-                Rlp.Encode(msg.Nonce),
-                Rlp.Encode(msg.Version)
-            ).Bytes;
-
-            return _messagePad?.Pad(data) ?? data;
+            int totalLength = Rlp.LengthOf(msg.EphemeralPublicKey.Bytes);
+            totalLength += Rlp.LengthOf(msg.Nonce);
+            totalLength += Rlp.LengthOf(msg.Version);
+            totalLength = Rlp.LengthOfSequence(totalLength);
+            
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), true);
+            NettyRlpStream stream = new(byteBuffer);
+            stream.StartSequence(totalLength);
+            stream.Encode(msg.EphemeralPublicKey.Bytes);
+            stream.Encode(msg.Nonce);
+            stream.Encode(msg.Version);
         }
 
-        public AckEip8Message Deserialize(byte[] msgBytes)
+        public AckEip8Message Deserialize(IByteBuffer msgBytes)
         {
-            RlpStream rlpStream = msgBytes.AsRlpStream();
+            NettyRlpStream rlpStream = new(msgBytes);
             AckEip8Message authEip8Message = new();
             rlpStream.ReadSequenceLength();
             authEip8Message.EphemeralPublicKey = new PublicKey(rlpStream.DecodeByteArraySpan());
