@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -22,15 +23,24 @@ namespace Nethermind.Network.P2P.Messages
     /// <summary>
     /// This is probably used in NDM
     /// </summary>
-    public class AddCapabilityMessageSerializer : IMessageSerializer<AddCapabilityMessage>
+    public class AddCapabilityMessageSerializer : IZeroMessageSerializer<AddCapabilityMessage>
     {
-        public byte[] Serialize(AddCapabilityMessage msg)
-            => Rlp.Encode(Rlp.Encode(msg.Capability.ProtocolCode.ToLowerInvariant()),
-                Rlp.Encode(msg.Capability.Version)).Bytes;
-
-        public AddCapabilityMessage Deserialize(byte[] msgBytes)
+        public void Serialize(IByteBuffer byteBuffer, AddCapabilityMessage msg)
         {
-            RlpStream context = msgBytes.AsRlpStream();
+            int totalLength = Rlp.LengthOf(msg.Capability.ProtocolCode.ToLowerInvariant());
+            totalLength += Rlp.LengthOf(msg.Capability.Version);
+            totalLength = Rlp.LengthOfSequence(totalLength);
+            
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), true);
+            NettyRlpStream stream = new(byteBuffer);
+            stream.StartSequence(totalLength);
+            stream.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
+            stream.Encode(msg.Capability.Version);
+        }
+
+        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream context = new(byteBuffer);
             context.ReadSequenceLength();
             string protocolCode = context.DecodeString();
             byte version = context.DecodeByte();
