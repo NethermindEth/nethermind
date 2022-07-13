@@ -316,7 +316,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
 
             int currentCount = 0;
-            int count = 30;
+            int count = 35;
             for (int i = 0; i < 10; i++)
             {
                 currentCount += count;
