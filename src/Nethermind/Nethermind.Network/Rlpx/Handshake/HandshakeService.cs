@@ -1,20 +1,21 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -73,7 +74,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
                 authMessage.IsTokenUsed = false;
                 authMessage.EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes);
-                
+
                 byte[] authData = _messageSerializationService.Serialize(authMessage);
                 byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData, Array.Empty<byte>());
 
@@ -146,9 +147,9 @@ namespace Nethermind.Network.Rlpx.Handshake
                 AckMessage ackMessage = new();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
-                byte[] ackData = _messageSerializationService.Serialize(ackMessage);
-                
-                data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, Array.Empty<byte>());
+                IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
+
+                data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytes(), Array.Empty<byte>());
             }
             else
             {
@@ -156,13 +157,13 @@ namespace Nethermind.Network.Rlpx.Handshake
                 AckEip8Message ackMessage = new();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
-                byte[] ackData = _messageSerializationService.Serialize(ackMessage);
-                
-                int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
+                IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
+
+                int size = ackData.ReadableBytes + 32 + 16 + 65; // data + MAC + IV + pub
                 byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-                data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes));
+                data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytes(), sizeBytes));
             }
-            
+
             handshake.AckPacket = new Packet(data);
             SetSecrets(handshake, HandshakeRole.Recipient);
             return handshake.AckPacket;
@@ -231,11 +232,11 @@ namespace Nethermind.Network.Rlpx.Handshake
 //            byte[] token = Keccak.Compute(sharedSecret).Bytes;
             sharedSecret.CopyTo(tempConcat.Slice(32, 32));
             byte[] aesSecret = Keccak.Compute(tempConcat).Bytes;
-            
+
             sharedSecret.Clear();
             aesSecret.CopyTo(tempConcat.Slice(32, 32));
             byte[] macSecret = Keccak.Compute(tempConcat).Bytes;
-            
+
             ephemeralSharedSecret.Clear();
             handshake.Secrets = new EncryptionSecrets();
 //            handshake.Secrets.Token = token;
