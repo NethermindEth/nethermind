@@ -304,7 +304,8 @@ namespace Nethermind.Network.Test
             Assert.True(ctx.PeerManager.CandidatePeers.All(p => p.OutSession == null));
         }
 
-        [Test, Retry(3)]
+        [Test]
+        [Explicit("CI issues - bad test design")]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
         {
             await using Context ctx = new();
@@ -328,7 +329,8 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [Test, Retry(3)]
+        [Test]
+        [Explicit("CI issues - bad test design")]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40_with_random_incoming_connections()
         {
             await using Context ctx = new();
