@@ -119,22 +119,24 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private async Task StartAsync(CancellationToken cancellationToken)
         {
-            while (true)
+            PeriodicTimer timer = new (TimeSpan.FromSeconds(1));
+            try
             {
-                try
+                while (await timer.WaitForNextTickAsync(cancellationToken))
                 {
-                    await Task.Delay(1000, cancellationToken);
-                    Update();
+                    try
+                    {
+                        Update();
+                    }
+                    catch (Exception exception)
+                    {
+                        if (_logger.IsError) _logger.Error("Sync mode update failed", exception);
+                    }
                 }
-                catch (OperationCanceledException)
-                {
-                    if (_logger.IsInfo) _logger.Info("Sync mode selector stopped");
-                    break;
-                }
-                catch (Exception exception)
-                {
-                    if (_logger.IsError) _logger.Error("Sync mode update failed", exception);
-                }
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsInfo) _logger.Info("Sync mode selector stopped");
             }
         }
 
