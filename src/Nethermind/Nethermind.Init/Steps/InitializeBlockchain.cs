@@ -239,7 +239,7 @@ namespace Nethermind.Init.Steps
                 headerValidator,
                 getApi.LogManager);
 
-            IBlockValidator? blockValidator = setApi.BlockValidator = new BlockValidator(
+            setApi.BlockValidator = new BlockValidator(
                 txValidator,
                 headerValidator,
                 unclesValidator,
@@ -249,8 +249,8 @@ namespace Nethermind.Init.Steps
             IChainHeadInfoProvider chainHeadInfoProvider =
                 new ChainHeadInfoProvider(getApi.SpecProvider, getApi.BlockTree, stateReader);
             setApi.TxPoolInfoProvider = new TxPoolInfoProvider(chainHeadInfoProvider.AccountStateProvider, txPool);
-            setApi.GasPriceOracle = new GasPriceOracle(_api.BlockTree, _api.SpecProvider, _api.LogManager, miningConfig.MinGasPrice);
-            IBlockProcessor? mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
+            setApi.GasPriceOracle = new GasPriceOracle(getApi.BlockTree, getApi.SpecProvider, _api.LogManager, miningConfig.MinGasPrice);
+            IBlockProcessor mainBlockProcessor = setApi.MainBlockProcessor = CreateBlockProcessor();
 
             BlockchainProcessor blockchainProcessor = new(
                 getApi.BlockTree,
@@ -266,7 +266,7 @@ namespace Nethermind.Init.Steps
 
             setApi.BlockProcessingQueue = blockchainProcessor;
             setApi.BlockchainProcessor = blockchainProcessor;
-            setApi.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree);
+            setApi.EthSyncingInfo = new EthSyncingInfo(getApi.BlockTree);
 
             // TODO: can take the tx sender from plugin here maybe
             ITxSigner txSigner = new WalletTxSigner(getApi.Wallet, getApi.SpecProvider.ChainId);
@@ -276,7 +276,7 @@ namespace Nethermind.Init.Steps
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, standardSealer);
 
             // TODO: possibly hide it (but need to confirm that NDM does not really need it)
-            IFilterStore? filterStore = setApi.FilterStore = new FilterStore();
+            IFilterStore filterStore = setApi.FilterStore = new FilterStore();
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = new BlockProductionPolicy(miningConfig);
@@ -292,7 +292,7 @@ namespace Nethermind.Init.Steps
             INethermindApi api, 
             IStateReader stateReader)
         {
-            IPruningTrigger CreateAutomaticTrigger(string dbPath)
+            IPruningTrigger? CreateAutomaticTrigger(string dbPath)
             {
                 long threshold = pruningConfig.FullPruningThresholdMb.MB();
 
@@ -312,7 +312,7 @@ namespace Nethermind.Init.Steps
                 IDb stateDb = api.DbProvider!.StateDb;
                 if (stateDb is IFullPruningDb fullPruningDb)
                 {
-                    IPruningTrigger pruningTrigger = CreateAutomaticTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
+                    IPruningTrigger? pruningTrigger = CreateAutomaticTrigger(fullPruningDb.GetPath(initConfig.BaseDbPath));
                     if (pruningTrigger is not null)
                     {
                         api.PruningTrigger.Add(pruningTrigger);
@@ -336,15 +336,14 @@ namespace Nethermind.Init.Steps
             new HealthHintService(_api.ChainSpec!);
 
         protected virtual TxPool.TxPool CreateTxPool() =>
-            new TxPool.TxPool(
-                _api.EthereumEcdsa,
-                new ChainHeadInfoProvider(_api.SpecProvider, _api.BlockTree, _api.StateReader),
+            new(_api.EthereumEcdsa!,
+                new ChainHeadInfoProvider(_api.SpecProvider!, _api.BlockTree!, _api.StateReader!),
                 _api.Config<ITxPoolConfig>(),
-                _api.TxValidator,
+                _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer());
 
-        protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider.GetDefaultComparer();
+        protected IComparer<Transaction> CreateTxPoolTxComparer() => _api.TransactionComparerProvider!.GetDefaultComparer();
 
         // TODO: we should not have the create header -> we should have a header that also can use the information about the transitions
          protected virtual IHeaderValidator CreateHeaderValidator() => new HeaderValidator(
@@ -358,6 +357,7 @@ namespace Nethermind.Init.Steps
         {
             if (_api.DbProvider == null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource == null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+            if (_api.TransactionProcessor == null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
             return new BlockProcessor(
                 _api.SpecProvider,

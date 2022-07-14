@@ -109,7 +109,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             long currentNumber = _blockTree.BestKnownNumber;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
+                    $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
             bool HasMoreToSync()
                 => currentNumber < _blockTree.BestKnownBeaconNumber &&
@@ -157,8 +157,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 blocks = context.Blocks;
                 receipts = context.ReceiptsForBlocks;
 
-                if (blocks == null || blocks.Length == 0)
+                if (!(blocks?.Length > 0))
+                {
                     break;
+                }
 
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
@@ -174,8 +176,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
-                        throw new EthSyncException(
-                            $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
+                        throw new EthSyncException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
 
                     if (downloadReceipts)
@@ -183,8 +184,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
                         if (currentBlock.Header.HasBody && contextReceiptsForBlock == null)
                         {
-                            throw new EthSyncException(
-                                $"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
+                            throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
                     }
 
@@ -203,7 +203,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         }
                     }
 
-                    bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.Hash);
+                    bool isKnownBeaconBlock = _blockTree.IsKnownBeaconBlock(currentBlock.Number, currentBlock.GetOrCalculateHash());
                     BlockTreeSuggestOptions suggestOptions =
                         shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
                     if (_logger.IsTrace)
@@ -211,7 +211,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             $"Current block {currentBlock}, BeaconPivot: {_beaconPivot.PivotNumber}, IsKnownBeaconBlock: {isKnownBeaconBlock}");
 
                     if (isKnownBeaconBlock)
+                    {
                         suggestOptions |= BlockTreeSuggestOptions.FillBeaconBlock;
+                    }
 
                     if (_logger.IsTrace)
                         _logger.Trace(
@@ -220,13 +222,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
                     if (addResult == AddBlockResult.InvalidBlock)
                     {
-                        _invalidChainTracker.OnInvalidBlock(currentBlock.Hash, currentBlock.ParentHash);
+                        _invalidChainTracker.OnInvalidBlock(currentBlock.GetOrCalculateHash(), currentBlock.ParentHash!);
                     }
 
                     if (HandleAddResult(bestPeer, currentBlock.Header, blockIndex == 0, addResult))
                     {
                         if (shouldProcess == false)
+                        {
                             _blockTree.UpdateMainChain(new[] { currentBlock }, false);
+                        }
+
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
 
                         if (downloadReceipts)

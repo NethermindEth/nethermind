@@ -50,7 +50,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<ExecutionPayloadV1?>> HandleAsync(byte[] payloadId)
+        public Task<ResultWrapper<ExecutionPayloadV1?>> HandleAsync(byte[] payloadId)
         {
             string payloadStr = payloadId.ToHexString(true);
             Block? block = _payloadPreparationService.GetPayload(payloadStr);

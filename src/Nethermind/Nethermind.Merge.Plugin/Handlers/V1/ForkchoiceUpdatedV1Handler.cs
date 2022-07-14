@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 {
     /// <summary>
     /// Propagates the change in the fork choice to the execution client. May initiate creating new payload.
-    /// <seealso cref="https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>.
+    /// <seealso cref="http://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_forkchoiceupdatedv1"/>.
     /// </summary>
     public class ForkchoiceUpdatedV1Handler : IForkchoiceUpdatedV1Handler
     {
@@ -76,12 +76,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
+        public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
         {
             string requestStr = $"{forkchoiceState} {payloadAttributes}";
             if (_logger.IsInfo) _logger.Info($"Received: {requestStr}");
 
-            if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak lastValidHash))
+            if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
             {
                 return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
             }
@@ -92,7 +92,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
                 {
                     _mergeSyncController.InitBeaconHeaderSync(block.Header);
-                    _peerRefresher.RefreshPeers(block.Hash, block.ParentHash, forkchoiceState.FinalizedBlockHash);
+                    _peerRefresher.RefreshPeers(block.Hash!, block.ParentHash!, forkchoiceState.FinalizedBlockHash);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
 
@@ -115,7 +115,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 if (processingQueueCount == 0)
                 {
-                    _peerRefresher.RefreshPeers(newHeadBlock.Hash, newHeadBlock.ParentHash, forkchoiceState.FinalizedBlockHash);
+                    _peerRefresher.RefreshPeers(newHeadBlock.Hash!, newHeadBlock.ParentHash!, forkchoiceState.FinalizedBlockHash);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
                     _mergeSyncController.StopBeaconModeControl();
@@ -140,7 +140,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
 
-            BlockHeader? safeBlockHashHeader = ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
+            ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
             if (safeBlockErrorMsg is not null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}.");
@@ -149,7 +149,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             
             if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(newHeadBlock.Header))
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock!.Header.TotalDifficulty}. Request: {requestStr}.");
+                if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock.Header.TotalDifficulty}. Request: {requestStr}.");
                 
                 // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
                 // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
@@ -193,7 +193,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
-            bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
+            // bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
             if (nonZeroFinalizedBlockHash)
             {
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
@@ -211,7 +211,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 payloadAttributes.GasLimit = null;
                 if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock!.Timestamp}. Request: {requestStr}.");
+                    if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock.Timestamp}. Request: {requestStr}.");
 
                     return ForkchoiceUpdatedV1Result.Error(
                         $"Invalid payload attributes timestamp {payloadAttributes.Timestamp}, block timestamp {newHeadBlock.Timestamp}. Request: {requestStr}",
@@ -253,10 +253,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
         }
 
-        private bool IsInconsistent(Keccak blockHash)
-        {
-            return blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash!);
-        }
+        private bool IsInconsistent(Keccak blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);
 
         private Block? GetBlock(Keccak headBlockHash)
         {

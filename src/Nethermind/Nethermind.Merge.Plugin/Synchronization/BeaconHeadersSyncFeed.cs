@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using Nethermind.Blockchain;
@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
@@ -79,7 +80,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
-        Keccak? startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash;
+        Keccak startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash ?? Keccak.Zero;
         UInt256? startTotalDifficulty =
             lowestInserted?.TotalDifficulty ?? _poSSwitcher.FinalTotalDifficulty ?? null;
 
@@ -98,7 +99,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         FallAsleep();
         PostFinishCleanUp();
     }
-    
+
     protected override void PostFinishCleanUp()
     {
         HeadersSyncProgressReport.Update(_pivotNumber - HeadersDestinationNumber + 1);
@@ -118,7 +119,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
             if (_logger.IsTrace)
                 _logger.Trace(
                     "Chain already merged, skipping header insert");
-            return AddBlockResult.AlreadyKnown; 
+            return AddBlockResult.AlreadyKnown;
         }
 
         if (_logger.IsTrace)
@@ -133,7 +134,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
 
         // Found existing block in the block tree
-        if (_blockTree.IsKnownBlock(header.Number, header.Hash))
+        if (_blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
         {
             _chainMerged = true;
             if (_logger.IsTrace)

@@ -79,9 +79,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             string payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             if (!_payloadStorage.ContainsKey(payloadId))
             {
-                payloadAttributes.SuggestedFeeRecipient = _sealer.Address != Address.Zero
-                    ? _sealer.Address
-                    : payloadAttributes.SuggestedFeeRecipient;
                 Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
                 ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock);
             }

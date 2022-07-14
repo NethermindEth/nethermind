@@ -2,16 +2,8 @@
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
-
         <IsPackable>false</IsPackable>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
-      <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     </PropertyGroup>
 
     <ItemGroup>
@@ -27,7 +19,7 @@
     </ItemGroup>
     <ItemGroup>
         <ProjectReference Include="..\Nethermind.Analytics\Nethermind.Analytics.csproj" />
-        <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />        
+        <ProjectReference Include="..\Nethermind.Api\Nethermind.Api.csproj" />
         <ProjectReference Include="..\Nethermind.Config.Test\Nethermind.Config.Test.csproj" />
         <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
         <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
