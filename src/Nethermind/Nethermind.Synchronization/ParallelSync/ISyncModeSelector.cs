@@ -21,11 +21,13 @@ namespace Nethermind.Synchronization.ParallelSync
     public interface ISyncModeSelector : IDisposable
     {
         SyncMode Current { get; }
-        
+
         event EventHandler<SyncModeChangedEventArgs> Preparing;
-        
+
         event EventHandler<SyncModeChangedEventArgs> Changing;
-        
+
         event EventHandler<SyncModeChangedEventArgs> Changed;
+
+        void Stop();
     }
 }

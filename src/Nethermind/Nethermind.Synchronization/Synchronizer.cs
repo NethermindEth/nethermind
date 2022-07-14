@@ -275,11 +275,11 @@ namespace Nethermind.Synchronization
             SyncEvent?.Invoke(this, e);
         }
 
-        public async Task StopAsync()
+        public Task StopAsync()
         {
             _syncCancellation?.Cancel();
 
-            await Task.WhenAny(
+            return Task.WhenAny(
                 Task.Delay(FeedsTerminationTimeout),
                 Task.WhenAll(
                     _fastSyncFeed?.FeedTask ?? Task.CompletedTask,

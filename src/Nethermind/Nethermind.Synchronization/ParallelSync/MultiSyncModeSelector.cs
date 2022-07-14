@@ -18,7 +18,8 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using System.Timers;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -79,7 +80,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
         private long? LastBlockThatEnabledFullSync { get; set; }
 
-        private readonly Timer _timer;
+        private readonly CancellationTokenSource _cancellation = new();
 
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
@@ -113,23 +114,33 @@ namespace Nethermind.Synchronization.ParallelSync
             _pivotNumber = _syncConfig.PivotNumberParsed;
             _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
 
-            _timer = StartUpdateTimer();
+            _ = StartAsync(_cancellation.Token);
         }
 
-        private Timer StartUpdateTimer()
+        private async Task StartAsync(CancellationToken cancellationToken)
         {
-            Timer timer = new();
-            timer.Interval = 1000;
-            timer.AutoReset = false;
-            timer.Elapsed += TimerOnElapsed;
-            timer.Enabled = true;
-            return timer;
+            while (true)
+            {
+                try
+                {
+                    await Task.Delay(1000, cancellationToken);
+                    Update();
+                }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsInfo) _logger.Info("Sync mode selector stopped");
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    if (_logger.IsError) _logger.Error("Sync mode update failed", exception);
+                }
+            }
         }
 
-        public void DisableTimer()
+        public void Stop()
         {
-            // for testing
-            _timer.Stop();
+            _cancellation.Cancel();
         }
 
         public void Update()
@@ -282,20 +293,6 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <returns>A string describing the state of sync</returns>
         private static string BuildStateString(Snapshot best) =>
             $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.Peer.Block}";
-
-        private void TimerOnElapsed(object? sender, ElapsedEventArgs e)
-        {
-            try
-            {
-                Update();
-            }
-            catch (Exception exception)
-            {
-                if (_logger.IsError) _logger.Error("Sync mode update failed", exception);
-            }
-
-            _timer.Enabled = true;
-        }
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
@@ -595,7 +592,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return (maxPeerDifficulty, number);
         }
 
-        public void Dispose() => _timer.Dispose();
+        public void Dispose() => _cancellation.Dispose();
 
         private Snapshot TakeSnapshot(in UInt256 peerDifficulty, long peerBlock, bool inBeaconControl)
         {
