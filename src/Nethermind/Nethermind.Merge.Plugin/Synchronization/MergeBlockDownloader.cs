@@ -103,32 +103,32 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             int blocksSynced = 0;
             long currentNumber = _blockTree.BestKnownNumber;
-            if (_logger.IsTrace)
-                _logger.Trace(
-                    $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
+            if (_logger.IsTrace) _logger.Trace($"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
+
+            bool beaconPivotNotSynced = _beaconPivot.BeaconPivotExists() && _blockTree.FindBlock(_beaconPivot.PivotHash!) is null;
 
             bool HasMoreToSync()
-                => currentNumber < _blockTree.BestKnownBeaconNumber &&
-                   bestPeer.HeadNumber > _blockTree.BestKnownNumber;
+                => (currentNumber < _blockTree.BestKnownBeaconNumber &&
+                    bestPeer.HeadNumber > _blockTree.BestKnownNumber)
+                   || beaconPivotNotSynced;
 
             while (HasMoreToSync())
             {
-                if (_logger.IsDebug)
-                    _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
+                if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
                 int headersToRequest = Math.Min(_syncBatchSize.Current, bestPeer.MaxHeadersPerRequest());
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
+                if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 if (_logger.IsTrace) _logger.Trace($"Downloading blocks from peer. CurrentNumber: {currentNumber}, BeaconPivot: {_beaconPivot.PivotNumber}, BestPeer: {bestPeer}, HeaderToRequest: {headersToRequest}");
 
                 BlockHeader[]? headers = _chainLevelHelper.GetNextHeaders(headersToRequest);
                 if (headers == null || headers.Length == 0)
+                {
                     break;
-                BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts,
-                    _receiptsRecovery);
+                }
+
+                BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 await RequestBodies(bestPeer, cancellation, context);
@@ -136,11 +136,15 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (downloadReceipts)
                 {
                     if (cancellation.IsCancellationRequested)
+                    {
                         return blocksSynced; // check before every heavy operation
+                    }
+
                     await RequestReceipts(bestPeer, cancellation, context);
                 }
 
                 _sinceLastTimeout++;
+
                 if (_sinceLastTimeout > 2)
                 {
                     _syncBatchSize.Expand();
@@ -200,6 +204,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                     if (_logger.IsTrace) _logger.Trace($"MergeBlockDownloader - SuggestBlock {currentBlock}, IsKnownBlock {isKnownBlock} ShouldProcess: {shouldProcess}");
 
+                    beaconPivotNotSynced |= currentBlock.Number != _beaconPivot.PivotNumber;
                     AddBlockResult addResult = _blockTree.SuggestBlock(currentBlock, suggestOptions);
                     if (addResult == AddBlockResult.InvalidBlock)
                     {
