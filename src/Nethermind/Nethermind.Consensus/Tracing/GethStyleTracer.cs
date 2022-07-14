@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -122,16 +122,10 @@ namespace Nethermind.Consensus.Tracing
             _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
             return blockTracer.BuildResult().SingleOrDefault();
         }
-
-        public GethLikeTxTrace[] TraceBlock(Keccak blockHash, GethTraceOptions options, CancellationToken cancellationToken)
+        public GethLikeTxTrace[] TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
         {
-            Block block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-            return TraceBlock(block, options, cancellationToken);
-        }
+            var block = _blockTree.FindBlock(blockParameter);
 
-        public GethLikeTxTrace[] TraceBlock(long blockNumber, GethTraceOptions options, CancellationToken cancellationToken)
-        {
-            Block? block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             return TraceBlock(block, options, cancellationToken);
         }
 

@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Threading.Tasks;
@@ -58,7 +58,7 @@ namespace Nethermind.Merge.Plugin
                 if (_api.HeaderValidator == null) throw new ArgumentNullException(nameof(_api.HeaderValidator));
                 if (_mergeBlockProductionPolicy == null) throw new ArgumentNullException(nameof(_mergeBlockProductionPolicy));
                 if (_api.SealValidator == null) throw new ArgumentNullException(nameof(_api.SealValidator));
-                
+
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
@@ -68,19 +68,8 @@ namespace Nethermind.Merge.Plugin
                 _manualTimestamper ??= new ManualTimestamper();
                 _blockProductionTrigger = new BuildBlocksWhenRequested();
                 BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
-                Address feeRecipient;
-                if (string.IsNullOrWhiteSpace(_mergeConfig.FeeRecipient))
-                {
-                    feeRecipient = Address.Zero;
-                    if (_logger.IsInfo) _logger.Info("FeeRecipient will be set based on PayloadAttributes.SuggestedFeeRecipient field from CL");
-                }
-                else
-                {
-                    feeRecipient = new Address(_mergeConfig.FeeRecipient);
-                    if (_logger.IsInfo) _logger.Info($"FeeRecipient: {feeRecipient}");
-                }
 
-                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, feeRecipient, _api.SealValidator, _api.LogManager);
+                _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher,  _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
                 PostMergeBlockProducerFactory blockProducerFactory = new(_api.SpecProvider, _api.SealEngine, _manualTimestamper, _miningConfig, _api.LogManager);
                 _postMergeBlockProducer = blockProducerFactory.Create(

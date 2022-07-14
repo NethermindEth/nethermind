@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Generic;
@@ -55,14 +55,14 @@ namespace Nethermind.Merge.Plugin.Test
     {
         protected virtual MergeTestBlockchain CreateBaseBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null) =>
             new(mergeConfig, mockedPayloadService);
-        
+
         protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
             => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
         private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
         {
             IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
-            
+
             chain.BeaconPivot = new BeaconPivot(syncConfig ?? new SyncConfig(), new MemDb(), chain.BlockTree, chain.LogManager);
             BlockCacheService blockCacheService = new();
             InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(
@@ -83,10 +83,10 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.PoSSwitcher,
                     chain.BeaconSync,
                     chain.BeaconPivot,
-                    blockCacheService, 
-                    chain.BlockProcessingQueue, 
+                    blockCacheService,
+                    chain.BlockProcessingQueue,
                     invalidChainTracker,
-                    chain.BeaconSync, 
+                    chain.BeaconSync,
                     chain.LogManager),
                 new ForkchoiceUpdatedV1Handler(
                     chain.BlockTree,
@@ -108,7 +108,7 @@ namespace Nethermind.Merge.Plugin.Test
         public class MergeTestBlockchain : TestBlockchain
         {
             public IMergeConfig MergeConfig { get; set; }
-            
+
             public PostMergeBlockProducer? PostMergeBlockProducer { get; set; }
 
             public IPayloadPreparationService? PayloadPreparationService { get; set; }
@@ -116,9 +116,9 @@ namespace Nethermind.Merge.Plugin.Test
             public ISealValidator SealValidator { get; set; }
 
             public IManualBlockProductionTrigger BlockProductionTrigger { get; set; } = new BuildBlocksWhenRequested();
-            
+
             public IBeaconPivot BeaconPivot { get; set; }
-            
+
             public BeaconSync BeaconSync { get; set; }
 
             private int _blockProcessingThrottle = 0;
@@ -139,17 +139,16 @@ namespace Nethermind.Merge.Plugin.Test
                 MergeConfig = mergeConfig ?? new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" };
                 PayloadPreparationService = mockedPayloadPreparationService;
             }
-            
+
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
             public sealed override ILogManager LogManager { get; } = new NUnitLogManager();
-            
+
             public IEthSyncingInfo EthSyncingInfo { get; protected set; }
 
             protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
             {
-                Address feeRecipient = !string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero;
-                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, feeRecipient, SealValidator, LogManager);
+                SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
                 IBlockProducer preMergeBlockProducer =
                     base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
                 MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
@@ -164,10 +163,10 @@ namespace Nethermind.Merge.Plugin.Test
                     targetAdjustedGasLimitCalculator);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new(
-                    DbProvider, 
-                    BlockTree, 
-                    ReadOnlyTrieStore, 
-                    SpecProvider, 
+                    DbProvider,
+                    BlockTree,
+                    ReadOnlyTrieStore,
+                    SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
                     ReceiptStorage,
@@ -183,15 +182,15 @@ namespace Nethermind.Merge.Plugin.Test
                     blockProducerEnv, BlockProductionTrigger);
                 PostMergeBlockProducer = postMergeBlockProducer;
                 PayloadPreparationService ??= new PayloadPreparationService(
-                    postMergeBlockProducer, 
+                    postMergeBlockProducer,
                     new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
                     SealEngine,
-                    TimerFactory.Default, 
+                    TimerFactory.Default,
                     LogManager,
                     TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
                 return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
             }
-            
+
             protected override IBlockProcessor CreateBlockProcessor()
             {
                 BlockValidator = CreateBlockValidator();
@@ -216,7 +215,7 @@ namespace Nethermind.Merge.Plugin.Test
                 SealValidator = new MergeSealValidator(PoSSwitcher, Always.Valid);
                 HeaderValidator preMergeHeaderValidator = new HeaderValidator(BlockTree, SealValidator, SpecProvider, LogManager);
                 HeaderValidator = new MergeHeaderValidator(PoSSwitcher, preMergeHeaderValidator, BlockTree, SpecProvider, SealValidator, LogManager);
-                
+
                 return new BlockValidator(
                     new TxValidator(SpecProvider.ChainId),
                     HeaderValidator,
@@ -232,7 +231,7 @@ namespace Nethermind.Merge.Plugin.Test
                 return chain;
             }
 
-            public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) => 
+            public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) =>
                 (MergeTestBlockchain) await Build(specProvider, null);
         }
     }
@@ -247,7 +246,7 @@ namespace Nethermind.Merge.Plugin.Test
             _blockProcessorImplementation = baseBlockProcessor;
             DelayMs = delayMs;
         }
-        
+
         public Block[] Process(Keccak newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
             IBlockTracer blockTracer)
         {
