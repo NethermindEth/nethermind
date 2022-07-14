@@ -241,6 +241,10 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 node = SaveOrReplaceInDirtyNodesCache(nodeCommitInfo, node);
+                if (blockNumber < (node.LastSeen ?? 0))
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Found blockNumber {blockNumber} lower than node {node.LastSeen}, node.Keccak: {node.Keccak} ");
+                }
                 node.LastSeen = blockNumber;
 
                 if (!_pruningStrategy.PruningEnabled)
@@ -667,6 +671,10 @@ namespace Nethermind.Trie.Pruning
                     _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
                 _currentBatch[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
+                if (blockNumber < (currentNode.LastSeen ?? 0))
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Found blockNumber {blockNumber} lower than currentNode {currentNode.LastSeen}, currentNode.Keccak: {currentNode.Keccak} ");
+                }
                 currentNode.LastSeen = blockNumber;
                 PersistedNodesCount++;
             }
