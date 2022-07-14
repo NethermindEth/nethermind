@@ -30,6 +30,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
@@ -148,7 +149,7 @@ namespace Nethermind.Synchronization.Test
 
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts, 0), CancellationToken.None);
             ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(peerInfo.HeadNumber);
-            ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader.Hash).Should().Be(true);
+            ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader.GetOrCalculateHash()).Should().Be(true);
         }
 
         [Test]
