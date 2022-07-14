@@ -92,9 +92,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.IsTokenUsed, false);
             Assert.NotNull(authMessage.Signature);
 
-            byte[] data = _messageSerializationService.Serialize(authMessage);
-            Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
+            Assert.AreEqual(deciphered, data.ReadAllBytes(), "serialization");
         }
 
         [Test]
@@ -125,10 +124,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.Version, 4);
             Assert.NotNull(authMessage.Signature);
 
-            byte[] data = _messageSerializationService.Serialize(authMessage);
-            Array.Resize(ref data, deciphered.Length);
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
 
-            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169), "serialization");
+            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169).ReadAllBytes(), "serialization");
         }
 
         [Test]
@@ -148,9 +146,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.IsTokenUsed, false);
 
-            byte[] data = _messageSerializationService.Serialize(ackMessage);
-            Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+            Assert.AreEqual(deciphered, data.ReadAllBytes(), "serialization");
         }
 
         [Test]
@@ -185,7 +182,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             IByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
 
             // TODO: check 102
-            Assert.AreEqual(deciphered.Slice(0, 102), data.Array.Slice(0, 102), "serialization");
+            Assert.AreEqual(deciphered.Slice(0, 102), data.ReadAllBytes().Slice(0, 102), "serialization");
         }
 
         [Test]
