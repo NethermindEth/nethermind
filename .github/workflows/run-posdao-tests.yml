@@ -52,17 +52,14 @@ jobs:
       uses: actions/setup-node@v1.4.4
       with:
         node-version: '16'
-    - name: Setup Docker
-      if: contains(github.event.inputs.branch, 'merge')
-      run: curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh; rm get-docker.sh
     - name: Running POSDAO tests
       run: |
         cd posdao-test-setup
         npm run all-nethermind-no-watcher
     - name: Compress posdao logs (already collected by posdao-test-setup)
-      run: zip -r posdao-logs.zip posdao-logs
+      run: zip -r posdao-logs.zip posdao-test-setup/posdao-logs
     - uses: actions/upload-artifact@master      
       name: Upload nodes logs
       with:
         name: posdao-tests-logs
-        path: posdao-test-setup/posdao-logs.zip
+        path: posdao-logs.zip
