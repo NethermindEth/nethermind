@@ -75,8 +75,8 @@ namespace Nethermind.Network.Rlpx.Handshake
                 authMessage.IsTokenUsed = false;
                 authMessage.EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes);
 
-                byte[] authData = _messageSerializationService.Serialize(authMessage);
-                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData, Array.Empty<byte>());
+                IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytes(), Array.Empty<byte>());
 
                 handshake.AuthPacket = new Packet(packetData);
                 return handshake.AuthPacket;
@@ -88,10 +88,10 @@ namespace Nethermind.Network.Rlpx.Handshake
                 authMessage.PublicKey = _privateKey.PublicKey;
                 authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
 
-                byte[] authData = _messageSerializationService.Serialize(authMessage);
-                int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
+                IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
+                int size = authData.ReadableBytes + 32 + 16 + 65; // data + MAC + IV + pub
                 byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData,sizeBytes);
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytes(),sizeBytes);
 
                 handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
                 return handshake.AuthPacket;
