@@ -62,8 +62,8 @@ jobs:
     - name: Compress posdao logs (already collected by posdao-test-setup)
       if: always()
       run: |
-      cp posdao-test-setup/posdao-logs/latest posdao-test-setup/posdao-logs/posdao-logs
-      zip -r posdao-logs.zip posdao-test-setup/posdao-logs/posdao-logs
+        cp posdao-test-setup/posdao-logs/latest posdao-test-setup/posdao-logs/posdao-logs
+        zip -r posdao-logs.zip posdao-test-setup/posdao-logs/posdao-logs
     - name: Upload posdao logs
       if: always()
       uses: actions/upload-artifact@master      
