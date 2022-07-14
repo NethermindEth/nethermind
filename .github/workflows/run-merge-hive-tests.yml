@@ -98,9 +98,11 @@ jobs:
       - name: Load Docker Image
         run: docker load --input /tmp/image.tar
       - name: Run Hive
+        continue-on-error: true
         if: "${{ github.event.inputs.limit == '' }}"
         run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }}
       - name: Run Hive With Limit
+        continue-on-error: true
         if: "${{ github.event.inputs.limit != '' }}"
         run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.limit ${{ github.event.inputs.limit }}
       - name: Upload Hive Results
