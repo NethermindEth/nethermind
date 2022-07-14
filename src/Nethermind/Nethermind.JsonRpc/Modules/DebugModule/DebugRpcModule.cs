@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -163,43 +163,44 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
+            using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            var cancellationToken = cancellationTokenSource.Token;
             var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), cancellationToken, options);
+
             if (blockTrace == null)
-            {
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for RLP {blockRlp.ToHexString()}", ErrorCodes.ResourceNotFound);
-            }
+
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlock)} request {blockRlp.ToHexString()}, result: {blockTrace}");
 
             return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
         }
 
-        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(UInt256 blockNumber, GethTraceOptions options = null)
+        public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BlockParameter blockNumber, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            var blockTrace = _debugBridge.GetBlockTrace((long)blockNumber, cancellationToken, options);
-            if (blockTrace == null)
-            {
-                return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
-            }
+            using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            var cancellationToken = cancellationTokenSource.Token;
+            var blockTrace = _debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
 
-            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: blockTrace");
+            if (blockTrace == null)
+                return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
+
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {blockTrace}");
+
             return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
         }
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash, GethTraceOptions options = null)
         {
-            using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
-            GethLikeTxTrace[] gethLikeBlockTrace = _debugBridge.GetBlockTrace(blockHash, cancellationToken, options);
-            if (gethLikeBlockTrace == null)
-            {
-                return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
-            }
+            using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+            var cancellationToken = cancellationTokenSource.Token;
+            var blockTrace = _debugBridge.GetBlockTrace(new BlockParameter(blockHash), cancellationToken, options);
 
-            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: blockTrace");
-            return ResultWrapper<GethLikeTxTrace[]>.Success(gethLikeBlockTrace);
+            if (blockTrace == null)
+                return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockHash}", ErrorCodes.ResourceNotFound);
+
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: {blockTrace}");
+
+            return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
         }
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null)
