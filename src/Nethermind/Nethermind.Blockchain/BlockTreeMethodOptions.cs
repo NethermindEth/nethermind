@@ -37,13 +37,13 @@ public enum BlockTreeInsertOptions
 {
     None = 0,
     TotalDifficultyNotNeeded = 1,
-    BeaconInsert = 2,
-    NotOnMainChain = 4,
-    MoveToBeaconMainChain = 8,
-    DoNotUpdateChainLevel = 16,
+    BeaconHeaderMetadata = 2,
+    BeaconBodyMetadata = 4,
+    NotOnMainChain = 8,
+    MoveToBeaconMainChain = 16,
 
-    BeaconBlockInsert = TotalDifficultyNotNeeded | BeaconInsert | NotOnMainChain,
-    BeaconHeaderInsert = BeaconInsert | MoveToBeaconMainChain | NotOnMainChain
+    BeaconBlockInsert = TotalDifficultyNotNeeded | BeaconHeaderMetadata | NotOnMainChain | BeaconBodyMetadata,
+    BeaconHeaderInsert = BeaconHeaderMetadata | MoveToBeaconMainChain | NotOnMainChain
 }
 
 [Flags]

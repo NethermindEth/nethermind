@@ -151,7 +151,7 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
             .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // complete headers sync
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconInsert
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderMetadata
                                          | BlockTreeInsertOptions.TotalDifficultyNotNeeded;
         for (int i = 0; i < requests.Length - 2; i++)
         {
@@ -218,7 +218,7 @@ public partial class EngineModuleTests
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // simulate headers sync by inserting 3 headers from pivot backwards
         int filledNum = 3;
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconInsert |
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderMetadata |
                                          BlockTreeInsertOptions.TotalDifficultyNotNeeded;
         for (int i = missingBlocks.Length; i --> missingBlocks.Length - filledNum;)
         {
@@ -318,7 +318,7 @@ public partial class EngineModuleTests
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // fill in beacon headers until fast headers pivot
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconInsert |
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderMetadata |
                                          BlockTreeInsertOptions.TotalDifficultyNotNeeded;
         for (int i = requests.Length; i --> 0;)
         {
