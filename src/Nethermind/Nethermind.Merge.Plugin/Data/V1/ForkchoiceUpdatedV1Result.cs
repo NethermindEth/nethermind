@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Newtonsoft.Json;
@@ -51,5 +52,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
         /// </summary>
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public string? PayloadId { get; set; }
+
+        public static implicit operator Task<ForkchoiceUpdatedV1Result>(ForkchoiceUpdatedV1Result result) => Task.FromResult(result);
     }
 }

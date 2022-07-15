@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
@@ -79,7 +80,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
-        Keccak? startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash;
+        Keccak startHeaderHash = lowestInserted?.Hash ?? _pivot.PivotHash ?? Keccak.Zero;
         UInt256? startTotalDifficulty =
             lowestInserted?.TotalDifficulty ?? _poSSwitcher.FinalTotalDifficulty ?? null;
 
@@ -131,7 +132,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         }
 
         // Found existing block in the block tree
-        if (_blockTree.IsKnownBlock(header.Number, header.Hash))
+        if (_blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
         {
             _chainMerged = true;
             if (_logger.IsTrace)

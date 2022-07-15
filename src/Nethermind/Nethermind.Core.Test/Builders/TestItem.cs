@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Net;
+using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -108,6 +110,17 @@ namespace Nethermind.Core.Test.Builders
 
         public static Bloom NonZeroBloom;
 
+        public static T CloneObject<T>(T value)
+        {
+            using var stream = new MemoryStream();
+
+            JsonSerializer.Serialize(stream, value);
+
+            stream.Position = 0;
+
+            return JsonSerializer.Deserialize<T>(stream)!;
+        }
+
         public static Address GetRandomAddress(Random? random = null)
         {
             byte[] bytes = new byte[20];
@@ -122,7 +135,7 @@ namespace Nethermind.Core.Test.Builders
             return new Keccak(bytes);
         }
 
-        public static Account GenerateRandomAccount(Random random = null)
+        public static Account GenerateRandomAccount(Random? random = null)
         {
             random ??= Random;
 
@@ -135,7 +148,7 @@ namespace Nethermind.Core.Test.Builders
             return account;
         }
 
-        public static byte[] GenerateRandomAccountRlp(AccountDecoder accountDecoder = null)
+        public static byte[] GenerateRandomAccountRlp(AccountDecoder? accountDecoder = null)
         {
             accountDecoder ??= _accountDecoder;
             Account account = GenerateRandomAccount();
@@ -154,7 +167,7 @@ namespace Nethermind.Core.Test.Builders
             return account;
         }
 
-        public static byte[] GenerateIndexedAccountRlp(int index, AccountDecoder accountDecoder = null)
+        public static byte[] GenerateIndexedAccountRlp(int index, AccountDecoder? accountDecoder = null)
         {
             accountDecoder ??= _accountDecoder;
 

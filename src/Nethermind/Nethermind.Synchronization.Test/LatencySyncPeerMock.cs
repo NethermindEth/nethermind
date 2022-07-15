@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.Test
             throw new NotImplementedException();
         }
 
-        public Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token)
+        public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
         {
             throw new NotImplementedException();
         }

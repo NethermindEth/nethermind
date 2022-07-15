@@ -28,7 +28,8 @@ namespace Nethermind.Merge.AuRa.Test;
 [TestFixture]
 public class AuRaMergeEngineModuleTests : EngineModuleTests
 {
-    protected override MergeTestBlockchain CreateBaseBlockChain(IMergeConfig mergeConfig = null,
+    protected override MergeTestBlockchain CreateBaseBlockChain(
+        IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null)
         => new MergeAuRaTestBlockchain(mergeConfig, mockedPayloadService);
 
@@ -59,12 +60,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor)
+    public override async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor)
     {
         await base.executePayloadV1_accepts_already_known_block(throttleBlockProcessor);
     }
 
-    class MergeAuRaTestBlockchain : EngineModuleTests.MergeTestBlockchain
+    class MergeAuRaTestBlockchain : MergeTestBlockchain
 {
     public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
         : base(mergeConfig, mockedPayloadPreparationService)
@@ -74,12 +75,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
-        Address feeRecipient = !string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero;
-        SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, feeRecipient, SealValidator, LogManager);
+        SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
         MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
         TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
         EthSyncingInfo = new EthSyncingInfo(BlockTree);
-        PostMergeBlockProducerFactory? blockProducerFactory = new(
+        PostMergeBlockProducerFactory blockProducerFactory = new(
             SpecProvider,
             SealEngine,
             Timestamper,
@@ -103,14 +103,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
 
         BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
-        PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
-            blockProducerEnv, ((EngineModuleTests.MergeTestBlockchain)this).BlockProductionTrigger);
+        PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, BlockProductionTrigger);
         PostMergeBlockProducer = postMergeBlockProducer;
         PayloadPreparationService ??= new PayloadPreparationService(
             postMergeBlockProducer,
-            new BlockImprovementContextFactory(
-                ((EngineModuleTests.MergeTestBlockchain)this).BlockProductionTrigger,
-                TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
+            new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
             ),
             SealEngine,
             TimerFactory.Default,

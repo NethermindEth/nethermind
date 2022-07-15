@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -50,7 +50,7 @@ namespace Nethermind.Synchronization.Test
     public class OldStyleFullSynchronizerTests
     {
         private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(4000);
-        
+
         [SetUp]
         public async Task Setup()
         {
@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.Test
                 _blockTree,
                 _receiptStorage,
                 _stateDb,
-                new TrieStore(_stateDb, LimboLogs.Instance),  
+                new TrieStore(_stateDb, LimboLogs.Instance),
                 progressTracker,
                 syncConfig,
                 LimboLogs.Instance);
@@ -85,7 +85,7 @@ namespace Nethermind.Synchronization.Test
             BlockDownloaderFactory blockDownloaderFactory = new(
                 MainnetSpecProvider.Instance,
                 _blockTree,
-                _receiptStorage, 
+                _receiptStorage,
                 Always.Valid,
                 Always.Valid,
                 _pool,
@@ -93,16 +93,16 @@ namespace Nethermind.Synchronization.Test
                 syncReport,
                 LimboLogs.Instance);
             _synchronizer = new Synchronizer(
-                dbProvider, 
-                MainnetSpecProvider.Instance, 
-                _blockTree, 
+                dbProvider,
+                MainnetSpecProvider.Instance,
+                _blockTree,
                 _receiptStorage,
-                _pool, 
-                stats, 
-                syncModeSelector, 
-                syncConfig, 
-                snapProvider, 
-                blockDownloaderFactory, 
+                _pool,
+                stats,
+                syncModeSelector,
+                syncConfig,
+                snapProvider,
+                blockDownloaderFactory,
                 pivot,
                 syncReport,
                 LimboLogs.Instance);
@@ -116,7 +116,7 @@ namespace Nethermind.Synchronization.Test
                 _pool,
                 syncModeSelector,
                 quickConfig,
-                new WitnessCollector(new MemDb(), LimboLogs.Instance), 
+                new WitnessCollector(new MemDb(), LimboLogs.Instance),
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.Test
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(peer);
-            
+
             resetEvent.WaitOne(_standardTimeoutUnit);
             Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggestedHeader.Number);
         }
@@ -163,11 +163,11 @@ namespace Nethermind.Synchronization.Test
         {
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             ISyncPeer peer = new SyncPeerMock(_remoteBlockTree);
-            
+
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(peer);
-            
+
             Assert.AreEqual(0, (int) _blockTree.BestSuggestedHeader.Number);
         }
 
@@ -183,7 +183,7 @@ namespace Nethermind.Synchronization.Test
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(peer);
-            
+
             resetEvent.WaitOne(_standardTimeoutUnit);
             Assert.AreEqual(SyncBatchSize.Max * 2 - 1, (int) _blockTree.BestSuggestedHeader.Number);
         }
@@ -206,7 +206,7 @@ namespace Nethermind.Synchronization.Test
 
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, SyncBatchSize.Max * 2);
             _syncServer.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock(), peer);
-            
+
             semaphore.Wait(_standardTimeoutUnit);
             semaphore.Wait(_standardTimeoutUnit);
 
@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization.Test
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
-            
+
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(peer);
@@ -246,16 +246,15 @@ namespace Nethermind.Synchronization.Test
             ManualResetEvent resetEvent = new(false);
             _synchronizer.SyncEvent += (sender, args) =>
             {
-                TestContext.WriteLine(args.SyncEvent);
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
-            
+
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(miner1);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
-            
+
             miner1Tree.BestSuggestedHeader.Should().BeEquivalentTo(_blockTree.BestSuggestedHeader, "client agrees with miner before split");
 
             Block splitBlock = Build.A.Block.WithParent(miner1Tree.FindParent(miner1Tree.Head, BlockTreeLookupOptions.TotalDifficultyNotNeeded)).WithDifficulty(miner1Tree.Head.Difficulty - 1).TestObject;
@@ -288,7 +287,7 @@ namespace Nethermind.Synchronization.Test
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
-            
+
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(miner1);
@@ -322,7 +321,7 @@ namespace Nethermind.Synchronization.Test
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
-            
+
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(miner1);
@@ -360,7 +359,7 @@ namespace Nethermind.Synchronization.Test
             {
                 if(args.SyncEvent == SyncEvent.Completed || args.SyncEvent == SyncEvent.Failed) resetEvent.Set();
             };
-            
+
             _pool.Start();
             _synchronizer.Start();
             _pool.AddPeer(miner1);

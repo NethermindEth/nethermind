@@ -39,36 +39,36 @@ public class InvalidBlockInterceptor: IBlockValidator
     
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
     {
-        _invalidChainTracker.SetChildParent(header.Hash, header.ParentHash);
+        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         bool result = _baseValidator.Validate(header, parent, isUncle);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
-            _invalidChainTracker.OnInvalidBlock(header.Hash, header.ParentHash);
+            _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
         return result;
     }
 
     public bool Validate(BlockHeader header, bool isUncle = false)
     {
-        _invalidChainTracker.SetChildParent(header.Hash, header.ParentHash);
+        _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
         bool result = _baseValidator.Validate(header, isUncle);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
-            _invalidChainTracker.OnInvalidBlock(header.Hash, header.ParentHash);
+            _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
         return result;
     }
 
     public bool ValidateSuggestedBlock(Block block)
     {
-        _invalidChainTracker.SetChildParent(block.Hash, block.ParentHash);
+        _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         bool result = _baseValidator.ValidateSuggestedBlock(block);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
-            _invalidChainTracker.OnInvalidBlock(block.Hash, block.ParentHash);
+            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
         }
 
         return result;
@@ -76,12 +76,12 @@ public class InvalidBlockInterceptor: IBlockValidator
 
     public bool ValidateProcessedBlock(Block block, TxReceipt[] receipts, Block suggestedBlock)
     {
-        _invalidChainTracker.SetChildParent(block.Hash, block.ParentHash);
+        _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         bool result = _baseValidator.ValidateProcessedBlock(block, receipts, suggestedBlock);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
-            _invalidChainTracker.OnInvalidBlock(block.Hash, block.ParentHash);
+            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
         }
 
         return result;

@@ -73,7 +73,8 @@ namespace Nethermind.Init.Steps
                 ProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
 
                 set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
-                IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, IPAddress.Parse(networkConfig.ExternalIp), networkConfig.P2PPort);
+                IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
+                IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
                 
                 get.LogManager.SetGlobalVariable("enode", enode.ToString());
             }, cancellationToken);

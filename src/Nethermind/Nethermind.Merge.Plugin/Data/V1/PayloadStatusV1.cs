@@ -42,7 +42,7 @@ namespace Nethermind.Merge.Plugin.Data.V1
         /// <summary>
         /// One of <see cref="PayloadStatus"/>.
         /// </summary>
-        public string Status { get; set; }
+        public string Status { get; set; } = PayloadStatus.Invalid;
 
         /// <summary>
         /// Hash of the most recent valid block in the branch defined by payload and its ancestors.

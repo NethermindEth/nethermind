@@ -85,22 +85,22 @@ namespace Nethermind.Serialization.Rlp
 
         public static void RegisterDecoders(Assembly assembly)
         {
-            foreach (var type in assembly.GetExportedTypes())
+            foreach (Type? type in assembly.GetExportedTypes())
             {
                 if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
                 {
                     continue;
                 }
 
-                var implementedInterfaces = type.GetInterfaces();
-                foreach (var implementedInterface in implementedInterfaces)
+                Type[]? implementedInterfaces = type.GetInterfaces();
+                foreach (Type? implementedInterface in implementedInterfaces)
                 {
                     if (!implementedInterface.IsGenericType)
                     {
                         continue;
                     }
 
-                    var interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
+                    Type? interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
                     if (interfaceGenericDefinition == typeof(IRlpDecoder<>).GetGenericTypeDefinition())
                     {
                         ConstructorInfo? constructor = type.GetConstructor(Type.EmptyTypes);

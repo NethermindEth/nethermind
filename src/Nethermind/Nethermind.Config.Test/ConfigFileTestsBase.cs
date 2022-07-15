@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Concurrent;
@@ -36,7 +36,7 @@ namespace Nethermind.Config.Test
     {
         private readonly IDictionary<string, TestConfigProvider> _cachedProviders = new ConcurrentDictionary<string, TestConfigProvider>();
         private readonly Dictionary<string, IEnumerable<string>> _configGroups = new();
-        
+
         [OneTimeSetUp]
         public void Setup()
         {
@@ -55,10 +55,10 @@ namespace Nethermind.Config.Test
                 _cachedProviders.Add(configFile, configProvider);
             });
         }
-        
+
         [ConfigFileGroup("*")]
         protected abstract IEnumerable<string> Configs { get; }
-        
+
         [ConfigFileGroup("fast")]
         protected IEnumerable<string> FastSyncConfigs
             => Configs.Where(config => !config.Contains("_") && !config.Contains("spaceneth"));
@@ -173,7 +173,7 @@ namespace Nethermind.Config.Test
 
             return intersection;
         }
-        
+
         protected void Test<T, TProperty>(string configWildcard, Expression<Func<T, TProperty>> getter, TProperty expectedValue) where T : IConfig
         {
             Test(configWildcard, getter, (s, propertyValue) => propertyValue.Should().Be(expectedValue, s + ": " + typeof(T).Name + "." + getter.GetName()));
@@ -192,12 +192,11 @@ namespace Nethermind.Config.Test
         {
             foreach (string configFile in Resolve(configWildcard))
             {
-                Console.WriteLine("Testing " + configFile);
                 if (!_cachedProviders.TryGetValue(configFile, out TestConfigProvider? configProvider))
                 {
                     configProvider = GetConfigProviderFromFile(configFile);
                 }
-                
+
                 yield return configProvider;
             }
         }
@@ -226,7 +225,7 @@ namespace Nethermind.Config.Test
                 throw new ConfigurationErrorsException($"Cannot load config file {configFile}", e);
             }
         }
-        
+
         private Dictionary<string, IEnumerable<string>> BuildConfigGroups()
         {
             lock (_configGroups)
@@ -249,11 +248,11 @@ namespace Nethermind.Config.Test
                         }
                     }
                 }
-                
+
                 return _configGroups;
             }
         }
-        
+
         protected class ConfigFileGroup : Attribute
         {
             public ConfigFileGroup(string name)

@@ -86,7 +86,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
             {
-                Enabled = true, FeeRecipient = Address.Zero.ToString(), TerminalTotalDifficulty = "0"
+                Enabled = true, TerminalTotalDifficulty = "0"
             });
             IEngineRpcModule rpc = CreateEngineModule(chain);
             Keccak startingHead = chain.BlockTree.HeadHash;
@@ -1171,24 +1171,6 @@ namespace Nethermind.Merge.Plugin.Test
                 .Excluding(t => t.SenderAddress)
                 .Excluding(t => t.Timestamp)
             );
-        }
-
-        [Test]
-        public async Task payloadV1_suggestedFeeRecipient_in_config()
-        {
-            using MergeTestBlockchain chain =
-                await CreateBlockChain(new MergeConfig()
-                {
-                    Enabled = true, FeeRecipient = TestItem.AddressB.ToString(), TerminalTotalDifficulty = "0"
-                });
-            IEngineRpcModule rpc = CreateEngineModule(chain);
-            Keccak startingHead = chain.BlockTree.HeadHash;
-            UInt256 timestamp = Timestamper.UnixTime.Seconds;
-            Keccak random = Keccak.Zero;
-            Address feeRecipient = TestItem.AddressC;
-            string payloadId = rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
-                    new PayloadAttributes { Timestamp = timestamp, SuggestedFeeRecipient = feeRecipient, PrevRandao = random }).Result.Data.PayloadId!;
-            (await rpc.engine_getPayloadV1(Bytes.FromHexString(payloadId))).Data!.FeeRecipient.Should().Be(TestItem.AddressB);
         }
 
         [Test]
