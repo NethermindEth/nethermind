@@ -81,10 +81,14 @@ namespace Nethermind.HealthChecks
                 if (syncingResult.IsSyncing)
                 {
                     AddStillSyncingMessage(messages, syncingResult);
-                    CheckPeers(messages, netPeerCount);
                 }
+                else
+                {
+                    AddFullySyncMessage(messages);
+                }
+                CheckPeers(messages, netPeerCount);
 
-                healthy = CheckClRequests(messages);
+                healthy = !syncingResult.IsSyncing & CheckClRequests(messages);
             }
             else // Pre merge
             {
@@ -142,7 +146,7 @@ namespace Nethermind.HealthChecks
             if (forkChoiceUpdatedStats.Successes == _lastForkChoiceUpdatedSuccesses)
             {
                 int diff = (now - _previousClCheckTime).Seconds;
-                if (diff > _healthChecksConfig.MaxIntervalCLRequestTime)
+                if (diff > _healthChecksConfig.MaxIntervalClRequestTime)
                 {
                     AddClUnavailableMessage(messages);
                     _previousClCheckResult = false;

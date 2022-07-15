@@ -32,6 +32,6 @@ namespace Nethermind.HealthChecks
 
         public ulong? MaxIntervalWithoutProducedBlock { get; set; }
 
-        public int MaxIntervalCLRequestTime { get; set; } = 20;
+        public int MaxIntervalClRequestTime { get; set; } = 20;
     }
 }
