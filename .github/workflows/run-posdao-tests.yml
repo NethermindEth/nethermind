@@ -8,7 +8,7 @@ on:
       branch:
         description: 'Branch to get tests from'
         required: false
-        default: 'master'
+        default: 'bc-test-merge'
   workflow_dispatch:
     inputs:
       branch:
