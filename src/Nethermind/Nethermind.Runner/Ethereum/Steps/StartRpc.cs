@@ -56,6 +56,8 @@ namespace Nethermind.Runner.Ethereum.Steps
                     jsonRpcConfig,
                     _api.LogManager);
 
+                _api.JsonRpcLocalStats = jsonRpcLocalStats;
+
                 IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
                 JsonRpcService jsonRpcService = new(rpcModuleProvider, _api.LogManager, jsonRpcConfig);
 

@@ -24,7 +24,6 @@ using Nethermind.Blockchain;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.JsonRpc;
-using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 
 namespace Nethermind.HealthChecks
@@ -52,7 +51,7 @@ namespace Nethermind.HealthChecks
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
 
             _logger = api.LogManager.GetClassLogger();
-            
+
             return Task.CompletedTask;
         }
 
@@ -60,7 +59,7 @@ namespace Nethermind.HealthChecks
         {
             service.AddHealthChecks()
                 .AddTypeActivatedCheck<NodeHealthCheck>(
-                    "node-health", 
+                    "node-health",
                     args: new object[] { _nodeHealthService, _api.LogManager });
             if (_healthChecksConfig.UIEnabled)
             {
@@ -69,7 +68,7 @@ namespace Nethermind.HealthChecks
                     setup.AddHealthCheckEndpoint("health", BuildEndpointForUi());
                     setup.SetEvaluationTimeInSeconds(_healthChecksConfig.PollingInterval);
                     setup.SetHeaderText("Nethermind Node Health");
-                    if (_healthChecksConfig.WebhooksEnabled) 
+                    if (_healthChecksConfig.WebhooksEnabled)
                     {
                         setup.AddWebhookNotification("webhook",
                         uri: _healthChecksConfig.WebhooksUri,
@@ -103,7 +102,9 @@ namespace Nethermind.HealthChecks
             if (_healthChecksConfig.Enabled)
             {
                 IInitConfig initConfig = _api.Config<IInitConfig>();
-                _nodeHealthService = new NodeHealthService(_api.SyncServer, new ReadOnlyBlockTree(_api.BlockTree), _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService, _api.EthSyncingInfo, initConfig.IsMining);
+                _nodeHealthService = new NodeHealthService(_api.SyncServer, new ReadOnlyBlockTree(_api.BlockTree),
+                    _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService,
+                    _api.EthSyncingInfo, _api, initConfig.IsMining);
                 HealthRpcModule healthRpcModule = new(_nodeHealthService);
                 _api.RpcModuleProvider!.Register(new SingletonModulePool<IHealthRpcModule>(healthRpcModule, true));
                 if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");

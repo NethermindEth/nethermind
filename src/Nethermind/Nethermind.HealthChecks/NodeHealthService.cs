@@ -15,13 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 // 
 
+using System;
 using System.Collections.Generic;
-using Nethermind.Blockchain;
+using Nethermind.Api;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 using Nethermind.Synchronization;
 
 namespace Nethermind.HealthChecks
@@ -41,6 +43,8 @@ namespace Nethermind.HealthChecks
         private readonly IHealthChecksConfig _healthChecksConfig;
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
+        private readonly IBlockFinder _blockFinder;
+        private readonly INethermindApi _api;
         private readonly bool _isMining;
 
         public NodeHealthService(
@@ -51,15 +55,18 @@ namespace Nethermind.HealthChecks
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
+            INethermindApi api,
             bool isMining)
         {
             _syncServer = syncServer;
             _isMining = isMining;
+            _blockFinder = blockFinder;
             _healthChecksConfig = healthChecksConfig;
             _healthHintService = healthHintService;
             _blockchainProcessor = blockchainProcessor;
             _blockProducer = blockProducer;
             _ethSyncingInfo = ethSyncingInfo;
+            _api = api;
         }
 
         public CheckHealthResult CheckHealth()
@@ -69,30 +76,43 @@ namespace Nethermind.HealthChecks
             long netPeerCount = _syncServer.GetPeerCount();
             SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
 
-            if (_isMining == false && syncingResult.IsSyncing)
+            if (_blockFinder.Head!.Difficulty == UInt256.Zero) // We are post merge
             {
-                AddStillSyncingMessage(messages, syncingResult);
-                CheckPeers(messages, netPeerCount);
+                if (syncingResult.IsSyncing)
+                {
+                    AddStillSyncingMessage(messages, syncingResult);
+                    CheckPeers(messages, netPeerCount);
+                }
+
+                healthy = CheckClRequests(messages);
             }
-            else if (_isMining == false && syncingResult.IsSyncing == false)
+            else // Pre merge
             {
-                AddFullySyncMessage(messages);
-                bool peers = CheckPeers(messages, netPeerCount);
-                bool processing = IsProcessingBlocks(messages);
-                healthy = peers && processing;
-            }
-            else if (_isMining && syncingResult.IsSyncing)
-            {
-                AddStillSyncingMessage(messages, syncingResult);
-                healthy = CheckPeers(messages, netPeerCount);
-            }
-            else if (_isMining && syncingResult.IsSyncing == false)
-            {
-                AddFullySyncMessage(messages);
-                bool peers = CheckPeers(messages, netPeerCount);
-                bool processing = IsProcessingBlocks(messages);
-                bool producing = IsProducingBlocks(messages);
-                healthy = peers && processing && producing;
+                if (!_isMining && syncingResult.IsSyncing)
+                {
+                    AddStillSyncingMessage(messages, syncingResult);
+                    CheckPeers(messages, netPeerCount);
+                }
+                else if (!_isMining && !syncingResult.IsSyncing)
+                {
+                    AddFullySyncMessage(messages);
+                    bool peers = CheckPeers(messages, netPeerCount);
+                    bool processing = IsProcessingBlocks(messages);
+                    healthy = peers && processing;
+                }
+                else if (_isMining && syncingResult.IsSyncing)
+                {
+                    AddStillSyncingMessage(messages, syncingResult);
+                    healthy = CheckPeers(messages, netPeerCount);
+                }
+                else if (_isMining && !syncingResult.IsSyncing)
+                {
+                    AddFullySyncMessage(messages);
+                    bool peers = CheckPeers(messages, netPeerCount);
+                    bool processing = IsProcessingBlocks(messages);
+                    bool producing = IsProducingBlocks(messages);
+                    healthy = peers && processing && producing;
+                }
             }
 
             return new CheckHealthResult() {Healthy = healthy, Messages = messages};
@@ -108,6 +128,37 @@ namespace Nethermind.HealthChecks
         {
             return _healthChecksConfig.MaxIntervalWithoutProducedBlock ??
                    _healthHintService.MaxSecondsIntervalForProducingBlocksHint();
+        }
+
+        private bool _previousClCheckResult = true;
+        private DateTime _previousClCheckTime = DateTime.MinValue;
+        private int _lastForkChoiceUpdatedSuccesses = 0;
+
+        private bool CheckClRequests(ICollection<(string Description, string LongDescription)> messages)
+        {
+            var now = _api.Timestamper.UtcNow;
+            var forkChoiceUpdatedStats = _api.JsonRpcLocalStats!.GetMethodStats("engine_forkchoiceUpdatedV1");
+
+            if (forkChoiceUpdatedStats.Successes == _lastForkChoiceUpdatedSuccesses)
+            {
+                int diff = (now - _previousClCheckTime).Seconds;
+                if (diff > _healthChecksConfig.MaxIntervalCLRequestTime)
+                {
+                    AddClUnavailableMessage(messages);
+                    _previousClCheckResult = false;
+                    return false;
+                }
+                if (!_previousClCheckResult)
+                {
+                    AddClUnavailableMessage(messages);
+                }
+                return _previousClCheckResult;
+            }
+
+            _previousClCheckTime = now;
+            _previousClCheckResult = true;
+            _lastForkChoiceUpdatedSuccesses = forkChoiceUpdatedStats.Successes;
+            return true;
         }
 
         private static bool CheckPeers(ICollection<(string Description, string LongDescription)> messages,
@@ -148,6 +199,11 @@ namespace Nethermind.HealthChecks
             }
 
             return processingBlocks;
+        }
+
+        private static void AddClUnavailableMessage(ICollection<(string Description, string LongDescription)> messages)
+        {
+            messages.Add(("No messages from CL", "No new messages from CL after last check"));
         }
 
         private static void AddStillSyncingMessage(ICollection<(string Description, string LongDescription)> messages,
