@@ -65,11 +65,11 @@ jobs:
     - name: Collect posdao logs if workflow was cancelled (otherwise it's collected in the test step)
       if: cancelled()
       run: cd posdao-test-setup && bash scripts/collect-logs
-    - name: Move posdao logs to separate folder for nicer zip file
-      run: mkdir posdao-logs && cp posdao-test-setup/posdao-logs/latest/* posdao-logs && ls posdao-logs
+    - name: Compress posdao logs
+      run: mkdir posdao-logs & cp posdao-test-setup/posdao-logs/latest/* posdao-logs && zip -r posdao-logs.zip posdao-logs
     - name: Upload posdao logs
       if: always()
       uses: actions/upload-artifact@master
       with:
         name: posdao-logs
-        path: posdao-logs
+        path: posdao-logs.zip
