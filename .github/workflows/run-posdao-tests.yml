@@ -48,7 +48,13 @@ jobs:
         cd src/Nethermind
         dotnet build Nethermind.sln -c Release
         cp -r Nethermind.Runner/bin/Release/net6.0/* /home/runner/work/nethermind/nethermind/nethermind/bin/
-    - name: Setup the Node.js
+    - name: Setup the Node.js (v12)
+      if: ${{ !contains(github.event.inputs.branch, 'merge') }}
+      uses: actions/setup-node@v1.4.4
+      with:
+        node-version: '12'
+    - name: Setup the Node.js (v16)
+      if: ${{ contains(github.event.inputs.branch, 'merge') }}
       uses: actions/setup-node@v1.4.4
       with:
         node-version: '16'
@@ -59,12 +65,11 @@ jobs:
     - name: Collect posdao logs if workflow was cancelled (otherwise it's collected in the test step)
       if: cancelled()
       run: cd posdao-test-setup && bash scripts/collect-logs
-    - name: Rename posdao logs dir
-      if: always()
-      run: cp -r posdao-test-setup/posdao-logs/latest posdao-test-setup/posdao-logs/posdao-logs
+    - name: Move posdao logs to separate folder for nicer zip file
+      run: mkdir posdao-logs && cp posdao-test-setup/posdao-logs/latest/* posdao-logs
     - name: Upload posdao logs
       if: always()
-      uses: actions/upload-artifact@master      
+      uses: actions/upload-artifact@master
       with:
-        name: posdao-tests-logs
-        path: posdao-test-setup/posdao-logs/posdao-logs
+        name: posdao-logs
+        path: posdao-logs
