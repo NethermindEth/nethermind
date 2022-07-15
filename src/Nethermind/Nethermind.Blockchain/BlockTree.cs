@@ -1363,9 +1363,9 @@ namespace Nethermind.Blockchain
                     for (int i = 0; i < level.BlockInfos.Length; ++i)
                     {
                         if (level.BlockInfos[i].BlockHash == blockInfo.BlockHash)
-                            blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+                            level.BlockInfos[i].Metadata |= BlockMetadata.BeaconMainChain;
                         else
-                            blockInfo.Metadata &= ~BlockMetadata.BeaconMainChain;
+                            level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
                     }
 
                     _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);

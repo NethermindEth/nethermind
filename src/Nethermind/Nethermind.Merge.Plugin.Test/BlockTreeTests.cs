@@ -434,16 +434,20 @@ public partial class BlockTreeTests
             {
                 List<BlockInfo> blockInfos = new();
                 List<Block> blocks = new List<Block>();
+                Block? parent = null;
                 for (long i = low; i <= high; i++)
                 {
-                    Block parent = SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
+                    if (parent == null)
+                        parent = SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
                     NotSyncedTree.Insert(blockToInsert, true, BlockTreeInsertOptions.BeaconBlockInsert);
                     SyncedTree.Insert(blockToInsert, true);
 
                     BlockInfo newBlockInfo = new(blockToInsert.Hash, UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+                    newBlockInfo.BlockNumber = blockToInsert.Number;
                     blockInfos.Add(newBlockInfo);
                     blocks.Add(blockToInsert);
+                    parent = blockToInsert;
                 }
 
                 if (moveToBeaconMainChain)
@@ -721,8 +725,10 @@ public partial class BlockTreeTests
     {
         BlockTreeTestScenario.ScenarioBuilder scenario = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
-            .InsertBeaconBlocks(5, 9)
-            .InsertFork(6,8, true);
+            .InsertBeaconBlocks(4, 9)
+            .InsertFork(6,9, true)
+            .SuggestBlocksUsingChainLevels()
+            .AssertChainLevel(0,9);
     }
 }
 
