@@ -28,7 +28,7 @@ public partial class BlockTreeTests
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertHeaders(4, 6)
-            .InsertBeaconBlocks(7, 9)
+            .InsertBeaconBlocks(8, 9)
             .SuggestBlocksUsingChainLevels()
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
@@ -42,7 +42,7 @@ public partial class BlockTreeTests
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertHeaders(4, 6)
-            .InsertBeaconBlocks(7, 9)
+            .InsertBeaconBlocks(8, 9)
             .Restart()
             .SuggestBlocksUsingChainLevels()
             .AssertBestKnownNumber(9)
@@ -57,7 +57,7 @@ public partial class BlockTreeTests
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertHeaders(4, 6)
-            .InsertBeaconBlocks(7, 9)
+            .InsertBeaconBlocks(8, 9)
             .SuggestBlocksUsingChainLevels()
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
@@ -72,7 +72,7 @@ public partial class BlockTreeTests
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertHeaders(4, 6, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null)
-            .InsertBeaconBlocks(7, 9, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null)
+            .InsertBeaconBlocks(8, 9, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null)
             .SuggestBlocksUsingChainLevels()
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
@@ -87,11 +87,25 @@ public partial class BlockTreeTests
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
             .InsertHeaders(4, 6, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Zero)
-            .InsertBeaconBlocks(7, 9, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Zero)
+            .InsertBeaconBlocks(8, 9, BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Zero)
             .SuggestBlocksUsingChainLevels()
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9, 10000000)
+            .AssertChainLevel(0, 9);
+    }
+
+    [Test]
+    public void Correct_levels_with_chain_fork()
+    {
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 10)
+            .InsertBeaconPivot(7)
+            .InsertHeaders(4, 6)
+            .InsertBeaconBlocks(8, 9)
+            .InsertFork(1, 9)
+            .AssertBestSuggestedBody(3)
+            .SuggestBlocksUsingChainLevels()
             .AssertChainLevel(0, 9);
     }
 }

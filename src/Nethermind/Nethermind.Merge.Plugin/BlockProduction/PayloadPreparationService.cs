@@ -153,7 +153,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             }
             else if (t.IsCanceled)
             {
-                if (_logger.IsInfo) _logger.Info($"Post-merge block producing was canceled");
+                if (_logger.IsInfo) _logger.Info($"Post-merge block improvement was canceled");
             }
 
             return t.Result;
