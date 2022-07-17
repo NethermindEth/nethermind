@@ -343,7 +343,6 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 
-                // ToDo add logger
                 if (predecessor == null)
                 {
                     break;
@@ -351,6 +350,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
                 predecessorInfo.BlockNumber = predecessor.Number;
                 if (predecessorInfo.IsBeaconMainChain) break;
+                if (_logger.IsInfo) _logger.Info($"Reorged to beacon block ({predecessorInfo.BlockNumber}) {predecessorInfo.BlockHash}");
                 blocksList.Add(predecessorInfo);
             }
 

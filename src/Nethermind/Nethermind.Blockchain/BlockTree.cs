@@ -1659,9 +1659,6 @@ namespace Nethermind.Blockchain
                         Array.Resize(ref blockInfos, blockInfos.Length + 1);
                     }
 
-                    if (blockInfos.Length == 1 && blockInfo.IsBeaconInfo)
-                        blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
-
                     int index = foundIndex ?? blockInfos.Length - 1;
 
                     if (setAsMain)
@@ -1678,9 +1675,6 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (blockInfo.IsBeaconInfo)
-                        blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
-
                     level = new ChainLevelInfo(false, new[] { blockInfo });
                 }
 

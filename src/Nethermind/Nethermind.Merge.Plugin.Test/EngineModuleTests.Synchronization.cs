@@ -325,6 +325,59 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task should_reorg_during_the_sync_to_higher_chain()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak? startingHead = chain.BlockTree.HeadHash;
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithHash(TestItem.KeccakA)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(2)
+            .WithParent(parent)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithPostMergeFlag(true)
+            .TestObject;
+        ExecutionPayloadV1 startingNewPayload = new(block);
+        await rpc.engine_newPayloadV1(startingNewPayload);
+        ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+        await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+        ExecutionPayloadV1[] requests = CreateBlockRequestBranch(startingNewPayload, Address.Zero, 4);
+        foreach (ExecutionPayloadV1 r in requests)
+        {
+            await rpc.engine_newPayloadV1(r);
+        }
+
+        ExecutionPayloadV1[] secondNewPayloads = CreateBlockRequestBranch(startingNewPayload, TestItem.AddressD, 6);
+        foreach (ExecutionPayloadV1 r in secondNewPayloads)
+        {
+             await rpc.engine_newPayloadV1(r);
+        }
+
+        Keccak lastHash = secondNewPayloads.Last().BlockHash!;
+        ForkchoiceStateV1 forkchoiceStateV1Reorg = new(lastHash, lastHash, lastHash);
+        await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1Reorg);
+
+        foreach (ExecutionPayloadV1 r in secondNewPayloads)
+        {
+            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
+            foreach (BlockInfo blockInfo in lvl!.BlockInfos)
+            {
+                if (blockInfo.BlockHash == r.BlockHash)
+                    blockInfo.Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain, $"BlockNumber {r.BlockNumber}");
+                else
+                    blockInfo.Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader, $"BlockNumber {r.BlockNumber}");
+            }
+        }
+    }
+
+    [Test]
     public async Task Blocks_from_cache_inserted_when_fast_headers_sync_finish_before_newPayloadV1_request()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
