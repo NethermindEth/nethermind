@@ -151,7 +151,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        ExecutionPayloadV1 startingNewPayload =  new ExecutionPayloadV1(block);
+        ExecutionPayloadV1 startingNewPayload =  new(block);
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
