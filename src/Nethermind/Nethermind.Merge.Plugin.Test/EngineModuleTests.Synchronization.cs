@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -151,7 +152,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        ExecutionPayloadV1 startingNewPayload =  new(block);
+        ExecutionPayloadV1 startingNewPayload = new(block);
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
@@ -192,7 +193,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        ExecutionPayloadV1 startingNewPayload =  new(block);
+        ExecutionPayloadV1 startingNewPayload = new(block);
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
@@ -209,6 +210,7 @@ public partial class EngineModuleTests
             lvl!.BlockInfos.Length.Should().Be(1);
             lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
         }
+
         foreach (ExecutionPayloadV1 r in requests)
         {
             ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
@@ -218,12 +220,10 @@ public partial class EngineModuleTests
             lvl!.BlockInfos.Length.Should().Be(1);
             lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
         }
-
-        AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
     }
 
-        [Test]
-        public async Task second_new_payload_should_not_set_beacon_main_chain()
+    [Test]
+    public async Task second_new_payload_should_not_set_beacon_main_chain()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -242,7 +242,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        ExecutionPayloadV1 startingNewPayload =  new(block);
+        ExecutionPayloadV1 startingNewPayload = new(block);
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
@@ -271,8 +271,57 @@ public partial class EngineModuleTests
             lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
             lvl!.BlockInfos[1].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
         }
+    }
 
-        AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
+    [Test]
+    public async Task should_reorg_during_the_sync()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak? startingHead = chain.BlockTree.HeadHash;
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithHash(TestItem.KeccakA)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(2)
+            .WithParent(parent)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithPostMergeFlag(true)
+            .TestObject;
+        ExecutionPayloadV1 startingNewPayload = new(block);
+        await rpc.engine_newPayloadV1(startingNewPayload);
+        ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+        await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+        ExecutionPayloadV1[] requests = CreateBlockRequestBranch(startingNewPayload, Address.Zero, 4);
+        foreach (ExecutionPayloadV1 r in requests)
+        {
+            await rpc.engine_newPayloadV1(r);
+        }
+
+        ExecutionPayloadV1[] secondNewPayloads = CreateBlockRequestBranch(startingNewPayload, TestItem.AddressD, 4);
+        foreach (ExecutionPayloadV1 r in secondNewPayloads)
+        {
+             await rpc.engine_newPayloadV1(r);
+        }
+
+        Keccak lastHash = secondNewPayloads.Last().BlockHash!;
+        ForkchoiceStateV1 forkchoiceStateV1Reorg = new(lastHash, lastHash, lastHash);
+        await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1Reorg);
+
+        foreach (ExecutionPayloadV1 r in requests)
+        {
+            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
+            lvl.Should().NotBeNull();
+            lvl!.BlockInfos.Length.Should().Be(2);
+            lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
+            lvl!.BlockInfos[0].BlockHash.Should().Be(r.BlockHash!);
+            lvl!.BlockInfos[1].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
+        }
     }
 
     [Test]
