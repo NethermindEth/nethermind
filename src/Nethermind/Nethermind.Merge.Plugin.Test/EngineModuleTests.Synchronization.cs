@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -92,7 +92,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Keccak startingHead = chain.BlockTree.HeadHash;
-        
+
         ExecutionPayloadV1 parentBlockRequest = new (Build.A.Block.WithNumber(2).TestObject);
         ExecutionPayloadV1[] requests = CreateBlockRequestBranch(parentBlockRequest, Address.Zero, 7);
         ResultWrapper<PayloadStatusV1> payloadStatus;
@@ -104,7 +104,7 @@ public partial class EngineModuleTests
             chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
             chain.BeaconPivot.BeaconPivotExists().Should().BeFalse();
         }
-        
+
         int pivotNum = 3;
         requests[pivotNum].TryGetBlock(out Block? pivotBlock);
         // initiate sync
@@ -172,9 +172,8 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
     }
-    
+
     [Test]
-    [Ignore("ToDo should be fixed with restarts and pointers")]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
@@ -186,14 +185,14 @@ public partial class EngineModuleTests
         Block[] missingBlocks = new Block[gap];
         for (int i = 0; i < gap; i++)
         {
-            headBlockRequest = CreateBlockRequest(headBlockRequest, Address.Zero); 
+            headBlockRequest = CreateBlockRequest(headBlockRequest, Address.Zero);
             headBlockRequest.TryGetBlock(out Block? block);
             missingBlocks[i] = block!;
         }
         // setting up beacon pivot
         ExecutionPayloadV1 pivotRequest = CreateBlockRequest(headBlockRequest, Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
-        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Accepted).ToUpper());
+        payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         pivotRequest.TryGetBlock(out Block? pivotBlock);
         // check block tree pointers
         BlockTreePointers pointers = new BlockTreePointers
@@ -246,7 +245,7 @@ public partial class EngineModuleTests
         chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.BestSuggestedBeaconHeader).Should().BeFalse();
-        
+
         // finish beacon forwards sync
         foreach (Block block in missingBlocks)
         {
@@ -262,7 +261,7 @@ public partial class EngineModuleTests
         await chain.BlockTree.SuggestBlockAsync(bestBeaconBlock!, BlockTreeSuggestOptions.ShouldProcess | BlockTreeSuggestOptions.FillBeaconBlock);
 
         await bestBlockProcessed.WaitAsync();
-        
+
         // beacon sync should be finished
         bestBeaconBlockRequest = CreateBlockRequest(bestBeaconBlockRequest, Address.Zero);
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
