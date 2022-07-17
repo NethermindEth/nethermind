@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Generic;
@@ -39,7 +39,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 {
     /// <summary>
     /// Verifies the payload according to the execution environment rule set (EIP-3675) and returns the <see cref="PayloadStatusV1"/> of the verification and the hash of the last valid block.
-    /// 
+    ///
     /// <seealso cref="http://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#engine_newpayloadv1"/>
     /// </summary>
     public class NewPayloadV1Handler : IAsyncHandler<ExecutionPayloadV1, PayloadStatusV1>
@@ -81,10 +81,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _beaconPivot = beaconPivot;
             _blockCacheService = blockCacheService;
             _processingQueue = processingQueue;
-            _invalidChainTracker = invalidChainTracker; 
+            _invalidChainTracker = invalidChainTracker;
             _mergeSyncController = mergeSyncController;
             _logger = logManager.GetClassLogger();
-            _processingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge; 
+            _processingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayloadV1 request)
@@ -116,7 +116,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsTrace) _logger.Trace($"Pre-pivot block, ignored and returned Syncing. Result of {requestStr}.");
                 return NewPayloadV1Result.Syncing;
             }
-            
+
             block.Header.TotalDifficulty = _poSSwitcher.FinalTotalDifficulty;
 
             BlockHeader? parentHeader = _blockTree.FindHeader(request.ParentHash, BlockTreeLookupOptions.DoNotCalculateTotalDifficulty);
@@ -134,7 +134,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 _blockCacheService.BlockCache.TryAdd(blockHash, block);
                 return NewPayloadV1Result.Syncing;
             }
-            
+
             // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
             if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
             {
@@ -145,6 +145,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.GetOrCalculateHash());
             if (!parentProcessed)
             {
+                if (!_blockValidator.ValidateSuggestedBlock(block))
+                {
+                    // ToDo add logger and test
+                    return NewPayloadV1Result.Invalid(null);
+                }
+
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
                 _blockTree.Insert(block, true, insertOptions);
                 if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
@@ -154,17 +160,17 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.");
-                
+
                 // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
                 return NewPayloadV1Result.Invalid(Keccak.Zero);
             }
 
             // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
             _mergeSyncController.StopSyncing();
-            
+
             // Try to execute block
             (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader);
-            
+
             if ((result & ValidationResult.AlreadyKnown) == ValidationResult.AlreadyKnown || result == ValidationResult.Invalid)
             {
                 bool isValid = (result & ValidationResult.Valid) == ValidationResult.Valid;
@@ -197,7 +203,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             ValidationResult ToValid(bool valid) => valid ? ValidationResult.Valid : ValidationResult.Invalid;
             string? validationMessage = null;
-            
+
             // If duplicate, reuse results
             bool isRecentBlock = _latestBlocks.TryGet(block.Hash!, out bool isValid);
             if (isRecentBlock)
@@ -325,8 +331,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 Status = PayloadStatus.Invalid,
                 ValidationError = validationMessage,
-                LatestValidHash = _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Keccak? lastValidHash) 
-                    ? lastValidHash 
+                LatestValidHash = _invalidChainTracker.IsOnKnownInvalidChain(request.BlockHash!, out Keccak? lastValidHash)
+                    ? lastValidHash
                     : request.ParentHash
             };
 
