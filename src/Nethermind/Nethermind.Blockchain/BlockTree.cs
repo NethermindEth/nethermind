@@ -1653,14 +1653,14 @@ namespace Nethermind.Blockchain
                 {
                     BlockInfo[] blockInfos = level.BlockInfos;
 
-                    if (blockInfos.Length == 1 && blockInfo.IsBeaconInfo)
-                        blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
-
                     int? foundIndex = FindIndex(hash, level);
                     if (!foundIndex.HasValue)
                     {
                         Array.Resize(ref blockInfos, blockInfos.Length + 1);
                     }
+
+                    if (blockInfos.Length == 1 && blockInfo.IsBeaconInfo)
+                        blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
 
                     int index = foundIndex ?? blockInfos.Length - 1;
 
