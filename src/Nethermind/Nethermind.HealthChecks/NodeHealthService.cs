@@ -24,6 +24,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin;
 using Nethermind.Synchronization;
 
 namespace Nethermind.HealthChecks
@@ -44,6 +45,7 @@ namespace Nethermind.HealthChecks
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockFinder _blockFinder;
+        private readonly IMergeConfig _mergeConfig;
         private readonly INethermindApi _api;
         private readonly bool _isMining;
 
@@ -55,6 +57,7 @@ namespace Nethermind.HealthChecks
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
+            IMergeConfig mergeConfig,
             INethermindApi api,
             bool isMining)
         {
@@ -66,6 +69,7 @@ namespace Nethermind.HealthChecks
             _blockchainProcessor = blockchainProcessor;
             _blockProducer = blockProducer;
             _ethSyncingInfo = ethSyncingInfo;
+            _mergeConfig = mergeConfig;
             _api = api;
         }
 
@@ -76,7 +80,7 @@ namespace Nethermind.HealthChecks
             long netPeerCount = _syncServer.GetPeerCount();
             SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
 
-            if (_blockFinder.Head!.Difficulty == UInt256.Zero) // We are post merge
+            if (_mergeConfig.Enabled)
             {
                 if (syncingResult.IsSyncing)
                 {
@@ -88,9 +92,12 @@ namespace Nethermind.HealthChecks
                 }
                 CheckPeers(messages, netPeerCount);
 
-                healthy = !syncingResult.IsSyncing & CheckClRequests(messages);
+                healthy = !syncingResult.IsSyncing & CheckClAlive(messages,
+                    _blockFinder.Head!.Difficulty == UInt256.Zero
+                        ? "engine_forkchoiceUpdatedV1"
+                        : "engine_exchangeTransitionConfigurationV1");
             }
-            else // Pre merge
+            else
             {
                 if (!_isMining && syncingResult.IsSyncing)
                 {
@@ -136,14 +143,14 @@ namespace Nethermind.HealthChecks
 
         private bool _previousClCheckResult = true;
         private DateTime _previousClCheckTime = DateTime.MinValue;
-        private int _lastForkChoiceUpdatedSuccesses = 0;
+        private int _lastMethodCallSuccesses;
 
-        private bool CheckClRequests(ICollection<(string Description, string LongDescription)> messages)
+        private bool CheckClAlive(ICollection<(string Description, string LongDescription)> messages, string methodName)
         {
             var now = _api.Timestamper.UtcNow;
-            var forkChoiceUpdatedStats = _api.JsonRpcLocalStats!.GetMethodStats("engine_forkchoiceUpdatedV1");
+            var forkChoiceUpdatedStats = _api.JsonRpcLocalStats!.GetMethodStats(methodName);
 
-            if (forkChoiceUpdatedStats.Successes == _lastForkChoiceUpdatedSuccesses)
+            if (forkChoiceUpdatedStats.Successes == _lastMethodCallSuccesses)
             {
                 int diff = (now - _previousClCheckTime).Seconds;
                 if (diff > _healthChecksConfig.MaxIntervalClRequestTime)
@@ -161,7 +168,7 @@ namespace Nethermind.HealthChecks
 
             _previousClCheckTime = now;
             _previousClCheckResult = true;
-            _lastForkChoiceUpdatedSuccesses = forkChoiceUpdatedStats.Successes;
+            _lastMethodCallSuccesses = forkChoiceUpdatedStats.Successes;
             return true;
         }
 

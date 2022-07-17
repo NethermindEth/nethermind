@@ -28,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
+using Nethermind.Merge.Plugin;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -61,7 +62,8 @@ namespace Nethermind.HealthChecks.Test
 
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
             NodeHealthService nodeHealthService =
-                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, ethSyncingInfo, null, test.IsMining);
+                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),
+                    healthHintService, ethSyncingInfo, new MergeConfig {Enabled = false}, null, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
@@ -100,7 +102,8 @@ namespace Nethermind.HealthChecks.Test
 
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
             NodeHealthService nodeHealthService =
-                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),  healthHintService, ethSyncingInfo, api, false);
+                new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),
+                    healthHintService, ethSyncingInfo, new MergeConfig {Enabled = true}, api, false);
             nodeHealthService.CheckHealth();
 
             timestamper.Add(TimeSpan.FromSeconds(test.TimeSpanSeconds));
