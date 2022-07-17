@@ -172,6 +172,57 @@ public partial class EngineModuleTests
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
     }
 
+    [Test] public async Task second_new_payload_should_not_set_beacon_main_chain()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak? startingHead = chain.BlockTree.HeadHash;
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithHash(TestItem.KeccakA)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(2)
+            .WithParent(parent)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithPostMergeFlag(true)
+            .TestObject;
+        ExecutionPayloadV1 startingNewPayload =  new(block);
+        await rpc.engine_newPayloadV1(startingNewPayload);
+        ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
+            await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
+            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        ExecutionPayloadV1[] requests = CreateBlockRequestBranch(startingNewPayload, Address.Zero, 4);
+        foreach (ExecutionPayloadV1 r in requests)
+        {
+            ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
+            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
+            lvl.Should().NotBeNull();
+            lvl!.BlockInfos.Length.Should().Be(1);
+            lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
+        }
+
+        ExecutionPayloadV1[] secondNewPayloads = CreateBlockRequestBranch(startingNewPayload, TestItem.AddressD, 4);
+        foreach (ExecutionPayloadV1 r in requests)
+        {
+            ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
+            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
+            lvl.Should().NotBeNull();
+            lvl!.BlockInfos.Length.Should().Be(1);
+            lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
+        }
+
+        AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
+    }
+
     [Test]
     public async Task Blocks_from_cache_inserted_when_fast_headers_sync_finish_before_newPayloadV1_request()
     {
