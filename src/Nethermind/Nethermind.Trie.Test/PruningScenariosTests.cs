@@ -1,23 +1,30 @@
 //  Copyright (c) 2020 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using FluentAssertions;
+using FluentAssertions.Numeric;
+using MathNet.Numerics.LinearAlgebra;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -41,6 +48,7 @@ namespace Nethermind.Trie.Test
         public class PruningContext
         {
             private long _blockNumber = 1;
+            private Dictionary<string, (long blockNumber, Keccak rootHash)> _branchingPoints = new();
             private IDbProvider _dbProvider;
             private IStateProvider _stateProvider;
             private IStateReader _stateReader;
@@ -49,10 +57,10 @@ namespace Nethermind.Trie.Test
             private ILogger _logger;
             private TrieStore _trieStore;
             private IPersistenceStrategy _persistenceStrategy;
-            private IPruningStrategy _pruningStrategy;
+            private TestPruningStrategy _pruningStrategy;
 
             [DebuggerStepThrough]
-            private PruningContext(IPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy)
+            private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy)
             {
                 _logManager = new TestLogManager(LogLevel.Trace);
                 _logger = _logManager.GetClassLogger();
@@ -81,6 +89,11 @@ namespace Nethermind.Trie.Test
                 [DebuggerStepThrough] get => new(new TestPruningStrategy(true), No.Persistence);
             }
 
+            public static PruningContext InMemoryAlwaysPrune
+            {
+                [DebuggerStepThrough] get => new(new TestPruningStrategy(true, true), No.Persistence);
+            }
+
             public static PruningContext SetupWithPersistenceEveryEightBlocks
             {
                 [DebuggerStepThrough] get => new(new TestPruningStrategy(true), new ConstantInterval(8));
@@ -92,8 +105,20 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext SetAccountBalance(int accountIndex, UInt256 balance)
+            {
+                _stateProvider.CreateAccount(Address.FromNumber((UInt256) accountIndex), balance);
+                return this;
+            }
+
             public PruningContext PruneOldBlock()
             {
+                return this;
+            }
+
+            public PruningContext TurnOnPrune()
+            {
+                _pruningStrategy.ShouldPruneEnabled = true;
                 return this;
             }
 
@@ -127,7 +152,7 @@ namespace Nethermind.Trie.Test
                 _stateProvider.GetAccount(Address.FromNumber((UInt256)accountIndex));
                 return this;
             }
-            
+
             public PruningContext ReadAccountViaStateReader(int accountIndex)
             {
                 _logger.Info($"READ   ACCOUNT {accountIndex}");
@@ -142,6 +167,12 @@ namespace Nethermind.Trie.Test
                 _stateProvider.Commit(MuirGlacier.Instance);
                 _stateProvider.CommitTree(_blockNumber);
                 _blockNumber++;
+
+                // This causes the root node to be reloaded instead of keeping old one
+                // The root hash will now be unresolved, which mean it will need to reload from trie store.
+                // `BlockProcessor.InitBranch` does this.
+                _stateProvider.Reset();
+                _stateProvider.StateRoot = _stateProvider.StateRoot;
                 return this;
             }
 
@@ -156,7 +187,21 @@ namespace Nethermind.Trie.Test
                 _trieStore.PersistedNodesCount.Should().Be(i);
                 return this;
             }
-            
+
+            public PruningContext VerifyAccountBalance(int account, int balance)
+            {
+                _stateProvider.GetBalance(Address.FromNumber((UInt256)account))
+                    .Should().BeEquivalentTo((UInt256)balance);
+                return this;
+            }
+
+            public PruningContext VerifyStorageValue(int account, UInt256 index, int value)
+            {
+                _storageProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index))
+                    .Should().BeEquivalentTo(((UInt256) value).ToBigEndian());
+                return this;
+            }
+
             public PruningContext VerifyCached(int i)
             {
                 GC.Collect();
@@ -172,6 +217,21 @@ namespace Nethermind.Trie.Test
                 _trieStore.Dump();
                 return this;
             }
+
+            public PruningContext SaveBranchingPoint(string name)
+            {
+                _branchingPoints[name] = (_blockNumber, _stateProvider.StateRoot);
+                return this;
+            }
+
+            public PruningContext RestoreBranchingPoint(string name)
+            {
+                (long blockNumber, Keccak rootHash) branchPoint = _branchingPoints[name];
+                _blockNumber = branchPoint.blockNumber;
+                Keccak rootHash = branchPoint.rootHash;
+                _stateProvider.StateRoot = rootHash;
+                return this;
+            }
         }
 
         [Test]
@@ -185,7 +245,7 @@ namespace Nethermind.Trie.Test
             // Then we create an account 2 with a same storage trie
             //     2
             //     B
-            //  L1     L2  
+            //  L1     L2
             // Then we read L2 from account 1 so that B is resolved from cache.
             // When persisting account 2, storage should not get persisted again.
 
@@ -215,7 +275,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .VerifyPersisted(9);
         }
-        
+
         [Test]
         public void Aura_scenario_asking_about_a_not_yet_persisted_root()
         {
@@ -252,7 +312,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .VerifyPersisted(5);
         }
-        
+
         [Test]
         public void Do_not_delete_storage_before_persisting()
         {
@@ -269,7 +329,7 @@ namespace Nethermind.Trie.Test
                 .VerifyPersisted(1)
                 .VerifyCached(5);
         }
-        
+
         [Test]
         public void Two_accounts_adding_shared_storage_in_same_block()
         {
@@ -287,7 +347,7 @@ namespace Nethermind.Trie.Test
                 .VerifyPersisted(6)
                 .VerifyCached(6);
         }
-        
+
         [Test]
         public void Two_accounts_adding_shared_storage_in_same_block_then_one_account_storage_is_cleared()
         {
@@ -307,7 +367,7 @@ namespace Nethermind.Trie.Test
                 .VerifyPersisted(6)
                 .VerifyCached(8);
         }
-        
+
         [Test]
         public void Delete_and_revive()
         {
@@ -330,7 +390,7 @@ namespace Nethermind.Trie.Test
                 .PruneOldBlock()
                 .VerifyPersisted(4);
         }
-        
+
         [Test]
         public void Update_storage()
         {
@@ -384,7 +444,128 @@ namespace Nethermind.Trie.Test
                 .CreateAccount(2)
                 .Commit()
                 .PruneOldBlock()
-                .VerifyPersisted(3); // branch and two leaves 
+                .VerifyPersisted(3); // branch and two leaves
+        }
+
+        [Test]
+        public void Persist_alternate_commitset()
+        {
+            Reorganization.MaxDepth = 3;
+
+            PruningContext.InMemoryAlwaysPrune
+                .SetAccountBalance(1, 100)
+                .Commit()
+                .SetAccountBalance(2, 10)
+                .Commit()
+
+                .SaveBranchingPoint("revert_main")
+                .SetAccountBalance(1, 103)
+                .CreateAccount(3)
+                .SetStorage(3, 1, 999)
+                .Commit()
+                .SaveBranchingPoint("main")
+
+                // Storage is not set here, but commit set will commit this instead of block 3 in main as it appear later
+                .RestoreBranchingPoint("revert_main")
+                .SetAccountBalance(1, 103)
+                .Commit()
+
+                .RestoreBranchingPoint("main")
+                .Commit()
+                .SetAccountBalance(4, 108)
+                .Commit()
+                .Commit()
+                .Commit()
+                .Commit()
+
+                // Although the committed set is different, later commit set still refer to the storage root hash.
+                // When later set is committed, the storage root hash will be committed also, unless the alternate chain
+                // is longer than reorg depth, in which case, we have two parallel branch of length > reorg depth, which
+                // is not supported.
+                .VerifyStorageValue(3, 1, 999);
+        }
+
+        [Test]
+        public void StorageRoot_reset_at_lower_level()
+        {
+            Reorganization.MaxDepth = 3;
+
+            PruningContext.InMemoryAlwaysPrune
+                .SetAccountBalance(1, 100)
+                .SetAccountBalance(2, 100)
+                .Commit()
+                .SetAccountBalance(1, 100)
+                .SetAccountBalance(1, 101)
+                .Commit()
+                .SaveBranchingPoint("revert_main")
+
+                .SetAccountBalance(1, 102)
+                .Commit()
+                .SetAccountBalance(1, 103)
+                .Commit()
+                .CreateAccount(3)
+                .SetStorage(3, 1, 999)
+                .Commit()
+                .SaveBranchingPoint("main")
+
+                // The storage root will now get reset at a lower LastSeen
+                .RestoreBranchingPoint("revert_main")
+                .CreateAccount(3)
+                .SetStorage(3, 1, 999)
+                .Commit()
+
+                .RestoreBranchingPoint("main")
+                .VerifyStorageValue(3, 1, 999)
+                .SetAccountBalance(1, 105)
+                .Commit()
+                .SetAccountBalance(1, 106)
+                .Commit()
+                .SetAccountBalance(1, 107)
+                .Commit()
+                .SetAccountBalance(1, 108)
+                .Commit()
+
+                .VerifyStorageValue(3, 1, 999);
+        }
+
+        [Test]
+        public void StateRoot_reset_at_lower_level_and_accessed_at_just_the_right_time()
+        {
+            Reorganization.MaxDepth = 2;
+
+            PruningContext.InMemory
+                .SetAccountBalance(1, 100)
+                .SetAccountBalance(2, 100)
+                .Commit()
+                .SaveBranchingPoint("revert_main")
+
+                .SetAccountBalance(1, 10)
+                .SetAccountBalance(2, 100)
+                .Commit()
+                .SetAccountBalance(2, 101)
+                .Commit()
+                .SetAccountBalance(3, 101)
+                .Commit()
+                .SaveBranchingPoint("main")
+
+                // This will result in the same state root, but it's `LastSeen` reduced.
+                .RestoreBranchingPoint("revert_main")
+                .SetAccountBalance(1, 10)
+                .SetAccountBalance(2, 101)
+                .SetAccountBalance(3, 101)
+                .Commit()
+
+                .RestoreBranchingPoint("main")
+                .TurnOnPrune()
+
+                // Exactly 2 commit
+                .Commit()
+                .Commit()
+
+                .VerifyAccountBalance(1, 10)
+                .VerifyAccountBalance(2, 101)
+                .VerifyAccountBalance(3, 101);
+
         }
     }
 }
