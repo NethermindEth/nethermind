@@ -424,7 +424,7 @@ namespace Nethermind.Trie.Pruning
                     if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - Reorganization.MaxDepth)
                     {
                         toAddBack.Enqueue(frontSet);
-                        break;
+                        continue;
                     }
 
                     if (candidateSets.Count >= 0 && frontSet.BlockNumber > candidateSets[0].BlockNumber)
