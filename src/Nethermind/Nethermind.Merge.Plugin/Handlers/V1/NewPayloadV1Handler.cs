@@ -147,7 +147,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
-                    // ToDo add logger and test
+                    if (_logger.IsInfo) _logger.Info($"Rejecting invalid block received during the sync, block: {block}");
                     return NewPayloadV1Result.Invalid(null);
                 }
 
