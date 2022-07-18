@@ -245,7 +245,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     if (_logger.IsWarn) _logger.Warn($"Found blockNumber {blockNumber} lower than node {node.LastSeen}, node.Keccak: {node.Keccak} ");
                 }
-                node.LastSeen = blockNumber;
+                node.LastSeen = Math.Max(blockNumber, node.LastSeen ?? 0);
 
                 if (!_pruningStrategy.PruningEnabled)
                 {
@@ -427,11 +427,15 @@ namespace Nethermind.Trie.Pruning
                         continue;
                     }
 
-                    if (candidateSets.Count >= 0 && frontSet.BlockNumber > candidateSets[0].BlockNumber)
+                    if (candidateSets.Count > 0 && frontSet.BlockNumber > candidateSets[0].BlockNumber)
                     {
                         candidateSets = new();
+                        candidateSets.Add(frontSet);
                     }
-                    candidateSets.Add(frontSet);
+                    else if (candidateSets.Count == 0 || frontSet.BlockNumber == candidateSets[0].BlockNumber)
+                    {
+                        candidateSets.Add(frontSet);
+                    }
                 }
 
                 // there could be other new block commit while this is happening, but since we already assume it is
@@ -685,7 +689,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     if (_logger.IsWarn) _logger.Warn($"Found blockNumber {blockNumber} lower than currentNode {currentNode.LastSeen}, currentNode.Keccak: {currentNode.Keccak} ");
                 }
-                currentNode.LastSeen = blockNumber;
+                currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
             }
             else
