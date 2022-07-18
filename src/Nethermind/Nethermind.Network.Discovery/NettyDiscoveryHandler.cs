@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -183,12 +183,12 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
     {
         return msg.MsgType switch
         {
-            MsgType.Ping => _msgSerializationService.Serialize((PingMsg)msg),
-            MsgType.Pong => _msgSerializationService.Serialize((PongMsg)msg),
-            MsgType.FindNode => _msgSerializationService.Serialize((FindNodeMsg)msg),
-            MsgType.Neighbors => _msgSerializationService.Serialize((NeighborsMsg)msg),
-            MsgType.EnrRequest => _msgSerializationService.Serialize((EnrRequestMsg)msg),
-            MsgType.EnrResponse => _msgSerializationService.Serialize((EnrResponseMsg)msg),
+            MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg) msg).ReadAllBytes(),
+            MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg) msg).ReadAllBytes(),
+            MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg) msg).ReadAllBytes(),
+            MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg) msg).ReadAllBytes(),
+            MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg) msg).ReadAllBytes(),
+            MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg) msg).ReadAllBytes(),
             _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
         };
     }
@@ -231,11 +231,11 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
     {
         if (msg is PingMsg pingMsg)
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "HANDLER disc v4", $"PING {pingMsg.SourceAddress.Address} -> {pingMsg.DestinationAddress?.Address}");
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "HANDLER disc v4", $"PING {pingMsg.SourceAddress.Address} -> {pingMsg.DestinationAddress?.Address}");
         }
         else
         {
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", msg.MsgType.ToString());
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", msg.MsgType.ToString());
         }
     }
 

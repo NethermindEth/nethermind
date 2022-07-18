@@ -31,11 +31,6 @@ namespace Nethermind.Network
 
         public T Deserialize<T>(byte[] bytes) where T : MessageBase
         {
-            if (TryGetSerializer(out IMessageSerializer<T> messageSerializer))
-            {
-                return messageSerializer.Deserialize(bytes);
-            }
-
             if (TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
             {
                 IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(bytes.Length);
@@ -43,7 +38,7 @@ namespace Nethermind.Network
                 return zeroMessageSerializer.Deserialize(byteBuffer);
             }
 
-            throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {typeof(T).Name}.");
+            throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
 
         }
 
@@ -78,16 +73,6 @@ namespace Nethermind.Network
                     }
 
                     Type interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
-                    if (interfaceGenericDefinition == typeof(IMessageSerializer<>).GetGenericTypeDefinition())
-                    {
-                        ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
-                        if (constructor == null)
-                        {
-                            continue;
-                        }
-
-                        _serializers[implementedInterface.GenericTypeArguments[0].TypeHandle] = Activator.CreateInstance(type);
-                    }
 
                     if (interfaceGenericDefinition == typeof(IZeroMessageSerializer<>).GetGenericTypeDefinition())
                     {
@@ -101,11 +86,6 @@ namespace Nethermind.Network
                     }
                 }
             }
-        }
-
-        public void Register<T>(IMessageSerializer<T> messageSerializer) where T : MessageBase
-        {
-            _serializers[typeof(T).TypeHandle] = messageSerializer;
         }
 
         public void Register<T>(IZeroMessageSerializer<T> messageSerializer) where T : MessageBase
@@ -140,20 +120,7 @@ namespace Nethermind.Network
                 zeroMessageSerializer.Serialize(byteBuffer, message);
                 return byteBuffer;
             }
-            else
-            {
-                byte[] serialized = Serialize(message);
-                IByteBuffer byteBuffer = PooledByteBufferAllocator.Default.Buffer(serialized.Length + p2pMessageLength);
-                WriteAdaptivePacketType(byteBuffer);
-                byteBuffer.WriteBytes(serialized);
-                return byteBuffer;
-            }
-        }
-        public byte[] Serialize<T>(T messageBase) where T : MessageBase
-        {
-            return TryGetSerializer(out IMessageSerializer<T> messageSerializer)
-                ? messageSerializer.Serialize(messageBase)
-                : throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {typeof(T).Name}.");
+            throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
         }
 
         private bool TryGetZeroSerializer<T>(out IZeroMessageSerializer<T> serializer) where T : MessageBase
@@ -174,22 +141,5 @@ namespace Nethermind.Network
             throw new InvalidOperationException($"Zero serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
         }
 
-        private bool TryGetSerializer<T>(out IMessageSerializer<T> serializer) where T : MessageBase
-        {
-            RuntimeTypeHandle typeHandle = typeof(T).TypeHandle;
-            if (!_serializers.TryGetValue(typeHandle, out object serializerObject))
-            {
-                serializer = null;
-                return false;
-            }
-
-            if (!(serializerObject is IMessageSerializer<T> messageSerializer))
-            {
-                throw new InvalidOperationException($"Serializer for {nameof(T)} (registered: {serializerObject?.GetType().Name}) does not implement required interfaces");
-            }
-
-            serializer = messageSerializer;
-            return true;
-        }
     }
 }
