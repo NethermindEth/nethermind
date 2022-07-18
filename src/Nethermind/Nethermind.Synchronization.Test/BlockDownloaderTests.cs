@@ -30,6 +30,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Evm;
@@ -148,7 +149,7 @@ namespace Nethermind.Synchronization.Test
 
             await downloader.DownloadBlocks(peerInfo, new BlocksRequest(DownloaderOptions.WithReceipts, 0), CancellationToken.None);
             ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(peerInfo.HeadNumber);
-            ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader.Hash).Should().Be(true);
+            ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader.GetOrCalculateHash()).Should().Be(true);
         }
 
         [Test]
@@ -996,11 +997,6 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies);
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
-            {
-                throw new NotImplementedException();
-            }
-
             public async Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 bool consistent = Flags.HasFlag(Response.Consistent);
@@ -1023,6 +1019,11 @@ namespace Nethermind.Synchronization.Test
                 BlockHeadersMessage message = new(headers);
                 byte[] messageSerialized = _headersSerializer.Serialize(message);
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
+            }
+
+            public Task<BlockHeader[]> GetBlockHeaders(Keccak startHash, int maxBlocks, int skip, CancellationToken token)
+            {
+                throw new NotImplementedException();
             }
 
             public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)

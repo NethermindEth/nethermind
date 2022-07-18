@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Net;
+using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -107,6 +109,17 @@ namespace Nethermind.Core.Test.Builders
         public static IPEndPoint IPEndPointF = IPEndPoint.Parse("10.0.0.6");
 
         public static Bloom NonZeroBloom;
+
+        public static T CloneObject<T>(T value)
+        {
+            using var stream = new MemoryStream();
+
+            JsonSerializer.Serialize(stream, value);
+
+            stream.Position = 0;
+
+            return JsonSerializer.Deserialize<T>(stream)!;
+        }
 
         public static Address GetRandomAddress(Random? random = null)
         {
