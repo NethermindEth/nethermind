@@ -83,6 +83,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
             {
+                if (_logger.IsInfo) _logger.Info($" FCU - Invalid - {requestStr} {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
                 return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
             }
 
@@ -95,6 +96,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _peerRefresher.RefreshPeers(block.Hash!, block.ParentHash!, forkchoiceState.FinalizedBlockHash);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                    _blockCacheService.ProcessDestination = forkchoiceState.HeadBlockHash;
 
                     if (_logger.IsInfo) _logger.Info($"Start a new sync process... Request: {requestStr}.");
 
