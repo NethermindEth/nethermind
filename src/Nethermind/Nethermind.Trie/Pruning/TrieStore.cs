@@ -416,28 +416,38 @@ namespace Nethermind.Trie.Pruning
             {
                 if (_logger.IsInfo) _logger.Info("Elevated pruning starting");
 
-                BlockCommitSet? candidateSet = null;
-                while (_commitSetQueue.TryPeek(out BlockCommitSet? frontSet))
+                Queue<BlockCommitSet> toAddBack = new Queue<BlockCommitSet>();
+
+                List<BlockCommitSet> candidateSets = new();
+                while (_commitSetQueue.TryDequeue(out BlockCommitSet? frontSet))
                 {
                     if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - Reorganization.MaxDepth)
                     {
+                        toAddBack.Enqueue(frontSet);
                         break;
                     }
 
-                    if (_commitSetQueue.TryDequeue(out frontSet))
+                    if (candidateSets.Count >= 0 && frontSet.BlockNumber > candidateSets[0].BlockNumber)
                     {
-                        candidateSet = frontSet;
+                        candidateSets = new();
                     }
-                    else
-                    {
-                        break;
-                    }
+                    candidateSets.Add(frontSet);
                 }
 
-                if (candidateSet is not null)
+                // there could be other new block commit while this is happening, but since we already assume it is
+                // out of order it probably does not matter
+                foreach (BlockCommitSet blockCommitSet in toAddBack)
+                {
+                    _commitSetQueue.Enqueue(blockCommitSet);
+                }
+
+                foreach (BlockCommitSet candidateSet in candidateSets)
                 {
                     if (_logger.IsInfo) _logger.Info($"Elevated pruning for candidate {candidateSet.BlockNumber}, Root: {candidateSet.Root}");
                     Persist(candidateSet);
+                }
+
+                if (candidateSets.Count > 0) {
                     return true;
                 }
 
