@@ -111,6 +111,16 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext SetManyAccountWithSameBalance(int startNum, int numOfAccount, UInt256 balance)
+            {
+                for (int i = 0; i < numOfAccount; i++)
+                {
+                    this.SetAccountBalance(startNum + i, balance);
+                }
+                return this;
+            }
+
+
             public PruningContext PruneOldBlock()
             {
                 return this;
@@ -119,6 +129,12 @@ namespace Nethermind.Trie.Test
             public PruningContext TurnOnPrune()
             {
                 _pruningStrategy.ShouldPruneEnabled = true;
+                return this;
+            }
+
+            public PruningContext SetPruningMemoryLimit(int? memoryLimit)
+            {
+                _pruningStrategy.WithMemoryLimit = memoryLimit;
                 return this;
             }
 
@@ -157,6 +173,13 @@ namespace Nethermind.Trie.Test
             {
                 _logger.Info($"READ   ACCOUNT {accountIndex}");
                 _stateReader.GetAccount(_stateProvider.StateRoot, Address.FromNumber((UInt256)accountIndex));
+                return this;
+            }
+
+            public PruningContext CommitWithRandomChange()
+            {
+                SetAccountBalance(Random.Shared.Next(), (UInt256)Random.Shared.Next());
+                Commit();
                 return this;
             }
 
@@ -452,36 +475,99 @@ namespace Nethermind.Trie.Test
         {
             Reorganization.MaxDepth = 3;
 
-            PruningContext.InMemoryAlwaysPrune
+            PruningContext.InMemory
                 .SetAccountBalance(1, 100)
                 .Commit()
                 .SetAccountBalance(2, 10)
                 .Commit()
 
                 .SaveBranchingPoint("revert_main")
-                .SetAccountBalance(1, 103)
                 .CreateAccount(3)
                 .SetStorage(3, 1, 999)
                 .Commit()
+                .Commit()
                 .SaveBranchingPoint("main")
 
+                // We need this to get persisted
                 // Storage is not set here, but commit set will commit this instead of block 3 in main as it appear later
                 .RestoreBranchingPoint("revert_main")
-                .SetAccountBalance(1, 103)
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 20, 1)
                 .Commit()
 
                 .RestoreBranchingPoint("main")
-                .Commit()
-                .SetAccountBalance(4, 108)
-                .Commit()
+                // But not this. Only prune cache for this
                 .Commit()
                 .Commit()
+                .Commit()
+
+                .SetPruningMemoryLimit(10000)
+                // First commit it should prune and persist alternate block 3, memory usage should go down from 16k to 1.2k
+                .Commit()
+
+                // After this, we need to slowly add node that can be cache-pruned, but does not require persist, so
+                // same account different balance. Each update of 2 account, add 1.5k of memory. But it need to keep
+                // at least 3 level of block reorg worth of nodes.
+                .SetManyAccountWithSameBalance(100, 2, 1)
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 2, 2)
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 2, 3)
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 2, 4)
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 2, 5)
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 2, 6)
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 2, 7)
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 2, 8)
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 2, 9)
                 .Commit()
 
                 // Although the committed set is different, later commit set still refer to the storage root hash.
                 // When later set is committed, the storage root hash will be committed also, unless the alternate chain
                 // is longer than reorg depth, in which case, we have two parallel branch of length > reorg depth, which
                 // is not supported.
+                .VerifyStorageValue(3, 1, 999);
+        }
+
+        [Test]
+        public void Persist_alternate_commitset_at_least_2_consecutive_sidechain()
+        {
+            Reorganization.MaxDepth = 3;
+
+            PruningContext.InMemory
+                .SetAccountBalance(1, 100)
+                .Commit()
+                .SetAccountBalance(2, 10)
+                .Commit()
+
+                .SaveBranchingPoint("revert_main")
+                .CreateAccount(3)
+                .SetStorage(3, 1, 999)
+                .Commit()
+                .Commit()
+                .SaveBranchingPoint("main")
+
+                // We need this to get persisted
+                // Storage is not set here, but commit set will commit this instead of block 3 in main as it appear later
+                .RestoreBranchingPoint("revert_main")
+                .Commit()
+                .SetManyAccountWithSameBalance(100, 20, 1)
+                .Commit()
+
+                .RestoreBranchingPoint("main")
+                // But not this. Only prune cache for this
+                .Commit()
+                .Commit()
+                .Commit()
+
+                .SetPruningMemoryLimit(10000)
+                .Commit()
+
                 .VerifyStorageValue(3, 1, 999);
         }
 
