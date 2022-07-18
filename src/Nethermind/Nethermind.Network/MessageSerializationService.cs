@@ -117,9 +117,15 @@ namespace Nethermind.Network
         {
             void WriteAdaptivePacketType(in IByteBuffer buffer)
             {
-                if (message is P2PMessage p2PMessage)
+                switch (message)
                 {
-                    buffer.WriteByte(p2PMessage.AdaptivePacketType);
+                    case HelloMessage:
+                        break;
+                    case DisconnectMessage:
+                        break;
+                    case P2PMessage p2PMessage:
+                        buffer.WriteByte(p2PMessage.AdaptivePacketType);
+                        break;
                 }
             }
 
