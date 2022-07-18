@@ -736,6 +736,7 @@ namespace Nethermind.Trie.Pruning
                 // because head is loaded if there is no persistence checkpoint
                 // so we need to force the persistence checkpoint
                 long baseBlock = Math.Max(0, LatestCommittedBlockNumber - 1);
+                _logger.Info($"Reorg boundary setting last persisted block number to {baseBlock}");
                 LastPersistedBlockNumber = baseBlock;
                 shouldAnnounceReorgBoundary = true;
             }
