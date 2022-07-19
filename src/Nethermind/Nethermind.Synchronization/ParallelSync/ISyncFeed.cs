@@ -35,5 +35,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         AllocationContexts Contexts { get; }
         void Activate();
+        void Finish();
+        Task FeedTask { get; }
     }
 }

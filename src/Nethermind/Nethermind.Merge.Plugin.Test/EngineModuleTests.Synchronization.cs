@@ -88,6 +88,54 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task should_return_invalid_lvh_null_on_invalid_blocks_during_the_sync()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak? startingHead = chain.BlockTree.HeadHash;
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithHash(TestItem.KeccakA)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(2)
+            .WithParent(parent)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithPostMergeFlag(true)
+            .TestObject;
+        ExecutionPayloadV1 startingNewPayload = new ExecutionPayloadV1(block);
+        await rpc.engine_newPayloadV1(startingNewPayload);
+
+        ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
+            await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
+            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+
+        ExecutionPayloadV1[] requests = CreateBlockRequestBranch(startingNewPayload, TestItem.AddressD, 1);
+        foreach (ExecutionPayloadV1 r in requests)
+        {
+            ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(r);
+            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+        }
+
+        ExecutionPayloadV1[] invalidRequests = CreateBlockRequestBranch(requests[0], TestItem.AddressD, 1);
+        foreach (ExecutionPayloadV1 r in invalidRequests)
+        {
+            r.TryGetBlock(out Block? newBlock);
+            newBlock!.Header.GasLimit = long.MaxValue; // incorrect gas limit
+            newBlock.Header.Hash = newBlock.CalculateHash();
+            ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(new ExecutionPayloadV1(newBlock));
+            payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Invalid).ToUpper());
+            payloadStatus.Data.LatestValidHash.Should().BeNull();
+        }
+    }
+
+    [Test]
     public async Task newPayloadV1_can_insert_blocks_from_cache_when_syncing()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
