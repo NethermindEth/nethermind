@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Net;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -59,7 +60,7 @@ namespace Nethermind.Network.Discovery.Test
                     new byte[32])
                 { FarAddress = _farAddress };
 
-            byte[] data = _messageSerializationService.ZeroSerialize(message).ReadAllBytes();
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(message);
             PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data);
 
             Assert.AreEqual(message.MsgType, deserializedMessage.MsgType);
@@ -85,7 +86,7 @@ namespace Nethermind.Network.Discovery.Test
                     FarAddress = _farAddress
                 };
 
-            byte[] data = _messageSerializationService.ZeroSerialize(message).ReadAllBytes();
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(message);
             PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(data);
 
             Assert.AreEqual(message.MsgType, deserializedMessage.MsgType);
@@ -100,7 +101,7 @@ namespace Nethermind.Network.Discovery.Test
         {
             PingMsg pingMsg = new(TestItem.PublicKeyA, long.MaxValue, TestItem.IPEndPointA, TestItem.IPEndPointB, new byte[32]);
             pingMsg.EnrSequence = 3;
-            byte[] serialized = _messageSerializationService.ZeroSerialize(pingMsg).ReadAllBytes();
+            IByteBuffer serialized = _messageSerializationService.ZeroSerialize(pingMsg);
             pingMsg = _messageSerializationService.Deserialize<PingMsg>(serialized);
             Assert.AreEqual(3, pingMsg.EnrSequence);
         }
@@ -109,7 +110,7 @@ namespace Nethermind.Network.Discovery.Test
         public void Enr_request_there_and_back()
         {
             EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
-            byte[] serialized = _messageSerializationService.ZeroSerialize(msg).ReadAllBytes();
+            IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
             EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
             Assert.AreEqual(msg.ExpirationTime, deserialized.ExpirationTime);
             Assert.AreEqual(deserialized.FarPublicKey, _privateKey.PublicKey);
@@ -125,7 +126,7 @@ namespace Nethermind.Network.Discovery.Test
             signer.Sign(nodeRecord);
             EnrResponseMsg msg = new(TestItem.PublicKeyA, nodeRecord, TestItem.KeccakA);
 
-            byte[] serialized = _messageSerializationService.ZeroSerialize(msg).ReadAllBytes();
+            IByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
             EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
             Assert.AreEqual(msg.NodeRecord.EnrSequence, deserialized.NodeRecord.EnrSequence);
             Assert.AreEqual(msg.RequestKeccak, deserialized.RequestKeccak);
@@ -162,7 +163,7 @@ namespace Nethermind.Network.Discovery.Test
                     FarAddress = _farAddress
                 };
 
-            byte[] data = _messageSerializationService.ZeroSerialize(message).ReadAllBytes();
+            IByteBuffer data = _messageSerializationService.ZeroSerialize(message);
             FindNodeMsg deserializedMessage = _messageSerializationService.Deserialize<FindNodeMsg>(data);
 
             Assert.AreEqual(message.MsgType, deserializedMessage.MsgType);
