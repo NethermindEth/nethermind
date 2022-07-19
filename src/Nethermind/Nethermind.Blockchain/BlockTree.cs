@@ -1674,6 +1674,11 @@ namespace Nethermind.Blockchain
                     {
                         Array.Resize(ref blockInfos, blockInfos.Length + 1);
                     }
+                    else
+                    {
+                        if (blockInfo.IsBeaconInfo && blockInfos[foundIndex.Value].IsBeaconMainChain)
+                            blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
+                    }
 
                     int index = foundIndex ?? blockInfos.Length - 1;
 

@@ -332,7 +332,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             if (_logger.IsInfo) _logger.Info("BeaconChain reorged during the sync");
             BlockInfo[] beaconMainChainBranch = GetBeaconChainBranch(newHeadBlock, newHeadBlockInfo);
-            _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, _blockCacheService.ProcessDestination?.Number ?? newHeadBlock.Number);
+            _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, Math.Max(_blockCacheService.ProcessDestination?.Number ?? 0, newHeadBlock.Number));
             _blockCacheService.ProcessDestination = newHeadBlock.Header;
         }
 

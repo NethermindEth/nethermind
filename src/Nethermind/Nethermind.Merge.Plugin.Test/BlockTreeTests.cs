@@ -320,7 +320,7 @@ public partial class BlockTreeTests
             {
                 Block? beaconBlock = SyncedTree.FindBlock(num, BlockTreeLookupOptions.None);
                 AddBlockResult insertResult = NotSyncedTree.Insert(beaconBlock!, true,
-                    BlockTreeInsertOptions.BeaconBlockInsert);
+                    BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain);
                 Assert.AreEqual(AddBlockResult.Added, insertResult);
                 NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(beaconBlock!.Hash).Bytes);
                 NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(beaconBlock.Number).Bytes);
@@ -414,7 +414,7 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertBeaconBlocks(long low, long high, TotalDifficultyMode tdMode = TotalDifficultyMode.TheSameAsSyncedTree)
             {
-                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain;
                 for (long i = high; i >= low; --i)
                 {
                     Block? beaconBlock = SyncedTree!.FindBlock(i, BlockTreeLookupOptions.None);

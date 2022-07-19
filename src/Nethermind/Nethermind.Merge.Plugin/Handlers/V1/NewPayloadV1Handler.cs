@@ -350,7 +350,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         /// Return false if no ancestor that is part of beacon chain found.
         private bool TryInsertDanglingBlock(Block block)
         {
-            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain;
 
             if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
             {
