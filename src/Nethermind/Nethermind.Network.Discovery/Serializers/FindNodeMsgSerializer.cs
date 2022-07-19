@@ -31,22 +31,22 @@ public class FindNodeMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSer
     public void Serialize(IByteBuffer byteBuffer, FindNodeMsg msg)
     {
         int length = GetLength(msg, out int contentLength);
-        byteBuffer.EnsureWritable(length);
 
-        NettyRlpStream stream = new(byteBuffer);
+        RlpStream stream = new(length);
 
         stream.StartSequence(contentLength);
         stream.Encode(msg.SearchedNodeId);
         stream.Encode(msg.ExpirationTime);
 
         byte[] serializedMsg = Serialize((byte) msg.MsgType, stream.Data);
+        byteBuffer.EnsureWritable(serializedMsg.Length);
         byteBuffer.WriteBytes(serializedMsg);
     }
 
     public FindNodeMsg Deserialize(IByteBuffer msgBytes)
     {
         (PublicKey FarPublicKey, byte[] Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
-        NettyRlpStream rlpStream = new(msgBytes);
+        NettyRlpStream rlpStream = new(results.Data);
         rlpStream.ReadSequenceLength();
         byte[] searchedNodeId = rlpStream.DecodeByteArray();
         long expirationTime = rlpStream.DecodeLong();
