@@ -96,7 +96,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _peerRefresher.RefreshPeers(block.Hash!, block.ParentHash!, forkchoiceState.FinalizedBlockHash);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
-                    _blockCacheService.ProcessDestination = forkchoiceState.HeadBlockHash;
+                    _blockCacheService.ProcessDestination ??= block.Header;
 
                     if (_logger.IsInfo) _logger.Info($"Start a new sync process... Request: {requestStr}.");
 
@@ -132,6 +132,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (_logger.IsInfo) { _logger.Info($"Processing {_processingQueue.Count} blocks... Request: {requestStr}."); }
                 }
 
+                _blockCacheService.ProcessDestination ??= newHeadBlock.Header;
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
@@ -331,14 +332,14 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         {
             if (_logger.IsInfo) _logger.Info("BeaconChain reorged during the sync");
             BlockInfo[] beaconMainChainBranch = GetBeaconChainBranch(newHeadBlock, newHeadBlockInfo);
-            _blockTree.UpdateBeaconMainChain(beaconMainChainBranch);
+            _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, _blockCacheService.ProcessDestination?.Number ?? newHeadBlock.Number);
+            _blockCacheService.ProcessDestination = newHeadBlock.Header;
         }
 
         private BlockInfo[] GetBeaconChainBranch(Block newHeadBlock, BlockInfo newHeadBlockInfo)
         {
             newHeadBlockInfo.BlockNumber = newHeadBlock.Number;
             List<BlockInfo> blocksList = new() { newHeadBlockInfo };
-            BlockInfo? predecessorInfo = newHeadBlockInfo;
             Block? predecessor = newHeadBlock;
 
             while (true)
@@ -349,7 +350,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     break;
                 }
-                predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
+                BlockInfo predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
                 predecessorInfo.BlockNumber = predecessor.Number;
                 if (predecessorInfo.IsBeaconMainChain) break;
                 if (_logger.IsInfo) _logger.Info($"Reorged to beacon block ({predecessorInfo.BlockNumber}) {predecessorInfo.BlockHash}");
@@ -357,6 +358,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             blocksList.Reverse();
+
             return blocksList.ToArray();
         }
 

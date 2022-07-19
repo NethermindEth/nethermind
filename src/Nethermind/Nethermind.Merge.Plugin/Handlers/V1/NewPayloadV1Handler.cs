@@ -154,10 +154,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
 
-                if (_blockCacheService.ProcessDestination != null && _blockCacheService.ProcessDestination == block.ParentHash)
+                if (_blockCacheService.ProcessDestination != null && _blockCacheService.ProcessDestination.Hash == block.ParentHash)
                 {
                     insertOptions |= BlockTreeInsertOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
-                    _blockCacheService.ProcessDestination = block.Hash;
+                    _blockCacheService.ProcessDestination = block.Header;
                 }
 
                 _blockTree.Insert(block, true, insertOptions);
@@ -382,7 +382,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _blockTree.Insert(child, true, insertOptions);
                 }
 
-                _blockCacheService.ProcessDestination = block.Hash;
+                _blockCacheService.ProcessDestination = block.Header;
             }
 
             return true;

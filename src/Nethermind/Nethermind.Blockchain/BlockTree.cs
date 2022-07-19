@@ -697,7 +697,9 @@ namespace Nethermind.Blockchain
             bool setAsMain = options.ContainsFlag(BlockTreeSuggestOptions.ForceSetAsMain) ||
                              !options.ContainsFlag(BlockTreeSuggestOptions.ForceDontSetAsMain) && !shouldProcess;
 
-            if (_logger.IsTrace) _logger.Trace($"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}, SetAsMain {setAsMain}");
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    $"Suggesting a new block. BestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head TD: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}. ShouldProcess: {shouldProcess}, TryProcessKnownBlock: {fillBeaconBlock}, SetAsMain {setAsMain}");
 
 #if DEBUG
             /* this is just to make sure that we do not fall into this trap when creating tests */
@@ -1346,15 +1348,31 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void UpdateBeaconMainChain(BlockInfo[]? blockInfos)
+        public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
         {
-            if (blockInfos == null)
+            if (blockInfos == null || blockInfos.Length == 0)
                 return;
 
+            // cleanup above processing destination
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+
+            for (long j = clearBeaconMainChainStartPoint; j < blockInfos[^1].BlockNumber; --j)
+            {
+                ChainLevelInfo? level = LoadLevel(j);
+                if (level is not null)
+                {
+                    for (int i = 0; i < level.BlockInfos.Length; ++i)
+                    {
+                        level.BlockInfos[i].Metadata &= ~BlockMetadata.BeaconMainChain;
+                    }
+
+                    _chainLevelInfoRepository.PersistLevel(j, level, batch);
+                }
+            }
+
             foreach (BlockInfo blockInfo in blockInfos)
             {
-                var levelNumber = blockInfo.BlockNumber;
+                long levelNumber = blockInfo.BlockNumber;
                 ChainLevelInfo? level = LoadLevel(levelNumber);
                 if (level is not null)
                 {
