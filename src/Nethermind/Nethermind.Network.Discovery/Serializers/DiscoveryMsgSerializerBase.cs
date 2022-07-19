@@ -105,7 +105,7 @@ public abstract class DiscoveryMsgSerializerBase
 
     protected static void SerializeNode(RlpStream stream, IPEndPoint address, byte[] id)
     {
-        var length = GetIPEndPointLength(address);
+        int length = GetLengthSerializeNode(address, id);
         stream.StartSequence(length);
         stream.Encode(address.Address.GetAddressBytes());
         //tcp port
