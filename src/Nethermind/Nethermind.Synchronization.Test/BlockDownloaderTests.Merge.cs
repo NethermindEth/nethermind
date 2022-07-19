@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -24,6 +25,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -34,6 +36,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -133,6 +136,18 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         await downloader.DownloadBlocks(peerInfo, new BlocksRequest(downloaderOptions), CancellationToken.None);
         Assert.True(posSwitcher.HasEverReachedTerminalBlock());
+    }
+    private BlockDownloader CreateMergeBlockDownloader(Context ctx)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        MemDb metadataDb = new MemDb();
+        var testSpecProvider = new TestSpecProvider(London.Instance);
+        testSpecProvider.TerminalTotalDifficulty = 0;
+        PoSSwitcher posSwitcher = new(new MergeConfig() { Enabled = true, TerminalTotalDifficulty = "0" }, new SyncConfig(), metadataDb, blockTree,
+            testSpecProvider, LimboLogs.Instance);
+        BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, blockTree, LimboLogs.Instance);
+        InMemoryReceiptStorage receiptStorage = new();
+        return new MergeBlockDownloader(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, testSpecProvider, CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(blockTree, new SyncConfig(),  LimboLogs.Instance), new NoopInvalidChainTracker(), Substitute.For<ISyncProgressResolver>(), LimboLogs.Instance);
     }
 
     private IBetterPeerStrategy CreateMergePeerChoiceStrategy(IPoSSwitcher poSSwitcher)

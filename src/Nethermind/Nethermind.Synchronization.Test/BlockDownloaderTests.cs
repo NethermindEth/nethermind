@@ -211,13 +211,16 @@ namespace Nethermind.Synchronization.Test
             ctx.BlockTree.BestSuggestedHeader.Number.Should().Be(2048);
         }
 
-        [TestCase(32)]
-        [TestCase(1)]
-        [TestCase(0)]
-        public async Task Can_sync_with_peer_when_it_times_out_on_full_batch(int threshold)
+        [TestCase(32, true)]
+        [TestCase(1, true)]
+        [TestCase(0, true)]
+        [TestCase(32, false)]
+        [TestCase(1, false)]
+        [TestCase(0, false)]
+        public async Task Can_sync_with_peer_when_it_times_out_on_full_batch(int threshold, bool mergeDownloader)
         {
             Context ctx = new();
-            BlockDownloader downloader = CreateBlockDownloader(ctx);
+            BlockDownloader downloader = mergeDownloader ? CreateMergeBlockDownloader(ctx) : CreateBlockDownloader(ctx);
 
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())

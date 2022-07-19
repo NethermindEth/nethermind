@@ -51,7 +51,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly ISyncProgressResolver _syncProgressResolver;
-        private int _sinceLastTimeout;
 
         public MergeBlockDownloader(
             IPoSSwitcher posSwitcher,
