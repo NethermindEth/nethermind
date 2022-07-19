@@ -485,18 +485,15 @@ namespace Nethermind.Trie.Test
                 .CreateAccount(3)
                 .SetStorage(3, 1, 999)
                 .Commit()
-                .Commit()
                 .SaveBranchingPoint("main")
 
                 // We need this to get persisted
-                // Storage is not set here, but commit set will commit this instead of block 3 in main as it appear later
+                // Storage is not set here, but commit set will commit this instead of previous block 3
                 .RestoreBranchingPoint("revert_main")
-                .Commit()
                 .SetManyAccountWithSameBalance(100, 20, 1)
                 .Commit()
 
                 .RestoreBranchingPoint("main")
-                // But not this. Only prune cache for this
                 .Commit()
                 .Commit()
                 .Commit()
@@ -505,27 +502,33 @@ namespace Nethermind.Trie.Test
                 // First commit it should prune and persist alternate block 3, memory usage should go down from 16k to 1.2k
                 .Commit()
 
-                // After this, we need to slowly add node that can be cache-pruned, but does not require persist, so
-                // same account different balance. Each update of 2 account, add 1.5k of memory. But it need to keep
-                // at least 3 level of block reorg worth of nodes.
                 .SetManyAccountWithSameBalance(100, 2, 1)
                 .Commit()
+                .VerifyStorageValue(3, 1, 999)
                 .SetManyAccountWithSameBalance(100, 2, 2)
                 .Commit()
+                .VerifyStorageValue(3, 1, 999)
                 .SetManyAccountWithSameBalance(100, 2, 3)
                 .Commit()
+                .VerifyStorageValue(3, 1, 999)
                 .SetManyAccountWithSameBalance(100, 2, 4)
                 .Commit()
+                .VerifyStorageValue(3, 1, 999)
                 .SetManyAccountWithSameBalance(100, 2, 5)
                 .Commit()
+                .VerifyStorageValue(3, 1, 999)
                 .SetManyAccountWithSameBalance(100, 2, 6)
                 .Commit()
+                .VerifyStorageValue(3, 1, 999)
                 .SetManyAccountWithSameBalance(100, 2, 7)
                 .Commit()
+                .VerifyStorageValue(3, 1, 999)
                 .SetManyAccountWithSameBalance(100, 2, 8)
                 .Commit()
+                .VerifyStorageValue(3, 1, 999)
                 .SetManyAccountWithSameBalance(100, 2, 9)
                 .Commit()
+                .VerifyStorageValue(3, 1, 999)
 
                 // Although the committed set is different, later commit set still refer to the storage root hash.
                 // When later set is committed, the storage root hash will be committed also, unless the alternate chain
@@ -535,7 +538,7 @@ namespace Nethermind.Trie.Test
         }
 
         [Test]
-        public void Persist_alternate_commitset_at_least_2_consecutive_sidechain()
+        public void Persist_alternate_commitset_of_length_2()
         {
             Reorganization.MaxDepth = 3;
 
@@ -546,26 +549,75 @@ namespace Nethermind.Trie.Test
                 .Commit()
 
                 .SaveBranchingPoint("revert_main")
+
+                // Block 3
                 .CreateAccount(3)
                 .SetStorage(3, 1, 999)
                 .Commit()
+
+                // Block 4
                 .Commit()
                 .SaveBranchingPoint("main")
 
-                // We need this to get persisted
-                // Storage is not set here, but commit set will commit this instead of block 3 in main as it appear later
-                .RestoreBranchingPoint("revert_main")
+                    // Block 3 - 2
+                    .RestoreBranchingPoint("revert_main")
+                    .Commit()
+
+                    // Block 4 - 2
+                    .SetManyAccountWithSameBalance(100, 20, 1)
+                    .Commit()
+                    .RestoreBranchingPoint("main")
+
                 .Commit()
-                .SetManyAccountWithSameBalance(100, 20, 1)
+                .Commit()
                 .Commit()
 
-                .RestoreBranchingPoint("main")
-                // But not this. Only prune cache for this
-                .Commit()
-                .Commit()
+                .TurnOnPrune()
                 .Commit()
 
-                .SetPruningMemoryLimit(10000)
+                .VerifyStorageValue(3, 1, 999);
+        }
+
+        [Test]
+        public void Persist_with_2_alternate_branch_consecutive_of_each_other()
+        {
+            Reorganization.MaxDepth = 3;
+
+            PruningContext.InMemory
+                .SetAccountBalance(1, 100)
+                .Commit()
+                .SetAccountBalance(2, 10)
+                .Commit()
+
+                .SaveBranchingPoint("revert_main")
+
+                // Block 3
+                .CreateAccount(3)
+                .SetStorage(3, 1, 999)
+                .Commit()
+                .SaveBranchingPoint("main")
+
+                    // Block 3 - 2
+                    .RestoreBranchingPoint("revert_main")
+                    .Commit()
+
+                    .RestoreBranchingPoint("main")
+
+                // Block 4
+                .SaveBranchingPoint("revert_main")
+                .Commit()
+                .SaveBranchingPoint("main")
+
+                    .RestoreBranchingPoint("revert_main") // Go back to block 3
+                    // Block 4 - 2
+                    .SetStorage(3, 1, 1)
+                    .Commit()
+                    .RestoreBranchingPoint("main") // Go back to block 4 on main
+
+                .TurnOnPrune()
+                .Commit()
+                .Commit()
+                .Commit()
                 .Commit()
 
                 .VerifyStorageValue(3, 1, 999);
