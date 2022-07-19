@@ -427,7 +427,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         candidateSets.Add(frontSet);
                     }
-                    else if (candidateSets.Count == 0 || candidateSets[0].BlockNumber > frontSet.BlockNumber)
+                    else if (candidateSets.Count == 0 || frontSet.BlockNumber > candidateSets[0].BlockNumber)
                     {
                         candidateSets = new();
                         candidateSets.Add(frontSet);
