@@ -146,6 +146,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.GetOrCalculateHash());
             if (!parentProcessed)
             {
+                if (!_blockValidator.ValidateSuggestedBlock(block))
+                {
+                    if (_logger.IsInfo) _logger.Info($"Rejecting invalid block received during the sync, block: {block}");
+                    return NewPayloadV1Result.Invalid(null);
+                }
+
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
                 _blockTree.Insert(block, true, insertOptions);
                 if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
