@@ -31,13 +31,14 @@ public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageS
     public void Serialize(IByteBuffer byteBuffer, EnrRequestMsg msg)
     {
         int length = GetLength(msg, out int contentLength);
-        byteBuffer.EnsureWritable(length);
+
 
         RlpStream stream = new(length);
         stream.StartSequence(contentLength);
         stream.Encode(msg.ExpirationTime);
 
         byte[] serializedMsg = Serialize((byte) msg.MsgType, stream.Data);
+        byteBuffer.EnsureWritable(serializedMsg.Length);
         byteBuffer.WriteBytes(serializedMsg);
     }
 
@@ -55,7 +56,7 @@ public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageS
 
     private int GetLength(EnrRequestMsg message, out int contentLength)
     {
-        contentLength = Rlp.LengthOf((byte)message.ExpirationTime);
+        contentLength = Rlp.LengthOf(message.ExpirationTime);
         return Rlp.LengthOfSequence(contentLength);
     }
 }
