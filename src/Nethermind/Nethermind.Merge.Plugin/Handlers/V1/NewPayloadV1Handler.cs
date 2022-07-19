@@ -149,7 +149,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
 
                 if (_blockCacheService.ProcessDestination != null && _blockCacheService.ProcessDestination == block.ParentHash)
+                {
                     insertOptions |= BlockTreeInsertOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
+                    _blockCacheService.ProcessDestination = block.Hash;
+                }
 
                 _blockTree.Insert(block, true, insertOptions);
 
