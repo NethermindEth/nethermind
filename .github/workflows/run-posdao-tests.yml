@@ -66,6 +66,7 @@ jobs:
       if: cancelled()
       run: cd posdao-test-setup && bash scripts/collect-logs
     - name: Move logs to different dir
+      if: always()
       run: mkdir posdao-logs && cp posdao-test-setup/posdao-logs/latest/* posdao-logs && ls posdao-logs
     - name: Upload posdao logs
       if: always()
