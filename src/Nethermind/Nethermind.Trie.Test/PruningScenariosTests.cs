@@ -487,13 +487,13 @@ namespace Nethermind.Trie.Test
                 .Commit()
                 .SaveBranchingPoint("main")
 
-                // We need this to get persisted
-                // Storage is not set here, but commit set will commit this instead of previous block 3
-                .RestoreBranchingPoint("revert_main")
-                .SetManyAccountWithSameBalance(100, 20, 1)
-                .Commit()
+                    // We need this to get persisted
+                    // Storage is not set here, but commit set will commit this instead of previous block 3
+                    .RestoreBranchingPoint("revert_main")
+                    .SetManyAccountWithSameBalance(100, 20, 1)
+                    .Commit()
+                    .RestoreBranchingPoint("main")
 
-                .RestoreBranchingPoint("main")
                 .Commit()
                 .Commit()
                 .Commit()
@@ -528,17 +528,14 @@ namespace Nethermind.Trie.Test
                 .VerifyStorageValue(3, 1, 999)
                 .SetManyAccountWithSameBalance(100, 2, 9)
                 .Commit()
-                .VerifyStorageValue(3, 1, 999)
 
-                // Although the committed set is different, later commit set still refer to the storage root hash.
-                // When later set is committed, the storage root hash will be committed also, unless the alternate chain
-                // is longer than reorg depth, in which case, we have two parallel branch of length > reorg depth, which
-                // is not supported.
+                // Storage root actually never got pruned even-though another parallel branch get persisted. This
+                // is because the condition `LastSeen < LastPersistedBlock` never turn to true.
                 .VerifyStorageValue(3, 1, 999);
         }
 
         [Test]
-        public void Persist_alternate_commitset_of_length_2()
+        public void Persist_alternate_branch_commitset_of_length_2()
         {
             Reorganization.MaxDepth = 3;
 
