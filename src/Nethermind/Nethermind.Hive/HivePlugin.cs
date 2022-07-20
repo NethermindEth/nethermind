@@ -69,9 +69,9 @@ namespace Nethermind.Hive
             {
                 if (_api.BlockTree == null) throw new ArgumentNullException(nameof(_api.BlockTree));
                 if (_api.BlockProcessingQueue == null) throw new ArgumentNullException(nameof(_api.BlockProcessingQueue));
-                if (_api.ReceiptStorage == null) throw new ArgumentNullException(nameof(_api.ReceiptStorage));
-                if (_api.SpecProvider == null) throw new ArgumentNullException(nameof(_api.SpecProvider));
-                if (_api.DbProvider == null) throw new ArgumentNullException(nameof(_api.DbProvider));
+                if (_api.ConfigProvider == null) throw new ArgumentNullException(nameof(_api.ConfigProvider));
+                if (_api.LogManager == null) throw new ArgumentNullException(nameof(_api.LogManager));
+                if (_api.FileSystem == null) throw new ArgumentNullException(nameof(_api.FileSystem));
                 if (_api.BlockValidator == null) throw new ArgumentNullException(nameof(_api.BlockValidator));
 
                 HiveRunner hiveRunner = new(
