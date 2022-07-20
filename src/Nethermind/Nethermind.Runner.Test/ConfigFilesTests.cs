@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -82,7 +82,7 @@ namespace Nethermind.Runner.Test
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.SynchronizationEnabled, isSyncEnabled);
         }
-        
+
         [TestCase("archive", true)]
         [TestCase("fast", true)]
         [TestCase("spaceneth", false)]
@@ -260,7 +260,8 @@ namespace Nethermind.Runner.Test
         [TestCase("baseline", true)]
         [TestCase("spaceneth", true)]
         [TestCase("ropsten", true)]
-        [TestCase("^spaceneth ^baseline ^ropsten", false)]
+        [TestCase("goerli", true)]
+        [TestCase("^spaceneth ^baseline ^ropsten ^goerli", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -299,8 +300,8 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
-        [TestCase("^aura ^ropsten ^sepolia", false)]
-        [TestCase("aura ^archive ropsten sepolia", true)]
+        [TestCase("^aura ^ropsten ^sepolia ^goerli", false)]
+        [TestCase("aura ^archive ropsten sepolia goerli", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
         {
             Test<ISyncConfig, long?>(configWildcard, c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
@@ -319,7 +320,7 @@ namespace Nethermind.Runner.Test
             Test<IBloomConfig, bool>(configWildcard, c => c.Migration, false);
             Test<IBloomConfig, bool>(configWildcard, c => c.MigrationStatistics, false);
         }
-        
+
         [TestCase("^mainnet", 0)]
         [TestCase("mainnet fast", 11052984)]
         public void Barriers_defaults_are_correct(string configWildcard, long barrier)
@@ -414,7 +415,7 @@ namespace Nethermind.Runner.Test
         {
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
         }
-        
+
         [TestCase("^mainnet ^goerli", false)]
         [TestCase("^pruned ^goerli.cfg ^mainnet.cfg", false)]
         [TestCase("mainnet.cfg", true)]
@@ -463,7 +464,7 @@ namespace Nethermind.Runner.Test
                     (uint)Environment.ProcessorCount);
             }
         }
-            
+
         protected override IEnumerable<string> Configs { get; } = new HashSet<string>
         {
             "ropsten_archive.cfg",
