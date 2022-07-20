@@ -412,28 +412,42 @@ namespace Nethermind.Trie.Pruning
             {
                 if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
 
-                BlockCommitSet? candidateSet = null;
-                while (_commitSetQueue.TryPeek(out BlockCommitSet? frontSet))
+                List<BlockCommitSet> toAddBack = new();
+
+                List<BlockCommitSet> candidateSets = new();
+                while (_commitSetQueue.TryDequeue(out BlockCommitSet? frontSet))
                 {
                     if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - Reorganization.MaxDepth)
                     {
-                        break;
+                        toAddBack.Add(frontSet);
+                        continue;
                     }
 
-                    if (_commitSetQueue.TryDequeue(out frontSet))
+                    if (candidateSets.Count > 0 && candidateSets[0].BlockNumber == frontSet.BlockNumber)
                     {
-                        candidateSet = frontSet;
+                        candidateSets.Add(frontSet);
                     }
-                    else
+                    else if (candidateSets.Count == 0 || frontSet.BlockNumber > candidateSets[0].BlockNumber)
                     {
-                        break;
+                        candidateSets = new();
+                        candidateSets.Add(frontSet);
                     }
                 }
 
-                if (candidateSet is not null)
+                // TODO: Find a way to not have to re-add everything
+                foreach (BlockCommitSet blockCommitSet in toAddBack)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {candidateSet.BlockNumber}");
-                    Persist(candidateSet);
+                    _commitSetQueue.Enqueue(blockCommitSet);
+                }
+
+                foreach (BlockCommitSet blockCommitSet in candidateSets)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
+                    Persist(blockCommitSet);
+                }
+
+                if (candidateSets.Count > 0)
+                {
                     return true;
                 }
 

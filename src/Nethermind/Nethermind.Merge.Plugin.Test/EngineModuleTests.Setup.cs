@@ -126,9 +126,9 @@ namespace Nethermind.Merge.Plugin.Test
             public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
             {
                 _blockProcessingThrottle = delayMs;
-                if (BlockProcessor is ThrottledBlockProcessor throttledBlockProcessor)
+                if (BlockProcessor is TestBlockProcessorInterceptor testBlockProcessor)
                 {
-                    throttledBlockProcessor.DelayMs = delayMs;
+                    testBlockProcessor.DelayMs = delayMs;
                 }
                 return this;
             }
@@ -205,7 +205,7 @@ namespace Nethermind.Merge.Plugin.Test
                     NullWitnessCollector.Instance,
                     LogManager);
 
-                return new ThrottledBlockProcessor(processor, _blockProcessingThrottle);
+                return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
             }
 
             private IBlockValidator CreateBlockValidator()
@@ -236,12 +236,13 @@ namespace Nethermind.Merge.Plugin.Test
         }
     }
 
-    internal class ThrottledBlockProcessor: IBlockProcessor
+    internal class TestBlockProcessorInterceptor: IBlockProcessor
     {
         private readonly IBlockProcessor _blockProcessorImplementation;
         public int DelayMs { get; set; }
+        public Exception? ExceptionToThrow { get; set; }
 
-        public ThrottledBlockProcessor(IBlockProcessor baseBlockProcessor, int delayMs)
+        public TestBlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, int delayMs)
         {
             _blockProcessorImplementation = baseBlockProcessor;
             DelayMs = delayMs;
@@ -253,6 +254,11 @@ namespace Nethermind.Merge.Plugin.Test
             if (DelayMs > 0)
             {
                 Thread.Sleep(DelayMs);
+            }
+
+            if (ExceptionToThrow != null)
+            {
+                throw ExceptionToThrow;
             }
 
             return _blockProcessorImplementation.Process(newBranchStateRoot, suggestedBlocks, processingOptions, blockTracer);

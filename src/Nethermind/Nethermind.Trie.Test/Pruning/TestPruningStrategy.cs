@@ -21,16 +21,24 @@ namespace Nethermind.Trie.Test.Pruning
     public class TestPruningStrategy : IPruningStrategy
     {
         private readonly bool _pruningEnabled;
-        private readonly bool _shouldPrune;
         public TestPruningStrategy(bool pruningEnabled, bool shouldPrune = false)
         {
             _pruningEnabled = pruningEnabled;
-            _shouldPrune = shouldPrune;
+            ShouldPruneEnabled = shouldPrune;
         }
 
         public bool PruningEnabled => _pruningEnabled;
         public bool ShouldPruneEnabled { get; set; }
 
-        public bool ShouldPrune(in long currentMemory) => ShouldPruneEnabled || (_pruningEnabled && _shouldPrune);
+        public int? WithMemoryLimit { get; set; }
+
+        public bool ShouldPrune(in long currentMemory)
+        {
+            if (!_pruningEnabled) return false;
+            if (ShouldPruneEnabled) return true;
+            if (WithMemoryLimit != null && currentMemory > WithMemoryLimit) return true;
+
+            return false;
+        }
     }
 }
