@@ -1,21 +1,22 @@
 //  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Blockchain.Find;
@@ -92,10 +93,14 @@ namespace Nethermind.HealthChecks
                 }
                 CheckPeers(messages, netPeerCount);
 
-                healthy = !syncingResult.IsSyncing & CheckClAlive(messages,
-                    _blockFinder.Head!.Difficulty == UInt256.Zero
-                        ? "engine_forkchoiceUpdatedV1"
-                        : "engine_exchangeTransitionConfigurationV1");
+                bool clAlive = CheckClAlive();
+
+                if (!clAlive)
+                {
+                    AddClUnavailableMessage(messages);
+                }
+
+                healthy = !syncingResult.IsSyncing & clAlive;
             }
             else
             {
@@ -141,34 +146,47 @@ namespace Nethermind.HealthChecks
                    _healthHintService.MaxSecondsIntervalForProducingBlocksHint();
         }
 
-        private bool _previousClCheckResult = true;
-        private DateTime _previousClCheckTime = DateTime.MinValue;
-        private int _lastMethodCallSuccesses;
+        public bool CheckClAlive()
+        {
+            if (_blockFinder.Head!.Difficulty == UInt256.Zero)
+            {
+                return CheckMethodInvoked("engine_forkchoiceUpdatedV1") || CheckMethodInvoked("engine_newPayloadV1");
+            }
+            return CheckMethodInvoked("engine_exchangeTransitionConfigurationV1");
+        }
 
-        private bool CheckClAlive(ICollection<(string Description, string LongDescription)> messages, string methodName)
+        private readonly ConcurrentDictionary<string, bool> _previousMethodCheckResult = new();
+        private DateTime _previousMethodCheckTime = DateTime.MinValue;
+        private readonly ConcurrentDictionary<string, int> _previousMethodCallSuccesses = new();
+
+        private bool CheckMethodInvoked(string methodName)
         {
             var now = _api.Timestamper.UtcNow;
-            var forkChoiceUpdatedStats = _api.JsonRpcLocalStats!.GetMethodStats(methodName);
+            var methodCallSuccesses = _api.JsonRpcLocalStats!.GetMethodStats(methodName);
 
-            if (forkChoiceUpdatedStats.Successes == _lastMethodCallSuccesses)
+            var previousCheckResult = _previousMethodCheckResult.GetOrAdd(methodName, true);
+            var previousSuccesses = _previousMethodCallSuccesses.GetOrAdd(methodName, 0);
+
+            if (_previousMethodCheckTime == DateTime.MinValue)
             {
-                int diff = (now - _previousClCheckTime).Seconds;
-                if (diff > _healthChecksConfig.MaxIntervalClRequestTime)
-                {
-                    AddClUnavailableMessage(messages);
-                    _previousClCheckResult = false;
-                    return false;
-                }
-                if (!_previousClCheckResult)
-                {
-                    AddClUnavailableMessage(messages);
-                }
-                return _previousClCheckResult;
+                _previousMethodCheckTime = now;
             }
 
-            _previousClCheckTime = now;
-            _previousClCheckResult = true;
-            _lastMethodCallSuccesses = forkChoiceUpdatedStats.Successes;
+            if (methodCallSuccesses.Successes == previousSuccesses)
+            {
+                int diff = (int)(Math.Floor((now - _previousMethodCheckTime).TotalSeconds));
+                if (diff > _healthChecksConfig.MaxIntervalClRequestTime)
+                {
+                    _previousMethodCheckResult[methodName] = false;
+                    return false;
+                }
+
+                return previousCheckResult;
+            }
+
+            _previousMethodCheckTime = now;
+            _previousMethodCheckResult[methodName] = true;
+            _previousMethodCallSuccesses[methodName] = methodCallSuccesses.Successes;
             return true;
         }
 

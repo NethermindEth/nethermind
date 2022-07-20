@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -36,6 +36,8 @@ namespace Nethermind.HealthChecks
         private INodeHealthService _nodeHealthService;
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
+        private IInitConfig _initConfig;
+        private IMergeConfig _mergeConfig;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
@@ -50,6 +52,8 @@ namespace Nethermind.HealthChecks
             _api = api;
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
+            _initConfig = _api.Config<IInitConfig>();
+            _mergeConfig = _api.Config<IMergeConfig>();
 
             _logger = api.LogManager.GetClassLogger();
 
@@ -61,7 +65,7 @@ namespace Nethermind.HealthChecks
             service.AddHealthChecks()
                 .AddTypeActivatedCheck<NodeHealthCheck>(
                     "node-health",
-                    args: new object[] { _nodeHealthService, _api.LogManager });
+                    args: new object[] { _nodeHealthService, _mergeConfig, _api.LogManager });
             if (_healthChecksConfig.UIEnabled)
             {
                 service.AddHealthChecksUI(setup =>
@@ -100,13 +104,11 @@ namespace Nethermind.HealthChecks
 
         public Task InitRpcModules()
         {
+            _nodeHealthService = new NodeHealthService(_api.SyncServer, new ReadOnlyBlockTree(_api.BlockTree!),
+                _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService,
+                _api.EthSyncingInfo, _mergeConfig, _api, _initConfig.IsMining);
             if (_healthChecksConfig.Enabled)
             {
-                IInitConfig initConfig = _api.Config<IInitConfig>();
-                IMergeConfig mergeConfig = _api.Config<IMergeConfig>();
-                _nodeHealthService = new NodeHealthService(_api.SyncServer, new ReadOnlyBlockTree(_api.BlockTree),
-                    _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService,
-                    _api.EthSyncingInfo, mergeConfig, _api, initConfig.IsMining);
                 HealthRpcModule healthRpcModule = new(_nodeHealthService);
                 _api.RpcModuleProvider!.Register(new SingletonModulePool<IHealthRpcModule>(healthRpcModule, true));
                 if (_logger.IsInfo) _logger.Info("Health RPC Module has been enabled");
