@@ -1356,7 +1356,7 @@ namespace Nethermind.Blockchain
             // cleanup above processing destination
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
-            for (long j = clearBeaconMainChainStartPoint; j < blockInfos[^1].BlockNumber; --j)
+            for (long j = clearBeaconMainChainStartPoint; j > blockInfos[^1].BlockNumber; --j)
             {
                 ChainLevelInfo? level = LoadLevel(j);
                 if (level is not null)

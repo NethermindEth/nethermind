@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -321,8 +322,10 @@ public partial class EngineModuleTests
         }
     }
 
-    [Test]
-    public async Task should_reorg_during_the_sync()
+    [TestCase(4, 4)]
+    [TestCase(4, 6)] // reorged to higher chain
+    [TestCase(5, 3)] // reorged to lower chain
+    public async Task should_reorg_during_the_sync(int initialChainPayloadsCount, int reorgedChainPayloadCount, int? reorgToIndex = null)
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -345,79 +348,30 @@ public partial class EngineModuleTests
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        ExecutionPayloadV1[] requests = CreateBlockRequestBranch(startingNewPayload, Address.Zero, 4);
-        foreach (ExecutionPayloadV1 r in requests)
+        ExecutionPayloadV1[] initialBranchPayloads = CreateBlockRequestBranch(startingNewPayload, Address.Zero, initialChainPayloadsCount);
+        foreach (ExecutionPayloadV1 r in initialBranchPayloads)
         {
             await rpc.engine_newPayloadV1(r);
         }
 
-        ExecutionPayloadV1[] secondNewPayloads = CreateBlockRequestBranch(startingNewPayload, TestItem.AddressD, 4);
-        foreach (ExecutionPayloadV1 r in secondNewPayloads)
+        ExecutionPayloadV1[] newBranchPayloads = CreateBlockRequestBranch(startingNewPayload, TestItem.AddressD, reorgedChainPayloadCount);
+        foreach (ExecutionPayloadV1 r in newBranchPayloads)
         {
              await rpc.engine_newPayloadV1(r);
         }
 
-        Keccak lastHash = secondNewPayloads.Last().BlockHash!;
+        Keccak lastHash = newBranchPayloads[reorgToIndex ?? ^1].BlockHash!;
         ForkchoiceStateV1 forkchoiceStateV1Reorg = new(lastHash, lastHash, lastHash);
         await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1Reorg);
 
-        foreach (ExecutionPayloadV1 r in requests)
-        {
-            ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
-            lvl.Should().NotBeNull();
-            lvl!.BlockInfos.Length.Should().Be(2);
-            lvl!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
-            lvl!.BlockInfos[0].BlockHash.Should().Be(r.BlockHash!);
-            lvl!.BlockInfos[1].Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain);
-        }
-    }
-
-    [Test]
-    public async Task should_reorg_during_the_sync_to_higher_chain()
-    {
-        using MergeTestBlockchain chain = await CreateBlockChain();
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        Keccak? startingHead = chain.BlockTree.HeadHash;
-        BlockHeader parent = Build.A.BlockHeader
-            .WithNumber(1)
-            .WithHash(TestItem.KeccakA)
-            .WithNonce(0)
-            .WithDifficulty(0)
-            .TestObject;
-        Block block = Build.A.Block
-            .WithNumber(2)
-            .WithParent(parent)
-            .WithNonce(0)
-            .WithDifficulty(0)
-            .WithAuthor(Address.Zero)
-            .WithPostMergeFlag(true)
-            .TestObject;
-        ExecutionPayloadV1 startingNewPayload = new(block);
-        await rpc.engine_newPayloadV1(startingNewPayload);
-        ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
-        await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
-        ExecutionPayloadV1[] requests = CreateBlockRequestBranch(startingNewPayload, Address.Zero, 4);
-        foreach (ExecutionPayloadV1 r in requests)
-        {
-            await rpc.engine_newPayloadV1(r);
-        }
-
-        ExecutionPayloadV1[] secondNewPayloads = CreateBlockRequestBranch(startingNewPayload, TestItem.AddressD, 6);
-        foreach (ExecutionPayloadV1 r in secondNewPayloads)
-        {
-             await rpc.engine_newPayloadV1(r);
-        }
-
-        Keccak lastHash = secondNewPayloads.Last().BlockHash!;
-        ForkchoiceStateV1 forkchoiceStateV1Reorg = new(lastHash, lastHash, lastHash);
-        await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1Reorg);
-
-        foreach (ExecutionPayloadV1 r in secondNewPayloads)
+        IEnumerable<ExecutionPayloadV1> mainChainRequests = newBranchPayloads.Take(reorgToIndex ?? newBranchPayloads.Length);
+        ExecutionPayloadV1[] requestsToIterate = newBranchPayloads.Length >= initialBranchPayloads.Length ? newBranchPayloads : initialBranchPayloads;
+        foreach (ExecutionPayloadV1 r in requestsToIterate)
         {
             ChainLevelInfo? lvl = chain.BlockTree.FindLevel(r.BlockNumber);
             foreach (BlockInfo blockInfo in lvl!.BlockInfos)
             {
-                if (blockInfo.BlockHash == r.BlockHash)
+                if (mainChainRequests!.Any(x => x.BlockHash == blockInfo.BlockHash))
                     blockInfo.Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader | BlockMetadata.BeaconMainChain, $"BlockNumber {r.BlockNumber}");
                 else
                     blockInfo.Metadata.Should().Be(BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader, $"BlockNumber {r.BlockNumber}");
