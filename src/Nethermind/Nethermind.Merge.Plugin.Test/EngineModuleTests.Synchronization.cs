@@ -325,6 +325,10 @@ public partial class EngineModuleTests
     [TestCase(4, 4)]
     [TestCase(4, 6)] // reorged to higher chain
     [TestCase(5, 3)] // reorged to lower chain
+    [TestCase(7, 6, 4)]
+    [TestCase(2, 3)]
+    [TestCase(3, 2)]
+    [TestCase(4, 4, 1)]
     public async Task should_reorg_during_the_sync(int initialChainPayloadsCount, int reorgedChainPayloadCount, int? reorgToIndex = null)
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
@@ -364,7 +368,7 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1Reorg = new(lastHash, lastHash, lastHash);
         await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1Reorg);
 
-        IEnumerable<ExecutionPayloadV1> mainChainRequests = newBranchPayloads.Take(reorgToIndex ?? newBranchPayloads.Length);
+        IEnumerable<ExecutionPayloadV1> mainChainRequests = newBranchPayloads.Take(reorgToIndex + 1 ?? newBranchPayloads.Length);
         ExecutionPayloadV1[] requestsToIterate = newBranchPayloads.Length >= initialBranchPayloads.Length ? newBranchPayloads : initialBranchPayloads;
         foreach (ExecutionPayloadV1 r in requestsToIterate)
         {
