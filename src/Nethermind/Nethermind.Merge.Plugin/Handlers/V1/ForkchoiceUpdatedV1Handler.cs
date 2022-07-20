@@ -114,7 +114,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             BlockInfo blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
             if (!blockInfo.WasProcessed)
             {
-                if (!blockInfo.IsBeaconMainChain)
+                if (!blockInfo.IsBeaconMainChain && blockInfo.IsBeaconInfo)
                     ReorgBeaconChainDuringSync(newHeadBlock, blockInfo);
 
                 int processingQueueCount = _processingQueue.Count;

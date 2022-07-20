@@ -329,6 +329,9 @@ public partial class EngineModuleTests
     [TestCase(2, 3)]
     [TestCase(3, 2)]
     [TestCase(4, 4, 1)]
+    [TestCase(4, 3, 0)]
+    [TestCase(3, 3, 0)]
+    [TestCase(3, 4, 0)]
     public async Task should_reorg_during_the_sync(int initialChainPayloadsCount, int reorgedChainPayloadCount, int? reorgToIndex = null)
     {
         using MergeTestBlockchain chain = await CreateBlockChain();
