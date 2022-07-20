@@ -202,7 +202,7 @@ namespace Nethermind.Merge.Plugin
                     _invalidChainTracker,
                     _api.LogManager);
                 _api.HealthHintService =
-                    new MergeHealthHintService(_api.HealthHintService, _poSSwitcher);
+                    new MergeHealthHintService(_api.HealthHintService, _poSSwitcher, _mergeConfig);
                 _mergeBlockProductionPolicy = new MergeBlockProductionPolicy(_api.BlockProductionPolicy);
                 _api.BlockProductionPolicy = _mergeBlockProductionPolicy;
 
