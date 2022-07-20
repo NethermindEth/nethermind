@@ -569,6 +569,21 @@ namespace Nethermind.Merge.Plugin.Test
             chain.BlockFinder.SearchForBlock(new BlockParameter(getPayloadResult.BlockHash)).IsError.Should().BeTrue();
         }
 
+        [Test]
+        public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
+        {
+            using MergeTestBlockchain chain = await CreateBaseBlockChain(null, null)
+                .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+
+            ((TestBlockProcessorInterceptor)chain.BlockProcessor).ExceptionToThrow =
+                new Exception("unxpected exception");
+
+            ExecutionPayloadV1 executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+            ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
+            resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
+        }
+
 
         [TestCase(true)]
         [TestCase(false)]

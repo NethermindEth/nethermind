@@ -236,12 +236,17 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
 
+                    if (e.ProcessingResult == ProcessingResult.Exception)
+                    {
+                        blockProcessedTaskCompletionSource.SetException(new Exception("Block processing failed"));
+                        return;
+                    }
+
                     ValidationResult validationResult = e.ProcessingResult switch
                     {
                         ProcessingResult.Success => ValidationResult.Valid,
                         ProcessingResult.QueueException => ValidationResult.Syncing,
                         ProcessingResult.MissingBlock => ValidationResult.Syncing,
-                        ProcessingResult.Exception => ValidationResult.Invalid,
                         ProcessingResult.ProcessingError => ValidationResult.Invalid,
                         _ => ValidationResult.Syncing
                     };
@@ -262,52 +267,40 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
             try
             {
-                Task timeout = Task.Delay(Timeout);
-                ValueTask<AddBlockResult> addResult = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain);
-                await Task.WhenAny(timeout, addResult.AsTask());
-                if (addResult.IsCompletedSuccessfully)
-                {
-                    result = addResult.Result switch
-                    {
-                        AddBlockResult.InvalidBlock => ValidationResult.Invalid,
-                        AddBlockResult.AlreadyKnown => ValidationResult.AlreadyKnown,
-                        _ => null
-                    };
+                Task timeoutTask = Task.Delay(Timeout);
+                AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
+                    .AsTask().TimeoutOn(timeoutTask);
 
-                    validationMessage = addResult.Result switch
-                    {
-                        AddBlockResult.InvalidBlock => "Block couldn't be added to the tree.",
-                        AddBlockResult.AlreadyKnown => "Block was already known in the tree.",
-                        _ => null
-                    };
-
-                    if (!result.HasValue)
-                    {
-                        _processingQueue.Enqueue(block, _processingOptions);
-                        await Task.WhenAny(blockProcessed, timeout);
-                        if (blockProcessed.IsCompletedSuccessfully)
-                        {
-                            result = blockProcessed.Result;
-                        }
-                        else if (addResult.IsFaulted || addResult.IsCanceled)
-                        {
-                            result = ValidationResult.Invalid;
-                        }
-                        else // timeout
-                        {
-                            result = ValidationResult.Syncing;
-                        }
-                    }
-                }
-                else if (addResult.IsFaulted || addResult.IsCanceled)
+                result = addResult switch
                 {
-                    result = ValidationResult.Invalid;
+                    AddBlockResult.InvalidBlock => ValidationResult.Invalid,
+                    AddBlockResult.AlreadyKnown => ValidationResult.AlreadyKnown,
+                    _ => null
+                };
+
+                validationMessage = addResult switch
+                {
+                    AddBlockResult.InvalidBlock => "Block couldn't be added to the tree.",
+                    AddBlockResult.AlreadyKnown => "Block was already known in the tree.",
+                    _ => null
+                };
+
+                if (!result.HasValue)
+                {
+                    _processingQueue.Enqueue(block, _processingOptions);
+
+                    result = await blockProcessed.TimeoutOn(timeoutTask);
                 }
 
                 if ((result & ValidationResult.Valid) == 0 && (result & ValidationResult.Syncing) == 0)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Block {block.ToString(Block.Format.FullHashAndNumber)} cannot be processed and wont be accepted to the tree.");
                 }
+            }
+            catch (TimeoutException)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block {block.ToString(Block.Format.FullHashAndNumber)} timed out when processing. Assume Syncing.");
+                result = ValidationResult.Syncing;
             }
             finally
             {
