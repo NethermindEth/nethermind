@@ -330,7 +330,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
         private void ReorgBeaconChainDuringSync(Block newHeadBlock, BlockInfo newHeadBlockInfo)
         {
-            if (_logger.IsInfo) _logger.Info("BeaconChain reorged during the sync");
+            if (_logger.IsInfo) _logger.Info("BeaconChain reorged during the sync or rebuilding cache after restart");
             BlockInfo[] beaconMainChainBranch = GetBeaconChainBranch(newHeadBlock, newHeadBlockInfo);
             _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, Math.Max(_blockCacheService.ProcessDestination?.Number ?? 0, newHeadBlock.Number));
             _blockCacheService.ProcessDestination = newHeadBlock.Header;
@@ -353,7 +353,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 BlockInfo predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
                 predecessorInfo.BlockNumber = predecessor.Number;
                 if (predecessorInfo.IsBeaconMainChain) break;
-                if (_logger.IsInfo) _logger.Info($"Reorged to beacon block ({predecessorInfo.BlockNumber}) {predecessorInfo.BlockHash}");
+                if (_logger.IsInfo) _logger.Info($"Reorged to beacon block ({predecessorInfo.BlockNumber}) {predecessorInfo.BlockHash} or cache rebuilt after restart");
                 blocksList.Add(predecessorInfo);
             }
 

@@ -1353,7 +1353,6 @@ namespace Nethermind.Blockchain
             if (blockInfos == null || blockInfos.Length == 0)
                 return;
 
-            // cleanup above processing destination
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
             for (long j = clearBeaconMainChainStartPoint; j > blockInfos[^1].BlockNumber; --j)
