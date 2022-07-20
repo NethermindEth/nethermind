@@ -86,6 +86,7 @@ namespace Nethermind.HealthChecks.Test
             MethodStats methodStats = new ();
             methodStats.Successes = 0;
             api.JsonRpcLocalStats!.GetMethodStats("engine_forkchoiceUpdatedV1").Returns(methodStats);
+            api.JsonRpcLocalStats!.GetMethodStats("engine_newPayloadV1").Returns(methodStats);
             syncServer.GetPeerCount().Returns(test.PeerCount);
 
             BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
@@ -264,7 +265,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 10,
                     ExpectedHealthy = false,
                     ExpectedMessage = "Fully synced. Peers: 10. No messages from CL.",
-                    TimeSpanSeconds = 21,
+                    TimeSpanSeconds = 71,
                     ForkchoiceUpdatedCalls = 0,
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10. No new messages from CL after last check."
                 };
@@ -286,7 +287,7 @@ namespace Nethermind.HealthChecks.Test
                     PeerCount = 10,
                     ExpectedHealthy = true,
                     ExpectedMessage = "Fully synced. Peers: 10.",
-                    TimeSpanSeconds = 21,
+                    TimeSpanSeconds = 71,
                     ForkchoiceUpdatedCalls = 1,
                     ExpectedLongMessage = "The node is now fully synced with a network. Peers: 10."
                 };
