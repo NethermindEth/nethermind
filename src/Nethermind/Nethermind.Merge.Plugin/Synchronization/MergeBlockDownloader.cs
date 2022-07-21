@@ -135,7 +135,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (headers == null || headers.Length == 0)
                     break;
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers, downloadReceipts,
-                    _receiptsRecovery);
+                    _receiptsRecovery, true);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
                 await RequestBodies(bestPeer, cancellation, context);

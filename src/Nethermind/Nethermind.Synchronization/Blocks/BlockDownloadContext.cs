@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly bool _downloadReceipts;
         private readonly IReceiptsRecovery _receiptsRecovery;
 
-        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader?[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
+        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader?[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery, bool skipFirstHeader = true)
         {
             _indexMapping = new Dictionary<int, int>();
             _downloadReceipts = downloadReceipts;
@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.Blocks
             _specProvider = specProvider;
             _syncPeer = syncPeer;
 
-            Blocks = new Block[headers.Length - 1];
+            Blocks = new Block[skipFirstHeader ? headers.Length - 1 : headers.Length];
             NonEmptyBlockHashes = new List<Keccak>();
 
             if (_downloadReceipts)
@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             int currentBodyIndex = 0;
-            for (int i = 1; i < headers.Length; i++)
+            for (int i = skipFirstHeader ? 1 : 0; i < headers.Length; i++)
             {
                 BlockHeader? header = headers[i];
                 if (header?.Hash == null)
