@@ -16,7 +16,6 @@
 //
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -25,14 +24,10 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
-using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
