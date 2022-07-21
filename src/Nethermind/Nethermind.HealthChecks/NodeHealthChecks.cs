@@ -20,24 +20,24 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Nethermind.Api;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
 
 namespace Nethermind.HealthChecks
 {
     public class NodeHealthCheck : IHealthCheck
     {
-        private readonly IMergeConfig _mergeConfig;
+        private readonly INethermindApi _api;
         private readonly INodeHealthService _nodeHealthService;
         private readonly ILogger _logger;
 
         public NodeHealthCheck(
             INodeHealthService nodeHealthService,
-            IMergeConfig mergeConfig,
+            INethermindApi api,
             ILogManager logManager)
         {
             _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
-            _mergeConfig = mergeConfig ?? throw new ArgumentNullException(nameof(mergeConfig));
+            _api = api;
             _logger = logManager.GetClassLogger();
         }
 
@@ -45,7 +45,7 @@ namespace Nethermind.HealthChecks
         {
             try
             {
-                if (_mergeConfig.Enabled && !_nodeHealthService.CheckClAlive())
+                if (_api.SpecProvider!.TerminalTotalDifficulty != null && !_nodeHealthService.CheckClAlive())
                 {
                     if (_logger.IsWarn)
                         _logger.Warn(

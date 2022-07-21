@@ -24,7 +24,6 @@ using Nethermind.Blockchain;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin;
 using Nethermind.Monitoring.Config;
 
 namespace Nethermind.HealthChecks
@@ -37,7 +36,6 @@ namespace Nethermind.HealthChecks
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
         private IInitConfig _initConfig;
-        private IMergeConfig _mergeConfig;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
@@ -53,7 +51,6 @@ namespace Nethermind.HealthChecks
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             _initConfig = _api.Config<IInitConfig>();
-            _mergeConfig = _api.Config<IMergeConfig>();
 
             _logger = api.LogManager.GetClassLogger();
 
@@ -65,7 +62,7 @@ namespace Nethermind.HealthChecks
             service.AddHealthChecks()
                 .AddTypeActivatedCheck<NodeHealthCheck>(
                     "node-health",
-                    args: new object[] { _nodeHealthService, _mergeConfig, _api.LogManager });
+                    args: new object[] { _nodeHealthService, _api, _api.LogManager });
             if (_healthChecksConfig.UIEnabled)
             {
                 service.AddHealthChecksUI(setup =>
@@ -106,7 +103,7 @@ namespace Nethermind.HealthChecks
         {
             _nodeHealthService = new NodeHealthService(_api.SyncServer, new ReadOnlyBlockTree(_api.BlockTree!),
                 _api.BlockchainProcessor, _api.BlockProducer, _healthChecksConfig, _api.HealthHintService,
-                _api.EthSyncingInfo, _mergeConfig, _api, _initConfig.IsMining);
+                _api.EthSyncingInfo, _api, _initConfig.IsMining);
             if (_healthChecksConfig.Enabled)
             {
                 HealthRpcModule healthRpcModule = new(_nodeHealthService);

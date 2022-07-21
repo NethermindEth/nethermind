@@ -19,16 +19,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Api;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
-using Nethermind.Merge.Plugin;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -45,6 +45,9 @@ namespace Nethermind.HealthChecks.Test
             IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
             IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
             IHealthHintService healthHintService = Substitute.For<IHealthHintService>();
+            INethermindApi api = Substitute.For<INethermindApi>();
+            api.SpecProvider = Substitute.For<ISpecProvider>();
+
             blockchainProcessor.IsProcessingBlocks(Arg.Any<ulong?>()).Returns(test.IsProcessingBlocks);
             blockProducer.IsProducingBlocks(Arg.Any<ulong?>()).Returns(test.IsProducingBlocks);
             syncServer.GetPeerCount().Returns(test.PeerCount);
@@ -63,7 +66,7 @@ namespace Nethermind.HealthChecks.Test
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),
-                    healthHintService, ethSyncingInfo, new MergeConfig {Enabled = false}, null, test.IsMining);
+                    healthHintService, ethSyncingInfo, api, test.IsMining);
             CheckHealthResult result = nodeHealthService.CheckHealth();
             Assert.AreEqual(test.ExpectedHealthy, result.Healthy);
             Assert.AreEqual(test.ExpectedMessage, FormatMessages(result.Messages.Select(x => x.Message)));
@@ -89,6 +92,9 @@ namespace Nethermind.HealthChecks.Test
             api.JsonRpcLocalStats!.GetMethodStats("engine_newPayloadV1").Returns(methodStats);
             syncServer.GetPeerCount().Returns(test.PeerCount);
 
+            api.SpecProvider = Substitute.For<ISpecProvider>();
+            api.SpecProvider.TerminalTotalDifficulty.Returns(UInt256.Zero);
+
             BlockHeaderBuilder GetBlockHeader(int blockNumber) => Build.A.BlockHeader.WithNumber(blockNumber);
 
             blockFinder.Head.Returns(new Block(GetBlockHeader(4).WithDifficulty(0).TestObject));
@@ -104,7 +110,7 @@ namespace Nethermind.HealthChecks.Test
             IEthSyncingInfo ethSyncingInfo = new EthSyncingInfo(blockFinder);
             NodeHealthService nodeHealthService =
                 new(syncServer, blockFinder, blockchainProcessor, blockProducer, new HealthChecksConfig(),
-                    healthHintService, ethSyncingInfo, new MergeConfig {Enabled = true}, api, false);
+                    healthHintService, ethSyncingInfo, api, false);
             nodeHealthService.CheckHealth();
 
             timestamper.Add(TimeSpan.FromSeconds(test.TimeSpanSeconds));

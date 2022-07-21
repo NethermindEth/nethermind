@@ -25,7 +25,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin;
 using Nethermind.Synchronization;
 
 namespace Nethermind.HealthChecks
@@ -46,7 +45,6 @@ namespace Nethermind.HealthChecks
         private readonly IHealthHintService _healthHintService;
         private readonly IEthSyncingInfo _ethSyncingInfo;
         private readonly IBlockFinder _blockFinder;
-        private readonly IMergeConfig _mergeConfig;
         private readonly INethermindApi _api;
         private readonly bool _isMining;
 
@@ -58,7 +56,6 @@ namespace Nethermind.HealthChecks
             IHealthChecksConfig healthChecksConfig,
             IHealthHintService healthHintService,
             IEthSyncingInfo ethSyncingInfo,
-            IMergeConfig mergeConfig,
             INethermindApi api,
             bool isMining)
         {
@@ -70,7 +67,6 @@ namespace Nethermind.HealthChecks
             _blockchainProcessor = blockchainProcessor;
             _blockProducer = blockProducer;
             _ethSyncingInfo = ethSyncingInfo;
-            _mergeConfig = mergeConfig;
             _api = api;
         }
 
@@ -81,7 +77,7 @@ namespace Nethermind.HealthChecks
             long netPeerCount = _syncServer.GetPeerCount();
             SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
 
-            if (_mergeConfig.Enabled)
+            if (_api.SpecProvider!.TerminalTotalDifficulty != null)
             {
                 if (syncingResult.IsSyncing)
                 {
