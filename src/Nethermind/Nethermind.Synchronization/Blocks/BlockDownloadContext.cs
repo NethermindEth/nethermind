@@ -51,24 +51,52 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             int currentBodyIndex = 0;
-            for (int i = skipFirstHeader ? 1 : 0; i < headers.Length; i++)
+            if (skipFirstHeader)
             {
-                BlockHeader? header = headers[i];
-                if (header?.Hash == null)
+                for (int i = 1; i < headers.Length; i++)
                 {
-                    break;
-                }
+                    BlockHeader? header = headers[i];
+                    if (header?.Hash == null)
+                    {
+                        break;
+                    }
 
-                if (header.HasBody)
-                {
-                    Blocks[i - 1] = new Block(header);
-                    _indexMapping.Add(currentBodyIndex, i - 1);
-                    currentBodyIndex++;
-                    NonEmptyBlockHashes.Add(header.Hash);
+                    if (header.HasBody)
+                    {
+                        Blocks[i - 1] = new Block(header);
+                        _indexMapping.Add(currentBodyIndex, i - 1);
+                        currentBodyIndex++;
+                        NonEmptyBlockHashes.Add(header.Hash);
+                    }
+                    else
+                    {
+                        Blocks[i - 1] = new Block(header, BlockBody.Empty);
+                    }
+
                 }
-                else
+            }
+            else
+            {
+                for (int i = 0; i < headers.Length; i++)
                 {
-                    Blocks[i - 1] = new Block(header, BlockBody.Empty);
+                    BlockHeader? header = headers[i];
+                    if (header?.Hash == null)
+                    {
+                        break;
+                    }
+
+                    if (header.HasBody)
+                    {
+                        Blocks[i] = new Block(header);
+                        _indexMapping.Add(currentBodyIndex, i);
+                        currentBodyIndex++;
+                        NonEmptyBlockHashes.Add(header.Hash);
+                    }
+                    else
+                    {
+                        Blocks[i] = new Block(header, BlockBody.Empty);
+                    }
+
                 }
             }
         }
