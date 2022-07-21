@@ -30,7 +30,7 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer where TTra
 
     public virtual bool IsTracingRewards => false;
 
-    protected List<TTrace> TxTraces => new();
+    protected List<TTrace> TxTraces { get; } = new();
 
     public IReadOnlyCollection<TTrace> BuildResult() => TxTraces.AsReadOnly();
 
