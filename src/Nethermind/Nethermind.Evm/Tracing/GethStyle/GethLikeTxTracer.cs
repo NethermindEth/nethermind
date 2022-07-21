@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -30,7 +29,7 @@ public abstract class GethLikeTxTracer<TEntry> : ITxTracer where TEntry : GethTx
         ArgumentNullException.ThrowIfNull(options);
 
         IsTracingStack = !options.DisableStack;
-        IsTracingMemory = !options.DisableMemory;
+        IsTracingMemory = options.EnableMemory;
         IsTracingOpLevelStorage = !options.DisableStorage;
     }
 
