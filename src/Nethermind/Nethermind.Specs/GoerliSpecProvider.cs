@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -25,25 +25,26 @@ namespace Nethermind.Specs
     {
         public static readonly GoerliSpecProvider Instance = new();
         private GoerliSpecProvider() { }
-        
+
         private long? _theMergeBlock = null;
+        private UInt256? _terminalTotalDifficulty = 10790000;
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber != null)
                 _theMergeBlock = blockNumber;
             if (terminalTotalDifficulty != null)
-                TerminalTotalDifficulty = terminalTotalDifficulty;
+                _terminalTotalDifficulty = terminalTotalDifficulty;
         }
 
         public long? MergeBlockNumber => _theMergeBlock;
-        public UInt256? TerminalTotalDifficulty { get; private set; }
+        public UInt256? TerminalTotalDifficulty => _terminalTotalDifficulty;
         public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;
-        
+
         private IReleaseSpec IstanbulNoBomb { get; } = Istanbul.Instance;
-        
+
         private IReleaseSpec BerlinNoBomb { get; } = Berlin.Instance;
-        
+
         private IReleaseSpec LondonNoBomb { get; } = London.Instance;
 
         public IReleaseSpec GetSpec(long blockNumber) =>
