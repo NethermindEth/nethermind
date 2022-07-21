@@ -121,7 +121,7 @@ namespace Nethermind.Evm.Test.Tracing
             GethLikeTxTrace trace = ExecuteAndTrace(code);
             for (int i = 0; i < opCodes.Length; i++)
             {
-                Assert.AreEqual(opCodes[i], trace.Entries[i].Operation);
+                Assert.AreEqual(opCodes[i], trace.Entries[i].Opcode);
             }
         }
 
@@ -291,14 +291,14 @@ namespace Nethermind.Evm.Test.Tracing
                 1, // STOP [34]
             }; */
 
-            Assert.AreEqual(0, trace.Entries[0].SortedStorage.Count, "BEGIN 1");
-            Assert.AreEqual(2, trace.Entries[13].SortedStorage.Count, "CALL FROM 1");
-            Assert.AreEqual(0, trace.Entries[14].SortedStorage.Count, "BEGIN 2");
-            Assert.AreEqual(1, trace.Entries[26].SortedStorage.Count, "CREATE FROM 2");
-            Assert.AreEqual(0, trace.Entries[27].SortedStorage.Count, "BEGIN 3");
-            Assert.AreEqual(0, trace.Entries[32].SortedStorage.Count, "END 3");
-            Assert.AreEqual(1, trace.Entries[33].SortedStorage.Count, "END 2");
-            Assert.AreEqual(2, trace.Entries[34].SortedStorage.Count, "END 1");
+            Assert.AreEqual(0, trace.Entries[0].Storage.Count, "BEGIN 1");
+            Assert.AreEqual(2, trace.Entries[13].Storage.Count, "CALL FROM 1");
+            Assert.AreEqual(0, trace.Entries[14].Storage.Count, "BEGIN 2");
+            Assert.AreEqual(1, trace.Entries[26].Storage.Count, "CREATE FROM 2");
+            Assert.AreEqual(0, trace.Entries[27].Storage.Count, "BEGIN 3");
+            Assert.AreEqual(0, trace.Entries[32].Storage.Count, "END 3");
+            Assert.AreEqual(1, trace.Entries[33].Storage.Count, "END 2");
+            Assert.AreEqual(2, trace.Entries[34].Storage.Count, "END 1");
         }
 
         [Test]
@@ -323,7 +323,7 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.AreEqual(pcs.Length, trace.Entries.Count);
             for (int i = 0; i < pcs.Length; i++)
             {
-                Assert.AreEqual(pcs[i], trace.Entries[i].Pc);
+                Assert.AreEqual(pcs[i], trace.Entries[i].ProgramCounter);
             }
         }
 

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,237 +18,154 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+namespace Nethermind.Evm.Tracing.GethStyle;
+
+public abstract class GethLikeTxTracer<TEntry> : ITxTracer where TEntry : GethTxTraceEntry
 {
-    public class GethLikeTxTracer : ITxTracer
+    protected GethLikeTxTracer(GethTraceOptions options)
     {
-        private GethTxTraceEntry? _traceEntry;
-        private readonly GethLikeTxTrace _trace = new();
+        ArgumentNullException.ThrowIfNull(options);
 
-        public GethLikeTxTracer(GethTraceOptions options) 
-        {
-            IsTracingStack = !options.DisableStack;
-            IsTracingMemory = !options.DisableMemory;
-            IsTracingOpLevelStorage = !options.DisableStorage;
-        }
-        
-        bool IStateTracer.IsTracingState => false;
-        bool IStorageTracer.IsTracingStorage => false;
-        public bool IsTracingReceipt => true;
-        bool ITxTracer.IsTracingActions => false;
-        public bool IsTracingOpLevelStorage { get; }
-        public bool IsTracingMemory { get; }
-        bool ITxTracer.IsTracingInstructions => true;
-        public bool IsTracingRefunds => false;
-        public bool IsTracingCode => false;
-        public bool IsTracingStack { get; }
-        public bool IsTracingBlockHash => false;
-        public bool IsTracingAccess => false;
-
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
-        {
-            _trace.ReturnValue = output;
-            _trace.Gas = gasSpent;
-        }
-
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
-        {
-            _trace.Failed = true;
-            _trace.ReturnValue = output ?? Array.Empty<byte>();
-        }
-
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge)
-        {
-            GethTxTraceEntry previousTraceEntry = _traceEntry;
-            _traceEntry = new GethTxTraceEntry();
-            _traceEntry.Pc = pc;
-            _traceEntry.Operation = opcode.GetName(isPostMerge);
-            _traceEntry.Gas = gas;
-            _traceEntry.Depth = depth;
-            _trace.Entries.Add(_traceEntry);
-            
-            if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
-            {
-                _traceEntry.Storage = new Dictionary<string, string>();
-                _trace.StoragesByDepth.Push(previousTraceEntry != null ? previousTraceEntry.Storage : new Dictionary<string, string>());
-            }
-            else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
-            {
-                if (previousTraceEntry == null)
-                {
-                    throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
-                }
-                    
-                _traceEntry.Storage = new Dictionary<string, string>(_trace.StoragesByDepth.Pop());
-            }
-            else
-            {
-                if (previousTraceEntry == null)
-                {
-                    throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
-                }
-                    
-                _traceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);    
-            }
-        }
-
-        public void ReportOperationError(EvmExceptionType error)
-        {
-            _traceEntry.Error = GetErrorDescription(error);
-        }
-        
-        private string? GetErrorDescription(EvmExceptionType evmExceptionType)
-        {
-            return evmExceptionType switch
-            {
-                EvmExceptionType.None => null,
-                EvmExceptionType.BadInstruction => "BadInstruction",
-                EvmExceptionType.StackOverflow => "StackOverflow",
-                EvmExceptionType.StackUnderflow => "StackUnderflow",
-                EvmExceptionType.OutOfGas => "OutOfGas",
-                EvmExceptionType.InvalidSubroutineEntry => "InvalidSubroutineEntry",
-                EvmExceptionType.InvalidSubroutineReturn => "InvalidSubroutineReturn",
-                EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
-                EvmExceptionType.AccessViolation => "AccessViolation",
-                EvmExceptionType.StaticCallViolation => "StaticCallViolation",
-                _ => "Error"
-            };
-        }
-
-        public void ReportOperationRemainingGas(long gas)
-        {
-            _traceEntry.GasCost = _traceEntry.Gas - gas;
-        }
-
-        public void SetOperationMemorySize(ulong newSize)
-        {
-            _traceEntry.UpdateMemorySize(newSize);
-        }
-
-        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-        {
-        }
-
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-        {
-        }
-
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-        {
-            byte[] bigEndian = new byte[32];
-            storageIndex.ToBigEndian(bigEndian);
-            _traceEntry.Storage[bigEndian.ToHexString(false)] = new ZeroPaddedSpan(newValue, 32 - newValue.Length, PadDirection.Left).ToArray().ToHexString(false);
-        }
-
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
-        {
-            
-        }
-
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportCodeChange(Address address, byte[] before, byte[] after)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportAccountRead(Address address)
-        {
-        }
-
-        public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportStorageRead(StorageCell storageCell)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportActionError(EvmExceptionType exceptionType)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportBlockHash(Keccak blockHash)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportByteCode(byte[] byteCode)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
-        {
-        }
-
-        public void ReportRefund(long refund)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportExtraGasPressure(long extraGasPressure)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void SetOperationStack(List<string> stackTrace)
-        {
-            _traceEntry.Stack = stackTrace;
-        }
-
-        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-        {
-        }
-
-        public void SetOperationMemory(List<string> memoryTrace)
-        {
-            _traceEntry.Memory = memoryTrace;
-        }
-
-        public GethLikeTxTrace BuildResult()
-        {
-            return _trace;
-        }
+        IsTracingStack = !options.DisableStack;
+        IsTracingMemory = !options.DisableMemory;
+        IsTracingOpLevelStorage = !options.DisableStorage;
     }
+
+    public bool IsTracingAccess => false;
+
+    public bool IsTracingActions => false;
+
+    public bool IsTracingBlockHash => false;
+
+    public bool IsTracingCode => false;
+
+    public bool IsTracingInstructions => true;
+
+    public bool IsTracingMemory { get; protected set; }
+
+    public bool IsTracingOpLevelStorage { get; protected set; }
+
+    public bool IsTracingReceipt => true;
+
+    public bool IsTracingRefunds { get; protected set; }
+
+    public bool IsTracingStack { get; protected set; }
+
+    public bool IsTracingState => false;
+
+    public bool IsTracingStorage => false;
+
+    protected TEntry? CurrentTraceEntry { get; set; }
+
+    protected GethLikeTxTrace Trace { get; } = new();
+
+    public virtual GethLikeTxTrace BuildResult()
+    {
+        if (CurrentTraceEntry != null)
+            AddTraceEntry(CurrentTraceEntry);
+
+        return Trace;
+    }
+
+    public virtual void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
+
+    public virtual void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Keccak? stateRoot = null)
+    {
+        Trace.Failed = true;
+        Trace.ReturnValue = output ?? Array.Empty<byte>();
+    }
+
+    public virtual void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null) =>
+        Trace.ReturnValue = output;
+
+    public virtual void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells) { }
+
+    public virtual void ReportAccountRead(Address address) { }
+
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) =>
+        throw new NotSupportedException();
+
+    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
+        throw new NotSupportedException();
+
+    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
+
+    public void ReportActionError(EvmExceptionType exceptionType) => throw new NotSupportedException();
+
+    public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
+
+    public void ReportBlockHash(Keccak blockHash) => throw new NotSupportedException();
+
+    public  void ReportByteCode(byte[] byteCode) { }
+
+    public void ReportCodeChange(Address address, byte[] before, byte[] after) => throw new NotSupportedException();
+
+    public virtual void ReportExtraGasPressure(long extraGasPressure) { }
+
+    public virtual void ReportGasUpdateForVmTrace(long refund, long gasAvailable) { }
+
+    public virtual void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+    {
+        // TODO?
+    }
+
+    public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
+
+    public virtual void ReportOperationError(EvmExceptionType error) => CurrentTraceEntry.Error = GetErrorDescription(error);
+
+    public virtual void ReportRefund(long refund) { }
+
+    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => throw new NotSupportedException();
+
+    public virtual void ReportStackPush(in ReadOnlySpan<byte> stackItem) { }
+
+    public void ReportStorageChange(StorageCell storageCell, byte[] before, byte[] after) => throw new NotSupportedException();
+
+    public virtual void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) { }
+
+    public void ReportStorageRead(StorageCell storageCell) => throw new NotSupportedException();
+
+    public virtual void SetOperationMemory(List<string> memoryTrace) => CurrentTraceEntry.Memory = memoryTrace;
+
+    public virtual void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry.UpdateMemorySize(newSize);
+
+    public virtual void ReportOperationRemainingGas(long gas) => CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
+
+    public virtual void SetOperationStack(List<string> stackTrace) => CurrentTraceEntry.Stack = stackTrace;
+
+    public virtual void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
+
+    public virtual void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge)
+    {
+        if (CurrentTraceEntry != null)
+            AddTraceEntry(CurrentTraceEntry);
+
+        CurrentTraceEntry = CreateTraceEntry(opcode);
+        CurrentTraceEntry.Depth = depth;
+        CurrentTraceEntry.Gas = gas;
+        CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
+        CurrentTraceEntry.ProgramCounter = pc;
+    }
+
+    protected abstract void AddTraceEntry(TEntry entry);
+
+    protected abstract TEntry CreateTraceEntry(Instruction opcode);
+
+    private static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
+    {
+        EvmExceptionType.None => null,
+        EvmExceptionType.BadInstruction => "BadInstruction",
+        EvmExceptionType.StackOverflow => "StackOverflow",
+        EvmExceptionType.StackUnderflow => "StackUnderflow",
+        EvmExceptionType.OutOfGas => "OutOfGas",
+        EvmExceptionType.InvalidSubroutineEntry => "InvalidSubroutineEntry",
+        EvmExceptionType.InvalidSubroutineReturn => "InvalidSubroutineReturn",
+        EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
+        EvmExceptionType.AccessViolation => "AccessViolation",
+        EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+        _ => "Error"
+    };
 }

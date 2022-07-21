@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -22,25 +23,41 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Serialization.Rlp;
 
-namespace Nethermind.JsonRpc.Modules.DebugModule
+namespace Nethermind.JsonRpc.Modules.DebugModule;
+
+public interface IDebugBridge
 {
-    public interface IDebugBridge
-    {
-        GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace[] GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
-        GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        byte[] GetBlockRlp(Keccak blockHash);
-        byte[] GetBlockRlp(long number);
-        byte[] GetDbValue(string dbName, byte[] key);
-        object GetConfigValue(string category, string name);
-        public ChainLevelInfo GetLevelInfo(long number);
-        public int DeleteChainSlice(long startNumber);
-        public void UpdateHeadBlock(Keccak blockHash);
-        Task<bool> MigrateReceipts(long blockNumber);
-        void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
-    }
+    GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+
+    GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+
+    GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+
+    GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+
+    GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+
+    GethLikeTxTrace[] GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
+
+    GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+
+    byte[] GetBlockRlp(Keccak blockHash);
+
+    byte[] GetBlockRlp(long number);
+
+    byte[] GetDbValue(string dbName, byte[] key);
+
+    object GetConfigValue(string category, string name);
+
+    public ChainLevelInfo GetLevelInfo(long number);
+
+    public int DeleteChainSlice(long startNumber);
+
+    public void UpdateHeadBlock(Keccak blockHash);
+
+    Task<bool> MigrateReceipts(long blockNumber);
+
+    void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
+
+    IEnumerable<string> TraceBlockToFile(Keccak blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
 }

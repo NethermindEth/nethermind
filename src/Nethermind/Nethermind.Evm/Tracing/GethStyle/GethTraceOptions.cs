@@ -14,27 +14,30 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Newtonsoft.Json;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+namespace Nethermind.Evm.Tracing.GethStyle;
+
+public record GethTraceOptions
 {
-    public class GethTraceOptions
-    {
-        [JsonProperty("disableStorage")]
-        public bool DisableStorage { get; set; }
-        
-        [JsonProperty("disableMemory")]
-        public bool DisableMemory { get; set; }
-        
-        [JsonProperty("disableStack")]
-        public bool DisableStack { get; set; }
-        
-        [JsonProperty("tracer")]
-        public string Tracer { get; set; }
-        
-        [JsonProperty("timeout")]
-        public string Timeout { get; set; }
-        
-        public static GethTraceOptions Default = new();
-    }
+    [JsonProperty("disableMemory")]
+    public bool DisableMemory { get; init; } = true;
+    
+    [JsonProperty("disableStack")]
+    public bool DisableStack { get; init; }
+
+    [JsonProperty("disableStorage")]
+    public bool DisableStorage { get; init; }
+    
+    [JsonProperty("timeout")]
+    public string Timeout { get; init; }
+
+    [JsonProperty("tracer")]
+    public string Tracer { get; init; }
+
+    [JsonProperty("txHash")]
+    public Keccak? TxHash { get; init; }
+
+    public static GethTraceOptions Default { get; } = new();
 }

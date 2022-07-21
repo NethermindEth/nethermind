@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,70 +19,56 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.Evm.Tracing;
+
+public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer where TTracer : class, ITxTracer
 {
-    public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer where TTracer : class, ITxTracer
+    private TTracer? _currentTxTracer;
+    private readonly Keccak? _txHash;
+
+    protected BlockTracerBase(Keccak? txHash = null) => _txHash = txHash;
+
+    public virtual bool IsTracingRewards => false;
+
+    protected List<TTrace> TxTraces => new();
+
+    public IReadOnlyCollection<TTrace> BuildResult() => TxTraces.AsReadOnly();
+
+    public abstract void EndBlockTrace();
+
+    public virtual void EndTxTrace()
     {
-        private readonly Keccak? _txHash;
+        if (_currentTxTracer == null)
+            return;
 
-        private bool IsTracingEntireBlock => _txHash == null;
+        var trace = OnEnd(_currentTxTracer);
 
-        protected BlockTracerBase()
-        {
-            TxTraces = new List<TTrace>();
-        }
+        AddTrace(trace);
 
-        protected BlockTracerBase(Keccak? txHash)
-        {
-            _txHash = txHash;
-            TxTraces = new List<TTrace>();
-        }
-
-        private TTracer? CurrentTxTracer { get; set; }
-
-        protected abstract TTracer OnStart(Transaction? tx);
-        protected abstract TTrace OnEnd(TTracer txTracer);
-
-        public virtual bool IsTracingRewards => false;
-
-        public virtual void ReportReward(Address author, string rewardType, UInt256 rewardValue)
-        {
-        }
-
-        public abstract void StartNewBlockTrace(Block block);
-
-        ITxTracer IBlockTracer.StartNewTxTrace(Transaction? tx)
-        {
-            if (ShouldTraceTx(tx))
-            {
-                CurrentTxTracer = OnStart(tx);
-                return CurrentTxTracer;
-            }
-
-            return NullTxTracer.Instance;
-        }
-
-        void IBlockTracer.EndTxTrace()
-        {
-            if (CurrentTxTracer != null)
-            {
-                TxTraces.Add(OnEnd(CurrentTxTracer));
-                CurrentTxTracer = null;
-            }
-        }
-        
-        public abstract void EndBlockTrace();
-
-        protected virtual bool ShouldTraceTx(Transaction? tx)
-        {
-            return IsTracingEntireBlock || tx?.Hash == _txHash;
-        }
-
-        protected List<TTrace> TxTraces { get; }
-
-        public IReadOnlyCollection<TTrace> BuildResult()
-        {
-            return TxTraces;
-        }
+        _currentTxTracer = null;
     }
+
+    public virtual void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
+
+    public abstract void StartNewBlockTrace(Block block);
+
+    public virtual ITxTracer StartNewTxTrace(Transaction? tx)
+    {
+        if (ShouldTraceTx(tx))
+        {
+            _currentTxTracer = OnStart(tx);
+
+            return _currentTxTracer;
+        }
+
+        return NullTxTracer.Instance;
+    }
+
+    protected virtual void AddTrace(TTrace trace) => TxTraces.Add(trace);
+
+    protected abstract TTrace OnEnd(TTracer txTracer);
+
+    protected abstract TTracer OnStart(Transaction? tx);
+
+    protected virtual bool ShouldTraceTx(Transaction? tx) => _txHash == null || _txHash == tx?.Hash;
 }

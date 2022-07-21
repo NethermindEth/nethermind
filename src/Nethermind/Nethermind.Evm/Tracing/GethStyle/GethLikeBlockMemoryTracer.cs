@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,36 +14,26 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Tracing.GethStyle
 {
-    public class GethLikeBlockTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxTracer>
+    public class GethLikeBlockMemoryTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxMemoryTracer>
     {
         private readonly GethTraceOptions _options;
 
-        public GethLikeBlockTracer(GethTraceOptions options)
+        public GethLikeBlockMemoryTracer(GethTraceOptions options) : base(options?.TxHash)
         {
-            _options = options;
-        }
-        
-        public GethLikeBlockTracer(Keccak txHash, GethTraceOptions options)
-            : base(txHash)
-        {
-            _options = options;
+            _options = options ?? throw new ArgumentNullException(nameof(options));
         }
 
-        protected override GethLikeTxTracer OnStart(Transaction? tx) => new(_options);
+        protected override GethLikeTxTrace OnEnd(GethLikeTxMemoryTracer txTracer) => txTracer.BuildResult();
 
-        protected override GethLikeTxTrace OnEnd(GethLikeTxTracer txTracer) => txTracer.BuildResult();
+        protected override GethLikeTxMemoryTracer OnStart(Transaction? tx) => new(_options);
 
-        public override void StartNewBlockTrace(Block block)
-        {
-        }
+        public override void EndBlockTrace() { }
 
-        public override void EndBlockTrace()
-        {
-        }
+        public override void StartNewBlockTrace(Block block) { }
     }
 }
