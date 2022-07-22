@@ -123,6 +123,32 @@ namespace Nethermind.Network
             throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
         }
 
+        public bool ZeroSerialize<T>(T message, IByteBuffer msgBuffer) where T : MessageBase
+        {
+            void WriteAdaptivePacketType(in IByteBuffer buffer)
+            {
+                switch (message)
+                {
+                    case HelloMessage:
+                        break;
+                    case DisconnectMessage:
+                        break;
+                    case P2PMessage p2PMessage:
+                        buffer.WriteByte(p2PMessage.AdaptivePacketType);
+                        break;
+                }
+            }
+
+            if (TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+            {
+                WriteAdaptivePacketType(msgBuffer);
+                zeroMessageSerializer.Serialize(msgBuffer, message);
+                return true;
+            }
+
+            return false;
+        }
+
         private bool TryGetZeroSerializer<T>(out IZeroMessageSerializer<T> serializer) where T : MessageBase
         {
             RuntimeTypeHandle typeHandle = typeof(T).TypeHandle;
