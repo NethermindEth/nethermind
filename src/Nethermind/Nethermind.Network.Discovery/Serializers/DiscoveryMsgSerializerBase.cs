@@ -68,7 +68,7 @@ public abstract class DiscoveryMsgSerializerBase
         }
         IByteBuffer data = msg.Slice(98, msg.ReadableBytes - 98);
         Span<byte> msgBytes = msg.ReadAllBytes().AsSpan();
-        Span<byte> mdc = msgBytes.Slice(0, 32).ToArray();
+        Span<byte> mdc = msgBytes.Slice(0, 32);
         Span<byte> sigAndData = msgBytes.Slice(32);
         Span<byte> computedMdc = ValueKeccak.Compute(sigAndData).BytesAsSpan;
 
