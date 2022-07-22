@@ -441,7 +441,7 @@ public partial class BlockTreeTests
                         parent = SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
                     NotSyncedTree.Insert(blockToInsert, true, BlockTreeInsertOptions.BeaconBlockInsert);
-                    SyncedTree.Insert(blockToInsert, true);
+                    SyncedTree.Insert(blockToInsert, true, BlockTreeInsertOptions.NotOnMainChain);
 
                     BlockInfo newBlockInfo = new(blockToInsert.Hash, UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
                     newBlockInfo.BlockNumber = blockToInsert.Number;
