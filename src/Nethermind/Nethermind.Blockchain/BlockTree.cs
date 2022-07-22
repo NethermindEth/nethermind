@@ -634,7 +634,7 @@ namespace Nethermind.Blockchain
                 blockInfo.Metadata |= BlockMetadata.BeaconMainChain;
             }
 
-            UpdateOrCreateLevel(header.Number, header.Hash, blockInfo);
+            UpdateOrCreateLevel(header.Number, header.Hash, blockInfo, isOnMainChain);
 
             return AddBlockResult.Added;
         }
