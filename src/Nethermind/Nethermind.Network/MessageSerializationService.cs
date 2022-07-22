@@ -123,7 +123,7 @@ namespace Nethermind.Network
             throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
         }
 
-        public bool ZeroSerialize<T>(T message, IByteBuffer msgBuffer) where T : MessageBase
+        public void ZeroSerialize<T>(T message, IByteBuffer msgBuffer) where T : MessageBase
         {
             void WriteAdaptivePacketType(in IByteBuffer buffer)
             {
@@ -143,10 +143,9 @@ namespace Nethermind.Network
             {
                 WriteAdaptivePacketType(msgBuffer);
                 zeroMessageSerializer.Serialize(msgBuffer, message);
-                return true;
+                return;
             }
-
-            return false;
+            throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
         }
 
         private bool TryGetZeroSerializer<T>(out IZeroMessageSerializer<T> serializer) where T : MessageBase
