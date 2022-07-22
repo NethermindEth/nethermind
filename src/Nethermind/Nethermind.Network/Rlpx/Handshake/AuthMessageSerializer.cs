@@ -69,11 +69,12 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
 
             AuthMessage authMessage = new();
-            authMessage.Signature = new Signature(msgBytes.Slice(SigOffset, SigLength - 1).ReadAllBytes(), msgBytes.GetByte(64));
-            authMessage.EphemeralPublicHash = new Keccak(msgBytes.Slice(EphemeralHashOffset, EphemeralHashLength).ReadAllBytes());
-            authMessage.PublicKey = new PublicKey(msgBytes.Slice(PublicKeyOffset, PublicKeyLength).ReadAllBytes());
-            authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength).ReadAllBytes();
-            authMessage.IsTokenUsed = msgBytes.GetByte(IsTokenUsedOffset) == 0x01;
+            Span<byte> msg = msgBytes.ReadAllBytes();
+            authMessage.Signature = new Signature(msg.Slice(SigOffset, SigLength - 1), msg[64]);
+            authMessage.EphemeralPublicHash = new Keccak(msg.Slice(EphemeralHashOffset, EphemeralHashLength).ToArray());
+            authMessage.PublicKey = new PublicKey(msg.Slice(PublicKeyOffset, PublicKeyLength));
+            authMessage.Nonce = msg.Slice(NonceOffset, NonceLength).ToArray();
+            authMessage.IsTokenUsed = msg[IsTokenUsedOffset] == 0x01;
             return authMessage;
         }
     }
