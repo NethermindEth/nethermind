@@ -34,7 +34,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly bool _downloadReceipts;
         private readonly IReceiptsRecovery _receiptsRecovery;
 
-        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader?[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery, bool skipFirstHeader = true)
+        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader?[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
         {
             _indexMapping = new Dictionary<int, int>();
             _downloadReceipts = downloadReceipts;
@@ -42,7 +42,7 @@ namespace Nethermind.Synchronization.Blocks
             _specProvider = specProvider;
             _syncPeer = syncPeer;
 
-            Blocks = new Block[skipFirstHeader ? headers.Length - 1 : headers.Length];
+            Blocks = new Block[headers.Length - 1];
             NonEmptyBlockHashes = new List<Keccak>();
 
             if (_downloadReceipts)
@@ -51,52 +51,24 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             int currentBodyIndex = 0;
-            if (skipFirstHeader)
+            for (int i = 1; i < headers.Length; i++)
             {
-                for (int i = 1; i < headers.Length; i++)
+                BlockHeader? header = headers[i];
+                if (header?.Hash == null)
                 {
-                    BlockHeader? header = headers[i];
-                    if (header?.Hash == null)
-                    {
-                        break;
-                    }
-
-                    if (header.HasBody)
-                    {
-                        Blocks[i - 1] = new Block(header);
-                        _indexMapping.Add(currentBodyIndex, i - 1);
-                        currentBodyIndex++;
-                        NonEmptyBlockHashes.Add(header.Hash);
-                    }
-                    else
-                    {
-                        Blocks[i - 1] = new Block(header, BlockBody.Empty);
-                    }
-
+                    break;
                 }
-            }
-            else
-            {
-                for (int i = 0; i < headers.Length; i++)
+
+                if (header.HasBody)
                 {
-                    BlockHeader? header = headers[i];
-                    if (header?.Hash == null)
-                    {
-                        break;
-                    }
-
-                    if (header.HasBody)
-                    {
-                        Blocks[i] = new Block(header);
-                        _indexMapping.Add(currentBodyIndex, i);
-                        currentBodyIndex++;
-                        NonEmptyBlockHashes.Add(header.Hash);
-                    }
-                    else
-                    {
-                        Blocks[i] = new Block(header, BlockBody.Empty);
-                    }
-
+                    Blocks[i - 1] = new Block(header);
+                    _indexMapping.Add(currentBodyIndex, i - 1);
+                    currentBodyIndex++;
+                    NonEmptyBlockHashes.Add(header.Hash);
+                }
+                else
+                {
+                    Blocks[i - 1] = new Block(header, BlockBody.Empty);
                 }
             }
         }
