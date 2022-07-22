@@ -28,20 +28,40 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         private readonly TxDecoder _txDecoder = new();
         private readonly HeaderDecoder _headerDecoder = new();
 
-        public byte[] Serialize(BlockBodiesMessage message)
-        {
-            return Rlp.Encode(message.Bodies.Select(b => b == null
-                ? Rlp.OfEmptySequence
-                : Rlp.Encode(
-                    Rlp.Encode(b.Transactions),
-                    Rlp.Encode(b.Uncles))).ToArray()).Bytes;
-        }
-
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
-            byte[] oldWay = Serialize(message);
-            byteBuffer.EnsureWritable(oldWay.Length, true);
-            byteBuffer.WriteBytes(oldWay);
+
+            int totalLength = GetLength(message, out int contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
+            NettyRlpStream stream = new(byteBuffer);
+            stream.StartSequence(contentLength);
+            foreach (BlockBody? body in message.Bodies)
+            {
+                if (body == null)
+                {
+                    stream.Encode(Rlp.OfEmptySequence);
+                }
+                else
+                {
+                    SerializeBody(stream, body);
+                }
+            }
+        }
+
+        private void SerializeBody(NettyRlpStream stream, BlockBody body)
+        {
+            stream.StartSequence(GetBodyLength(body));
+            stream.StartSequence(GetTxLength(body.Transactions));
+            foreach (Transaction? txn in body.Transactions)
+            {
+                stream.Encode(txn);
+            }
+
+            stream.StartSequence(GetUnclesLength(body.Uncles));
+            foreach (var uncle in body.Uncles)
+            {
+                stream.Encode(uncle);
+            }
         }
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
@@ -52,34 +72,38 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(BlockBodiesMessage message, out int contentLength)
         {
-            int totalLength = message.Bodies.Select(b => b == null
+            contentLength = message.Bodies.Select(b => b == null
                 ? Rlp.OfEmptySequence.Length
                 : Rlp.LengthOfSequence(
-                    Rlp.LengthOfSequence(GetTxLength(b.Transactions, RlpBehaviors.None)) +
-                    Rlp.LengthOfSequence(GetUnclesLength(b.Uncles, RlpBehaviors.None)))
+                    GetBodyLength(b)
+                    )
             ).Sum();
-            contentLength = Rlp.LengthOfSequence(totalLength);
-            Console.WriteLine(contentLength);
-            return contentLength;
+            return Rlp.LengthOfSequence(contentLength);
         }
 
-        private int GetTxLength(Transaction[] transactions, RlpBehaviors rlpBehaviors)
+        private int GetBodyLength(BlockBody b)
+        {
+            return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
+                Rlp.LengthOfSequence(GetUnclesLength(b.Uncles));
+        }
+
+        private int GetTxLength(Transaction[] transactions)
         {
             int txLength = 0;
             for (int i = 0; i < transactions.Length; i++)
             {
-                txLength += _txDecoder.GetLength(transactions[i], rlpBehaviors);
+                txLength += _txDecoder.GetLength(transactions[i], RlpBehaviors.None);
             }
 
             return txLength;
         }
 
-        private int GetUnclesLength(BlockHeader[] headers, RlpBehaviors rlpBehaviors)
+        private int GetUnclesLength(BlockHeader[] headers)
         {
             int unclesLength = 0;
             for (int i = 0; i < headers.Length; i++)
             {
-                unclesLength += _headerDecoder.GetLength(headers[i], rlpBehaviors);
+                unclesLength += _headerDecoder.GetLength(headers[i], RlpBehaviors.None);
             }
 
             return unclesLength;
