@@ -66,12 +66,9 @@ public abstract class DiscoveryMsgSerializerBase
         {
             throw new NetworkingException("Incorrect message", NetworkExceptionType.Validation);
         }
-
-        Span<byte> msgBytes = msg.ReadAllBytes().AsSpan();
-
-        Span<byte> mdc = msgBytes.Slice(0, 32);
-        // var type = new[] { msg[97] };
         IByteBuffer data = msg.Slice(98, msg.ReadableBytes - 98);
+        Span<byte> msgBytes = msg.ReadAllBytes().AsSpan();
+        Span<byte> mdc = msgBytes.Slice(0, 32).ToArray();
         Span<byte> sigAndData = msgBytes.Slice(32);
         Span<byte> computedMdc = ValueKeccak.Compute(sigAndData).BytesAsSpan;
 
