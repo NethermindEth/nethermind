@@ -90,7 +90,7 @@
     },
     "Kiln (fast sync)": {
       "commandName": "Project",
-      "commandLineArgs": "-c kiln_fastsync -dd %NETHERMIND_DATA_DIR% --Init.DiagnosticMode MemDb",
+      "commandLineArgs": "-c kiln_fastsync -dd C:\\ --Init.DiagnosticMode MemDb",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
