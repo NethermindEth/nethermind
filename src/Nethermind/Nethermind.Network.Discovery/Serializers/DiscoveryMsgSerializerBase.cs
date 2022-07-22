@@ -67,11 +67,12 @@ public abstract class DiscoveryMsgSerializerBase
             throw new NetworkingException("Incorrect message", NetworkExceptionType.Validation);
         }
 
-        byte[] mdc = msg.Slice(0, 32).ReadAllBytes();
-        Span<byte> signature = msg.Slice(32, 65).ReadAllBytes().AsSpan();
+        Span<byte> msgBytes = msg.ReadAllBytes().AsSpan();
+
+        Span<byte> mdc = msgBytes.Slice(0, 32);
         // var type = new[] { msg[97] };
         IByteBuffer data = msg.Slice(98, msg.ReadableBytes - 98);
-        Span<byte> sigAndData = msg.ReadAllBytes().AsSpan(32);
+        Span<byte> sigAndData = msgBytes.Slice(32);
         Span<byte> computedMdc = ValueKeccak.Compute(sigAndData).BytesAsSpan;
 
         if (!Bytes.AreEqual(mdc, computedMdc))
@@ -80,7 +81,7 @@ public abstract class DiscoveryMsgSerializerBase
         }
 
         PublicKey nodeId = _nodeIdResolver.GetNodeId(sigAndData.Slice(0, 64).ToArray(), sigAndData[64], sigAndData.Slice(65, sigAndData.Length - 65));
-        return (nodeId, mdc, data);
+        return (nodeId, mdc.ToArray(), data);
     }
 
     protected static void Encode(RlpStream stream, IPEndPoint address)
