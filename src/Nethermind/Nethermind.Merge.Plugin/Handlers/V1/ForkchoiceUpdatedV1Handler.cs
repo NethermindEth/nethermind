@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Collections.Generic;
@@ -83,9 +83,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
             {
+                if (_logger.IsInfo) _logger.Info($" FCU - Invalid - {requestStr} {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
                 return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
             }
-            
+
             Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
             if (newHeadBlock is null) // if a head is unknown we are syncing
             {
@@ -95,6 +96,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _peerRefresher.RefreshPeers(block.Hash!, block.ParentHash!, forkchoiceState.FinalizedBlockHash);
                     _blockCacheService.SyncingHead = forkchoiceState.HeadBlockHash;
                     _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
+                    _blockCacheService.ProcessDestination ??= block.Header;
 
                     if (_logger.IsInfo) _logger.Info($"Start a new sync process... Request: {requestStr}.");
 
@@ -109,10 +111,13 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (!_blockTree.WasProcessed(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()))
+            BlockInfo blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
+            if (!blockInfo.WasProcessed)
             {
-                int processingQueueCount = _processingQueue.Count;
+                if (!blockInfo.IsBeaconMainChain && blockInfo.IsBeaconInfo)
+                    ReorgBeaconChainDuringSync(newHeadBlock, blockInfo);
 
+                int processingQueueCount = _processingQueue.Count;
                 if (processingQueueCount == 0)
                 {
                     _peerRefresher.RefreshPeers(newHeadBlock.Hash!, newHeadBlock.ParentHash!, forkchoiceState.FinalizedBlockHash);
@@ -127,11 +132,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     if (_logger.IsInfo) { _logger.Info($"Processing {_processingQueue.Count} blocks... Request: {requestStr}."); }
                 }
 
+                _blockCacheService.ProcessDestination ??= newHeadBlock.Header;
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
             if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed.");
-
 
             BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
             if (finalizationErrorMsg is not null)
@@ -146,11 +151,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}.");
                 return ForkchoiceUpdatedV1Result.Error(safeBlockErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
-            
+
             if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(newHeadBlock.Header))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, NewHeadBlock TD: {newHeadBlock.Header.TotalDifficulty}. Request: {requestStr}.");
-                
+
                 // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#specification
                 // {status: INVALID, latestValidHash: 0x0000000000000000000000000000000000000000000000000000000000000000, validationError: errorMessage | null} if terminal block conditions are not satisfied
                 return ForkchoiceUpdatedV1Result.Invalid(Keccak.Zero);
@@ -162,7 +167,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
                 return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
             }
-            
+
             if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
             {
                 if (_logger.IsInfo) _logger.Info($"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
@@ -170,21 +175,21 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             }
 
             EnsureTerminalBlock(forkchoiceState, blocks);
-            
+
             bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
             bool shouldUpdateHead = !newHeadTheSameAsCurrentHead && blocks is not null;
             if (shouldUpdateHead)
             {
                 _blockTree.UpdateMainChain(blocks!, true, true);
             }
-            
+
             if (IsInconsistent(forkchoiceState.FinalizedBlockHash))
             {
                 string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
                 if (_logger.IsWarn) _logger.Warn(errorMsg);
                 return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
             }
-            
+
             if (IsInconsistent(forkchoiceState.SafeBlockHash))
             {
                 string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
@@ -198,7 +203,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             {
                 _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
             }
-            
+
             if (shouldUpdateHead)
             {
                 _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
@@ -232,7 +237,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         // This method will detect reorg in terminal PoW block
         private void EnsureTerminalBlock(ForkchoiceStateV1 forkchoiceState, Block[]? blocks)
         {
-            // we can reorg terminal block only if we haven't finalized PoS yet and we're not finalizing PoS now 
+            // we can reorg terminal block only if we haven't finalized PoS yet and we're not finalizing PoS now
             // https://github.com/ethereum/EIPs/blob/d896145678bd65d3eafd8749690c1b5228875c39/EIPS/eip-3675.md#ability-to-jump-between-terminal-pow-blocks
             bool notFinalizingPoS = forkchoiceState.FinalizedBlockHash == Keccak.Zero;
             bool notFinalizedPoS = _manualBlockFinalizationManager.LastFinalizedHash == Keccak.Zero;
@@ -322,5 +327,40 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             blocks = blocksList.ToArray();
             return true;
         }
+
+        private void ReorgBeaconChainDuringSync(Block newHeadBlock, BlockInfo newHeadBlockInfo)
+        {
+            if (_logger.IsInfo) _logger.Info("BeaconChain reorged during the sync or rebuilding cache after restart");
+            BlockInfo[] beaconMainChainBranch = GetBeaconChainBranch(newHeadBlock, newHeadBlockInfo);
+            _blockTree.UpdateBeaconMainChain(beaconMainChainBranch, Math.Max(_blockCacheService.ProcessDestination?.Number ?? 0, newHeadBlock.Number));
+            _blockCacheService.ProcessDestination = newHeadBlock.Header;
+        }
+
+        private BlockInfo[] GetBeaconChainBranch(Block newHeadBlock, BlockInfo newHeadBlockInfo)
+        {
+            newHeadBlockInfo.BlockNumber = newHeadBlock.Number;
+            List<BlockInfo> blocksList = new() { newHeadBlockInfo };
+            Block? predecessor = newHeadBlock;
+
+            while (true)
+            {
+                predecessor = _blockTree.FindParent(predecessor, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+                if (predecessor == null)
+                {
+                    break;
+                }
+                BlockInfo predecessorInfo = _blockTree.GetInfo(predecessor.Number, predecessor.GetOrCalculateHash()).Info;
+                predecessorInfo.BlockNumber = predecessor.Number;
+                if (predecessorInfo.IsBeaconMainChain) break;
+                if (_logger.IsInfo) _logger.Info($"Reorged to beacon block ({predecessorInfo.BlockNumber}) {predecessorInfo.BlockHash} or cache rebuilt after restart");
+                blocksList.Add(predecessorInfo);
+            }
+
+            blocksList.Reverse();
+
+            return blocksList.ToArray();
+        }
+
     }
 }

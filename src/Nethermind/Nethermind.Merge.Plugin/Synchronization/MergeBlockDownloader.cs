@@ -105,7 +105,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
 
             int blocksSynced = 0;
-            long currentNumber = _blockTree.BestKnownNumber;
+            long currentNumber = _blockTree.BestKnownNumber; // ToDo Ashraf MIN(_blockTree.BestKnownNumber, _blockCache.ProcessDestination.Number ?? 0)
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");

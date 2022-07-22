@@ -153,7 +153,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 }
 
                 BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+
+                if (_blockCacheService.ProcessDestination != null && _blockCacheService.ProcessDestination.Hash == block.ParentHash)
+                {
+                    insertOptions |= BlockTreeInsertOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
+                    _blockCacheService.ProcessDestination = block.Header;
+                }
+
                 _blockTree.Insert(block, true, insertOptions);
+
                 if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
                 return NewPayloadV1Result.Syncing;
             }
@@ -335,46 +343,39 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         /// Return false if no ancestor that is part of beacon chain found.
         private bool TryInsertDanglingBlock(Block block)
         {
-            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain;
 
             if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
             {
                 // last block inserted is parent of current block, part of the same chain
-                if (block.ParentHash == _blockCacheService.ProcessDestination)
+                Block? current = block;
+                Stack<Block> stack = new();
+                while (current != null)
                 {
-                    _blockTree.Insert(block, true, insertOptions);
-                }
-                else
-                {
-                    Block? current = block;
-                    Stack<Block> stack = new();
-                    while (current != null)
+                    stack.Push(current);
+                    Keccak currentHash = current.Hash!;
+                    if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
                     {
-                        stack.Push(current);
-                        Keccak currentHash = current.Hash!;
-                        if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
-                        {
-                            break;
-                        }
-
-                        _blockCacheService.BlockCache.TryGetValue(current.ParentHash!, out Block? parentBlock);
-                        current = parentBlock;
+                        break;
                     }
 
-                    if (current == null)
-                    {
-                        // block not part of beacon pivot chain, save in cache
-                        _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
-                        return false;
-                    }
-
-                    while (stack.TryPop(out Block? child))
-                    {
-                        _blockTree.Insert(child, true, insertOptions);
-                    }
+                    _blockCacheService.BlockCache.TryGetValue(current.ParentHash!, out Block? parentBlock);
+                    current = parentBlock;
                 }
 
-                _blockCacheService.ProcessDestination = block.Hash;
+                if (current == null)
+                {
+                    // block not part of beacon pivot chain, save in cache
+                    _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+                    return false;
+                }
+
+                while (stack.TryPop(out Block? child))
+                {
+                    _blockTree.Insert(child, true, insertOptions);
+                }
+
+                _blockCacheService.ProcessDestination = block.Header;
             }
 
             return true;

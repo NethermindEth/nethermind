@@ -125,9 +125,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (_logger.IsTrace)
             _logger.Trace(
                 $"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconInsert |
-                                         BlockTreeInsertOptions.MoveToBeaconMainChain |
-                                         BlockTreeInsertOptions.NotOnMainChain;
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderInsert;
         if (_nextHeaderDiff is null)
         {
             options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
