@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -24,7 +24,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
@@ -152,6 +154,55 @@ namespace Nethermind.Synchronization.Test
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
 
             Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
+        }
+
+        [Test]
+        public void Terminal_block_with_lower_td_should_not_change_best_suggested_but_should_be_added_to_block_tree()
+        {
+            Context ctx = new();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+            TestSpecProvider testSpecProvider = new(London.Instance);
+            testSpecProvider.TerminalTotalDifficulty = 1000000;
+
+            Block newBestLocalBlock = Build.A.Block.WithNumber(localBlockTree.Head!.Number+1).WithParent(localBlockTree.Head!).WithDifficulty(1000002L).TestObject;
+            localBlockTree.SuggestBlock(newBestLocalBlock);
+
+            PoSSwitcher poSSwitcher = new(new MergeConfig() { Enabled = true }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
+            HeaderValidator headerValidator = new(
+                localBlockTree,
+                Always.Valid,
+                testSpecProvider,
+                LimboLogs.Instance);
+
+            MergeHeaderValidator mergeHeaderValidator = new(poSSwitcher, headerValidator, localBlockTree, testSpecProvider, Always.Valid, LimboLogs.Instance);
+            BlockValidator blockValidator = new(
+                Always.Valid,
+                mergeHeaderValidator,
+                Always.Valid,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                blockValidator,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                testSpecProvider,
+                LimboLogs.Instance);
+
+            Block remoteBestBlock = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+
+            ctx.SyncServer.AddNewBlock(remoteBestBlock, ctx.NodeWhoSentTheBlock);
+            Assert.AreEqual(newBestLocalBlock.Header.Hash, localBlockTree.BestSuggestedHeader!.Hash);
+            Assert.AreEqual(remoteBestBlock.Hash, localBlockTree.FindBlock(remoteBestBlock.Hash, BlockTreeLookupOptions.None)!.Hash);
         }
 
         [Test]
