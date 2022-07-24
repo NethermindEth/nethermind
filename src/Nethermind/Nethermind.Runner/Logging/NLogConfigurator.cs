@@ -16,79 +16,76 @@
 
 using System;
 using System.Linq;
-using Microsoft.Extensions.CommandLineUtils;
 using NLog;
 using NLog.Config;
 using NLog.Targets;
 using NLog.Targets.Seq;
 
-namespace Nethermind.Runner.Logging
+namespace Nethermind.Runner.Logging;
+
+public static class NLogConfigurator
 {
-    public static class NLogConfigurator
+    public static void ConfigureSeqBufferTarget(
+        string url = "http://localhost:5341", 
+        string apiKey = "",
+        string minLevel = "Off")
     {
-        public static void ConfigureSeqBufferTarget(
-            string url = "http://localhost:5341", 
-            string apiKey = "",
-            string minLevel = "Off")
+        LoggingConfiguration loggingConfiguration = LogManager.Configuration;
+        if (loggingConfiguration != null)
         {
-            LoggingConfiguration loggingConfiguration = LogManager.Configuration;
-            if (loggingConfiguration != null)
+            if (loggingConfiguration.AllTargets != null)
             {
-                if (loggingConfiguration.AllTargets != null)
+                foreach (SeqTarget target in loggingConfiguration.AllTargets.OfType<SeqTarget>())
                 {
-                    foreach (SeqTarget target in loggingConfiguration.AllTargets.OfType<SeqTarget>())
+                    target.ApiKey = apiKey;
+                    target.ServerUrl = url;
+                    foreach (LoggingRule? rule in loggingConfiguration.LoggingRules)
                     {
-                        target.ApiKey = apiKey;
-                        target.ServerUrl = url;
-                        foreach (LoggingRule? rule in loggingConfiguration.LoggingRules)
+                        foreach (Target? ruleTarget in rule.Targets)
                         {
-                            foreach (Target? ruleTarget in rule.Targets)
+                            if (ruleTarget.Name == "seq")
                             {
-                                if (ruleTarget.Name == "seq")
-                                {
-                                    rule.EnableLoggingForLevels(LogLevel.FromString(minLevel), LogLevel.Fatal);
-                                }
+                                rule.EnableLoggingForLevels(LogLevel.FromString(minLevel), LogLevel.Fatal);
                             }
                         }
                     }
                 }
-                
-                // // // re-initialize single target
-                loggingConfiguration.AllTargets?.OfType<SeqTarget>().ToList().ForEach(t => t.Dispose());
-                LogManager.ReconfigExistingLoggers();
-            }
-        }
-
-        public static void ConfigureLogLevels(CommandOption logLevelOverride)
-        {
-            string logLevel = logLevelOverride.Value();
-            LogLevel nLogLevel = logLevel.ToUpperInvariant() switch
-            {
-                "OFF" => LogLevel.Off,
-                "ERROR" => LogLevel.Error,
-                "WARN" => LogLevel.Warn,
-                "INFO" => LogLevel.Info,
-                "DEBUG" => LogLevel.Debug,
-                "TRACE" => LogLevel.Trace,
-                _ => LogLevel.Info
-            };
-
-            Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
-
-            foreach (LoggingRule rule in LogManager.Configuration.LoggingRules)
-            {
-                foreach (var ruleTarget in rule.Targets)
-                {
-                    if (ruleTarget.Name != "seq")
-                    {
-                        Console.WriteLine($"{ruleTarget.Name} TEST");
-                        rule.DisableLoggingForLevels(LogLevel.Trace, nLogLevel);
-                        rule.EnableLoggingForLevels(nLogLevel, LogLevel.Off);                    
-                    }                        
-                }
             }
             
+            // // // re-initialize single target
+            loggingConfiguration.AllTargets?.OfType<SeqTarget>().ToList().ForEach(t => t.Dispose());
             LogManager.ReconfigExistingLoggers();
         }
+    }
+
+    public static void ConfigureLogLevels(string logLevel)
+    {
+        LogLevel nLogLevel = logLevel.ToUpperInvariant() switch
+        {
+            "OFF" => LogLevel.Off,
+            "ERROR" => LogLevel.Error,
+            "WARN" => LogLevel.Warn,
+            "INFO" => LogLevel.Info,
+            "DEBUG" => LogLevel.Debug,
+            "TRACE" => LogLevel.Trace,
+            _ => LogLevel.Info
+        };
+
+        Console.WriteLine($"Enabling log level override: {logLevel.ToUpperInvariant()}");
+
+        foreach (LoggingRule rule in LogManager.Configuration.LoggingRules)
+        {
+            foreach (var ruleTarget in rule.Targets)
+            {
+                if (ruleTarget.Name != "seq")
+                {
+                    Console.WriteLine($"{ruleTarget.Name} TEST");
+                    rule.DisableLoggingForLevels(LogLevel.Trace, nLogLevel);
+                    rule.EnableLoggingForLevels(nLogLevel, LogLevel.Off);                    
+                }                        
+            }
+        }
+        
+        LogManager.ReconfigExistingLoggers();
     }
 }
