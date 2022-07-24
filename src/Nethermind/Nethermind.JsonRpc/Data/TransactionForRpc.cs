@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Data
             Signature? signature = transaction.Signature;
             if (signature != null)
             {
-                
+
                 YParity = (transaction.IsEip1559 || transaction.IsEip2930) ? signature.RecoveryId : null;
                 R = new UInt256(signature.R, true);
                 S = new UInt256(signature.S, true);
@@ -91,20 +91,20 @@ namespace Nethermind.JsonRpc.Data
 
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
-        
+
         public UInt256? MaxPriorityFeePerGas { get; set; }
-        
+
         public UInt256? MaxFeePerGas { get; set; }
         public long? Gas { get; set; }
         public byte[]? Data { get; set; }
 
         [JsonProperty(NullValueHandling = NullValueHandling.Include)]
         public byte[]? Input { get; set; }
-        
+
         public UInt256? ChainId { get; set; }
-        
+
         public TxType Type { get; set; }
-        
+
         public AccessListItemForRpc[]? AccessList { get; set; }
 
         public UInt256? V { get; set; }
@@ -112,7 +112,7 @@ namespace Nethermind.JsonRpc.Data
         public UInt256? S { get; set; }
 
         public UInt256? R { get; set; }
-        
+
         [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
         public UInt256? YParity { get; set; }
 
@@ -160,7 +160,7 @@ namespace Nethermind.JsonRpc.Data
                 AccessList = TryGetAccessList(),
                 ChainId = chainId
             };
-            
+
             if (tx.IsEip1559)
             {
                 tx.GasPrice = MaxPriorityFeePerGas ?? 0;
@@ -171,10 +171,10 @@ namespace Nethermind.JsonRpc.Data
         }
 
         private AccessList? TryGetAccessList() =>
-            Type != TxType.AccessList || AccessList == null 
-                ? null 
+            !Type.IsTxTypeWithAccessList() || AccessList == null
+                ? null
                 : AccessListItemForRpc.ToAccessList(AccessList);
-        
+
         public void EnsureDefaults(long? gasCap)
         {
             if (Gas == null || Gas == 0)
