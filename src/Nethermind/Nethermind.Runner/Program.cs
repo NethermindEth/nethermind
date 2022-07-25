@@ -55,10 +55,6 @@ namespace Nethermind.Runner;
 
 public class Program
 {
-    private const string FailureString = "Failure";
-    private const string DefaultConfigsDirectory = "configs";
-    private const string DefaultConfigFile = "configs/mainnet.cfg";
-
     //private static readonly ManualResetEventSlim _appClosed = new(true);
     //private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
     private static ILogger _logger = SimpleConsoleLogger.Instance;
@@ -67,18 +63,20 @@ public class Program
 
     public static void Main(string[] args)
     {
+        var failure = "Failure";
+
         AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
-        {
-            ILogger logger = GetCriticalLogger();
-            if (eventArgs.ExceptionObject is Exception e)
             {
-                logger.Error(FailureString, e);
-            }
-            else
-            {
-                logger.Error(FailureString + eventArgs.ExceptionObject);
-            }
-        };
+                ILogger logger = GetCriticalLogger();
+                if (eventArgs.ExceptionObject is Exception e)
+                {
+                    logger.Error(failure, e);
+                }
+                else
+                {
+                    logger.Error(failure + eventArgs.ExceptionObject);
+                }
+            };
 
         try
         {
@@ -87,12 +85,12 @@ public class Program
         catch (AggregateException e)
         {
             ILogger logger = GetCriticalLogger();
-            logger.Error(FailureString, e.InnerException);
+            logger.Error(failure, e.InnerException);
         }
         catch (Exception e)
         {
             ILogger logger = GetCriticalLogger();
-            logger.Error(FailureString, e);
+            logger.Error(failure, e);
         }
         finally
         {
@@ -174,7 +172,7 @@ public class Program
 
     private static IConfigProvider BuildConfigProvider(InvocationOptions options, InvocationContext context)
     {
-        if (options.LoggerConfigurationSource == null)
+        if (options.LoggerConfigSource == null)
         {
             _logger.Info($"Loading standard NLog.config file from {"NLog.config".GetApplicationResourcePath()}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -185,7 +183,7 @@ public class Program
         }
         else
         {
-            var nLogPath = options.LoggerConfigurationSource;
+            var nLogPath = options.LoggerConfigSource;
 
             _logger.Info($"Loading NLog configuration file from {nLogPath}.");
 
@@ -200,9 +198,9 @@ public class Program
         }
 
         // TODO: dynamically switch log levels from CLI!
-        if (options.LogLevel != null)
+        if (options.Log != null)
         {
-            NLogConfigurator.ConfigureLogLevels(options.LogLevel);
+            NLogConfigurator.ConfigureLogLevels(options.Log);
         }
 
         ConfigProvider configProvider = new();
@@ -223,20 +221,20 @@ public class Program
         configProvider.AddSource(argsSource);
         configProvider.AddSource(new EnvConfigSource());
 
-        string configDir = options.ConfigurationDirectory ?? DefaultConfigsDirectory;
-        string configFilePath = options.Configuration ?? DefaultConfigFile;
+        string configDir = options.ConfigsDirectory;
+        string configFilePath = options.Config;
         string? configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
         if (!string.IsNullOrWhiteSpace(configPathVariable))
         {
             configFilePath = configPathVariable;
         }
 
-        if (!PathUtils.IsExplicitlyRelative(configFilePath))
-        {
-            configFilePath = configDir == DefaultConfigsDirectory
-                ? configFilePath.GetApplicationResourcePath()
-                : Path.Combine(configDir, string.Concat(configFilePath));
-        }
+        //if (!PathUtils.IsExplicitlyRelative(configFilePath))
+        //{
+        //    configFilePath = /*configDir == DefaultConfigsDirectory
+        //        ? configFilePath.GetApplicationResourcePath()
+        //        : */Path.Combine(configDir, string.Concat(configFilePath));
+        //}
 
         if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
         {
@@ -358,15 +356,13 @@ public class Program
 
         var command = new Command("Nethermind.Runner.Plugins");
         var option = new Option<string>(new[] { longCommand, shortCommand }, "Plugins directory");
-        var pluginsDirectory = "plugins";
+        var dir = "plugins";
 
         command.AddOption(option);
-        command.SetHandler(context =>
-            pluginsDirectory = context.ParseResult.GetValueForOption<string>(option) ?? pluginsDirectory);
-
+        command.SetHandler(context => dir = context.ParseResult.GetValueForOption<string>(option) ?? dir);
         command.Invoke(GetPluginArgs());
 
-        return pluginsDirectory;
+        return dir;
     }
 
     private static void LogMemoryConfiguration()
@@ -412,14 +408,14 @@ public class Program
         Console.Title = initConfig.LogFileName;
         //Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
-        SetFinalDataDirectory(options.DataDirectory, initConfig, keyStoreConfig);
+        SetFinalDataDirectory(options.Datadir, initConfig, keyStoreConfig);
         NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
         _logger = logManager.GetClassLogger();
         if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");
 
         ConfigureSeqLogger(configProvider);
-        SetFinalDbPath(options.DatabasePath, initConfig);
+        SetFinalDbPath(options.BaseDbPath, initConfig);
         LogMemoryConfiguration();
 
         EthereumJsonSerializer serializer = new();
@@ -517,9 +513,11 @@ public class Program
 
     private static class CliOptions
     {
-        public static Option<string> Configuration { get; } = new(new[] { "--config", "-c" }, "Configuration file path");
+        public static Option<string> Configuration { get; } =
+            new(new[] { "--config", "-c" }, () => "configs/mainnet.cfg", "Configuration file path");
 
-        public static Option<string> ConfigurationDirectory { get; } = new(new[] { "--configsDirectory", "-cd" });
+        public static Option<string> ConfigurationDirectory { get; } =
+            new(new[] { "--configsDirectory", "-cd" }, () => "configs", "Configuration file directory");
 
         public static Option<string> DatabasePath { get; } = new(new[] { "--baseDbPath", "-d" }, "Base database path");
 
@@ -534,17 +532,17 @@ public class Program
         public static Option<string> PluginsDirectory { get; } =
             new(new[] { "--pluginsDirectory", "-pd" }, "Plugins directory");
 
-        public static Option<bool> Version { get; } = new(new[] { "--version", "-v" }, ClientVersion.Description);
+        public static Option<bool> Version { get; } = new(new[] { "--version", "-v" }, "Show version information");
     }
 
     private record InvocationOptions
     (
-        string Configuration,
-        string ConfigurationDirectory,
-        string DatabasePath,
-        string DataDirectory,
-        string LoggerConfigurationSource,
-        string LogLevel,
+        string Config,
+        string ConfigsDirectory,
+        string BaseDbPath,
+        string Datadir,
+        string LoggerConfigSource,
+        string Log,
         string PluginsDirectory,
         bool Version
     );
