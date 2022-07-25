@@ -80,12 +80,12 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
     public async void SendMsg(DiscoveryMsg discoveryMsg)
     {
-        byte[] msgBytes;
+        IByteBuffer msgBuffer = Unpooled.Buffer(64);
 
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
-            msgBytes = Serialize(discoveryMsg);
+            Serialize(discoveryMsg, msgBuffer);
         }
         catch (Exception e)
         {
@@ -93,13 +93,12 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             return;
         }
 
-        if (msgBytes.Length > 1280)
+        if (msgBuffer.ReadableBytes > 1280)
         {
             if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all client. Msg: ${discoveryMsg}");
         }
 
-        IByteBuffer copiedBuffer = Unpooled.CopiedBuffer(msgBytes);
-        IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(copiedBuffer, discoveryMsg.FarAddress);
+        IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(msgBuffer, discoveryMsg.FarAddress);
 
         await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
         {
@@ -109,7 +108,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             }
         });
 
-        Interlocked.Add(ref Metrics.DiscoveryBytesSent, msgBytes.Length);
+        Interlocked.Add(ref Metrics.DiscoveryBytesSent, msgBuffer.ReadableBytes);
     }
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
     {
@@ -191,6 +190,33 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg) msg).ReadAllBytes(),
             _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
         };
+    }
+
+    private void Serialize(DiscoveryMsg msg, IByteBuffer msgBuffer)
+    {
+        switch (msg.MsgType)
+        {
+            case MsgType.Ping:
+                _msgSerializationService.ZeroSerialize((PingMsg)msg, msgBuffer);
+                break;
+            case MsgType.Pong:
+                _msgSerializationService.ZeroSerialize((PongMsg)msg, msgBuffer);
+                break;
+            case MsgType.FindNode :
+                _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, msgBuffer);
+                break;
+            case MsgType.Neighbors :
+                _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, msgBuffer);
+                break;
+            case MsgType.EnrRequest :
+                _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, msgBuffer);
+                break;
+            case MsgType.EnrResponse :
+                _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, msgBuffer);
+                break;
+            default:
+                throw new Exception($"Unsupported messageType: {msg.MsgType}");
+        }
     }
 
     private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet)

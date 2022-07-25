@@ -22,6 +22,7 @@ namespace Nethermind.Network
     public interface IMessageSerializationService
     {
         IByteBuffer ZeroSerialize<T>(T message) where T : MessageBase;
+        void ZeroSerialize<T>(T message, IByteBuffer msgBuffer) where T : MessageBase;
         T Deserialize<T>(byte[] bytes) where T : MessageBase;
         T Deserialize<T>(IByteBuffer buffer) where T : MessageBase;
         void Register(Assembly assembly);
