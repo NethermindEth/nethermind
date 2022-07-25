@@ -253,10 +253,12 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
-                bool shouldSkipProcessing = _blockTree.Head.IsPoS();
+
+
+                bool shouldSkipProcessing = _blockTree.Head.IsPoS() || block.IsPostMerge;
                 if (shouldSkipProcessing)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Skipped processing of discovered block {block}, current head: {_blockTree.Head}");
+                    if (_logger.IsInfo) _logger.Info($"Skipped processing of discovered block {block}, block.IsPostMerge: {block.IsPostMerge}, current head: {_blockTree.Head}");
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {syncPeer} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
