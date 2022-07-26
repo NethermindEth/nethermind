@@ -256,6 +256,56 @@ namespace Nethermind.Synchronization.Test
             Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, localBlockTree.BestSuggestedHeader.TotalDifficulty);
         }
 
+        [Test]
+        public void Terminal_blocks_with_incorrect_td_from_peer2()
+        {
+            Context ctx = new();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+            TestSpecProvider testSpecProvider = new(London.Instance);
+            testSpecProvider.TerminalTotalDifficulty = 20000000;
+
+            PoSSwitcher poSSwitcher = new(new MergeConfig() { Enabled = true }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
+            MergeSealEngine sealEngine = new MergeSealEngine(new SealEngine(new NethDevSealEngine(), Always.Valid), poSSwitcher, new MergeSealValidator(poSSwitcher, Always.Valid), LimboLogs.Instance);
+            HeaderValidator headerValidator = new(
+                localBlockTree,
+                sealEngine,
+                testSpecProvider,
+                LimboLogs.Instance);
+            MergeHeaderValidator mergeHeaderValidator = new(poSSwitcher, headerValidator, localBlockTree, testSpecProvider, Always.Valid, LimboLogs.Instance);
+
+            BlockValidator blockValidator = new(
+                Always.Valid,
+                mergeHeaderValidator,
+                Always.Valid,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                blockValidator,
+                sealEngine,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                testSpecProvider,
+                LimboLogs.Instance);
+
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+            block.Header.TotalDifficulty *= 2;
+
+            ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
+            Assert.AreEqual(localBlockTree.BestSuggestedHeader!.Hash, block.Header.Hash);
+
+            Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
+            Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, localBlockTree.BestSuggestedHeader.TotalDifficulty);
+        }
+
 
         [Test]
         public void Will_not_reject_block_with_bad_total_diff_but_will_reset_diff_to_null()
