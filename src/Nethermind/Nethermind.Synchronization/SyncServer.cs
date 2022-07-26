@@ -190,6 +190,11 @@ namespace Nethermind.Synchronization
                 _recentlySuggested.Set(block.Hash, _dummyValue);
             }
 
+            if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
+            {
+                if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
+            }
+
             ValidateSeal(block, nodeWhoSentTheBlock);
             if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None
                 || (_syncModeSelector.Current & SyncMode.Full) != SyncMode.None)
