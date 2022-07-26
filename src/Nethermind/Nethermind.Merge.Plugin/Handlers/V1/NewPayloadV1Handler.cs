@@ -148,7 +148,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             // edge-case detected on GSF5 - during the transition we want to try process all transition blocks from CL client
             // The last condition: !parentBlockInfo.IsBeaconBody will be true for terminal blocks. Checking _posSwitcher.IsTerminal might not be the best, because we're loading parentHeader with DoNotCalculateTotalDifficulty option
-            bool forceProcessing = !_poSSwitcher.TransitionFinished && (_blockTree.Head?.Number ?? 0) + 8 >= block.Number && !parentBlockInfo.IsBeaconBody;
+            bool weAreCloseToHead = (_blockTree.Head?.Number ?? 0) + 8 >= block.Number;
+            bool forceProcessing = !_poSSwitcher.TransitionFinished && weAreCloseToHead && !parentBlockInfo.IsBeaconBody;
             if (parentProcessed == false && forceProcessing) // add extra logging for force processing edge case
             {
                 if (_logger.IsInfo) _logger.Info($"Forced processing block {block}, block TD: {block.TotalDifficulty}, parent: {parentHeader}, parent TD: {parentHeader.TotalDifficulty}");
