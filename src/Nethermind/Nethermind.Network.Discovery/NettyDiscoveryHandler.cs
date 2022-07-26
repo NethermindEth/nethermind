@@ -80,6 +80,9 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
     public async void SendMsg(DiscoveryMsg discoveryMsg)
     {
+        // 64 is the default length used in ZeroSerialize when we do not know the length of message,
+        // so the same default length here
+        // TODO: can figure out a way to standardize GetLength of all IZeroSerializers and then use that here
         IByteBuffer msgBuffer = Unpooled.Buffer(64);
 
         try
