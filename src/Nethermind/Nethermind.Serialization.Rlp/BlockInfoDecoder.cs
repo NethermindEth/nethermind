@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -64,9 +64,25 @@ namespace Nethermind.Serialization.Rlp
             return blockInfo;
         }
 
-        public void Encode(RlpStream stream, BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            if (item == null)
+            {
+                stream.Encode(Rlp.OfEmptySequence);
+                return;
+            }
+
+            int contentLength = GetLength(item, rlpBehaviors);
+
+            bool hasMetadata = item.Metadata != BlockMetadata.None;
+            stream.StartSequence(contentLength);
+            stream.Encode(item.BlockHash);
+            stream.Encode(item.WasProcessed);
+            stream.Encode(item.TotalDifficulty);
+            if (hasMetadata)
+            {
+                stream.Encode((int)item.Metadata);
+            }
         }
 
         public Rlp Encode(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -90,9 +106,25 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.Encode(elements);
         }
 
-        public int GetLength(BlockInfo item, RlpBehaviors rlpBehaviors)
+        public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors)
         {
-            throw new NotImplementedException();
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence.Length;
+            }
+
+            bool hasMetadata = item.Metadata != BlockMetadata.None;
+            int contentLength = 0;
+            contentLength += Rlp.LengthOf(item.BlockHash);
+            contentLength += Rlp.LengthOf(item.WasProcessed);
+            contentLength += Rlp.LengthOf(item.TotalDifficulty);
+
+            if (hasMetadata)
+            {
+                contentLength += Rlp.LengthOf((int)item.Metadata);
+            }
+
+            return contentLength;
         }
 
         public BlockInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
