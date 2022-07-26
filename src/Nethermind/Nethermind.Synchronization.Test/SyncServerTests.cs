@@ -215,7 +215,6 @@ namespace Nethermind.Synchronization.Test
             TestSpecProvider testSpecProvider = new(London.Instance);
             testSpecProvider.TerminalTotalDifficulty = 10000000;
 
-
             PoSSwitcher poSSwitcher = new(new MergeConfig() { Enabled = true }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
             MergeSealEngine sealEngine = new MergeSealEngine(new SealEngine(new NethDevSealEngine(), Always.Valid), poSSwitcher, new MergeSealValidator(poSSwitcher, Always.Valid), LimboLogs.Instance);
             HeaderValidator headerValidator = new(
