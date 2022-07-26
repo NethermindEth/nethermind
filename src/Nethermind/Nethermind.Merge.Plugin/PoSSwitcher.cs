@@ -170,7 +170,7 @@ namespace Nethermind.Merge.Plugin
 
         public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
 
-        public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
+        public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, bool dontTrustTotalDifficulty = false)
         {
             if (_logger.IsTrace)
                 _logger.Trace(
@@ -206,8 +206,25 @@ namespace Nethermind.Merge.Plugin
                 }
                 else
                 {
-                    isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
-                    isPostMerge = !isTerminal;// && header.Difficulty == 0;
+                    if (header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty && dontTrustTotalDifficulty)
+                    {
+                        BlockHeader? parentHeader = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
+                        if (parentHeader != null && parentHeader.TotalDifficulty != 0)
+                            header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
+                        else
+                            header.TotalDifficulty = null;
+                    }
+
+                    if (header.TotalDifficulty == null)
+                    {
+                        isPostMerge = header.Difficulty == 0;
+                        isTerminal = false; // we can't say if block isTerminal if we don't have TD
+                    }
+                    else
+                    {
+                        isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
+                        isPostMerge = !isTerminal;
+                    }
                 }
             }
 

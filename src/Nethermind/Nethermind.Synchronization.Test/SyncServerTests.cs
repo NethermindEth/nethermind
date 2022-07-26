@@ -213,7 +213,7 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
             TestSpecProvider testSpecProvider = new(London.Instance);
-            testSpecProvider.TerminalTotalDifficulty = 1000000;
+            testSpecProvider.TerminalTotalDifficulty = 10000000;
 
 
             PoSSwitcher poSSwitcher = new(new MergeConfig() { Enabled = true }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
