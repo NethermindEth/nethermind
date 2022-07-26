@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -958,7 +958,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             // This class was introduce to reduce allocations when deserializing receipts. In order to deserialize receipts we first try to deserialize it in new format and then in old format.
-            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings. 
+            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings.
             private class DecodeKeccakRlpException : RlpException
             {
                 private readonly int _prefix;
@@ -1100,7 +1100,7 @@ namespace Nethermind.Serialization.Rlp
                 // https://github.com/NethermindEth/nethermind/issues/113
                 if (Data[Position] == 249)
                 {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
                     bloomBytes = Read(256);
                 }
                 else
@@ -1128,7 +1128,7 @@ namespace Nethermind.Serialization.Rlp
                 // https://github.com/NethermindEth/nethermind/issues/113
                 if (Data[Position] == 249)
                 {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
                     bloomBytes = Read(256);
                 }
                 else
@@ -1614,5 +1614,12 @@ namespace Nethermind.Serialization.Rlp
             IRlpDecoder<LogEntry>? rlpDecoder = GetDecoder<LogEntry>();
             return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(LogEntry)}");
         }
+
+        public static int LengthOf(BlockInfo item)
+        {
+            IRlpDecoder<BlockInfo>? rlpDecoder = GetDecoder<BlockInfo>();
+            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(BlockInfo)}");
+        }
+
     }
 }
