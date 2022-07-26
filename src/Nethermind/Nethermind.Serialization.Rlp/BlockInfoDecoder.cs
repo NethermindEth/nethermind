@@ -106,7 +106,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.Encode(elements);
         }
 
-        public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors)
+        public int GetLength(BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
