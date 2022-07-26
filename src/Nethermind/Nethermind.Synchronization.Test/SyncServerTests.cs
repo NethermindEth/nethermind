@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
@@ -206,64 +207,15 @@ namespace Nethermind.Synchronization.Test
             Assert.AreEqual(remoteBestBlock.Hash, localBlockTree.FindBlock(remoteBestBlock.Hash, BlockTreeLookupOptions.None)!.Hash);
         }
 
-        [Test]
-        public void Terminal_blocks_with_incorrect_td_from_peer()
+        [TestCase(10000000)]
+        [TestCase(20000000)]
+        public void Fake_total_difficulty_from_peer_does_not_trick_the_node(long ttd)
         {
             Context ctx = new();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
             TestSpecProvider testSpecProvider = new(London.Instance);
-            testSpecProvider.TerminalTotalDifficulty = 10000000;
-
-            PoSSwitcher poSSwitcher = new(new MergeConfig() { Enabled = true }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
-            MergeSealEngine sealEngine = new MergeSealEngine(new SealEngine(new NethDevSealEngine(), Always.Valid), poSSwitcher, new MergeSealValidator(poSSwitcher, Always.Valid), LimboLogs.Instance);
-            HeaderValidator headerValidator = new(
-                localBlockTree,
-                sealEngine,
-                testSpecProvider,
-                LimboLogs.Instance);
-            MergeHeaderValidator mergeHeaderValidator = new(poSSwitcher, headerValidator, localBlockTree, testSpecProvider, Always.Valid, LimboLogs.Instance);
-
-            BlockValidator blockValidator = new(
-                Always.Valid,
-                mergeHeaderValidator,
-                Always.Valid,
-                MainnetSpecProvider.Instance,
-                LimboLogs.Instance);
-
-            ctx.SyncServer = new SyncServer(
-                new MemDb(),
-                new MemDb(),
-                localBlockTree,
-                NullReceiptStorage.Instance,
-                blockValidator,
-                sealEngine,
-                ctx.PeerPool,
-                StaticSelector.Full,
-                new SyncConfig(),
-                NullWitnessCollector.Instance,
-                Policy.FullGossip,
-                testSpecProvider,
-                LimboLogs.Instance);
-
-            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
-            block.Header.TotalDifficulty *= 2;
-
-            ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-            Assert.AreEqual(localBlockTree.BestSuggestedHeader!.Hash, block.Header.Hash);
-
-            Block parentBlock = remoteBlockTree.FindBlock(8, BlockTreeLookupOptions.None);
-            Assert.AreEqual(parentBlock.TotalDifficulty + block.Difficulty, localBlockTree.BestSuggestedHeader.TotalDifficulty);
-        }
-
-        [Test]
-        public void Terminal_blocks_with_incorrect_td_from_peer2()
-        {
-            Context ctx = new();
-            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-            TestSpecProvider testSpecProvider = new(London.Instance);
-            testSpecProvider.TerminalTotalDifficulty = 20000000;
+            testSpecProvider.TerminalTotalDifficulty = (UInt256)ttd;
 
             PoSSwitcher poSSwitcher = new(new MergeConfig() { Enabled = true }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
             MergeSealEngine sealEngine = new MergeSealEngine(new SealEngine(new NethDevSealEngine(), Always.Valid), poSSwitcher, new MergeSealValidator(poSSwitcher, Always.Valid), LimboLogs.Instance);
