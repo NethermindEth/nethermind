@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using Nethermind.Core;
@@ -31,7 +31,7 @@ namespace Nethermind.Consensus
         event EventHandler TerminalBlockReached;
 
         UInt256? TerminalTotalDifficulty { get; }
-        
+
         /// <summary>
         /// Total difficulty is total difficulty of the last PoW block.
         /// </summary>
@@ -42,10 +42,10 @@ namespace Nethermind.Consensus
         /// This value will be known after the merge transition, and we can configure it in the first release after the merge.
         /// </remarks>
         UInt256? FinalTotalDifficulty { get; }
-        
+
         bool TransitionFinished { get; }
         public Keccak ConfiguredTerminalBlockHash { get; }
-        
+
         public long? ConfiguredTerminalBlockNumber { get; }
 
         // We can get TerminalBlock from three different points in the system:
@@ -55,15 +55,15 @@ namespace Nethermind.Consensus
         // Note: In the first post-merge release, the terminal block will be known, it explains why we can override it through settings.
         bool TryUpdateTerminalBlock(BlockHeader header);
 
-        (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header);
-        
+        (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, bool dontTrustTotalDifficulty = false);
+
         bool IsPostMerge(BlockHeader header);
     }
 
     public static class PoSSwitcherExtensions
     {
         public static bool MisconfiguredTerminalTotalDifficulty(this IPoSSwitcher poSSwitcher) => poSSwitcher.TerminalTotalDifficulty is null;
-        
+
         public static bool BlockBeforeTerminalTotalDifficulty(this IPoSSwitcher poSSwitcher, BlockHeader blockHeader) => blockHeader.TotalDifficulty < poSSwitcher.TerminalTotalDifficulty;
     }
 }

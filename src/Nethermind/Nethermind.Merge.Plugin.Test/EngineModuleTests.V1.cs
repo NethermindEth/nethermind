@@ -864,6 +864,78 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
+        public async Task executePayloadV1_on_top_of_terminal_block()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
+            {
+                Enabled = true, TerminalTotalDifficulty = $"{1900000}"
+            });
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+                .WithParent(chain.BlockTree.Head!)
+                .WithNonce(0)
+                .WithDifficulty(900000)
+                .WithTotalDifficulty(1900000L)
+                .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            newBlock.CalculateHash();
+            await chain.BlockTree.SuggestBlockAsync(newBlock);
+            SemaphoreSlim bestBlockProcessed = new(0);
+            chain.BlockTree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Hash == newBlock!.Hash)
+                    bestBlockProcessed.Release(1);
+            };
+            await bestBlockProcessed.WaitAsync();
+            ExecutionPayloadV1 executionPayload = CreateBlockRequest(CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD);
+            ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
+            resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+            new ExecutionPayloadV1(chain.BlockTree.BestSuggestedBody).Should().BeEquivalentTo(executionPayload);
+        }
+
+        [Test]
+        public async Task executePayloadV1_on_top_of_not_processed_terminal_block()
+        {
+            using MergeTestBlockchain chain = await CreateBlockChain(new MergeConfig()
+            {
+                Enabled = true, TerminalTotalDifficulty = $"{1900000}"
+            });
+            IEngineRpcModule rpc = CreateEngineModule(chain);
+            Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+                .WithParent(chain.BlockTree.Head!)
+                .WithNonce(0)
+                .WithDifficulty(1000000)
+                .WithTotalDifficulty(2000000L)
+                .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            newBlock.CalculateHash();
+            Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
+                .WithParent(chain.BlockTree.Head!)
+                .WithNonce(0)
+                .WithDifficulty(900000)
+                .WithTotalDifficulty(1900000L)
+                .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            await chain.BlockTree.SuggestBlockAsync(newBlock);
+            SemaphoreSlim bestBlockProcessed = new(0);
+            chain.BlockTree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Hash == newBlock!.Hash)
+                    bestBlockProcessed.Release(1);
+            };
+            await bestBlockProcessed.WaitAsync();
+            oneMoreTerminalBlock.CalculateHash();
+            await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
+
+            Block firstPoSBlock = Build.A.Block.WithParent(oneMoreTerminalBlock).
+                WithNumber(oneMoreTerminalBlock.Number + 1)
+                .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+                .WithDifficulty(0).WithNonce(0).TestObject;
+            firstPoSBlock.CalculateHash();
+            ExecutionPayloadV1 executionPayload = new ExecutionPayloadV1(firstPoSBlock);
+            ResultWrapper<PayloadStatusV1> resultWrapper = await rpc.engine_newPayloadV1(executionPayload);
+            resultWrapper.Data.Status.Should().Be(PayloadStatus.Valid);
+            new ExecutionPayloadV1(chain.BlockTree.BestSuggestedBody).Should().BeEquivalentTo(executionPayload);
+        }
+
+        [Test]
         public async Task executePayloadV1_accepts_first_block()
         {
             using MergeTestBlockchain chain = await CreateBlockChain();

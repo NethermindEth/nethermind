@@ -35,6 +35,7 @@ namespace Nethermind.Merge.Plugin
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly IHeaderValidator _preMergeHeaderValidator;
         private readonly IBlockTree _blockTree;
+        private readonly ISpecProvider _specProvider;
 
         public MergeHeaderValidator(
             IPoSSwitcher poSSwitcher,
@@ -48,6 +49,7 @@ namespace Nethermind.Merge.Plugin
             _poSSwitcher = poSSwitcher;
             _preMergeHeaderValidator = preMergeHeaderValidator;
             _blockTree = blockTree;
+            _specProvider = specProvider;
         }
 
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
@@ -130,7 +132,7 @@ namespace Nethermind.Merge.Plugin
         {
             if (!Equals(value, expected))
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {name} is incorrect expected {expected}, got {value} .");
+                if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Full)} - the {name} is incorrect expected {expected}, got {value}. TransitionFinished: {_poSSwitcher.TransitionFinished}, TTD: {_specProvider.TerminalTotalDifficulty}, IsTerminal: {header.IsTerminalBlock(_specProvider)}");
                 return false;
             }
 
