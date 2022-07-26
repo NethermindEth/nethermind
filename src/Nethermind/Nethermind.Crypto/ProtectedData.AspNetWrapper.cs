@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.IO;
@@ -29,23 +29,23 @@ namespace Nethermind.Crypto
             private const string AppName = "Nethermind";
             private const string BaseName = AppName + "_";
 
-            public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
+            public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope, string keyStoreDir)
             {
-                var protector = GetProtector(scope, optionalEntropy);
+                var protector = GetProtector(scope, optionalEntropy, keyStoreDir);
                 return protector.Protect(userData);
             }
 
-            public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope)
+            public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope, string keyStoreDir)
             {
-                var protector = GetProtector(scope, optionalEntropy);
+                var protector = GetProtector(scope, optionalEntropy, keyStoreDir);
                 return protector.Unprotect(encryptedData);
             }
 
-            private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy)
+            private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy, string keyStoreDir)
             {
                 if (scope == DataProtectionScope.CurrentUser)
                 {
-                    return GetUserProtector(optionalEntropy);
+                    return GetUserProtector(keyStoreDir, optionalEntropy);
                 }
                 else
                 {
@@ -53,10 +53,9 @@ namespace Nethermind.Crypto
                 }
             }
 
-            private IDataProtector GetUserProtector(byte[] optionalEntropy)
+            private IDataProtector GetUserProtector(string keyStoreDir, byte[] optionalEntropy)
             {
-                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                var path = Path.Combine(appData, AppName);
+                var path = Path.Combine(keyStoreDir, AppName);
                 var info = new DirectoryInfo(path);
                 var provider = DataProtectionProvider.Create(info);
                 var purpose = CreatePurpose(optionalEntropy);

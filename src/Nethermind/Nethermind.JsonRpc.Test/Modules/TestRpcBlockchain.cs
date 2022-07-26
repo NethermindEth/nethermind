@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -52,42 +52,42 @@ namespace Nethermind.JsonRpc.Test.Modules
         public IBlockchainBridge Bridge { get; private set; }
         public ITxSender TxSender { get; private set; }
         public ILogFinder LogFinder { get; private set; }
-        
+
         public IReceiptFinder ReceiptFinder { get; private set; }
         public IGasPriceOracle GasPriceOracle { get; private set; }
-        
-        public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys);
-        public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys), LimboLogs.Instance);
+
+        public IKeyStore KeyStore { get; } = new MemKeyStore(TestItem.PrivateKeys, null);
+        public IWallet TestWallet { get; } = new DevKeyStoreWallet(new MemKeyStore(TestItem.PrivateKeys, null), LimboLogs.Instance);
         public IFeeHistoryOracle FeeHistoryOracle { get; private set; }
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
-        public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() => 
+        public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() =>
             new(new T {SealEngineType = sealEngineType});
-        
-        public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain=> 
+
+        public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain=>
             new(blockchain);
 
         public class Builder<T>  where T : TestRpcBlockchain
         {
             private readonly TestRpcBlockchain _blockchain;
-            
+
             public Builder(T blockchain)
             {
                 _blockchain = blockchain;
             }
-            
+
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
             {
                 _blockchain.Bridge = blockchainBridge;
                 return this;
             }
-            
+
             public Builder<T> WithBlockFinder(IBlockFinder blockFinder)
             {
                 _blockchain.BlockFinder = blockFinder;
                 return this;
             }
-            
+
             public Builder<T> WithReceiptFinder(IReceiptFinder receiptFinder)
             {
                 _blockchain.ReceiptFinder = receiptFinder;
@@ -104,7 +104,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _blockchain.GenesisBlockBuilder = blockBuilder;
                 return this;
             }
-            
+
             public Builder<T> WithGasPriceOracle(IGasPriceOracle gasPriceOracle)
             {
                 _blockchain.GasPriceOracle = gasPriceOracle;
@@ -127,19 +127,19 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance), specProvider);
             LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
-            
+
             ReadOnlyTxProcessingEnv processingEnv = new(
                 new ReadOnlyDbProvider(DbProvider, false),
                 new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);
-            
+
             Bridge ??= new BlockchainBridge(processingEnv, TxPool, ReceiptStorage, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
             ReceiptFinder ??= ReceiptStorage;
-            
+
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider?.ChainId ?? 0);
             ITxSealer txSealer0 = new TxSealer(txSigner, Timestamper);
             ITxSealer txSealer1 = new NonceReservingTxSealer(txSigner, Timestamper, TxPool);
@@ -154,13 +154,13 @@ namespace Nethermind.JsonRpc.Test.Modules
                 TxPool,
                 TxSender,
                 TestWallet,
-                ReceiptFinder, 
-                LimboLogs.Instance, 
-                SpecProvider, 
+                ReceiptFinder,
+                LimboLogs.Instance,
+                SpecProvider,
                 GasPriceOracle,
                 new EthSyncingInfo(BlockFinder),
                 FeeHistoryOracle);
-            
+
             return this;
         }
 

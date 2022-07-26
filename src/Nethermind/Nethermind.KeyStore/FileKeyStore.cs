@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -102,7 +102,7 @@ namespace Nethermind.KeyStore
                 return (keyData, Result.Success);
             }
             catch (Exception)
-            {                
+            {
                 return (null, Result.Fail("Invalid key data format"));
             }
         }
@@ -199,7 +199,7 @@ namespace Nethermind.KeyStore
         {
             (PrivateKey privateKey, Result result) = GetKey(address, password);
             using var key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _cryptoRandom) : null, result);
+            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
         }
 
         public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
@@ -214,7 +214,7 @@ namespace Nethermind.KeyStore
             {
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
-            
+
             var privateKey = _privateKeyGenerator.Generate();
             var result = StoreKey(privateKey, password);
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
@@ -224,7 +224,7 @@ namespace Nethermind.KeyStore
         {
             (PrivateKey privateKey, Result result) = GenerateKey(password);
             using var key = privateKey;
-            return (result == Result.Success ? new ProtectedPrivateKey(key, _cryptoRandom) : null, result);
+            return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
         }
 
         public Result StoreKey(Address address, KeyStoreItem keyStoreItem)
@@ -324,19 +324,19 @@ namespace Nethermind.KeyStore
             {
                 return Result.Fail("Incorrect key");
             }
-            
+
             if (keyStoreItem.Version != Version)
             {
                 return Result.Fail("KeyStore version mismatch");
             }
-            
+
             return Result.Success;
         }
 
         private Result PersistKey(Address address, KeyStoreItem keyData)
         {
             var serializedKey = _jsonSerializer.Serialize(keyData);
-            
+
             try
             {
                 var keyFileName = _keyStoreIOSettingsProvider.GetFileName(address);
@@ -368,7 +368,7 @@ namespace Nethermind.KeyStore
                 {
                     File.Delete(file);
                 }
-                
+
                 return new Result { ResultType = ResultType.Success };
             }
             catch (Exception e)
@@ -378,14 +378,14 @@ namespace Nethermind.KeyStore
                 return Result.Fail(msg);
             }
         }
-        
+
         private string ReadKey(Address address)
         {
             if (address == Address.Zero)
             {
                 return null;
             }
-            
+
             try
             {
                 var files = FindKeyFiles(address);
@@ -394,7 +394,7 @@ namespace Nethermind.KeyStore
                     if(_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");
                     return null;
                 }
-                
+
                 return File.ReadAllText(files[0]);
             }
             catch (Exception e)
