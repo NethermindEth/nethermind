@@ -178,20 +178,6 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         };
     }
 
-    private byte[] Serialize(DiscoveryMsg msg)
-    {
-        return msg.MsgType switch
-        {
-            MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg) msg).ReadAllBytes(),
-            MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg) msg).ReadAllBytes(),
-            MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg) msg).ReadAllBytes(),
-            MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg) msg).ReadAllBytes(),
-            MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg) msg).ReadAllBytes(),
-            MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg) msg).ReadAllBytes(),
-            _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
-        };
-    }
-
     private void Serialize(DiscoveryMsg msg, IByteBuffer msgBuffer)
     {
         switch (msg.MsgType)
