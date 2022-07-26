@@ -206,7 +206,7 @@ namespace Nethermind.Merge.Plugin
                 }
                 else
                 {
-                    if (header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty && dontTrustTotalDifficulty)
+                    if (header.TotalDifficulty >= _specProvider.TerminalTotalDifficulty && dontTrustTotalDifficulty && header.IsGenesis == false)
                     {
                         BlockHeader? parentHeader = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
                         if (parentHeader != null && parentHeader.TotalDifficulty != 0)
