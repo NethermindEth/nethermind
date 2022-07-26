@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -29,6 +29,7 @@ namespace Nethermind.Serialization.Rlp
     {
         private static readonly HeaderDecoder _headerDecoder = new();
         private static readonly BlockDecoder _blockDecoder = new();
+        private static readonly BlockInfoDecoder _blockInfoDecoder = new();
         private static readonly TxDecoder _txDecoder = new();
         private static readonly ReceiptMessageDecoder _receiptDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
@@ -74,6 +75,11 @@ namespace Nethermind.Serialization.Rlp
         public void Encode(LogEntry value)
         {
             _logEntryDecoder.Encode(this, value);
+        }
+
+        public void Encode(BlockInfo value)
+        {
+            _blockInfoDecoder.Encode(this, value);
         }
 
         public void StartByteArray(int contentLength, bool firstByteLessThan128)
@@ -208,7 +214,7 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
         }
-        
+
         public void Encode(Address? address)
         {
             if (address == null)
@@ -529,7 +535,7 @@ namespace Nethermind.Serialization.Rlp
             (int a, int b) = PeekPrefixAndContentLength();
             return a + b;
         }
-        
+
         public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
         {
             (int prefixLength, int contentLength) result;
@@ -575,7 +581,7 @@ namespace Nethermind.Serialization.Rlp
 
                 result = (lengthOfContentLength + 1, contentLength);
             }
-            
+
             return result;
         }
 
@@ -583,11 +589,11 @@ namespace Nethermind.Serialization.Rlp
         {
             int memorizedPosition = Position;
             (int PrefixLength, int ContentLength) result = ReadPrefixAndContentLength();
-            
+
             Position = memorizedPosition;
             return result;
         }
-        
+
         public int ReadSequenceLength()
         {
             int prefix = ReadByte();
@@ -771,7 +777,7 @@ namespace Nethermind.Serialization.Rlp
             // https://github.com/NethermindEth/nethermind/issues/113
             if (PeekByte() == 249)
             {
-                SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes 
+                SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes
                 bloomBytes = Read(256);
             }
             else
@@ -796,7 +802,7 @@ namespace Nethermind.Serialization.Rlp
             int length = PeekNextRlpLength();
             return Peek(length);
         }
-        
+
         public Span<byte> Peek(int length)
         {
             Span<byte> item = Read(length);
