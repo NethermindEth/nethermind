@@ -23,8 +23,6 @@ public static class VersionToMetrics
 {
     public static int ConvertToNumber(string version)
     {
-        var number = 0;
-
         try
         {
             var index = version.IndexOfAny(new[] { '-', '+' });
@@ -37,17 +35,13 @@ public static class VersionToMetrics
                 .Select(v => int.Parse(v))
                 .ToArray();
 
-            if (versions.Length > 0)
-                number += versions[0] * 100_000;
-
-            if (versions.Length > 1)
-                number += versions[1] * 1_000;
-
-            if (versions.Length > 2)
-                number += versions[2];
+            return versions.Length == 3
+                ? versions[0] * 100_000 + versions[1] * 1_000 + versions[2]
+                : throw new ArgumentException("Invalid version format");
         }
-        catch (Exception) { }
-
-        return number;
+        catch (Exception)
+        {
+            return 0;
+        }
     }
 }
