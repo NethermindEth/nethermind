@@ -34,7 +34,8 @@ namespace Nethermind.Synchronization.Blocks
         private readonly bool _downloadReceipts;
         private readonly IReceiptsRecovery _receiptsRecovery;
 
-        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader?[] headers, bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
+        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader?[] headers,
+            bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
         {
             _indexMapping = new Dictionary<int, int>();
             _downloadReceipts = downloadReceipts;
@@ -127,6 +128,12 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             return result;
+        }
+
+        public Block GetBlockByRequestIdx(int index)
+        {
+            int mappedIndex = _indexMapping[index];
+            return Blocks[mappedIndex];
         }
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
