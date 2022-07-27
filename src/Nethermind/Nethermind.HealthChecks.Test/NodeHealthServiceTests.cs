@@ -90,6 +90,7 @@ namespace Nethermind.HealthChecks.Test
             methodStats.Successes = 0;
             api.JsonRpcLocalStats!.GetMethodStats("engine_forkchoiceUpdatedV1").Returns(methodStats);
             api.JsonRpcLocalStats!.GetMethodStats("engine_newPayloadV1").Returns(methodStats);
+            api.JsonRpcLocalStats!.GetMethodStats("engine_exchangeTransitionConfigurationV1").Returns(methodStats);
             syncServer.GetPeerCount().Returns(test.PeerCount);
 
             api.SpecProvider = Substitute.For<ISpecProvider>();
