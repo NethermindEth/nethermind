@@ -37,7 +37,7 @@ public static class ProductInfo
         Timestamp = gitAttr?.Timestamp ?? DateTimeOffset.MinValue;
         Version = infoAttr?.InformationalVersion ?? string.Empty;
 
-        ClientId = $"{Name}/v{Version}/{OS.ToLowerInvariant()}-{OSArchitecture}/dotnet{Runtime[5..]})";
+        ClientId = $"{Name}/v{Version}/{OS.ToLowerInvariant()}-{OSArchitecture}/dotnet{Runtime[5..]}";
     }
 
     public static string ClientId { get; }
