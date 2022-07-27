@@ -144,11 +144,8 @@ namespace Nethermind.HealthChecks
 
         public bool CheckClAlive()
         {
-            if (_blockFinder.Head!.Difficulty == UInt256.Zero)
-            {
-                return CheckMethodInvoked("engine_forkchoiceUpdatedV1") || CheckMethodInvoked("engine_newPayloadV1");
-            }
-            return CheckMethodInvoked("engine_exchangeTransitionConfigurationV1");
+            return CheckMethodInvoked("engine_forkchoiceUpdatedV1") || CheckMethodInvoked("engine_newPayloadV1") ||
+                   CheckMethodInvoked("engine_exchangeTransitionConfigurationV1");
         }
 
         private readonly ConcurrentDictionary<string, bool> _previousMethodCheckResult = new();
