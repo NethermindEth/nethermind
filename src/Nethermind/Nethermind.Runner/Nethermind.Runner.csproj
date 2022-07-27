@@ -130,4 +130,6 @@
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
   </Target>
 
+  <Import Project="..\ProductInfo.targets" />
+
 </Project>

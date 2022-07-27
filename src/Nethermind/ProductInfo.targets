@@ -1,9 +1,4 @@
 <Project>
-  <PropertyGroup>
-    <Product>Nethermind</Product>
-    <Copyright>Demerzel Solutions Limited</Copyright>
-  </PropertyGroup>
-  
   <Target Name="ProductInfo" BeforeTargets="BeforeBuild">
     <Message Text="Building version from Git log" />
     <Exec Command="git describe --tag --always --abbrev=0" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
