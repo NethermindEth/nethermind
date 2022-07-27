@@ -6,7 +6,7 @@
   
   <Target Name="ProductInfo" BeforeTargets="BeforeBuild">
     <Message Text="Building version from Git log" />
-    <Exec Command="git describe --tag --abbrev=0" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
+    <Exec Command="git describe --tag --always --abbrev=0" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
       <Output PropertyName="GitTag" TaskParameter="ConsoleOutput" />
     </Exec>
     <Exec Command="git describe --long --always --exclude=* --abbrev=40" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
