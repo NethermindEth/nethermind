@@ -15,6 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -46,6 +47,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -98,6 +100,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -144,6 +147,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -166,6 +170,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -203,6 +208,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -237,6 +243,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -262,6 +269,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -277,6 +285,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -295,6 +304,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -330,4 +340,3 @@ jobs:
     - name: Ethereum.Transition.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Transition.Test
-        
