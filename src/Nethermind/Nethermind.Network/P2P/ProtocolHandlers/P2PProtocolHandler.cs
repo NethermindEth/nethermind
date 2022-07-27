@@ -313,14 +313,14 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
     {
         if (Logger.IsTrace)
         {
-            Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.UserAgent}, " +
+            Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.ClientId}, " +
                          $"protocol {Name}, listen port {ListenPort}");
         }
 
         HelloMessage helloMessage = new()
         {
             Capabilities = SupportedCapabilities,
-            ClientId = ProductInfo.UserAgent,
+            ClientId = ProductInfo.ClientId,
             NodeId = LocalNodeId,
             ListenPort = ListenPort,
             P2PVersion = ProtocolVersion

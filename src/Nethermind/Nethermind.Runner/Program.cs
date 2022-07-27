@@ -145,7 +145,7 @@ namespace Nethermind.Runner
                 NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
                 _logger = logManager.GetClassLogger();
-                if (_logger.IsDebug) _logger.Debug(ProductInfo.UserAgent);
+                if (_logger.IsDebug) _logger.Debug(ProductInfo.ClientId);
 
                 ConfigureSeqLogger(configProvider);
                 SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);

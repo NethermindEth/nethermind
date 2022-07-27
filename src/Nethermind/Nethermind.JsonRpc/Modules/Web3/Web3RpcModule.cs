@@ -26,11 +26,7 @@ public class Web3RpcModule : IWeb3RpcModule
     {
     }
 
-    public ResultWrapper<string> web3_clientVersion()
-    {
-        var clientVersion = ProductInfo.UserAgent;
-        return ResultWrapper<string>.Success(clientVersion);
-    }
+    public ResultWrapper<string> web3_clientVersion() => ResultWrapper<string>.Success(ProductInfo.ClientId);
 
     public ResultWrapper<Keccak> web3_sha3(byte[] data)
     {

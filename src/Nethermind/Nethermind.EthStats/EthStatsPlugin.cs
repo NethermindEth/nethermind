@@ -94,7 +94,7 @@ public class EthStatsPlugin : INethermindPlugin
             const string api = "no";
             const string client = "0.1.1";
             const bool canUpdateHistory = false;
-            string node = ProductInfo.UserAgent;
+            string node = ProductInfo.ClientId;
             int port = networkConfig.P2PPort;
             string network = _api.SpecProvider!.ChainId.ToString();
             string protocol = $"{P2PProtocolInfoProvider.DefaultCapabilitiesToString()}";

@@ -37,8 +37,10 @@ public static class ProductInfo
         Timestamp = gitAttr?.Timestamp ?? DateTimeOffset.MinValue;
         Version = infoAttr?.InformationalVersion ?? string.Empty;
 
-        UserAgent = $"{Name}/{Version} ({OS}; {OSArchitecture}; {Runtime})";
+        ClientId = $"{Name}/v{Version}/{OS.ToLowerInvariant()}-{OSArchitecture}/dotnet{Runtime[5..]})";
     }
+
+    public static string ClientId { get; }
 
     public static string CommitHash { get; }
 
@@ -51,8 +53,6 @@ public static class ProductInfo
     public static string Runtime { get; }
 
     public static DateTimeOffset Timestamp { get; }
-
-    public static string UserAgent { get; }
 
     public static string Version { get; }
 }

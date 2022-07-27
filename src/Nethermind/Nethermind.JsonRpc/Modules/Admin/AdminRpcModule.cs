@@ -62,7 +62,7 @@ public class AdminRpcModule : IAdminRpcModule
     private void BuildNodeInfo()
     {
         _nodeInfo = new NodeInfo();
-        _nodeInfo.Name = ProductInfo.UserAgent;
+        _nodeInfo.Name = ProductInfo.ClientId;
         _nodeInfo.Enode = _enode.Info;
         byte[] publicKeyBytes = _enode.PublicKey?.Bytes;
         _nodeInfo.Id = (publicKeyBytes == null ? Keccak.Zero : Keccak.Compute(publicKeyBytes)).ToString(false);

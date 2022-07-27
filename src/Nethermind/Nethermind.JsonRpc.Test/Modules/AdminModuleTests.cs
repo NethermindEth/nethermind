@@ -83,7 +83,7 @@ public class AdminModuleTests
         nodeInfo.Enode.Should().Be(_enodeString);
         nodeInfo.Id.Should().Be("ae3623ef35c06ab49e9ae4b9f5a2b0f1983c28f85de1ccc98e2174333fdbdf1f");
         nodeInfo.Ip.Should().Be("127.0.0.1");
-        nodeInfo.Name.Should().Be(ProductInfo.UserAgent);
+        nodeInfo.Name.Should().Be(ProductInfo.ClientId);
         nodeInfo.ListenAddress.Should().Be("127.0.0.1:30303");
         nodeInfo.Ports.Discovery.Should().Be(_networkConfig.DiscoveryPort);
         nodeInfo.Ports.Listener.Should().Be(_networkConfig.P2PPort);
