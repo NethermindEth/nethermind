@@ -15,7 +15,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -47,7 +46,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -100,7 +98,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -147,7 +144,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -170,7 +166,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -208,7 +203,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -269,7 +263,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -285,7 +278,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
@@ -304,7 +296,6 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
         submodules: true
     - name: Setting up dotnet
       uses: actions/setup-dotnet@v1
