@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
@@ -90,7 +91,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             _signerStore = new Signer(specProvider.ChainId, TestItem.PrivateKeyB, logger);
             _parityRpcModule = new ParityRpcModule(ethereumEcdsa, txPool, blockTree, receiptStorage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 8545),
-                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}, null), MainnetSpecProvider.Instance, peerManager);
+                _signerStore, new MemKeyStore(new[] {TestItem.PrivateKeyA}, Environment.SpecialFolder.ApplicationData.ToString()), MainnetSpecProvider.Instance, peerManager);
 
             int blockNumber = 2;
             Transaction pendingTransaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, false)
