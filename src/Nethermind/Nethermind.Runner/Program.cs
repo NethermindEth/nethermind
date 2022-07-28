@@ -474,8 +474,8 @@ namespace Nethermind.Runner
 
             info
                 .Append("Version: ").AppendLine(ProductInfo.Version)
-                .Append("Commit: ").AppendLine(ProductInfo.CommitHash)
-                .Append("Date: ").AppendLine(ProductInfo.Timestamp.ToString("u"))
+                .Append("Commit: ").AppendLine(ProductInfo.Commit)
+                .Append("Build Date: ").AppendLine(ProductInfo.BuildTimestamp.ToString("u"))
                 .Append("OS: ")
                     .Append(ProductInfo.OS)
                     .Append(' ')

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
@@ -25,24 +26,30 @@ public static class ProductInfo
     static ProductInfo()
     {
         var assembly = Assembly.GetEntryAssembly();
-        var gitAttr = assembly?.GetCustomAttribute<GitCommitAttribute>();
         var infoAttr = assembly?.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+        var metadataAttrs = assembly?.GetCustomAttributes<AssemblyMetadataAttribute>();
         var productAttr = assembly?.GetCustomAttribute<AssemblyProductAttribute>();
+        var commit = metadataAttrs?.FirstOrDefault(a => a.Key.Equals("Commit", StringComparison.Ordinal))?.Value;
+        var timestamp = metadataAttrs?.FirstOrDefault(a => a.Key.Equals("BuildTimestamp", StringComparison.Ordinal))?.Value;
 
-        CommitHash = gitAttr?.Hash ?? string.Empty;
+        BuildTimestamp = long.TryParse(timestamp, out var t)
+            ? DateTimeOffset.FromUnixTimeSeconds(t)
+            : DateTimeOffset.MinValue;
+        Commit = commit ?? string.Empty;
         Name = productAttr?.Product ?? "Nethermind";
         OS = Platform.GetPlatformName();
         OSArchitecture = RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
         Runtime = RuntimeInformation.FrameworkDescription;
-        Timestamp = gitAttr?.Timestamp ?? DateTimeOffset.MinValue;
         Version = infoAttr?.InformationalVersion ?? string.Empty;
 
         ClientId = $"{Name}/v{Version}/{OS.ToLowerInvariant()}-{OSArchitecture}/dotnet{Runtime[5..]}";
     }
 
+    public static DateTimeOffset BuildTimestamp { get; }
+
     public static string ClientId { get; }
 
-    public static string CommitHash { get; }
+    public static string Commit { get; }
 
     public static string Name { get; }
 
@@ -51,8 +58,6 @@ public static class ProductInfo
     public static string OSArchitecture { get; }
 
     public static string Runtime { get; }
-
-    public static DateTimeOffset Timestamp { get; }
 
     public static string Version { get; }
 }

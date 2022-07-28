@@ -130,6 +130,28 @@
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
   </Target>
 
-  <Import Project="..\ProductInfo.targets" />
+  <Target Name="VersionFallback" AfterTargets="BeforeBuild" Condition="'$(Version)' == '0.0.0' and '$(Configuration)' == 'Debug'">
+    <Exec Command="git describe --tag --abbrev=0" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
+      <Output PropertyName="Version" TaskParameter="ConsoleOutput" />
+    </Exec>
+    <PropertyGroup>
+      <Version>$(Version)-debug.$(BuildTimestamp)</Version>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == ''">
+    <Exec Command="git describe --always --exclude=* --abbrev=40" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
+      <Output PropertyName="Commit" TaskParameter="ConsoleOutput" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId>$(Commit.Substring(0, 8))</SourceRevisionId>
+    </PropertyGroup>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>Commit</_Parameter1>
+        <_Parameter2>$(Commit)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
 
 </Project>
