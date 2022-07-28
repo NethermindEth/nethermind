@@ -35,14 +35,13 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSe
 
     public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg)
     {
-        int length = GetLength(msg, out int contentLength);
+        (int totalLength, int contentLength, int nodesContentLength) = GetLength(msg);
 
-        RlpStream stream = new(length);
+        RlpStream stream = new(totalLength);
         stream.StartSequence(contentLength);
         if (msg.Nodes.Any())
         {
-            int nodeLength = GetNodesLength(msg.Nodes, out int contentLengthNodes);
-            stream.StartSequence(contentLengthNodes);
+            stream.StartSequence(nodesContentLength);
             for (int i = 0; i < msg.Nodes.Length; i++)
             {
                 Node node = msg.Nodes[i];
@@ -104,12 +103,19 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSe
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    private int GetLength(NeighborsMsg msg, out int contentLength)
+    public int GetLength(NeighborsMsg msg, out int contentLength)
     {
-        contentLength = 0;
+        (int totalLength, contentLength, int _) = GetLength(msg);
+        return totalLength;
+    }
+
+    private (int totalLength, int contentLength, int nodesContentLength) GetLength(NeighborsMsg msg)
+    {
+        int nodesContentLength = 0;
+        int contentLength = 0;
         if (msg.Nodes.Any())
         {
-            contentLength += GetNodesLength(msg.Nodes, out int contentLengthNodes);
+            contentLength += GetNodesLength(msg.Nodes, out nodesContentLength);
         }
         else
         {
@@ -118,6 +124,6 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSe
 
         contentLength += Rlp.LengthOf(msg.ExpirationTime);
 
-        return Rlp.LengthOfSequence(contentLength);
+        return (Rlp.LengthOfSequence(contentLength), contentLength, nodesContentLength);
     }
 }
