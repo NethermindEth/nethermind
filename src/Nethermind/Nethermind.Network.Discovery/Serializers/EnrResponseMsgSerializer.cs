@@ -25,7 +25,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSerializer<EnrResponseMsg>
+public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<EnrResponseMsg>
 {
     private readonly NodeRecordSigner _nodeRecordSigner;
 
@@ -67,5 +67,12 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessage
 
         EnrResponseMsg msg = new(farPublicKey, nodeRecord, requestKeccak!);
         return msg;
+    }
+
+    public int GetLength(EnrResponseMsg msg, out int contentLength)
+    {
+        contentLength = Rlp.LengthOfKeccakRlp;
+        contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

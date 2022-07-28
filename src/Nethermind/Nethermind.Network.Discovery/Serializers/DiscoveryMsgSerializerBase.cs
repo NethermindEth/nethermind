@@ -81,10 +81,8 @@ public abstract class DiscoveryMsgSerializerBase
         return (nodeId, mdc.ToArray(), data);
     }
 
-    protected static void Encode(RlpStream stream, IPEndPoint address)
+    protected static void Encode(RlpStream stream, IPEndPoint address, int length)
     {
-        var length = GetIPEndPointLength(address);
-
         stream.StartSequence(length);
         stream.Encode(address.Address.GetAddressBytes());
         //tcp port

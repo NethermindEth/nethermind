@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSerializer<EnrRequestMsg>
+public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<EnrRequestMsg>
 {
     public EnrRequestMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
         : base(ecdsa, nodeKey, nodeIdResolver) { }
@@ -54,7 +54,7 @@ public class EnrRequestMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageS
         return msg;
     }
 
-    private int GetLength(EnrRequestMsg message, out int contentLength)
+    public int GetLength(EnrRequestMsg message, out int contentLength)
     {
         contentLength = Rlp.LengthOf(message.ExpirationTime);
         return Rlp.LengthOfSequence(contentLength);

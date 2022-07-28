@@ -23,7 +23,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSerializer<PongMsg>
+public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<PongMsg>
 {
     public PongMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : base(ecdsa, nodeKey, nodeIdResolver)
     {
@@ -31,10 +31,10 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSeriali
 
     public void Serialize(IByteBuffer byteBuffer, PongMsg msg)
     {
-        int length = GetLength(msg, out int contentLength);
-        byteBuffer.EnsureWritable(length);
+        (int totalLength, int contentLength, int farAddressLength) = GetLength(msg);
+        byteBuffer.EnsureWritable(totalLength);
 
-        RlpStream stream = new(length);
+        RlpStream stream = new(totalLength);
 
         if (msg.FarAddress is null)
         {
@@ -43,7 +43,7 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSeriali
         }
 
         stream.StartSequence(contentLength);
-        Encode(stream, msg.FarAddress);
+        Encode(stream, msg.FarAddress, farAddressLength);
         stream.Encode(msg.PingMdc);
         stream.Encode(msg.ExpirationTime);
 
@@ -72,7 +72,13 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSeriali
         return msg;
     }
 
-    private int GetLength(PongMsg message, out int contentLength)
+    public int GetLength(PongMsg message, out int contentLength)
+    {
+        (int totalLength, contentLength, int _) = GetLength(message);
+        return totalLength;
+    }
+
+    private (int totalLength, int contentLength, int farAddressLength) GetLength(PongMsg message)
     {
         if (message.FarAddress is null)
         {
@@ -80,10 +86,11 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSeriali
                 NetworkExceptionType.Discovery);
         }
 
-        contentLength = Rlp.LengthOfSequence(GetIPEndPointLength(message.FarAddress));
+        int farAddressLength = GetIPEndPointLength(message.FarAddress);
+        int contentLength = Rlp.LengthOfSequence(farAddressLength);
         contentLength += Rlp.LengthOf(message.PingMdc);
         contentLength += Rlp.LengthOf(message.ExpirationTime);
 
-        return Rlp.LengthOfSequence(contentLength);
+        return (Rlp.LengthOfSequence(contentLength), contentLength, farAddressLength);
     }
 }

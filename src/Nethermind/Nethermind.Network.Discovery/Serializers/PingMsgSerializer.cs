@@ -25,7 +25,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSerializer<PingMsg>
+public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<PingMsg>
 {
     public PingMsgSerializer(IEcdsa ecdsa, IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
         : base(ecdsa, nodeKey, nodeIdResolver)
@@ -34,16 +34,17 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSeriali
 
     public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
     {
-        int length = GetLength(msg, out int contentLength);
+        (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(
+            msg);
 
-        RlpStream stream = new(length);
+        RlpStream stream = new(totalLength);
 
         byte typeByte = (byte)msg.MsgType;
 
         stream.StartSequence(contentLength);
         stream.Encode(msg.Version);
-        Encode(stream, msg.SourceAddress);
-        Encode(stream, msg.DestinationAddress);
+        Encode(stream, msg.SourceAddress, sourceAddressLength);
+        Encode(stream, msg.DestinationAddress, destinationAddressLength);
         stream.Encode(msg.ExpirationTime);
 
         if (msg.EnrSequence.HasValue)
@@ -98,11 +99,22 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSeriali
         return msg;
     }
 
-    private int GetLength(PingMsg msg, out int contentLength)
+    public int GetLength(PingMsg msg, out int contentLength)
     {
-        contentLength = Rlp.LengthOf(msg.Version)
-                        + Rlp.LengthOfSequence(GetIPEndPointLength(msg.SourceAddress))
-                        + Rlp.LengthOfSequence(GetIPEndPointLength(msg.DestinationAddress))
+        (int totalLength, contentLength, int _, int _) =
+            GetLength(msg);
+        return totalLength;
+    }
+
+
+    private (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
+    {
+        int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress);
+        int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress);
+
+         int contentLength = Rlp.LengthOf(msg.Version)
+                        + Rlp.LengthOfSequence(sourceAddressLength)
+                        + Rlp.LengthOfSequence(destinationAddressLength)
                         + Rlp.LengthOf(msg.ExpirationTime);
 
         if (msg.EnrSequence.HasValue)
@@ -110,6 +122,6 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSeriali
             contentLength += Rlp.LengthOf(msg.EnrSequence.Value);
         }
 
-        return Rlp.LengthOfSequence(contentLength);
+        return (Rlp.LengthOfSequence(contentLength), contentLength, sourceAddressLength, destinationAddressLength);
     }
 }
