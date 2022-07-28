@@ -80,15 +80,11 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
     public async void SendMsg(DiscoveryMsg discoveryMsg)
     {
-        // 64 is the default length used in ZeroSerialize when we do not know the length of message,
-        // so the same default length here
-        // TODO: can figure out a way to standardize GetLength of all IZeroSerializers and then use that here
-        IByteBuffer msgBuffer = Unpooled.Buffer(64);
-
+        IByteBuffer msgBuffer;
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
-            Serialize(discoveryMsg, msgBuffer);
+            msgBuffer = Serialize(discoveryMsg, ByteBufferAllocator.UnpooledByteBufferAllocator);
         }
         catch (Exception e)
         {
@@ -181,31 +177,18 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         };
     }
 
-    private void Serialize(DiscoveryMsg msg, IByteBuffer msgBuffer)
+    private IByteBuffer Serialize(DiscoveryMsg msg, ByteBufferAllocator allocator)
     {
-        switch (msg.MsgType)
+        return msg.MsgType switch
         {
-            case MsgType.Ping:
-                _msgSerializationService.ZeroSerialize((PingMsg)msg, msgBuffer);
-                break;
-            case MsgType.Pong:
-                _msgSerializationService.ZeroSerialize((PongMsg)msg, msgBuffer);
-                break;
-            case MsgType.FindNode :
-                _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, msgBuffer);
-                break;
-            case MsgType.Neighbors :
-                _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, msgBuffer);
-                break;
-            case MsgType.EnrRequest :
-                _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, msgBuffer);
-                break;
-            case MsgType.EnrResponse :
-                _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, msgBuffer);
-                break;
-            default:
-                throw new Exception($"Unsupported messageType: {msg.MsgType}");
-        }
+            MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg)msg, allocator),
+            MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg)msg, allocator),
+            MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, allocator),
+            MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, allocator),
+            MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, allocator),
+            MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, allocator),
+            _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
+        };
     }
 
     private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet)
