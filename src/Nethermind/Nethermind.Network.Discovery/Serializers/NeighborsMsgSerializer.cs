@@ -25,7 +25,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroMessageSerializer<NeighborsMsg>
+public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<NeighborsMsg>
 {
     public NeighborsMsgSerializer(IEcdsa ecdsa,
         IPrivateKeyGenerator nodeKey,
