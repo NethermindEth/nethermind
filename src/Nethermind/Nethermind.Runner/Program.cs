@@ -203,33 +203,41 @@ namespace Nethermind.Runner
 
         private static void PatchRockDbVersion(string baseDbPath)
         {
-            void CheckAndPatch(string versiontoPatch, string[] versions)
+            try
             {
-                if (!versions.Contains(versiontoPatch))
+                void CheckAndPatch(string versiontoPatch, string[] versions)
                 {
-                    return;
+                    if (!versions.Contains(versiontoPatch))
+                    {
+                        return;
+                    }
+                    foreach (var file in Directory.GetFiles(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "runtimes-1.13.5"), "*", SearchOption.AllDirectories))
+                    {
+                        File.Copy(file, file.Replace("runtimes-1.13.5", "runtimes"), true);
+                    }
                 }
-                foreach (var file in Directory.GetFiles(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "runtimes-1.13.5"), "*", SearchOption.AllDirectories))
-                {
-                    File.Copy(file, file.Replace("runtimes-1.13.5", "runtimes"), true);
-                }                
+
+                var versions = Directory.GetFiles(baseDbPath, "OPTIONS-*", SearchOption.AllDirectories)
+                    .Select(f => File.ReadLines(f).SkipWhile(x => !x.StartsWith("  rocksdb_version=")).First().Replace("  rocksdb_version=", ""))
+                    .Distinct()
+                    .ToArray();
+
+                _logger.Warn($"RockDB files versions found: {string.Join(", ", versions)}");
+
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                    CheckAndPatch("6.15.5", versions);
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                    CheckAndPatch("6.26.1", versions);
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                    CheckAndPatch("6.26.1", versions);
+                else
+                    CheckAndPatch("6.26.1", versions); // TODO: under question
+                                                       // TODO: check arm
             }
-
-            var versions= Directory.GetFiles(baseDbPath, "OPTIONS-*", SearchOption.AllDirectories)
-                .Select(f => File.ReadLines(f).SkipWhile(x => !x.StartsWith("  rocksdb_version=")).First().Replace("  rocksdb_version=", ""))
-                .Distinct()
-                .ToArray();
-
-            
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                CheckAndPatch("6.15.5", versions);
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                CheckAndPatch("6.26.1", versions); // TODO: under question
-            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                CheckAndPatch("6.26.1", versions);
-            else
-                CheckAndPatch("6.26.1", versions); // TODO: under question
-            // TODO: check arm
+            catch(Exception ex)
+            {
+                _logger.Warn($"RocksDB patching failed {ex.Message}\n{ex.StackTrace}");
+            }
         }
 
 
