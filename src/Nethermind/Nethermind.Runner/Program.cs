@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2022 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -16,6 +16,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.CommandLine;
+using System.CommandLine.Builder;
+using System.CommandLine.Help;
+using System.CommandLine.Invocation;
+using System.CommandLine.NamingConventionBinder;
+using System.CommandLine.Parsing;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
@@ -24,7 +30,6 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -45,427 +50,453 @@ using NLog;
 using NLog.Config;
 using ILogger = Nethermind.Logging.ILogger;
 
-namespace Nethermind.Runner
+var genericError = "Unhandled error:";
+var logger = (ILogger)SimpleConsoleLogger.Instance;
+
+AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
 {
-    public static class Program
+    var logger = GetCriticalLogger();
+
+    if (e.ExceptionObject is Exception ex)
+        logger.Error(genericError, ex);
+    else
+        logger.Error($"{genericError} {e.ExceptionObject}");
+};
+
+try
+{
+    BuildCommandLine().Build().Invoke(args);
+}
+catch (AggregateException ex)
+{
+    logger = GetCriticalLogger();
+
+    logger.Error(genericError, ex.InnerException);
+}
+catch (Exception ex)
+{
+    logger = GetCriticalLogger();
+
+    logger.Error(genericError, ex);
+}
+finally
+{
+    NLogManager.Shutdown();
+}
+
+CommandLineBuilder BuildCommandLine()
+{
+    var root = new RootCommand("Nethermind")
     {
-        private const string FailureString = "Failure";
-        private const string DefaultConfigsDirectory = "configs";
-        private const string DefaultConfigFile = "configs/mainnet.cfg";
+        CliOptions.Configuration,
+        CliOptions.ConfigurationDirectory,
+        CliOptions.DatabasePath,
+        CliOptions.DataDirectory,
+        CliOptions.LoggerConfigurationSource,
+        CliOptions.LogLevel,
+        CliOptions.PluginsDirectory,
+        CliOptions.Version
+    };
 
-        private static ILogger _logger = SimpleConsoleLogger.Instance;
+    root.Handler = CommandHandler.Create<InvocationValues, InvocationContext>(
+        async (options, context) => await Run(options, context));
 
-        private static readonly CancellationTokenSource _processCloseCancellationSource = new();
-        private static readonly TaskCompletionSource<object?> _cancelKeySource = new();
-        private static readonly TaskCompletionSource<object?> _processExit = new();
-        private static readonly ManualResetEventSlim _appClosed = new(true);
+    var configTypes = new TypeDiscovery()
+        .FindNethermindTypes(typeof(IConfig))
+        .Where(ct => ct.IsInterface);
 
-        public static void Main(string[] args)
+    BuildOptionsFromConfigFiles(root, configTypes);
+
+    return new CommandLineBuilder(root)
+        .AddMiddleware(async (context, next) =>
         {
-            AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
-            {
-                ILogger logger = GetCriticalLogger();
-                if (eventArgs.ExceptionObject is Exception e)
-                {
-                    logger.Error(FailureString, e);
-                }
-                else
-                {
-                    logger.Error(FailureString + eventArgs.ExceptionObject);
-                }
-            };
-
-            try
-            {
-                Run(args);
-            }
-            catch (AggregateException e)
-            {
-                ILogger logger = GetCriticalLogger();
-                logger.Error(FailureString, e.InnerException);
-            }
-            catch (Exception e)
-            {
-                ILogger logger = GetCriticalLogger();
-                logger.Error(FailureString, e);
-            }
-            finally
-            {
-                NLogManager.Shutdown();
-            }
-        }
-
-        private static ILogger GetCriticalLogger() => new NLogManager("logs.txt").GetClassLogger();
-
-        private static void Run(string[] args)
+            if (context.ParseResult.FindResultFor(CliOptions.Version) is { })
+                context.Console.WriteLine(ClientVersion.Description);
+            else
+                await next(context);
+        })
+        .UseHelp(context =>
         {
-            _logger.Info("Nethermind starting initialization.");
-
-            AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
-
-            GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
-            CommandLineApplication app = new() { Name = "Nethermind.Runner" };
-            _ = app.HelpOption("-?|-h|--help");
-            _ = app.VersionOption("-v|--version", () => ClientVersion.Version, () => ClientVersion.Description);
-
-            CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "Data directory", CommandOptionType.SingleValue);
-            CommandOption configFile = app.Option("-c|--config <configFile>", "Config file path", CommandOptionType.SingleValue);
-            CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "Base db path", CommandOptionType.SingleValue);
-            CommandOption logLevelOverride = app.Option("-l|--log <logLevel>", "Log level override. Possible values: OFF|TRACE|DEBUG|INFO|WARN|ERROR", CommandOptionType.SingleValue);
-            CommandOption configsDirectory = app.Option("-cd|--configsDirectory <configsDirectory>", "Configs directory", CommandOptionType.SingleValue);
-            CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "Path to the NLog config file", CommandOptionType.SingleValue);
-            _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
-
-            IFileSystem fileSystem = new FileSystem();
-
-            string pluginsDirectoryPath = LoadPluginsDirectory(args);
-            PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem,
-                typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin));
-
-            // leaving here as an example of adding Debug plugin
-            // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
-            // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
-            pluginLoader.Load(SimpleConsoleLogManager.Instance);
-
-            BuildOptionsFromConfigFiles(app);
-
-            app.OnExecute(async () =>
-            {
-                _appClosed.Reset();
-                IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
-                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
-                IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
-                IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
-
-                pluginLoader.OrderPlugins(pluginConfig);
-                Console.Title = initConfig.LogFileName;
-                Console.CancelKeyPress += ConsoleOnCancelKeyPress;
-
-                SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
-                NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
-
-                _logger = logManager.GetClassLogger();
-                if (_logger.IsDebug) _logger.Debug($"Nethermind version: {ClientVersion.Description}");
-
-                ConfigureSeqLogger(configProvider);
-                SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);
-                LogMemoryConfiguration();
-
-                EthereumJsonSerializer serializer = new();
-                if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
-
-                ApiBuilder apiBuilder = new(configProvider, logManager);
-
-                IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
-                foreach (Type pluginType in pluginLoader.PluginTypes)
-                {
-                    try
-                    {
-                        if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
-                        {
-                            plugins.Add(plugin);
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsError) _logger.Error($"Failed to create plugin {pluginType.FullName}", e);
-                    }
-                }
-
-                INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
-                ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
-
-                EthereumRunner ethereumRunner = new(nethermindApi);
-                await ethereumRunner.Start(_processCloseCancellationSource.Token).ContinueWith(x =>
-                {
-                    if (x.IsFaulted && _logger.IsError)
-                        _logger.Error("Error during ethereum runner start", x.Exception);
-                });
-
-                _ = await Task.WhenAny(_cancelKeySource.Task, _processExit.Task);
-
-                _logger.Info("Closing, please wait until all functions are stopped properly...");
-                await ethereumRunner.StopAsync();
-                _logger.Info("All done, goodbye!");
-                _appClosed.Set();
-
-                return 0;
-            });
-
-            _ = app.Execute(args);
-            _appClosed.Wait();
-        }
-
-        private static void BuildOptionsFromConfigFiles(CommandLineApplication app)
-        {
-            Type configurationType = typeof(IConfig);
-            IEnumerable<Type> configTypes = new TypeDiscovery().FindNethermindTypes(configurationType)
-                .Where(ct => ct.IsInterface);
-
-            foreach (Type configType in configTypes.Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig))).OrderBy(c => c.Name))
-            {
-                if (configType == null)
-                {
-                    continue;
-                }
-
-                ConfigCategoryAttribute? typeLevel = configType.GetCustomAttribute<ConfigCategoryAttribute>();
-
-                if (typeLevel != null && (typeLevel?.DisabledForCli ?? true))
-                {
-                    continue;
-                }
-
-                foreach (PropertyInfo propertyInfo in configType
-                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                    .OrderBy(p => p.Name))
-                {
-                    ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (!(configItemAttribute?.DisabledForCli ?? false))
-                    {
-                        _ = app.Option($"--{configType.Name[1..].Replace("Config", string.Empty)}.{propertyInfo.Name}", $"{(configItemAttribute == null ? "<missing documentation>" : configItemAttribute.Description + $" (DEFAULT: {configItemAttribute.DefaultValue})" ?? "<missing documentation>")}", CommandOptionType.SingleValue);
-
-                    }
-                }
-            }
-
             // Create Help Text for environment variables
-            Type noCategoryConfig = configTypes.FirstOrDefault(ct => ct.IsAssignableTo(typeof(INoCategoryConfig)));
+            var noCategoryConfig = configTypes.FirstOrDefault(ct => ct.IsAssignableTo(typeof(INoCategoryConfig)));
+
             if (noCategoryConfig != null)
             {
-                StringBuilder sb = new();
-                sb.AppendLine();
-                sb.AppendLine("Configurable Environment Variables:");
-                foreach (PropertyInfo propertyInfo in noCategoryConfig.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name))
+                var help = new StringBuilder()
+                    .AppendLine()
+                    .AppendLine("Configurable environment variables:");
+                var props = noCategoryConfig
+                    .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                    .OrderBy(p => p.Name);
+
+                foreach (var prop in props)
                 {
-                    ConfigItemAttribute? configItemAttribute = propertyInfo.GetCustomAttribute<ConfigItemAttribute>();
-                    if (configItemAttribute != null && !(string.IsNullOrEmpty(configItemAttribute?.EnvironmentVariable)))
-                    {
-                        sb.AppendLine($"{configItemAttribute.EnvironmentVariable} - {(string.IsNullOrEmpty(configItemAttribute.Description) ? "<missing documentation>" : configItemAttribute.Description)} (DEFAULT: {configItemAttribute.DefaultValue})");
-                    }
+                    var itemAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
+
+                    if (itemAttr != null && !string.IsNullOrEmpty(itemAttr?.EnvironmentVariable))
+                        help
+                            .Append(itemAttr.EnvironmentVariable)
+                            .Append(" - ")
+                            .AppendLine(string.IsNullOrEmpty(itemAttr.Description)
+                                ? "<missing documentation>"
+                                : $"{itemAttr.Description} (DEFAULT: {itemAttr.DefaultValue})");
                 }
 
-                app.ExtendedHelpText = sb.ToString();
+                context.HelpBuilder.CustomizeLayout(_ =>
+                    HelpBuilder.Default.GetLayout().Append(e => e.Output.WriteLine(help.ToString())));
             }
+        })
+        .UseEnvironmentVariableDirective()
+        .UseParseDirective()
+        .UseSuggestDirective()
+        .RegisterWithDotnetSuggest()
+        .UseTypoCorrections()
+        .UseParseErrorReporting()
+        .UseExceptionHandler()
+        .CancelOnProcessTermination();
+}
+
+IConfigProvider BuildConfigProvider(InvocationValues options, InvocationContext context)
+{
+    if (options.LoggerConfigSource == null)
+    {
+        logger.Info($"Loading standard NLog.config file from {"NLog.config".GetApplicationResourcePath()}.");
+
+        var stopwatch = Stopwatch.StartNew();
+
+        LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
+
+        stopwatch.Stop();
+
+        logger.Info($"NLog.config loaded in {stopwatch.ElapsedMilliseconds}ms.");
+    }
+    else
+    {
+        var nLogPath = options.LoggerConfigSource;
+
+        logger.Info($"Loading NLog configuration file from {nLogPath}.");
+
+        try
+        {
+            LogManager.Configuration = new XmlLoggingConfiguration(nLogPath);
+        }
+        catch (Exception ex)
+        {
+            logger.Info($"Failed to load NLog configuration from {nLogPath}. {ex}");
+        }
+    }
+
+    // TODO: dynamically switch log levels from CLI!
+    if (options.Log != null)
+        NLogConfigurator.ConfigureLogLevels(options.Log);
+
+    var configProvider = new ConfigProvider();
+    var configArgs = new Dictionary<string, string>();
+
+    foreach (var child in context.ParseResult.RootCommandResult.Children)
+        if (child is OptionResult result)
+        {
+            var value = result.GetValueOrDefault<string>();
+
+            if (value != null)
+                configArgs.Add(result.Option.Name, value);
         }
 
-        private static string LoadPluginsDirectory(string[] args)
+    var argsSource = new ArgsConfigSource(configArgs);
+
+    configProvider.AddSource(argsSource);
+    configProvider.AddSource(new EnvConfigSource());
+
+    var configFilePath = options.Config;
+    var configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
+
+    if (!string.IsNullOrWhiteSpace(configPathVariable))
+        configFilePath = configPathVariable;
+
+    // If the config file path is rooted, don't handle it
+    if (!Path.IsPathRooted(configFilePath))
+    {
+        // If the config file path is file name only, combine with `configsDirectory`
+        // and add an extension if needed
+        if (string.IsNullOrEmpty(Path.GetDirectoryName(configFilePath)))
+            configFilePath = Path.Combine(
+                options.ConfigsDirectory,
+                Path.HasExtension(configFilePath) ? configFilePath : $"{configFilePath}.cfg");
+
+        // If the resulting path is still not rooted, combine with the current directory
+        if (!Path.IsPathRooted(configFilePath))
+            configFilePath = Path.Combine(PathUtils.ExecutingDirectory, configFilePath);
+    }
+
+    configFilePath = Path.GetFullPath(configFilePath);
+
+    if (!File.Exists(configFilePath))
+        throw new FileNotFoundException("Configuration not found", configFilePath);
+
+    logger.Info($"Reading config file from {configFilePath}");
+
+    configProvider.AddSource(new JsonConfigSource(configFilePath));
+    configProvider.Initialize();
+
+    var incorrectSettings = configProvider.FindIncorrectSettings();
+
+    if (incorrectSettings.Errors.Any())
+        logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
+
+    logger.Info("Configuration initialized.");
+
+    return configProvider;
+}
+
+void BuildOptionsFromConfigFiles(Command command, IEnumerable<Type> configTypes)
+{
+    configTypes = configTypes
+        .Where(ct => !ct.IsAssignableTo(typeof(INoCategoryConfig)))
+        .OrderBy(c => c.Name);
+
+    foreach (var type in configTypes)
+    {
+        if (type == null)
+            continue;
+
+        var catAttr = type.GetCustomAttribute<ConfigCategoryAttribute>();
+
+        if (catAttr != null && (catAttr?.DisabledForCli ?? true))
+            continue;
+
+        var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance).OrderBy(p => p.Name);
+
+        foreach (var prop in props)
         {
-            string shortCommand = "-pd";
-            string longCommand = "--pluginsDirectory";
-            
-            string[] GetPluginArgs()
-            {
-                for (int i = 0; i < args.Length; i++)
-                {
-                    string arg = args[i];
-                    if (arg == shortCommand || arg == longCommand)
-                    {
-                        return i == args.Length - 1 ? new[] {arg} : new[] {arg, args[i + 1]};
-                    }
-                }
+            var itemAttr = prop.GetCustomAttribute<ConfigItemAttribute>();
 
-                return Array.Empty<string>();
-            }
-            
-            CommandLineApplication pluginsApp = new() {Name = "Nethermind.Runner.Plugins"};
-            CommandOption pluginsAppDirectory = pluginsApp.Option($"{shortCommand}|{longCommand} <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
-            string pluginDirectory = "plugins";
-            pluginsApp.OnExecute(() =>
-            {
-                if (pluginsAppDirectory.HasValue())
-                {
-                    pluginDirectory = pluginsAppDirectory.Value();
-                }
-
-                return 0;
-            });
-            pluginsApp.Execute(GetPluginArgs());
-            return pluginDirectory;
-        }
-
-        private static IConfigProvider BuildConfigProvider(
-            CommandLineApplication app,
-            CommandOption loggerConfigSource,
-            CommandOption logLevelOverride,
-            CommandOption configsDirectory,
-            CommandOption configFile)
-        {
-            ILogger logger = SimpleConsoleLogger.Instance;
-            if (loggerConfigSource.HasValue())
-            {
-                string nLogPath = loggerConfigSource.Value();
-                logger.Info($"Loading NLog configuration file from {nLogPath}.");
-
-                try
-                {
-                    LogManager.Configuration = new XmlLoggingConfiguration(nLogPath);
-                }
-                catch (Exception e)
-                {
-                    logger.Info($"Failed to load NLog configuration from {nLogPath}. {e}");
-                }
-            }
-            else
-            {
-                logger.Info($"Loading standard NLog.config file from {"NLog.config".GetApplicationResourcePath()}.");
-                Stopwatch stopwatch = Stopwatch.StartNew();
-                LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
-                stopwatch.Stop();
-
-                logger.Info($"NLog.config loaded in {stopwatch.ElapsedMilliseconds}ms.");
-            }
-
-            // TODO: dynamically switch log levels from CLI!
-            if (logLevelOverride.HasValue())
-            {
-                NLogConfigurator.ConfigureLogLevels(logLevelOverride);
-            }
-
-            ConfigProvider configProvider = new();
-            Dictionary<string, string> configArgs = new();
-            foreach (CommandOption commandOption in app.Options)
-            {
-                if (commandOption.HasValue())
-                {
-                    configArgs.Add(commandOption.LongName, commandOption.Value());
-                }
-            }
-
-            IConfigSource argsSource = new ArgsConfigSource(configArgs);
-            configProvider.AddSource(argsSource);
-            configProvider.AddSource(new EnvConfigSource());
-
-            string configDir = configsDirectory.HasValue() ? configsDirectory.Value() : DefaultConfigsDirectory;
-            string configFilePath = configFile.HasValue() ? configFile.Value() : DefaultConfigFile;
-            string? configPathVariable = Environment.GetEnvironmentVariable("NETHERMIND_CONFIG");
-            if (!string.IsNullOrWhiteSpace(configPathVariable))
-            {
-                configFilePath = configPathVariable;
-            }
-
-            if (!PathUtils.IsExplicitlyRelative(configFilePath))
-            {
-                configFilePath = configDir == DefaultConfigsDirectory
-                    ? configFilePath.GetApplicationResourcePath()
-                    : Path.Combine(configDir, string.Concat(configFilePath));
-            }
-
-            if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
-            {
-                string redirectedConfigPath = Path.Combine(configDir, string.Concat(configFilePath, ".cfg"));
-                configFilePath = redirectedConfigPath;
-                if (!File.Exists(configFilePath))
-                {
-                    throw new InvalidOperationException($"Configuration: {configFilePath} was not found.");
-                }
-            }
-
-            if (!Path.HasExtension(configFilePath))
-            {
-                configFilePath = string.Concat(configFilePath, ".cfg");
-            }
-
-            // Fallback to "{executingDirectory}/configs/{configFile}" if "configs" catalog was not specified.
-            if (!File.Exists(configFilePath))
-            {
-                string configName = Path.GetFileName(configFilePath);
-                string? configDirectory = Path.GetDirectoryName(configFilePath);
-                string redirectedConfigPath = Path.Combine(configDirectory ?? string.Empty, configDir, configName);
-                configFilePath = redirectedConfigPath;
-                if (!File.Exists(configFilePath))
-                {
-                    throw new InvalidOperationException($"Configuration: {configFilePath} was not found.");
-                }
-            }
-
-            logger.Info($"Reading config file from {configFilePath}");
-            configProvider.AddSource(new JsonConfigSource(configFilePath));
-            configProvider.Initialize();
-            var incorrectSettings = configProvider.FindIncorrectSettings();
-            if(incorrectSettings.Errors.Count() > 0)
-            {
-                logger.Warn($"Incorrect config settings found:{Environment.NewLine}{incorrectSettings.ErrorMsg}");
-            }
-
-            logger.Info("Configuration initialized.");
-            return configProvider;
-        }
-
-        private static void CurrentDomainOnProcessExit(object? sender, EventArgs e)
-        {
-            _processCloseCancellationSource.Cancel();
-            _processExit.SetResult(null);
-            _appClosed.Wait();
-        }
-
-        private static void LogMemoryConfiguration()
-        {
-            if (_logger.IsDebug)
-                _logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
-            if (_logger.IsDebug)
-                _logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
-            if (_logger.IsDebug)
-                _logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
-        }
-
-        private static void SetFinalDbPath(string? baseDbPath, IInitConfig initConfig)
-        {
-            if (!string.IsNullOrWhiteSpace(baseDbPath))
-            {
-                string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(baseDbPath);
-                if (_logger.IsDebug) _logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
-                initConfig.BaseDbPath = newDbPath;
-            }
-            else
-            {
-                initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
-            }
-        }
-
-        private static void SetFinalDataDirectory(string? dataDir, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig)
-        {
-            if (!string.IsNullOrWhiteSpace(dataDir))
-            {
-                string newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(dataDir);
-                string newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(dataDir);
-                string newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(dataDir);
-
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Setting BaseDbPath to: {newDbPath}, from: {initConfig.BaseDbPath}");
-                    _logger.Info($"Setting KeyStoreDirectory to: {newKeyStorePath}, from: {keyStoreConfig.KeyStoreDirectory}");
-                    _logger.Info($"Setting LogDirectory to: {newLogDirectory}, from: {initConfig.LogDirectory}");
-                }
-
-                initConfig.BaseDbPath = newDbPath;
-                keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
-                initConfig.LogDirectory = newLogDirectory;
-            }
-            else
-            {
-                initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
-                keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
-                initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
-            }
-        }
-
-        private static void ConsoleOnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
-        {
-            _processCloseCancellationSource.Cancel();
-            _ = _cancelKeySource.TrySetResult(null);
-            e.Cancel = true;
-        }
-
-        private static void ConfigureSeqLogger(IConfigProvider configProvider)
-        {
-            ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
-            if (seqConfig.MinLevel != "Off")
-            {
-                if (_logger.IsInfo) 
-                    _logger.Info($"Seq Logging enabled on host: {seqConfig.ServerUrl} with level: {seqConfig.MinLevel}");
-                NLogConfigurator.ConfigureSeqBufferTarget(seqConfig.ServerUrl, seqConfig.ApiKey, seqConfig.MinLevel);
-            }
+            if (!(itemAttr?.DisabledForCli ?? false))
+                command.AddOption(new Option<string>(
+                    $"--{type.Name[1..].Replace("Config", null)}.{prop.Name}",
+                    itemAttr == null
+                        ? "<missing documentation>"
+                        : $"{itemAttr.Description} (DEFAULT: {itemAttr.DefaultValue})"));
         }
     }
 }
+
+void ConfigureSeqLogger(IConfigProvider configProvider)
+{
+    var config = configProvider.GetConfig<ISeqConfig>();
+
+    if (!config.MinLevel.Equals("Off", StringComparison.Ordinal))
+    {
+        if (logger.IsInfo) logger.Info($"Seq Logging enabled on host: {config.ServerUrl} with level: {config.MinLevel}");
+
+        NLogConfigurator.ConfigureSeqBufferTarget(config.ServerUrl, config.ApiKey, config.MinLevel);
+    }
+}
+
+ILogger GetCriticalLogger() => new NLogManager("logs.txt").GetClassLogger();
+
+string LoadPluginsDirectory(string[] args)
+{
+    var longCommand = "--pluginsDirectory";
+    var shortCommand = "-pd";
+
+    string[] GetPluginArgs()
+    {
+        for (var i = 0; i < args.Length; i++)
+        {
+            var arg = args[i];
+
+            if (arg.Equals(shortCommand, StringComparison.Ordinal) ||
+                arg.Equals(longCommand, StringComparison.Ordinal))
+                return i == args.Length - 1 ? new[] { arg } : new[] { arg, args[i + 1] };
+        }
+
+        return Array.Empty<string>();
+    }
+
+    var command = new Command("Nethermind.Runner.Plugins");
+    var option = new Option<string>(new[] { longCommand, shortCommand }, "Plugins directory");
+    var dir = "plugins";
+
+    command.AddOption(option);
+    command.SetHandler(context => dir = context.ParseResult.GetValueForOption<string>(option) ?? dir);
+    command.Invoke(GetPluginArgs());
+
+    return dir;
+}
+
+void LogMemoryConfiguration()
+{
+    if (!logger.IsDebug)
+        return;
+
+    logger.Debug($"Server GC:           {System.Runtime.GCSettings.IsServerGC}");
+    logger.Debug($"GC latency mode:     {System.Runtime.GCSettings.LatencyMode}");
+    logger.Debug($"LOH compaction mode: {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
+}
+
+async Task Run(InvocationValues options, InvocationContext context)
+{
+    logger.Info("Nethermind is starting up");
+
+    GlobalDiagnosticsContext.Set("version", ClientVersion.Version);
+
+    var fileSystem = new FileSystem();
+    var pluginsDirectoryPath = LoadPluginsDirectory(context.ParseResult.Tokens.Select(t => t.Value).ToArray());
+    var pluginLoader = new PluginLoader(
+        pluginsDirectoryPath,
+        fileSystem,
+        typeof(AuRaPlugin),
+        typeof(CliquePlugin),
+        typeof(EthashPlugin),
+        typeof(NethDevPlugin),
+        typeof(HivePlugin));
+
+    // leaving here as an example of adding Debug plugin
+    // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+    // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
+    pluginLoader.Load(SimpleConsoleLogManager.Instance);
+
+    var configProvider = BuildConfigProvider(options, context);
+    var initConfig = configProvider.GetConfig<IInitConfig>();
+    var keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
+    var pluginConfig = configProvider.GetConfig<IPluginConfig>();
+
+    pluginLoader.OrderPlugins(pluginConfig);
+
+    SetFinalDataDirectory(options.Datadir, initConfig, keyStoreConfig);
+
+    var logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
+
+    logger = logManager.GetClassLogger();
+
+    if (logger.IsDebug) logger.Debug($"Nethermind version: {ClientVersion.Description}");
+
+    ConfigureSeqLogger(configProvider);
+    SetFinalDbPath(options.BaseDbPath, initConfig);
+    LogMemoryConfiguration();
+
+    var serializer = new EthereumJsonSerializer();
+
+    if (logger.IsDebug) logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
+
+    var apiBuilder = new ApiBuilder(configProvider, logManager);
+    var plugins = new List<INethermindPlugin>();
+
+    foreach (var type in pluginLoader.PluginTypes)
+        try
+        {
+            if (Activator.CreateInstance(type) is INethermindPlugin plugin)
+                plugins.Add(plugin);
+        }
+        catch (Exception ex)
+        {
+            if (logger.IsError) logger.Error($"Failed to create plugin {type.FullName}", ex);
+        }
+
+    var nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
+
+    // TODO API design violation. Consider using Linq Concat() instead.
+    ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
+
+    var cancellationToken = context.GetCancellationToken();
+    var ethereumRunner = new EthereumRunner(nethermindApi);
+    using var terminator = new ManualResetEventSlim();
+
+    try
+    {
+        await ethereumRunner.Start(cancellationToken).ContinueWith(t =>
+        {
+            if (t.IsFaulted && logger.IsError)
+                logger.Error("Error during ethereum runner start", t.Exception);
+        });
+
+        terminator.Wait(cancellationToken);
+    }
+    catch (OperationCanceledException)
+    {
+        logger.Info("Nethermind is shutting down... Please wait until all functions are stopped.");
+
+        await ethereumRunner.StopAsync();
+
+        logger.Info("Nethermind is shut down");
+
+        terminator.Set();
+    }
+}
+
+void SetFinalDataDirectory(string? dataDir, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig)
+{
+    if (!string.IsNullOrWhiteSpace(dataDir))
+    {
+        var newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(dataDir);
+        var newKeyStorePath = keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath(dataDir);
+        var newLogDirectory = initConfig.LogDirectory.GetApplicationResourcePath(dataDir);
+
+        if (logger.IsInfo)
+        {
+            logger.Info($"Setting BaseDbPath to: {newDbPath}, from: {initConfig.BaseDbPath}");
+            logger.Info($"Setting KeyStoreDirectory to: {newKeyStorePath}, from: {keyStoreConfig.KeyStoreDirectory}");
+            logger.Info($"Setting LogDirectory to: {newLogDirectory}, from: {initConfig.LogDirectory}");
+        }
+
+        initConfig.BaseDbPath = newDbPath;
+        keyStoreConfig.KeyStoreDirectory = newKeyStorePath;
+        initConfig.LogDirectory = newLogDirectory;
+    }
+    else
+    {
+        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
+        keyStoreConfig.KeyStoreDirectory ??= string.Empty.GetApplicationResourcePath("keystore");
+        initConfig.LogDirectory ??= string.Empty.GetApplicationResourcePath("logs");
+    }
+}
+
+void SetFinalDbPath(string? baseDbPath, IInitConfig initConfig)
+{
+    if (!string.IsNullOrWhiteSpace(baseDbPath))
+    {
+        var newDbPath = initConfig.BaseDbPath.GetApplicationResourcePath(baseDbPath);
+
+        if (logger.IsDebug) logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
+
+        initConfig.BaseDbPath = newDbPath;
+    }
+    else
+        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
+}
+
+class CliOptions
+{
+    public static Option<string> Configuration { get; } =
+        new(new[] { "--config", "-c" }, () => "configs/mainnet.cfg", "Configuration file path");
+
+    public static Option<string> ConfigurationDirectory { get; } =
+        new(new[] { "--configsDirectory", "-cd" }, () => "configs", "Configuration file directory");
+
+    public static Option<string> DatabasePath { get; } = new(new[] { "--baseDbPath", "-d" }, "Base database path");
+
+    public static Option<string> DataDirectory { get; } = new(new[] { "--datadir", "-dd" }, "Data directory");
+
+    public static Option<string> LoggerConfigurationSource { get; } =
+        new(new[] { "--loggerConfigSource", "-lcs" }, "Path to the NLog configuration file");
+
+    public static Option<string> LogLevel { get; } = new Option<string>(new[] { "--log", "-l" }, "Log level override")
+        .FromAmong("OFF", "TRACE", "DEBUG", "INFO", "WARN", "ERROR");
+
+    public static Option<string> PluginsDirectory { get; } =
+        new(new[] { "--pluginsDirectory", "-pd" }, "Plugins directory");
+
+    public static Option<bool> Version { get; } = new(new[] { "--version", "-v" }, "Show version information");
+}
+
+record InvocationValues
+(
+    string Config,
+    string ConfigsDirectory,
+    string BaseDbPath,
+    string Datadir,
+    string LoggerConfigSource,
+    string Log,
+    string PluginsDirectory,
+    bool Version
+);
