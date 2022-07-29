@@ -145,7 +145,6 @@ namespace Nethermind.Runner
 
                 SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
 
-                PatchRockDbVersion(initConfig.BaseDbPath);
 
                 NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
@@ -155,6 +154,8 @@ namespace Nethermind.Runner
                 ConfigureSeqLogger(configProvider);
                 SetFinalDbPath(dbBasePath.HasValue() ? dbBasePath.Value() : null, initConfig);
                 LogMemoryConfiguration();
+
+                PatchRockDbVersion(initConfig.BaseDbPath);
 
                 EthereumJsonSerializer serializer = new();
                 if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
