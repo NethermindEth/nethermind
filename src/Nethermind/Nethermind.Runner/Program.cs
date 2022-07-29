@@ -203,25 +203,30 @@ namespace Nethermind.Runner
 
         private static void PatchRockDbVersion(string baseDbPath)
         {
+            void CheckAndPatch(string versiontoPatch, string[] versions)
+            {
+                if (!versions.Contains(versiontoPatch))
+                {
+                    return;
+                }
+                foreach (var file in Directory.GetFiles(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "runtimes-1.13.5"), "*", SearchOption.AllDirectories))
+                {
+                    File.Copy(file, file.Replace("runtimes-1.13.5", "runtimes"), true);
+                }
+            }
+
             try
             {
-                void CheckAndPatch(string versiontoPatch, string[] versions)
+                if (!Directory.Exists(baseDbPath))
                 {
-                    if (!versions.Contains(versiontoPatch))
-                    {
-                        return;
-                    }
-                    foreach (var file in Directory.GetFiles(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "runtimes-1.13.5"), "*", SearchOption.AllDirectories))
-                    {
-                        File.Copy(file, file.Replace("runtimes-1.13.5", "runtimes"), true);
-                    }
+                    return;
                 }
 
                 var versions = Directory.GetFiles(baseDbPath, "OPTIONS-*", SearchOption.AllDirectories)
                     .Select(f => File.ReadLines(f).SkipWhile(x => !x.StartsWith("  rocksdb_version=")).First().Replace("  rocksdb_version=", ""))
                     .Distinct()
                     .ToArray();
-
+                
                 _logger.Warn($"RockDB files versions found: {string.Join(", ", versions)}");
 
                 if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
