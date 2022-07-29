@@ -211,7 +211,7 @@ namespace Nethermind.Runner
                 }
 
                 // TODO:
-                // Ethereum we load files from runtimes-1.13.5 and place em instead of that ones from official runtimes
+                // We load files from runtimes-1.13.5 and place them instead of that ones located in default runtimes directory
             }
 
             var versions= Directory.GetFiles(baseDbPath, "OPTIONS-*", SearchOption.AllDirectories)
