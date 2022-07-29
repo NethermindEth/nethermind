@@ -21,10 +21,12 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
+using NativeImport;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -142,6 +144,9 @@ namespace Nethermind.Runner
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 SetFinalDataDirectory(dataDir.HasValue() ? dataDir.Value() : null, initConfig, keyStoreConfig);
+
+                PatchRockDbVersion(initConfig.BaseDbPath);
+
                 NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
 
                 _logger = logManager.GetClassLogger();
@@ -195,6 +200,40 @@ namespace Nethermind.Runner
             _ = app.Execute(args);
             _appClosed.Wait();
         }
+
+        private static void PatchRockDbVersion(string baseDbPath)
+        {
+            void CheckAndPatch(string versiontoPatch, string[] versions)
+            {
+                if (versions.Contains(versiontoPatch))
+                {
+                    return;
+                }
+
+                // TODO:
+                // Ethereum we load files from runtimes-1.13.5 and place em instead of that ones from official runtimes
+            }
+
+            var versions= Directory.GetFiles(baseDbPath, "OPTIONS-*", SearchOption.AllDirectories)
+                .Select(x=> (Name: Path.GetFileName(x), Path: Path.GetDirectoryName(x), All: x))
+                .GroupBy(x => x.Path)
+                .Select(x => x.MaxBy(x => x.Name))
+                .Select(x => File.ReadLines(x.All).SkipWhile(x => !x.StartsWith("  rocksdb_version=")).First().Replace("  rocksdb_version=", ""))
+                .Distinct()
+                .ToArray();
+
+            
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                CheckAndPatch("6.15.5", versions);
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                CheckAndPatch("6.26.1", versions); // TODO: under question
+            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                CheckAndPatch("6.26.1", versions);
+            else
+                CheckAndPatch("6.26.1", versions); // TODO: under question
+            // TODO: check arm
+        }
+
 
         private static void BuildOptionsFromConfigFiles(CommandLineApplication app)
         {
