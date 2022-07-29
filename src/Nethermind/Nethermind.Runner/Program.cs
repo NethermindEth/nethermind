@@ -205,20 +205,18 @@ namespace Nethermind.Runner
         {
             void CheckAndPatch(string versiontoPatch, string[] versions)
             {
-                if (versions.Contains(versiontoPatch))
+                if (!versions.Contains(versiontoPatch))
                 {
                     return;
                 }
-
-                // TODO:
-                // We load files from runtimes-1.13.5 and place them instead of that ones located in default runtimes directory
+                foreach (var file in Directory.GetFiles(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "runtimes-1.13.5"), "*", SearchOption.AllDirectories))
+                {
+                    File.Copy(file, file.Replace("runtimes-1.13.5", "runtimes"), true);
+                }                
             }
 
             var versions= Directory.GetFiles(baseDbPath, "OPTIONS-*", SearchOption.AllDirectories)
-                .Select(x=> (Name: Path.GetFileName(x), Path: Path.GetDirectoryName(x), All: x))
-                .GroupBy(x => x.Path)
-                .Select(x => x.MaxBy(x => x.Name))
-                .Select(x => File.ReadLines(x.All).SkipWhile(x => !x.StartsWith("  rocksdb_version=")).First().Replace("  rocksdb_version=", ""))
+                .Select(f => File.ReadLines(f).SkipWhile(x => !x.StartsWith("  rocksdb_version=")).First().Replace("  rocksdb_version=", ""))
                 .Distinct()
                 .ToArray();
 
