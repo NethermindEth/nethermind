@@ -3,7 +3,6 @@ RUNNER_PATH=nethermind/src/Nethermind/Nethermind.Runner
 LINUX=linux-x64
 OSX=osx-x64
 WIN10=win10-x64
-PUBLISH_PATH=bin/release/netcoreapp3.1
 OUT=out
 LIN_RELEASE=nethermind-lin-x64
 OSX_RELEASE=nethermind-osx-x64
@@ -18,9 +17,9 @@ echo Nethermind Runner path: $RUNNER_PATH
 
 rm -rf $OUT
 
-dotnet publish -c release -r $LINUX /p:PublishSingleFile=true -o $OUT/$LIN_RELEASE
-dotnet publish -c release -r $OSX /p:PublishSingleFile=true -o $OUT/$OSX_RELEASE
-dotnet publish -c release -r $WIN10 /p:PublishSingleFile=true -o $OUT/$WIN_RELEASE
+dotnet publish -c release -r $LINUX -p:Version=$1 -p:Commit=$2 -p:PublishSingleFile=true -o $OUT/$LIN_RELEASE
+dotnet publish -c release -r $OSX -p:Version=$1 -p:Commit=$2 -p:PublishSingleFile=true -o $OUT/$OSX_RELEASE
+dotnet publish -c release -r $WIN10 -p:Version=$1 -p:Commit=$2 -p:PublishSingleFile=true -o $OUT/$WIN_RELEASE
 
 rm -rf $OUT/$LIN_RELEASE/Data
 rm -rf $OUT/$LIN_RELEASE/Hive
