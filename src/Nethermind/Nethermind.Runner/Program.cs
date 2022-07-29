@@ -232,15 +232,8 @@ namespace Nethermind.Runner
 
                 _logger.Info($"RocksDB files versions found: {string.Join(", ", versions)}");
 
-                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    CheckAndPatch("6.15.5", versions);
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                    CheckAndPatch("6.26.1", versions);
-                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                    CheckAndPatch("6.26.1", versions);
-                else
-                    CheckAndPatch("6.26.1", versions); // TODO: under question
-                                                       // TODO: check arm
+                CheckAndPatch("6.15.5", versions);
+                CheckAndPatch("6.26.1", versions);                                                       // TODO: check arm
             }
             catch(Exception ex)
             {
