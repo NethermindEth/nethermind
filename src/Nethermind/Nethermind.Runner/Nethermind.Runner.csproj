@@ -139,7 +139,7 @@
     </PropertyGroup>
   </Target>
 
-  <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == ''">
+  <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == '' and '$(Configuration)' == 'Debug'">
     <Exec Command="git describe --always --exclude=* --abbrev=40" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
       <Output PropertyName="Commit" TaskParameter="ConsoleOutput" />
     </Exec>
