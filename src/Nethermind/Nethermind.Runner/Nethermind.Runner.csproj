@@ -131,12 +131,9 @@
   </Target>
 
   <Target Name="VersionFallback" AfterTargets="BeforeBuild" Condition="'$(Version)' == '0.0.0' and '$(Configuration)' == 'Debug'">
-    <Exec Command="git describe --tags --abbrev=0" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
+    <Exec Command="git describe --tags --abbrev=0 --dirty" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
       <Output PropertyName="Version" TaskParameter="ConsoleOutput" />
     </Exec>
-    <PropertyGroup>
-      <Version>$(Version)-debug.$(BuildTimestamp)</Version>
-    </PropertyGroup>
   </Target>
 
   <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == '' and '$(Configuration)' == 'Debug'">
