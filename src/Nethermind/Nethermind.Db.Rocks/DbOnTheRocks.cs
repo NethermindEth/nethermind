@@ -19,6 +19,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
@@ -310,12 +312,17 @@ namespace Nethermind.Db.Rocks
             }
 
             UpdateReadMetrics();
-            return _db.GetSpan(key);
+
+            return _db.GetSpan(key); ;
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span)
+        public unsafe void DangerousReleaseMemory(in Span<byte> span)
         {
-            _db.DangerousReleaseMemory(in span);
+            ref byte ptr = ref MemoryMarshal.GetReference(span);
+            IntPtr intPtr = new IntPtr(Unsafe.AsPointer(ref ptr));
+
+            var instance = RocksDbSharp.Native.Instance;
+            instance.rocksdb_free(intPtr);
         }
 
         public void Remove(byte[] key)
