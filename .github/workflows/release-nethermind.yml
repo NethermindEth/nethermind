@@ -57,8 +57,8 @@ jobs:
     - name: Setting up Docker Buildx
       id: buildx
       uses: docker/setup-buildx-action@v2
-    - name: Setting up Packages
-      run: ./nethermind/scripts/deployment/setup-packages.sh
+    #- name: Setting up Packages
+    #  run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Building Runner
       run: |
         cd nethermind/
@@ -101,11 +101,11 @@ jobs:
       with:
         name: nethermind-darwin-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/nethermind-darwin-arm64-*
-    - uses: actions/upload-artifact@v3
-      name: Uploading git-hash files
-      with:
-        name: nethermind-git-hash
-        path: ${{ env.RELEASE_DIRECTORY }}/git-*  
+    #- uses: actions/upload-artifact@v3
+    #  name: Uploading git-hash files
+    #  with:
+    #    name: nethermind-git-hash
+    #    path: ${{ env.RELEASE_DIRECTORY }}/git-*  
     - uses: actions/upload-artifact@v3
       name: Uploading update-homebrew.sh
       with:
@@ -131,11 +131,11 @@ jobs:
         with:
           name: nethermind-darwin-arm64-package
           path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
-      - name: Downloading git-hash files
-        uses: actions/download-artifact@v3
-        with:
-          name: nethermind-git-hash
-          path: ${{ env.RELEASE_DIRECTORY }}/
+      #- name: Downloading git-hash files
+      #  uses: actions/download-artifact@v3
+      #  with:
+      #    name: nethermind-git-hash
+      #    path: ${{ env.RELEASE_DIRECTORY }}/
       - name: Downloading update-homebrew script
         uses: actions/download-artifact@v3
         with:
