@@ -37,9 +37,11 @@ on:
         options:
         - ethereum/engine        
         - ethereum/rpc
-        - devp2p
+        - ethereum/rpc-compat
+        - ethereum/sync
         - ethereum/graphql
         - ethereum/consensus
+        - devp2p
       limit:
         description: 'Limit for hive tests'
         required: false
