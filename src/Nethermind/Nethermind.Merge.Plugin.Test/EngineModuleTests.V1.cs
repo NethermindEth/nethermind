@@ -1312,7 +1312,7 @@ namespace Nethermind.Merge.Plugin.Test
                 TerminalTotalDifficulty = (UInt256)clTtd
             }).Data;
 
-            Assert.AreEqual((UInt256)0, result.TerminalTotalDifficulty);
+            Assert.AreEqual(UInt256.Parse("115792089237316195423570985008687907853269984665640564039457584007913129638912"), result.TerminalTotalDifficulty);
             Assert.AreEqual(0, result.TerminalBlockNumber);
             Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", result.TerminalBlockHash.ToString());
         }
