@@ -757,40 +757,47 @@ namespace Nethermind.Trie.Pruning
             {
                 // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
                 // and we need to speed up the standard announcement procedure so we persists a block
-                // from the past (by going max reorg back)
 
-                BlockCommitSet? persistenceCandidate = null;
-                bool firstCandidateFound = false;
-                while (_commitSetQueue.TryDequeue(out BlockCommitSet? blockCommitSet))
+                List<BlockCommitSet> candidateSets = new();
+                while (_commitSetQueue.TryDequeue(out BlockCommitSet? frontSet))
                 {
-                    if (blockCommitSet is not null)
+                    if (candidateSets.Count == 0)
                     {
-                        if (firstCandidateFound == false)
-                        {
-                            persistenceCandidate = blockCommitSet;
-                            if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
-                            firstCandidateFound = true;
-                            continue;
-                        }
-
-                        if (blockCommitSet.BlockNumber <= LatestCommittedBlockNumber - Reorganization.MaxDepth)
-                        {
-                            persistenceCandidate = blockCommitSet;
-                            if (_logger.IsDebug) _logger.Debug($"New persistence candidate {persistenceCandidate}");
-                        }
+                        candidateSets.Add(frontSet);
+                    }
+                    else if (candidateSets[0].BlockNumber == frontSet!.BlockNumber)
+                    {
+                        candidateSets.Add(frontSet);
                     }
                     else
                     {
-                        if (_logger.IsDebug) _logger.Debug("Block commit was null...");
+                        if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - Reorganization.MaxDepth)
+                        {
+                            continue;
+                        }
+                        else if (frontSet!.BlockNumber > candidateSets[0].BlockNumber)
+                        {
+                            candidateSets = new();
+                            candidateSets.Add(frontSet);
+                        }
                     }
                 }
 
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Persisting on disposal {persistenceCandidate} (cache memory at {MemoryUsedByDirtyCache})");
-                if (persistenceCandidate is not null)
+                foreach (BlockCommitSet blockCommitSet in candidateSets)
                 {
-                    Persist(persistenceCandidate);
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            $"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
+                    Persist(blockCommitSet);
+                }
+
+                if (candidateSets.Count == 0)
+                {
+                    if (_logger.IsDebug)
+                        _logger.Debug("No commitset to persist at all.");
+                }
+                else
+                {
                     AnnounceReorgBoundaries();
                 }
             }
