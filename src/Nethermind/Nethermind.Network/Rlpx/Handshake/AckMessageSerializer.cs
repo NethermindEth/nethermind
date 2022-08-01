@@ -50,8 +50,8 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
 
             AckMessage authMessage = new();
-            authMessage.EphemeralPublicKey = new PublicKey(msgBytes.Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength).ReadAllBytes());
-            authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength).ReadAllBytes();
+            authMessage.EphemeralPublicKey = new PublicKey(msgBytes.Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength).ReadAllBytesAsSpan());
+            authMessage.Nonce = msgBytes.Slice(NonceOffset, NonceLength).ReadAllBytesAsArray();
             authMessage.IsTokenUsed = msgBytes.GetByte(IsTokenUsedOffset) == 0x01;
             return authMessage;
         }

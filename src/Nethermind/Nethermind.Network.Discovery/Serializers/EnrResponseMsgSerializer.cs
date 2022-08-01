@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Buffers;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -41,13 +42,19 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
         contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
         int totalLength = Rlp.LengthOfSequence(contentLength);
 
-        RlpStream rlpStream = new (totalLength);
-        rlpStream.StartSequence(contentLength);
-        rlpStream.Encode(msg.RequestKeccak);
-        msg.NodeRecord.Encode(rlpStream);
-
-        byte[] serializedMsg = Serialize((byte)msg.MsgType, rlpStream.Data);
-        byteBuffer.WriteBytes(serializedMsg);
+        byte[] array = ArrayPool<byte>.Shared.Rent(totalLength);
+        try
+        {
+            RlpStream rlpStream = new(array);
+            rlpStream.StartSequence(contentLength);
+            rlpStream.Encode(msg.RequestKeccak);
+            msg.NodeRecord.Encode(rlpStream);
+            Serialize((byte)msg.MsgType, rlpStream.Data.AsSpan(0, totalLength), byteBuffer);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(array);
+        }
     }
 
     public EnrResponseMsg Deserialize(IByteBuffer msgBytes)
@@ -61,7 +68,7 @@ public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMe
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(rlpStream);
         if (!_nodeRecordSigner.Verify(nodeRecord))
         {
-            string resHex = data.ReadBytes(positionForHex).ReadAllBytes().ToHexString();
+            string resHex = data.ReadBytes(positionForHex).ReadAllHex();
             throw new NetworkingException($"Invalid ENR signature: {resHex}", NetworkExceptionType.Discovery);
         }
 
