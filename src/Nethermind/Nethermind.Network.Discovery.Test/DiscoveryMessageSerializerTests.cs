@@ -187,7 +187,7 @@ namespace Nethermind.Network.Discovery.Test
                     FarAddress = _farAddress
                 };
 
-            byte[] data = _messageSerializationService.ZeroSerialize(message).ReadAllBytes();
+            byte[] data = _messageSerializationService.ZeroSerialize(message).ReadAllBytesAsArray();
             NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data);
 
             Assert.AreEqual(message.MsgType, deserializedMessage.MsgType);

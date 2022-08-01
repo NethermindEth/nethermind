@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
@@ -51,7 +52,7 @@ namespace Nethermind.Network.P2P.Messages
                 return new DisconnectMessage((DisconnectReason)msgBytes.GetByte(0));
             }
 
-            byte[] msg = msgBytes.ReadAllBytes();
+            Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
             if (msg.SequenceEqual(breach1))
             {
                 return new DisconnectMessage(DisconnectReason.Breach1);
@@ -62,7 +63,7 @@ namespace Nethermind.Network.P2P.Messages
                 return new DisconnectMessage(DisconnectReason.Breach2);
             }
 
-            RlpStream rlpStream = msg.AsRlpStream();
+            Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();
             rlpStream.ReadSequenceLength();
             int reason = rlpStream.DecodeInt();
             DisconnectMessage disconnectMessage = new(reason);
