@@ -519,6 +519,12 @@ namespace Nethermind.TxPool
             return currentNonce;
         }
 
+        public UInt256? GetLatestPendingNonce(Address address)
+        {
+            _nonces.TryGetValue(address!, out AddressNonces addressNonces);
+            return addressNonces is null ? null : addressNonces.GetLatestPendingNonce();
+        }
+
         public bool IsKnown(Keccak hash) => _hashCache.Get(hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
