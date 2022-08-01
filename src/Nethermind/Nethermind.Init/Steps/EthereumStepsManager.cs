@@ -179,7 +179,7 @@ namespace Nethermind.Init.Steps
                             $"Step {step.GetType().Name.PadRight(24)} failed after {stopwatch.ElapsedMilliseconds}ms",
                             exception);
 
-                    throw exception;
+                    throw;
                 }
 
                 if (_logger.IsWarn)
