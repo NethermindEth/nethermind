@@ -1,50 +1,60 @@
+//  Copyright (c) 2022 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
-using System.Threading.Tasks;
 using RocksDbSharp;
+using RocksDbNative = RocksDbSharp.Native;
 
-namespace Nethermind.Db.Rocks
+namespace Nethermind.Db.Rocks;
+
+internal static class RocksDbExtensions
 {
-    internal static class RocksDbExtensions
+    private static readonly ReadOptions _defaultReadOptions = new();
+
+    internal static unsafe void DangerousReleaseMemory(this RocksDb _, in Span<byte> span)
     {
-        private static ReadOptions DefaultReadOptions { get; } = new ReadOptions();
+        ref var ptr = ref MemoryMarshal.GetReference(span);
+        var intPtr = new IntPtr(Unsafe.AsPointer(ref ptr));
 
-        public static unsafe Span<byte> GetSpan(this RocksDb db, byte[] key, ColumnFamilyHandle? cf = null)
-        {
-            var instance = RocksDbSharp.Native.Instance;
-            var read_options = DefaultReadOptions.Handle;
-            var keyLength = key.GetLongLength(0);
-            keyLength = keyLength == 0 ? key.Length : keyLength;
+        RocksDbNative.Instance.rocksdb_free(intPtr);
+    }
 
-            UIntPtr skLength = (UIntPtr)keyLength;
+    internal static unsafe Span<byte> GetSpan(this RocksDb db, byte[] key, ColumnFamilyHandle? cf = null)
+    {
+        var readOptions = _defaultReadOptions.Handle;
+        var keyLength = key.GetLongLength(0);
 
-            var resultPtr = cf == null
-                ? instance.rocksdb_get(db.Handle, read_options, key, skLength, out UIntPtr valueLength, out var errptr)
-                : instance.rocksdb_get_cf(db.Handle, read_options, cf.Handle, key, skLength, out valueLength, out errptr);
+        if (keyLength == 0)
+            keyLength = key.Length;
 
-            if (errptr != IntPtr.Zero)
-                return null;
-            if (resultPtr == IntPtr.Zero)
-                return null;
-            Span<byte> span = new Span<byte>((void*)resultPtr, (int)valueLength);
+        var keyLengthPtr = (UIntPtr)keyLength;
+        var result = cf == null
+            ? RocksDbNative.Instance.rocksdb_get(db.Handle, readOptions, key, keyLengthPtr, out var valueLength, out var error)
+            : RocksDbNative.Instance.rocksdb_get_cf(db.Handle, readOptions, cf.Handle, key, keyLengthPtr, out valueLength, out error);
 
-            if (errptr != IntPtr.Zero)
-                throw new RocksDbException(errptr);
+        if (error != IntPtr.Zero)
+            throw new RocksDbException(error);
 
-            return span;
-        }
+        if (result == IntPtr.Zero)
+            return null;
 
-        public static unsafe void DangerousReleaseMemory(this RocksDb db, in Span<byte> span)
-        {
-            ref byte ptr = ref MemoryMarshal.GetReference(span);
-            IntPtr intPtr = new IntPtr(Unsafe.AsPointer(ref ptr));
+        var span = new Span<byte>((void*)result, (int)valueLength);
 
-            var instance = RocksDbSharp.Native.Instance;
-            instance.rocksdb_free(intPtr);
-        }
+        return span; 
     }
 }
