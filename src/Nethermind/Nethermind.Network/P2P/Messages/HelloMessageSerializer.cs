@@ -36,10 +36,11 @@ namespace Nethermind.Network.P2P.Messages
             stream.StartSequence(length.innerLength);
             foreach (Capability? capability in msg.Capabilities)
             {
-                int capabilityLength = Rlp.LengthOf(capability.ProtocolCode.ToLowerInvariant());
+                string protocolCode = capability.ProtocolCode.ToLowerInvariant();
+                int capabilityLength = Rlp.LengthOf(protocolCode);
                 capabilityLength += Rlp.LengthOf(capability.Version);
                 stream.StartSequence(capabilityLength);
-                stream.Encode(capability.ProtocolCode.ToLowerInvariant());
+                stream.Encode(protocolCode);
                 stream.Encode(capability.Version);
             }
 

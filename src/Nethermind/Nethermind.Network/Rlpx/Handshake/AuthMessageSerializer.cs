@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -51,14 +52,21 @@ namespace Nethermind.Network.Rlpx.Handshake
         public void Serialize(IByteBuffer byteBuffer, AuthMessage msg)
         {
             byteBuffer.EnsureWritable(Length, true);
-            byte[] data = new byte[Length];
-            Buffer.BlockCopy(msg.Signature.Bytes, 0, data, SigOffset, SigLength - 1);
-            data[SigLength - 1] = msg.Signature.RecoveryId;
-            Buffer.BlockCopy(msg.EphemeralPublicHash.Bytes, 0, data, EphemeralHashOffset, EphemeralHashLength);
-            Buffer.BlockCopy(msg.PublicKey.Bytes, 0, data, PublicKeyOffset, PublicKeyLength);
-            Buffer.BlockCopy(msg.Nonce, 0, data, NonceOffset, NonceLength);
-            data[IsTokenUsedOffset] = msg.IsTokenUsed ? (byte)0x01 : (byte)0x00;
-            byteBuffer.WriteBytes(data);
+            byte[] data = ArrayPool<byte>.Shared.Rent(Length);
+            try
+            {
+                Buffer.BlockCopy(msg.Signature.Bytes, 0, data, SigOffset, SigLength - 1);
+                data[SigLength - 1] = msg.Signature.RecoveryId;
+                Buffer.BlockCopy(msg.EphemeralPublicHash.Bytes, 0, data, EphemeralHashOffset, EphemeralHashLength);
+                Buffer.BlockCopy(msg.PublicKey.Bytes, 0, data, PublicKeyOffset, PublicKeyLength);
+                Buffer.BlockCopy(msg.Nonce, 0, data, NonceOffset, NonceLength);
+                data[IsTokenUsedOffset] = msg.IsTokenUsed ? (byte)0x01 : (byte)0x00;
+                byteBuffer.WriteBytes(data, 0, Length);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(data);
+            }
         }
 
         public AuthMessage Deserialize(IByteBuffer msgBytes)
