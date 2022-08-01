@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Buffers;
 using System.Net;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
@@ -37,32 +38,38 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
     {
         (int totalLength, int contentLength, int nodesContentLength) = GetLength(msg);
 
-        RlpStream stream = new(totalLength);
-        stream.StartSequence(contentLength);
-        if (msg.Nodes.Any())
+        byte[] array = ArrayPool<byte>.Shared.Rent(totalLength);
+        try
         {
-            stream.StartSequence(nodesContentLength);
-            for (int i = 0; i < msg.Nodes.Length; i++)
+            RlpStream stream = new(array);
+            stream.StartSequence(contentLength);
+            if (msg.Nodes.Any())
             {
-                Node node = msg.Nodes[i];
-                SerializeNode(stream, node.Address, node.Id.Bytes);
+                stream.StartSequence(nodesContentLength);
+                for (int i = 0; i < msg.Nodes.Length; i++)
+                {
+                    Node node = msg.Nodes[i];
+                    SerializeNode(stream, node.Address, node.Id.Bytes);
+                }
             }
+            else
+            {
+                stream.Encode(Rlp.OfEmptySequence);
+            }
+
+            stream.Encode(msg.ExpirationTime);
+
+            Serialize((byte)msg.MsgType, stream.Data.AsSpan(0, totalLength), byteBuffer);
         }
-        else
+        finally
         {
-            stream.Encode(Rlp.OfEmptySequence);
+            ArrayPool<byte>.Shared.Return(array);
         }
-
-        stream.Encode(msg.ExpirationTime);
-
-        byte[] serializedMsg = Serialize((byte) msg.MsgType, stream.Data);
-        byteBuffer.EnsureWritable(serializedMsg.Length);
-        byteBuffer.WriteBytes(serializedMsg);
     }
 
     public NeighborsMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey FarPublicKey, byte[] Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
+        (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
 
         NettyRlpStream rlp = new(results.Data);
         rlp.ReadSequenceLength();
