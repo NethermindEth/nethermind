@@ -181,7 +181,7 @@ namespace Nethermind.Network.Test
             public Context ReceiveDisconnect()
             {
                 DisconnectMessage message = new(DisconnectReason.Other);
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Disconnect, _serializer.ZeroSerialize(message).ReadAllBytes()));
+                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Disconnect, _serializer.ZeroSerialize(message).ReadAllBytesAsArray()));
                 return this;
             }
 
@@ -249,7 +249,7 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = p2pVersion;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.ZeroSerialize(msg).ReadAllBytes()));
+                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.ZeroSerialize(msg).ReadAllBytesAsArray()));
                 return this;
             }
 
@@ -261,7 +261,7 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.ZeroSerialize(msg).ReadAllBytes()));
+                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.ZeroSerialize(msg).ReadAllBytesAsArray()));
                 return this;
             }
 
@@ -273,7 +273,7 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.ZeroSerialize(msg).ReadAllBytes()));
+                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.ZeroSerialize(msg).ReadAllBytesAsArray()));
                 return this;
             }
 

@@ -49,9 +49,7 @@ namespace Nethermind.Network
                 return zeroMessageSerializer.Deserialize(buffer);
             }
 
-            // 3% allocation of a sample run of Goerli 3 million blocks fast sync on buffer.ReadAllBytes
-            // this can be improved by adding ZeroMessageSerializer for a new message type
-            return Deserialize<T>(buffer.ReadAllBytes());
+            throw new InvalidOperationException($"No {nameof(IZeroMessageSerializer<T>)} registered for {typeof(T).Name}.");
 
         }
 

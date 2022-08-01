@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Buffers;
 using System.Net;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
@@ -34,33 +35,40 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
 
     public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
     {
-        (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(
-            msg);
+        (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
 
-        RlpStream stream = new(totalLength);
-
-        byte typeByte = (byte)msg.MsgType;
-
-        stream.StartSequence(contentLength);
-        stream.Encode(msg.Version);
-        Encode(stream, msg.SourceAddress, sourceAddressLength);
-        Encode(stream, msg.DestinationAddress, destinationAddressLength);
-        stream.Encode(msg.ExpirationTime);
-
-        if (msg.EnrSequence.HasValue)
+        byte[] array = ArrayPool<byte>.Shared.Rent(totalLength);
+        try
         {
-            stream.Encode(msg.EnrSequence.Value);
-        }
+            RlpStream stream = new(array);
 
-        byte[] serializedMsg = Serialize(typeByte, stream.Data);
-        msg.Mdc = serializedMsg.Slice(0, 32);
-        byteBuffer.EnsureWritable(serializedMsg.Length);
-        byteBuffer.WriteBytes(serializedMsg);
+            byte typeByte = (byte)msg.MsgType;
+
+            stream.StartSequence(contentLength);
+            stream.Encode(msg.Version);
+            Encode(stream, msg.SourceAddress, sourceAddressLength);
+            Encode(stream, msg.DestinationAddress, destinationAddressLength);
+            stream.Encode(msg.ExpirationTime);
+
+            if (msg.EnrSequence.HasValue)
+            {
+                stream.Encode(msg.EnrSequence.Value);
+            }
+
+            Serialize(typeByte, stream.Data.AsSpan(0, totalLength), byteBuffer);
+            byteBuffer.MarkReaderIndex();
+            msg.Mdc = byteBuffer.Slice(0, 32).ReadAllBytesAsArray();
+            byteBuffer.ResetReaderIndex();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(array);
+        }
     }
 
     public PingMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey FarPublicKey, byte[] Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
+        (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
         NettyRlpStream rlp = new (results.Data);
         rlp.ReadSequenceLength();
         int version = rlp.DecodeInt();
@@ -80,9 +88,8 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         rlp.DecodeInt(); // UDP port
 
         long expireTime = rlp.DecodeLong();
-        PingMsg msg = new(results.FarPublicKey, expireTime, source, destination, results.Mdc);
+        PingMsg msg = new(results.FarPublicKey, expireTime, source, destination, results.Mdc.ToArray()) { Version = version };
 
-        msg.Version = version;
         if (version == 4)
         {
             if (!rlp.HasBeenRead)

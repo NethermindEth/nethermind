@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Buffers;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -31,30 +32,34 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
 
     public void Serialize(IByteBuffer byteBuffer, PongMsg msg)
     {
+        if (msg.FarAddress is null)
+        {
+            throw new NetworkingException($"Sending discovery message without {nameof(msg.FarAddress)} set.", NetworkExceptionType.Discovery);
+        }
+
         (int totalLength, int contentLength, int farAddressLength) = GetLength(msg);
         byteBuffer.EnsureWritable(totalLength);
 
-        RlpStream stream = new(totalLength);
-
-        if (msg.FarAddress is null)
+        byte[] array = ArrayPool<byte>.Shared.Rent(totalLength);
+        try
         {
-            throw new NetworkingException($"Sending discovery message without {nameof(msg.FarAddress)} set.",
-                NetworkExceptionType.Discovery);
+            RlpStream stream = new(array);
+            stream.StartSequence(contentLength);
+            Encode(stream, msg.FarAddress, farAddressLength);
+            stream.Encode(msg.PingMdc);
+            stream.Encode(msg.ExpirationTime);
+
+            Serialize((byte)msg.MsgType, stream.Data.AsSpan(0, totalLength), byteBuffer);
         }
-
-        stream.StartSequence(contentLength);
-        Encode(stream, msg.FarAddress, farAddressLength);
-        stream.Encode(msg.PingMdc);
-        stream.Encode(msg.ExpirationTime);
-
-        byte[] serializedMsg = Serialize((byte) msg.MsgType, stream.Data);
-        byteBuffer.EnsureWritable(serializedMsg.Length);
-        byteBuffer.WriteBytes(serializedMsg);
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(array);
+        }
     }
 
     public PongMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey FarPublicKey, byte[] Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
+        (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
 
         NettyRlpStream rlp = new(results.Data);
 

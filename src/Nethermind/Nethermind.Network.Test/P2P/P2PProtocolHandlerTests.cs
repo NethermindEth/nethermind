@@ -45,7 +45,7 @@ namespace Nethermind.Network.Test.P2P
 
         private Packet CreatePacket(P2PMessage message)
         {
-            return new(message.Protocol, message.PacketType, _serializer.ZeroSerialize(message).ReadAllBytes());
+            return new(message.Protocol, message.PacketType, _serializer.ZeroSerialize(message).ReadAllBytesAsArray());
         }
 
         private const int ListenPort = 8003;
