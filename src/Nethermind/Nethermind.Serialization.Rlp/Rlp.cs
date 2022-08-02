@@ -407,25 +407,20 @@ namespace Nethermind.Serialization.Rlp
 
         public static Rlp Encode(long value)
         {
-            if (value == 0L)
+            return value switch
             {
-                return OfEmptyByteArray;
-            }
-
-            return value > 0
-                ? value switch
-                {
-                    < 0x80 => new ((byte)value),
-                    < 0x100 => new (new byte[] { 129, (byte)value }),
-                    < 0x1_0000 => new (new byte[] { 130, (byte)(value >> 8), (byte)value }),
-                    < 0x100_0000 => new (new byte[] { 131, (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-                    < 0x1_0000_0000 => new (new byte[] { 132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-                    < 0x100_0000_0000 => new (new byte[] { 133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-                    < 0x1_0000_0000_0000 => new (new byte[] { 134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-                    < 0x100_0000_0000_0000 => new (new byte[] { 135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
-                    _ => new (new byte[] { 136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value })
-                }
-                : Encode(new BigInteger(value), 8);
+                < 0 => Encode(new BigInteger(value), 8),
+                0L => OfEmptyByteArray,
+                < 0x80 => new((byte)value),
+                < 0x100 => new(new byte[] { 129, (byte)value }),
+                < 0x1_0000 => new(new byte[] { 130, (byte)(value >> 8), (byte)value }),
+                < 0x100_0000 => new(new byte[] { 131, (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
+                < 0x1_0000_0000 => new(new byte[] { 132, (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
+                < 0x100_0000_0000 => new(new byte[] { 133, (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
+                < 0x1_0000_0000_0000 => new(new byte[] { 134, (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
+                < 0x100_0000_0000_0000 => new(new byte[] { 135, (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
+                _ => new(new byte[] { 136, (byte)(value >> 56), (byte)(value >> 48), (byte)(value >> 40), (byte)(value >> 32), (byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value }),
+            };
         }
 
         public static Rlp Encode(BigInteger bigInteger, int outputLength = -1)
