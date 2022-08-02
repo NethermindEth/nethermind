@@ -150,8 +150,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Native", "Nether
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Seq", "Nethermind.Seq\Nethermind.Seq.csproj", "{99ABC9F6-C0DE-4579-8AFB-B42CDE0E840F}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "RocksDb", "RocksDb", "{086D039C-039D-4E2B-997E-33E95F7EB1DF}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Api", "Nethermind.Api\Nethermind.Api.csproj", "{5D8E2F39-9B57-48C0-8D0B-C85E21DED3DA}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Cli", "Nethermind.Cli\Nethermind.Cli.csproj", "{241EC70E-DAB2-4679-8ABE-55E07C9771CE}"
