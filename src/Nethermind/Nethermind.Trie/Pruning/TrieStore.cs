@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -412,52 +413,68 @@ namespace Nethermind.Trie.Pruning
             {
                 if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
 
-                List<BlockCommitSet> toAddBack = new();
+                // *2 is to have headroom if any commitsets come during execution of this method, which generally should not happen
+                BlockCommitSet[] toAddBack = ArrayPool<BlockCommitSet>.Shared.Rent(_commitSetQueue.Count * 2);
+                try
+                {
+                    BlockCommitSet[] candidateSets = ArrayPool<BlockCommitSet>.Shared.Rent(_commitSetQueue.Count);
+                    try
+                    {
+                        return CanPruneCacheFurtherCore(toAddBack, candidateSets);
+                    }
+                    finally
+                    {
+                        ArrayPool<BlockCommitSet>.Shared.Return(candidateSets);
+                    }
+                }
+                finally
+                {
+                    ArrayPool<BlockCommitSet>.Shared.Return(toAddBack);
 
-                List<BlockCommitSet> candidateSets = new();
-                while (_commitSetQueue.TryDequeue(out BlockCommitSet? frontSet))
+                    _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
+                    if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {Reorganization.MaxDepth})");
+                }
+            }
+
+            return false;
+
+            bool CanPruneCacheFurtherCore(BlockCommitSet[] toAddBack, BlockCommitSet[] candidateSets)
+            {
+                int toAddBackCount = 0;
+                int candidateSetsCount = 0;
+                while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
                 {
                     if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - Reorganization.MaxDepth)
                     {
-                        toAddBack.Add(frontSet);
-                        continue;
+                        toAddBack[toAddBackCount++] = frontSet;
                     }
-
-                    if (candidateSets.Count > 0 && candidateSets[0].BlockNumber == frontSet.BlockNumber)
+                    else if (candidateSetsCount > 0 && candidateSets[0].BlockNumber == frontSet.BlockNumber)
                     {
-                        candidateSets.Add(frontSet);
+                        candidateSets[candidateSetsCount++] = frontSet;
                     }
-                    else if (candidateSets.Count == 0 || frontSet.BlockNumber > candidateSets[0].BlockNumber)
+                    else if (candidateSetsCount == 0 || frontSet.BlockNumber > candidateSets[0].BlockNumber)
                     {
-                        candidateSets = new();
-                        candidateSets.Add(frontSet);
+                        candidateSetsCount = 0;
+                        candidateSets[candidateSetsCount++] = frontSet;
                     }
                 }
 
                 // TODO: Find a way to not have to re-add everything
-                foreach (BlockCommitSet blockCommitSet in toAddBack)
+                for (int index = 0; index < toAddBackCount; index++)
                 {
+                    BlockCommitSet blockCommitSet = toAddBack[index];
                     _commitSetQueue.Enqueue(blockCommitSet);
                 }
 
-                foreach (BlockCommitSet blockCommitSet in candidateSets)
+                for (int index = 0; index < candidateSetsCount; index++)
                 {
+                    BlockCommitSet blockCommitSet = candidateSets[index];
                     if (_logger.IsDebug) _logger.Debug($"Elevated pruning for candidate {blockCommitSet.BlockNumber}");
                     Persist(blockCommitSet);
                 }
 
-                if (candidateSets.Count > 0)
-                {
-                    return true;
-                }
-
-                _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {Reorganization.MaxDepth})");
+                return candidateSetsCount > 0;
             }
-
-            return false;
         }
 
         /// <summary>
@@ -485,9 +502,7 @@ namespace Nethermind.Trie.Pruning
         /// <exception cref="InvalidOperationException"></exception>
         private void PruneCache()
         {
-            if (_logger.IsDebug)
-                _logger.Debug(
-                    $"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()}MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
             List<TrieNode> toRemove = new(); // TODO: resettable
 
@@ -542,9 +557,7 @@ namespace Nethermind.Trie.Pruning
 
             stopwatch.Stop();
             Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
-            if (_logger.IsDebug)
-                _logger.Debug(
-                    $"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
+            if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()}MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 
         /// <summary>
@@ -564,9 +577,7 @@ namespace Nethermind.Trie.Pruning
             {
                 if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - Reorganization.MaxDepth - 1)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
-                            $"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {Reorganization.MaxDepth}");
+                    if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {Reorganization.MaxDepth}");
                     _commitSetQueue.TryDequeue(out _);
                 }
                 else
@@ -643,9 +654,7 @@ namespace Nethermind.Trie.Pruning
                 stopwatch.Stop();
                 Metrics.SnapshotPersistenceTime = stopwatch.ElapsedMilliseconds;
 
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
+                if (_logger.IsDebug) _logger.Debug($"Persisted trie from {commitSet.Root} at {commitSet.BlockNumber} in {stopwatch.ElapsedMilliseconds}ms (cache memory {MemoryUsedByDirtyCache})");
 
                 LastPersistedBlockNumber = commitSet.BlockNumber;
             }
@@ -670,15 +679,13 @@ namespace Nethermind.Trie.Pruning
 
             if (currentNode.Keccak is not null)
             {
-                Debug.Assert(currentNode.LastSeen.HasValue,
-                    $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
+                Debug.Assert(currentNode.LastSeen.HasValue, $"Cannot persist a dangling node (without {(nameof(TrieNode.LastSeen))} value set).");
                 // Note that the LastSeen value here can be 'in the future' (greater than block number
                 // if we replaced a newly added node with an older copy and updated the LastSeen value.
                 // Here we reach it from the old root so it appears to be out of place but it is correct as we need
                 // to prevent it from being removed from cache and also want to have it persisted.
 
-                if (_logger.IsTrace)
-                    _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
+                if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
                 _currentBatch[currentNode.Keccak.Bytes] = currentNode.FullRlp;
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
@@ -693,8 +700,7 @@ namespace Nethermind.Trie.Pruning
 
         private bool IsNoLongerNeeded(TrieNode node)
         {
-            Debug.Assert(node.LastSeen.HasValue,
-                $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
+            Debug.Assert(node.LastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
             return node.LastSeen < LastPersistedBlockNumber
                    && node.LastSeen < LatestCommittedBlockNumber - Reorganization.MaxDepth;
         }
@@ -718,9 +724,8 @@ namespace Nethermind.Trie.Pruning
             bool isFirstCommit = Interlocked.Exchange(ref _isFirst, 1) == 0;
             if (isFirstCommit)
             {
-                if (_logger.IsDebug)
-                    _logger.Debug(
-                        $"Reached first commit - newest {LatestCommittedBlockNumber}, last persisted {LastPersistedBlockNumber}");
+                if (_logger.IsDebug) _logger.Debug($"Reached first commit - newest {LatestCommittedBlockNumber}, last persisted {LastPersistedBlockNumber}");
+
                 // this is important when transitioning from fast sync
                 // imagine that we transition at block 1200000
                 // and then we close the app at 1200010
@@ -758,43 +763,44 @@ namespace Nethermind.Trie.Pruning
                 // here we try to shorten the number of blocks recalculated when restarting (so we force persist)
                 // and we need to speed up the standard announcement procedure so we persists a block
 
-                List<BlockCommitSet> candidateSets = new();
-                while (_commitSetQueue.TryDequeue(out BlockCommitSet? frontSet))
+                BlockCommitSet[] candidateSets = ArrayPool<BlockCommitSet>.Shared.Rent(_commitSetQueue.Count);
+                try
                 {
-                    if (candidateSets.Count == 0)
+                    PersistOnShutdownCore(candidateSets);
+                }
+                finally
+                {
+                    ArrayPool<BlockCommitSet>.Shared.Return(candidateSets);
+                }
+            }
+
+            void PersistOnShutdownCore(BlockCommitSet[] candidateSets)
+            {
+                int count = 0;
+                while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
+                {
+                    if (count == 0 || candidateSets[0].BlockNumber == frontSet!.BlockNumber)
                     {
-                        candidateSets.Add(frontSet);
+                        candidateSets[count++] = frontSet;
                     }
-                    else if (candidateSets[0].BlockNumber == frontSet!.BlockNumber)
+                    else if (frontSet!.BlockNumber < LatestCommittedBlockNumber - Reorganization.MaxDepth
+                             && frontSet!.BlockNumber > candidateSets[0].BlockNumber)
                     {
-                        candidateSets.Add(frontSet);
-                    }
-                    else
-                    {
-                        if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - Reorganization.MaxDepth)
-                        {
-                            continue;
-                        }
-                        else if (frontSet!.BlockNumber > candidateSets[0].BlockNumber)
-                        {
-                            candidateSets = new();
-                            candidateSets.Add(frontSet);
-                        }
+                        count = 0;
+                        candidateSets[count++] = frontSet;
                     }
                 }
 
-                foreach (BlockCommitSet blockCommitSet in candidateSets)
+                for (int index = 0; index < count; index++)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Debug(
-                            $"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
+                    BlockCommitSet blockCommitSet = candidateSets[index];
+                    if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
                     Persist(blockCommitSet);
                 }
 
-                if (candidateSets.Count == 0)
+                if (count == 0)
                 {
-                    if (_logger.IsDebug)
-                        _logger.Debug("No commitset to persist at all.");
+                    if (_logger.IsDebug) _logger.Debug("No commitset to persist at all.");
                 }
                 else
                 {
