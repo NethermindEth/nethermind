@@ -117,26 +117,6 @@
   <ItemGroup>
     <_ContentIncludedByDefault Remove="Contracts\EntryPoint.json" />
   </ItemGroup>
-  <ItemGroup>
-    <None Update="runtimes-1.13.5\linux-arm64\native\librocksdb.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\linux-arm\native\librocksdb.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\linux-x64\native\librocksdb.so">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\osx-arm64\native\librocksdb.dylib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\osx-x64\native\librocksdb.dylib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="runtimes-1.13.5\win-x64\native\rocksdb.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
 
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
