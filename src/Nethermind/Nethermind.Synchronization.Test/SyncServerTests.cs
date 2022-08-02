@@ -299,11 +299,11 @@ namespace Nethermind.Synchronization.Test
         public void Can_inject_terminal_block_with_higher_td_than_head(long ttd, bool sendFakeTd)
         {
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-            Block terminalBlockWithLowerDifficulty = Build.A.Block.WithDifficulty(1000010).WithParent(remoteBlockTree.Head).WithTotalDifficulty(remoteBlockTree.Head.TotalDifficulty + 1000010).TestObject;
-            remoteBlockTree.SuggestBlock(terminalBlockWithLowerDifficulty);
+            Block terminalBlockWithHigherTotalDifficulty = Build.A.Block.WithDifficulty(1000010).WithParent(remoteBlockTree.Head).WithTotalDifficulty(remoteBlockTree.Head.TotalDifficulty + 1000010).TestObject;
+            remoteBlockTree.SuggestBlock(terminalBlockWithHigherTotalDifficulty);
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             Context ctx = CreateMergeContext(localBlockTree, (UInt256)ttd);
-            Assert.True(terminalBlockWithLowerDifficulty.IsTerminalBlock(ctx.SpecProvider));
+            Assert.True(terminalBlockWithHigherTotalDifficulty.IsTerminalBlock(ctx.SpecProvider));
 
             Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
             if (sendFakeTd)
@@ -313,8 +313,8 @@ namespace Nethermind.Synchronization.Test
 
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
             Assert.AreEqual(localBlockTree.BestSuggestedHeader!.Number, 9);
-            localBlockTree.FindBlock(terminalBlockWithLowerDifficulty.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull();
-            localBlockTree.BestSuggestedHeader!.Hash.Should().Be(terminalBlockWithLowerDifficulty.Hash!);
+            localBlockTree.FindBlock(terminalBlockWithHigherTotalDifficulty.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull();
+            localBlockTree.BestSuggestedHeader!.Hash.Should().Be(terminalBlockWithHigherTotalDifficulty.Hash!);
         }
 
         private Context CreateMergeContext(IBlockTree localBlockTree, UInt256 ttd)
