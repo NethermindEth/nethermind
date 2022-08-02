@@ -182,6 +182,14 @@ namespace Nethermind.Serialization.Rlp
                 return Encode(new[] {rlp});
             }
 
+            IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
+            if (rlpStreamDecoder != null)
+            {
+                int totalLength = rlpStreamDecoder.GetLength(item, behaviors);
+                RlpStream stream = new(totalLength);
+                rlpStreamDecoder.Encode(stream, item, behaviors);
+                return new Rlp(stream.Data);
+            }
             IRlpObjectDecoder<T>? rlpDecoder = GetObjectDecoder<T>();
             return rlpDecoder != null ? rlpDecoder.Encode(item, behaviors) : throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
