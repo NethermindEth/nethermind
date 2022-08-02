@@ -409,7 +409,7 @@ namespace Nethermind.Trie.Pruning
             {
                 if (_logger.IsDebug) _logger.Debug("Elevated pruning starting");
 
-                using ArrayPoolList<BlockCommitSet> toAddBack = new(_commitSetQueue.Count * 2);
+                using ArrayPoolList<BlockCommitSet> toAddBack = new(_commitSetQueue.Count);
                 using ArrayPoolList<BlockCommitSet> candidateSets = new(_commitSetQueue.Count);
                 while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
                 {
