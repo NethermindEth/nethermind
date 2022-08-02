@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using Nethermind.Blockchain;
@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
@@ -37,10 +38,11 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     private readonly IPivot _pivot;
     private readonly IMergeConfig _mergeConfig;
     private readonly ILogger _logger;
+    private bool _chainMerged;
     protected override long HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
     protected override bool AllHeadersDownloaded => (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue) <=
-                                                    _pivot.PivotDestinationNumber;
+                                                    _pivot.PivotDestinationNumber || _chainMerged;
 
     protected override BlockHeader? LowestInsertedBlockHeader => _blockTree.LowestInsertedBeaconHeader;
     protected override MeasuredProgress HeadersSyncProgressReport => _syncReport.BeaconHeaders;
@@ -74,6 +76,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
     public override void InitializeFeed()
     {
         _pivotNumber = _pivot.PivotNumber;
+        _chainMerged = false;
 
         BlockHeader? lowestInserted = LowestInsertedBlockHeader;
         long startNumber = LowestInsertedBlockHeader?.Number ?? _pivotNumber;
@@ -97,44 +100,48 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         PostFinishCleanUp();
     }
 
+    protected override void PostFinishCleanUp()
+    {
+        HeadersSyncProgressReport.Update(_pivotNumber - HeadersDestinationNumber + 1);
+        HeadersSyncProgressReport.MarkEnd();
+        _dependencies.Clear(); // there may be some dependencies from wrong branches
+        _pending.Clear(); // there may be pending wrong branches
+        _sent.Clear(); // we my still be waiting for some bad branches
+        _syncReport.HeadersInQueue.Update(0L);
+        _syncReport.HeadersInQueue.MarkEnd();
+    }
+
+
     protected override AddBlockResult InsertToBlockTree(BlockHeader header)
     {
+        if (_chainMerged)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace(
+                    "Chain already merged, skipping header insert");
+            return AddBlockResult.AlreadyKnown;
+        }
+
         if (_logger.IsTrace)
             _logger.Trace(
                 $"Adding new header in beacon headers sync {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconInsert |
-                                         BlockTreeInsertOptions.MoveToBeaconMainChain |
-                                         BlockTreeInsertOptions.NotOnMainChain;
+        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderInsert;
         if (_nextHeaderDiff is null)
         {
             options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
         }
 
-        AddBlockResult insertOutcome = _blockTree.IsKnownBlock(header.Number, header.Hash!)
-            ? AddBlockResult.AlreadyKnown
-            : _blockTree.Insert(header, options);
         // Found existing block in the block tree
-        if (insertOutcome == AddBlockResult.AlreadyKnown)
+        if (_blockTree.IsKnownBlock(header.Number, header.GetOrCalculateHash()))
         {
-            // if (_blockTree.LowestInsertedHeader != null
-            //     && _blockTree.LowestInsertedHeader.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
-            // {
+            _chainMerged = true;
             if (_logger.IsTrace)
                 _logger.Trace(
-                    " BeaconHeader LowestInsertedBeaconHeader found existing chain in fast sync," +
-                    $"old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {_blockTree.LowestInsertedHeader?.Number}");
-            // beacon header set to (global) lowest inserted header
-            //   _blockTree.LowestInsertedBeaconHeader = _blockTree.LowestInsertedHeader;
-            if (header.Number < (_blockTree.LowestInsertedBeaconHeader?.Number ?? long.MaxValue))
-            {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"LowestInsertedBeaconHeader AlreadyKnown changed, old: {_blockTree.LowestInsertedBeaconHeader?.Number}, new: {header.Number}");
-                _blockTree.LowestInsertedBeaconHeader = header;
-            }
-            //}
+                    $"Found header to join dangling beacon chain {header.ToString(BlockHeader.Format.FullHashAndNumber)}");
+            return AddBlockResult.AlreadyKnown;
         }
 
+        AddBlockResult insertOutcome = _blockTree.Insert(header, options);
 
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
         {

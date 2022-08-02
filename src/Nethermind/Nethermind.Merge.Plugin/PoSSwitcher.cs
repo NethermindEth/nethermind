@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using Nethermind.Blockchain;
@@ -34,15 +34,15 @@ namespace Nethermind.Merge.Plugin
     /*
       The class is responsible for all logic required to switch to PoS consensus.
       More details: https://eips.ethereum.org/EIPS/eip-3675
-      
+
       We divided our transition process into three steps:
       1) We reached TTD with PoWs blocks
       2) We received the first forkchoiceUpdated
       3) We finalized the first PoS block
-      
-      The important parameters for the transition process: 
+
+      The important parameters for the transition process:
       TERMINAL_TOTAL_DIFFICULTY, FORK_NEXT_VALUE, TERMINAL_BLOCK_HASH, TERMINAL_BLOCK_NUMBER.
-      
+
       We have different sources of these parameters. The above list starts from the highest priority:
       1) MergeConfig - we should be able to override every parameter with CLI arguments
       2) ChainSpec - we can specify our parameters during the release. Moreover, it allows us to migrate to geth chainspec in future
@@ -169,12 +169,21 @@ namespace Nethermind.Merge.Plugin
         }
 
         public bool TransitionFinished => FinalTotalDifficulty != null || _finalizedBlockHash != Keccak.Zero;
-        
-        public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header)
+
+        public (bool IsTerminal, bool IsPostMerge) GetBlockConsensusInfo(BlockHeader header, bool dontTrustTotalDifficulty = false)
         {
             if (_logger.IsTrace)
                 _logger.Trace(
                     $"GetBlockConsensusInfo {header.ToString(BlockHeader.Format.FullHashAndNumber)} header.IsPostMerge: {header.IsPostMerge} header.TotalDifficulty {header.TotalDifficulty} header.Difficulty {header.Difficulty} TTD: {_specProvider.TerminalTotalDifficulty} MergeBlockNumber {_specProvider.MergeBlockNumber}, TransitionFinished: {TransitionFinished}");
+
+            if ((header.TotalDifficulty ?? 0) != 0 && dontTrustTotalDifficulty && header.IsGenesis == false)
+            {
+                BlockHeader? parentHeader = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
+                if (parentHeader != null && parentHeader.TotalDifficulty != 0)
+                    header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
+                else
+                    header.TotalDifficulty = null;
+            }
 
             bool isTerminal = false, isPostMerge;
             if (header.IsPostMerge) // block from Engine API, there is no need to check more cases
@@ -206,6 +215,7 @@ namespace Nethermind.Merge.Plugin
                 }
                 else
                 {
+
                     isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
                     isPostMerge = !isTerminal;
                 }

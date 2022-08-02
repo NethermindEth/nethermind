@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System;
 using System.Threading.Tasks;
@@ -48,10 +48,10 @@ namespace Nethermind.Merge.Plugin.Test
         [SetUp]
         public void Setup()
         {
-            _mergeConfig = new MergeConfig() {Enabled = true, FeeRecipient = TestItem.AddressA.ToString()};
+            _mergeConfig = new MergeConfig() {Enabled = true };
             MiningConfig? miningConfig = new() {Enabled = true};
             IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { "engine" } };
-            
+
             _context = Build.ContextWithMocks();
             _context.SealEngineType = SealEngineType.Clique;
             _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
@@ -79,10 +79,10 @@ namespace Nethermind.Merge.Plugin.Test
                 Period = CliqueConfig.Default.BlockPeriod
             };
             _plugin = new MergePlugin();
-            
+
             _consensusPlugin = new();
         }
-        
+
         [TestCase(true)]
         [TestCase(false)]
         public void Init_merge_plugin_does_not_throw_exception(bool enabled)
@@ -96,7 +96,7 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
             Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
         }
-        
+
         [Test]
         public async Task Initializes_correctly()
         {
@@ -135,12 +135,12 @@ namespace Nethermind.Merge.Plugin.Test
                     Enabled = jsonRpcEnabled
                 });
             }
-            
+
             await _plugin.Invoking((plugin) => plugin.Init(_context))
                 .Should()
                 .ThrowAsync<InvalidOperationException>();
         }
-        
+
         [Test]
         public async Task InitDisableJsonRpcUrlWithNoEngineUrl()
         {
@@ -165,7 +165,7 @@ namespace Nethermind.Merge.Plugin.Test
                 "http://localhost:8551|http;ws|net;eth;subscribe;web3;engine;client"
             });
         }
-        
+
         [TestCase(true, true, true)]
         [TestCase(true, false, false)]
         [TestCase(false, true, false)]

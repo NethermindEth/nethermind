@@ -75,8 +75,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     protected override IBlockProducer CreateTestBlockProducer(TxPoolTxSource txPoolTxSource, ISealer sealer, ITransactionComparerProvider transactionComparerProvider)
     {
-        Address feeRecipient = !string.IsNullOrEmpty(MergeConfig.FeeRecipient) ? new Address(MergeConfig.FeeRecipient) : Address.Zero;
-        SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, feeRecipient, SealValidator, LogManager);
+        SealEngine = new MergeSealEngine(SealEngine, PoSSwitcher, SealValidator, LogManager);
         MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
         TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
         EthSyncingInfo = new EthSyncingInfo(BlockTree);

@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -31,8 +31,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
         GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
         GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace[] GetBlockTrace(Keccak blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
-        GethLikeTxTrace[] GetBlockTrace(long blockNumber, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+        GethLikeTxTrace[] GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
         GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
         byte[] GetBlockRlp(Keccak blockHash);
         byte[] GetBlockRlp(long number);

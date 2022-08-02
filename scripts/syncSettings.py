@@ -12,7 +12,7 @@ headers = {
     'Content-type': 'application/json',
 }
 
-print(emoji.emojize("Fast Sync configuration settings initialization     :white_check_mark: ", use_aliases=True))
+print(emoji.emojize("Fast Sync configuration settings initialization     :white_check_mark: "))
 
 configs = {
     # fast sync section
@@ -139,5 +139,5 @@ def fastBlocksSettings(configuration, apiUrl, blockReduced, multiplierRequiremen
             json.dump(data, mainnetCfgChanged, indent=2)
 
 for config, value in configs.items():
-    print(emoji.emojize(f"{config.capitalize()} section                                     :white_check_mark: ", use_aliases=True))
+    print(emoji.emojize(f"{config.capitalize()} section                                     :white_check_mark: "))
     fastBlocksSettings(config, value['url'], value['blockReduced'], value['multiplierRequirement'])

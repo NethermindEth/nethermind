@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -147,14 +147,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _tracer.Trace(blockParameter, transaction, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
-        public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash,CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
+        public GethLikeTxTrace[] GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
         {
-            return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
-        }
-
-        public GethLikeTxTrace[] GetBlockTrace(long blockNumber, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null)
-        {
-            return _tracer.TraceBlock(blockNumber, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken); 
+            return _tracer.TraceBlock(blockParameter, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
         }
 
         public GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken,GethTraceOptions gethTraceOptions = null)

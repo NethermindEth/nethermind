@@ -79,9 +79,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             string payloadId = ComputeNextPayloadId(parentHeader, payloadAttributes);
             if (!_payloadStorage.ContainsKey(payloadId))
             {
-                payloadAttributes.SuggestedFeeRecipient = _sealer.Address != Address.Zero
-                    ? _sealer.Address
-                    : payloadAttributes.SuggestedFeeRecipient;
                 Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
                 ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock);
             }
@@ -156,7 +153,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             }
             else if (t.IsCanceled)
             {
-                if (_logger.IsInfo) _logger.Info($"Post-merge block producing was canceled");
+                if (_logger.IsInfo) _logger.Info($"Post-merge block improvement was canceled");
             }
 
             return t.Result;

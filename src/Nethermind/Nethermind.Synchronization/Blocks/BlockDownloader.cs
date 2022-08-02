@@ -55,8 +55,8 @@ namespace Nethermind.Synchronization.Blocks
         private AllocationWithCancellation _allocationWithCancellation;
 
         protected SyncBatchSize _syncBatchSize;
-        private int _sinceLastTimeout;
-        protected readonly int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
+        protected int _sinceLastTimeout;
+        private readonly int[] _ancestorJumps = {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
 
         public BlockDownloader(
             ISyncFeed<BlocksRequest?>? feed,
