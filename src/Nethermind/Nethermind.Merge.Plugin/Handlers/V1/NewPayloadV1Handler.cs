@@ -256,9 +256,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
 
+                    const string blockProcessingThrewException = "Block processing threw exception.";
+
                     if (e.ProcessingResult == ProcessingResult.Exception)
                     {
-                        blockProcessedTaskCompletionSource.SetException(new Exception("Block processing failed"));
+                        blockProcessedTaskCompletionSource.SetException(new BlockchainException(blockProcessingThrewException, e.Exception));
                         return;
                     }
 
@@ -275,7 +277,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     {
                         ProcessingResult.QueueException => "Block cannot be added to processing queue.",
                         ProcessingResult.MissingBlock => "Block wasn't found in tree.",
-                        ProcessingResult.Exception => "Block processing threw exception.",
+                        ProcessingResult.Exception => blockProcessingThrewException,
                         ProcessingResult.ProcessingError => "Block processing failed.",
                         _ => null
                     };
