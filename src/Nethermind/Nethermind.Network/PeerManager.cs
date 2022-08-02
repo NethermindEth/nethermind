@@ -856,7 +856,7 @@ namespace Nethermind.Network
             try
             {
                 int failedValidationCandidatesCount = 0;
-                foreach ((_, Peer peer) in _peerPool.Peers)
+                foreach ((PublicKey key, Peer peer) in _peerPool.Peers)
                 {
                     if (!peer.Node.IsStatic)
                     {
@@ -864,8 +864,16 @@ namespace Nethermind.Network
                         if (hasFailedValidation)
                         {
                             failedValidationCandidatesCount++;
+                            _candidates.Add(new PeerStats(peer, true, _stats.GetCurrentReputation(peer.Node)));
                         }
-                        _candidates.Add(new PeerStats(peer, hasFailedValidation, _stats.GetCurrentReputation(peer.Node)));
+                        else
+                        {
+                            bool isActivePeer = _peerPool.ActivePeers.ContainsKey(key);
+                            if (!isActivePeer)
+                            {
+                                _candidates.Add(new PeerStats(peer, false, _stats.GetCurrentReputation(peer.Node)));
+                            }
+                        }
                     }
                 }
 

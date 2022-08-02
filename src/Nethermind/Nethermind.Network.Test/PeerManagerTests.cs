@@ -357,6 +357,21 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Will_not_cleanup_active_peers()
+        {
+            await using Context ctx = new();
+            ctx.NetworkConfig.MaxCandidatePeerCount = 2;
+            ctx.NetworkConfig.CandidatePeerCountCleanupThreshold = 1;
+            ctx.NetworkConfig.PersistedPeerCountCleanupThreshold = 1;
+            ctx.SetupPersistedPeers(4);
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            await Task.Delay(_travisDelayLong);
+            ctx.PeerManager.ActivePeers.Count.Should().Be(4);
+        }
+
+        [Test]
         public async Task Will_load_static_nodes_and_connect_to_them()
         {
             await using Context ctx = new();
@@ -604,8 +619,7 @@ namespace Nethermind.Network.Test
 
             public void CreateRandomIncoming()
             {
-                var session = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
-                    LimboLogs.Instance);
+                Session session = new(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 lock (_sessions)
                 {
                     _sessions.Add(session);
@@ -633,8 +647,7 @@ namespace Nethermind.Network.Test
                 List<Session> incomingSessions = new();
                 foreach (Session session in sessions)
                 {
-                    var sessionIn = new Session(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
-                        LimboLogs.Instance);
+                    Session sessionIn = new(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                     sessionIn.RemoteHost = session.RemoteHost;
                     sessionIn.RemotePort = session.RemotePort;
                     SessionCreated?.Invoke(this, new SessionEventArgs(sessionIn));
