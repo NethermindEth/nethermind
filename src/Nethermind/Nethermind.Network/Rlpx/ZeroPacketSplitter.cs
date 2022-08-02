@@ -99,38 +99,21 @@ namespace Nethermind.Network.Rlpx
                 }
                 else
                 {
-                    // NettyRlpStream stream = new (output);
-                    // int contentLength = Rlp.LengthOf(_contextId) + Rlp.LengthOf(0);
-                    // if (i == 0)
-                    // {
-                    //     contentLength += Rlp.LengthOf(totalPayloadSize);
-                    // }
-                    // output.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-                    // stream.StartSequence(contentLength);
-                    // stream.Encode(0);
-                    // stream.Encode(_contextId);
-                    // if (i == 0)
-                    // {
-                    //     stream.Encode(totalPayloadSize);
-                    // }
-                    // output.WriteZero(Frame.HeaderSize - Rlp.LengthOfSequence(contentLength) - 3);
-
-                    Rlp[] headerDataItems;
+                    NettyRlpStream stream = new (output);
+                    int contentLength = Rlp.LengthOf(_contextId) + Rlp.LengthOf(0);
                     if (i == 0)
                     {
-                        headerDataItems = new Rlp[3];
-                        headerDataItems[2] = Rlp.Encode(totalPayloadSize);
+                        contentLength += Rlp.LengthOf(totalPayloadSize);
                     }
-                    else
+                    output.EnsureWritable(Rlp.LengthOfSequence(contentLength));
+                    stream.StartSequence(contentLength);
+                    stream.Encode(0);
+                    stream.Encode(_contextId);
+                    if (i == 0)
                     {
-                        headerDataItems = new Rlp[2];
+                        stream.Encode(totalPayloadSize);
                     }
-
-                    headerDataItems[1] = Rlp.Encode(_contextId);
-                    headerDataItems[0] = Rlp.Encode(0);
-                    byte[] headerDataBytes = Rlp.Encode(headerDataItems).Bytes;
-                    output.WriteBytes(headerDataBytes);
-                    output.WriteZero(Frame.HeaderSize - headerDataBytes.Length - 3);
+                    output.WriteZero(Frame.HeaderSize - Rlp.LengthOfSequence(contentLength) - 3);
                 }
 
                 int framePacketTypeSize = 0;
