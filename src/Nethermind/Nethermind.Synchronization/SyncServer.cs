@@ -146,6 +146,7 @@ namespace Nethermind.Synchronization
         public void AddNewBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
+            if (block.Difficulty == 0) return; // don't gossip post merge blocks
 
             if (block.TotalDifficulty == null)
             {
