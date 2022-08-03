@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -27,13 +27,11 @@ namespace Nethermind.Network.P2P.Messages
     {
         public void Serialize(IByteBuffer byteBuffer, AddCapabilityMessage msg)
         {
-            int totalLength = Rlp.LengthOf(msg.Capability.ProtocolCode.ToLowerInvariant());
-            totalLength += Rlp.LengthOf(msg.Capability.Version);
-            totalLength = Rlp.LengthOfSequence(totalLength);
-            
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), true);
+            int totalLength = GetLength(msg, out int contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
+
             NettyRlpStream stream = new(byteBuffer);
-            stream.StartSequence(totalLength);
+            stream.StartSequence(contentLength);
             stream.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
             stream.Encode(msg.Capability.Version);
         }
@@ -46,6 +44,13 @@ namespace Nethermind.Network.P2P.Messages
             byte version = context.DecodeByte();
 
             return new AddCapabilityMessage(new Capability(protocolCode, version));
+        }
+        private int GetLength(AddCapabilityMessage msg, out int contentLength)
+        {
+            contentLength = Rlp.LengthOf(msg.Capability.ProtocolCode.ToLowerInvariant());
+            contentLength += Rlp.LengthOf(msg.Capability.Version);
+
+            return Rlp.LengthOfSequence(contentLength);
         }
     }
 }
