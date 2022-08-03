@@ -87,6 +87,7 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BlockProcessingQueue,
                     invalidChainTracker,
                     chain.BeaconSync,
+                    chain.SpecProvider,
                     chain.LogManager),
                 new ForkchoiceUpdatedV1Handler(
                     chain.BlockTree,
