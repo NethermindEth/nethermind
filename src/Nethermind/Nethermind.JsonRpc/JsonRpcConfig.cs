@@ -53,8 +53,8 @@ namespace Nethermind.JsonRpc
         public bool UnsecureDevNoRpcAuthentication { get; set; }
         public int? MaxLoggedRequestParametersCharacters { get; set; } = null;
         public string[]? MethodsLoggingFiltering { get; set; } = { "engine_newPayloadV1", "engine_forkchoiceUpdatedV1" };
-        public string? EngineHost { get; set; } = "127.0.0.1";
-        public int EnginePort { get; set; } = 8551;
+        public string? EngineHost { get; set; } = null;
+        public int? EnginePort { get; set; } = null;
         public string[] EngineEnabledModules { get; set; } = ModuleType.DefaultEngineModules.ToArray();
     };
 };

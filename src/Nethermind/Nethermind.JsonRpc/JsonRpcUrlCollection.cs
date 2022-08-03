@@ -86,7 +86,17 @@ namespace Nethermind.JsonRpc
 
         private void BuildEngineUrls(bool includeWebSockets)
         {
-            JsonRpcUrl url = new(Uri.UriSchemeHttp, _jsonRpcConfig.EngineHost, _jsonRpcConfig.EnginePort,
+            if (_jsonRpcConfig.EnginePort == null && string.IsNullOrWhiteSpace(_jsonRpcConfig.EngineHost))
+            {
+                return;
+            }
+
+            if (_jsonRpcConfig.EnginePort == null || string.IsNullOrWhiteSpace(_jsonRpcConfig.EngineHost))
+            {
+                if (_logger.IsWarn) _logger.Warn("Json RPC EnginePort and EngineHost should be specified");
+                return;
+            }
+            JsonRpcUrl url = new(Uri.UriSchemeHttp, _jsonRpcConfig.EngineHost, _jsonRpcConfig.EnginePort.Value,
                 RpcEndpoint.Http, true, _jsonRpcConfig.EngineEnabledModules.Append("engine").ToArray());
 
             if (ContainsKey(url.Port))

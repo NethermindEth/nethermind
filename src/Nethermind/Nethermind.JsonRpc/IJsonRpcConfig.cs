@@ -126,13 +126,13 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Host for Execution Engine calls. Ensure the firewall is configured when enabling JSON RPC. If it does not work with 127.0.0.1 try something like 10.0.0.4 or 192.168.0.1",
-            DefaultValue = "\"127.0.0.1\"")]
-        string EngineHost { get; set; }
+            DefaultValue = "null")]
+        string? EngineHost { get; set; }
 
         [ConfigItem(
             Description = "Port for Execution Engine calls. Ensure the firewall is configured when enabling JSON RPC.",
-            DefaultValue = "8551")]
-        int EnginePort { get; set; }
+            DefaultValue = "null")]
+        int? EnginePort { get; set; }
 
         [ConfigItem(
             Description = "Defines which RPC modules should be enabled Execution Engine port. Built in modules are: Admin, Baseline, Clique, Consensus, Db, Debug, Deposit, Erc20, Eth, Evm, Health Mev, NdmConsumer, NdmProvider, Net, Nft, Parity, Personal, Proof, Subscribe, Trace, TxPool, Vault, Web3.",
