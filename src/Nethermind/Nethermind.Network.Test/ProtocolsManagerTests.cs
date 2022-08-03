@@ -183,7 +183,11 @@ namespace Nethermind.Network.Test
             public Context ReceiveDisconnect()
             {
                 DisconnectMessage message = new(DisconnectReason.Other);
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Disconnect, _serializer.ZeroSerialize(message).ReadAllBytesAsArray()));
+                IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
+
+                // to account for AdaptivePacketType byte
+                disconnectPacket.ReadByte();
+                _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket){ PacketType = P2PMessageCode.Disconnect });
                 return this;
             }
 
@@ -243,6 +247,17 @@ namespace Nethermind.Network.Test
                 return this;
             }
 
+            private Context ReceiveHello(HelloMessage msg)
+            {
+                IByteBuffer helloPacket = _serializer.ZeroSerialize(msg);
+                // to account for AdaptivePacketType byte
+                helloPacket.ReadByte();
+
+                _currentSession.ReceiveMessage(new ZeroPacket(helloPacket){ PacketType = P2PMessageCode.Hello });
+                return this;
+            }
+
+
             public Context ReceiveHello(byte p2pVersion = 5)
             {
                 HelloMessage msg = new();
@@ -251,8 +266,8 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = p2pVersion;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.ZeroSerialize(msg).ReadAllBytesAsArray()));
-                return this;
+
+                return ReceiveHello(msg);
             }
 
             public Context ReceiveHelloNoEth()
@@ -263,8 +278,7 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.ZeroSerialize(msg).ReadAllBytesAsArray()));
-                return this;
+                return ReceiveHello(msg);
             }
 
             public Context ReceiveHelloEth(int protocolVersion)
@@ -275,8 +289,7 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.ZeroSerialize(msg).ReadAllBytesAsArray()));
-                return this;
+                return ReceiveHello(msg);
             }
 
 
