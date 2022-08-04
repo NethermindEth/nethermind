@@ -487,7 +487,7 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     TxReceipt[] txReceipts = result[i];
                     Block block = context.GetBlockByRequestIdx(i + offset);
-                    if (block.Header.HasBody && block.Transactions.Length == 0)
+                    if (block.Header.HasBody && block.Body.IsEmpty)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Found incomplete blocks. {block.Hash}");
                         return;
