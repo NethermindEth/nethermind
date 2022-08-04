@@ -11,6 +11,7 @@ on:
   pull_request:
   workflow_dispatch:
 
+
 jobs:       
   neth-tests:
     name: Running Nethermind Tests 1
