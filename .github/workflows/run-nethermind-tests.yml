@@ -15,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Output Inputs                   
-        run: echo "ref: ${{ github.ref }} head_ref ${{ github.head_ref }} ref_name ${{ github.ref_name }} base_ref ${{ github.base_ref }}"
+        run: |
+          echo "ref: ${{ github.ref }} head_ref ${{ github.head_ref }} ref_name ${{ github.ref_name }} base_ref ${{ github.base_ref }}"
         
   neth-tests:
     name: Running Nethermind Tests 1
