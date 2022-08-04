@@ -2,7 +2,7 @@
 
 # .NET Ethereum client
 
-Nethermind is a high-performance, highly configurable full Ethereum protocol client built on .NET that runs on Linux, Windows, and macOS, and supports Clique, Aura, Ethash, and Proof of Stake consensus algorithms. Nethermind offers very fast sync speeds and support for external plug-ins. Enjoy reliable access to rich on-chain data thanks to high-performance JSON-RPC based on the Kestrel web server. Healthy node monitoring is secured with a Grafana dashboard and Seq enterprise logging.
+Nethermind is a high-performance, highly configurable full Ethereum protocol client built on .NET that runs on Linux, Windows, and macOS, and supports Clique, Aura, Ethash, and Proof-of-Stake consensus algorithms. Nethermind offers very fast sync speeds and support for external plug-ins. Enjoy reliable access to rich on-chain data thanks to high-performance JSON-RPC based on the Kestrel web server. Healthy node monitoring is secured with a Grafana dashboard and Seq enterprise logging.
 
 [![Documentation](https://img.shields.io/badge/GitBook-docs-7B36ED?style=for-the-badge&logo=gitbook&logoColor=white)](https://docs.nethermind.io)
 [![Releases](https://img.shields.io/github/release/NethermindEth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/releases)
