@@ -79,9 +79,9 @@ namespace Nethermind.JsonRpc
                 }
             }
 
-            BuildEngineUrls(includeWebSockets);
-
             BuildAdditionalUrls(includeWebSockets);
+
+            BuildEngineUrls(includeWebSockets);
         }
 
         private void BuildEngineUrls(bool includeWebSockets)
