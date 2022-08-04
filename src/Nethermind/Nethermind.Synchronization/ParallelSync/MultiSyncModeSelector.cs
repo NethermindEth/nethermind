@@ -188,8 +188,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         }
                         else
                         {
-                            bool anyPeers = peerBlock.Value > 0 && _betterPeerStrategy.IsBetterThanLocalChain((peerDifficulty.Value, peerBlock.Value), (best.ChainDifficulty, best.Block));
-                            if (anyPeers)
+                            if (ShouldBeInFullSyncModeInArchiveMode(best))
                             {
                                 newModes = SyncMode.Full;
                             }
@@ -294,7 +293,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <param name="best">Snapshot of the best known states</param>
         /// <returns>A string describing the state of sync</returns>
         private static string BuildStateString(Snapshot best) =>
-            $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|peer block:{best.Peer.Block}";
+            $"processed:{best.Processed}|state:{best.State}|block:{best.Block}|header:{best.Header}|chain difficulty:{best.ChainDifficulty}|peer block:{best.Peer.Block}|peer total difficulty:{best.Peer.TotalDifficulty}";
 
         private bool IsInAStickyFullSyncMode(Snapshot best)
         {
@@ -412,6 +411,24 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(notInFastSync), notInFastSync),
                     (nameof(notInStateSync), notInStateSync),
                     (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
+            }
+
+            return result;
+        }
+
+        private bool ShouldBeInFullSyncModeInArchiveMode(Snapshot best)
+        {
+            bool notInBeaconModes = !best.IsInAnyBeaconMode;
+            bool desiredPeerKnown = AnyDesiredPeerKnown(best);
+
+            bool result = notInBeaconModes &&
+                          desiredPeerKnown;
+
+            if (_logger.IsTrace)
+            {
+                LogDetailedSyncModeChecks("FULL",
+                    (nameof(notInBeaconModes), notInBeaconModes),
+                    (nameof(desiredPeerKnown), desiredPeerKnown));
             }
 
             return result;

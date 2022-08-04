@@ -30,6 +30,7 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -273,6 +274,7 @@ public partial class BlockTreeTests
         {
             private BlockTreeBuilder? _syncedTreeBuilder;
             private IChainLevelHelper? _chainLevelHelper;
+            private IBlockCacheService _blockCacheService;
 
             public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1, bool moveBlocksToMainChain = true, UInt256? ttd = null)
             {
@@ -305,7 +307,9 @@ public partial class BlockTreeTests
                         LimboLogs.Instance);
                 }
 
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, new SyncConfig(), LimboLogs.Instance);
+                _blockCacheService = new BlockCacheService();
+
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _blockCacheService, new SyncConfig(), LimboLogs.Instance);
                 if (moveBlocksToMainChain)
                     NotSyncedTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
                 return this;
@@ -346,9 +350,9 @@ public partial class BlockTreeTests
                 return this;
             }
 
-            public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2)
+            public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2, long maxHeaderNumber = long.MaxValue)
             {
-                BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount);
+                BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber);
                 while (headers != null && headers.Length > 0)
                 {
                     BlockDownloadContext blockDownloadContext = new(
@@ -379,7 +383,7 @@ public partial class BlockTreeTests
                         Assert.True(AddBlockResult.Added == insertResult, $"BeaconBlock {beaconBlock!.ToString(Block.Format.FullHashAndNumber)}");
                     }
 
-                    headers = _chainLevelHelper!.GetNextHeaders(maxCount);
+                    headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber);
                 }
 
                 return this;
@@ -471,7 +475,7 @@ public partial class BlockTreeTests
                     NullBloomStorage.Instance,
                     new SyncConfig(),
                     LimboLogs.Instance);
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, new SyncConfig(), LimboLogs.Instance);
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _blockCacheService, new SyncConfig(), LimboLogs.Instance);
                 return this;
             }
 
