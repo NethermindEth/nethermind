@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 }
 
                 await Task.CompletedTask;
-                Console.WriteLine("Setting result");
+                // Console.WriteLine("Setting result");
                 int[] result = new int[request.Length];
                 for (int i = 0; i < request.Length; i++)
                 {
@@ -158,7 +158,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 }
 
                 request.Result = result;
-                Console.WriteLine("Finished Execution");
+                // Console.WriteLine("Finished Execution");
             }
         }
 
@@ -181,12 +181,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
                 if (response.Result == null)
                 {
-                    Console.WriteLine("Handling failed response");
+                    // Console.WriteLine("Handling failed response");
                     _returned.Enqueue(response);
                 }
                 else
                 {
-                    Console.WriteLine("Handling OK response");
+                    // Console.WriteLine("Handling OK response");
                     for (int i = 0; i < response.Length; i++)
                     {
                         lock (_results)
@@ -196,7 +196,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     }
                 }
 
-                Console.WriteLine($"Decrementing Pending Requests {Interlocked.Decrement(ref _pendingRequests)}");
+                // Console.WriteLine($"Decrementing Pending Requests {Interlocked.Decrement(ref _pendingRequests)}");
                 return SyncResponseHandlingResult.OK;
             }
 
@@ -210,7 +210,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 TestBatch testBatch;
                 if (_returned.TryDequeue(out TestBatch returned))
                 {
-                    Console.WriteLine("Sending previously failed batch");
+                    // Console.WriteLine("Sending previously failed batch");
                     testBatch = returned;
                 }
                 else
@@ -221,10 +221,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                     if (_highestRequested >= Max)
                     {
-                        Console.WriteLine("Pending: " + _pendingRequests);
+                        // Console.WriteLine("Pending: " + _pendingRequests);
                         if (_pendingRequests == 0)
                         {
-                            Console.WriteLine("Changing to finished");
+                            // Console.WriteLine("Changing to finished");
                             Finish();
                         }
 
@@ -240,7 +240,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     testBatch = new TestBatch(start, 8);
                 }
 
-                Console.WriteLine($"Incrementing Pending Requests {Interlocked.Increment(ref _pendingRequests)}");
+                // Console.WriteLine($"Incrementing Pending Requests {Interlocked.Increment(ref _pendingRequests)}");
                 return testBatch;
             }
         }
