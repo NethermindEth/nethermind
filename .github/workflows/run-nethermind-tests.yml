@@ -6,18 +6,12 @@ concurrency:
 
 on: 
   push:
+    branches:
+       - master
   pull_request:
   workflow_dispatch:
 
-jobs:
-  output-refs:
-    name: Output refs
-    runs-on: ubuntu-latest
-    steps:
-      - name: Output Inputs                   
-        run: |
-          echo "ref: ${{ github.ref }} head_ref ${{ github.head_ref }} ref_name ${{ github.ref_name }}"
-        
+jobs:       
   neth-tests:
     name: Running Nethermind Tests 1
     runs-on: ubuntu-latest
