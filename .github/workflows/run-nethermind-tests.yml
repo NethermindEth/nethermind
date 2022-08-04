@@ -1,7 +1,7 @@
 name: '[RUN] Nethermind/Ethereum Tests'
 
 concurrency: 
-  group: ${{ github.workflow }}-${{ github.ref }}  
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 on: 
@@ -16,7 +16,7 @@ jobs:
     steps:
       - name: Output Inputs                   
         run: |
-          echo "ref: ${{ github.ref }} head_ref ${{ github.head_ref }} ref_name ${{ github.ref_name }} base_ref ${{ github.base_ref }}"
+          echo "ref: ${{ github.ref }} head_ref ${{ github.head_ref }} ref_name ${{ github.ref_name }}"
         
   neth-tests:
     name: Running Nethermind Tests 1
