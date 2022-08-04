@@ -420,12 +420,12 @@ public partial class EngineModuleTests
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
             .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // complete headers sync
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderMetadata
-                                         | BlockTreeInsertOptions.TotalDifficultyNotNeeded;
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata
+                                         | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = 0; i < requests.Length - 2; i++)
         {
             requests[i].TryGetBlock(out Block? block);
-            chain.BlockTree.Insert(block!.Header, options);
+            chain.BlockTree.Insert(block!.Header, headerOptions);
         }
 
         // trigger dangling block insert
@@ -489,11 +489,11 @@ public partial class EngineModuleTests
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // simulate headers sync by inserting 3 headers from pivot backwards
         int filledNum = 3;
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderMetadata |
-                                         BlockTreeInsertOptions.TotalDifficultyNotNeeded;
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata |
+                                         BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = missingBlocks.Length; i-- > missingBlocks.Length - filledNum;)
         {
-            chain.BlockTree.Insert(missingBlocks[i].Header, options);
+            chain.BlockTree.Insert(missingBlocks[i].Header, headerOptions);
         }
 
         // b0 <- ... h5 <- h6 <- h7 <- b8 <- b9
@@ -509,7 +509,7 @@ public partial class EngineModuleTests
         // finish rest of headers sync
         for (int i = missingBlocks.Length - filledNum; i-- > 0;)
         {
-            chain.BlockTree.Insert(missingBlocks[i].Header, options);
+            chain.BlockTree.Insert(missingBlocks[i].Header, headerOptions);
         }
 
         // headers sync should be finished but not forwards beacon sync
@@ -592,12 +592,12 @@ public partial class EngineModuleTests
         payloadStatus = await rpc.engine_newPayloadV1(bestBeaconBlockRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         // fill in beacon headers until fast headers pivot
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderMetadata |
-                                         BlockTreeInsertOptions.TotalDifficultyNotNeeded;
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderMetadata |
+                                         BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
         for (int i = requests.Length; i-- > 0;)
         {
             requests[i].TryGetBlock(out Block? block);
-            chain.BlockTree.Insert(block!.Header, options);
+            chain.BlockTree.Insert(block!.Header, headerOptions);
         }
 
         // verify correct pointers

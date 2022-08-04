@@ -33,7 +33,7 @@ public enum BlockTreeLookupOptions
 }
 
 [Flags]
-public enum BlockTreeInsertOptions
+public enum BlockTreeInsertHeaderOptions
 {
     None = 0,
     TotalDifficultyNotNeeded = 1,
@@ -44,6 +44,14 @@ public enum BlockTreeInsertOptions
 
     BeaconBlockInsert = TotalDifficultyNotNeeded | BeaconHeaderMetadata | NotOnMainChain | BeaconBodyMetadata,
     BeaconHeaderInsert = BeaconHeaderMetadata | MoveToBeaconMainChain | NotOnMainChain
+}
+
+[Flags]
+public enum BlockTreeInsertBlockOptions
+{
+    None = 0,
+    SaveHeader = 1,
+    SkipCanAcceptNewBlocks = 2
 }
 
 [Flags]

@@ -77,16 +77,17 @@ namespace Nethermind.Blockchain
         /// Inserts a disconnected block header (without body)
         /// </summary>
         /// <param name="header">Header to add</param>
-        /// <param name="options"></param>
+        /// <param name="headerOptions"></param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(BlockHeader header, BlockTreeInsertOptions options = BlockTreeInsertOptions.None);
+        AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None);
 
         /// <summary>
         /// Inserts a disconnected block body (not for processing).
         /// </summary>
         /// <param name="block">Block to add</param>
         /// <returns>Result of the operation, eg. Added, AlreadyKnown, etc.</returns>
-        AddBlockResult Insert(Block block, bool saveHeader = false, BlockTreeInsertOptions options = BlockTreeInsertOptions.None);
+        AddBlockResult Insert(Block block, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None);
 
         void Insert(IEnumerable<Block> blocks);
 

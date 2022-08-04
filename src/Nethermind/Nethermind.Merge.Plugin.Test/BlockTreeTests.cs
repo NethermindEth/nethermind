@@ -212,8 +212,8 @@ public partial class BlockTreeTests
     {
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        BlockTreeInsertOptions insertOption = BlockTreeInsertOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, insertOption);
+        BlockTreeInsertHeaderOptions insertHeaderOption = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOption);
 
         Assert.AreEqual(AddBlockResult.Added, insertResult);
         Assert.AreEqual(9, notSyncedTree.BestKnownNumber);
@@ -231,12 +231,12 @@ public partial class BlockTreeTests
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
 
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, options);
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
         for (int i = 13; i > 9; --i)
         {
             BlockHeader? beaconHeader = syncedTree.FindHeader(i, BlockTreeLookupOptions.None);
-            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, options);
+            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, headerOptions);
             Assert.AreEqual(insertOutcome, insertResult);
         }
     }
@@ -247,13 +247,13 @@ public partial class BlockTreeTests
         (BlockTree notSyncedTree, BlockTree syncedTree) = BuildBlockTrees(10, 20);
 
         Block? beaconBlock = syncedTree.FindBlock(14, BlockTreeLookupOptions.None);
-        BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconBlockInsert;
-        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, true, options);
+        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
+        AddBlockResult insertResult = notSyncedTree.Insert(beaconBlock, BlockTreeInsertBlockOptions.SaveHeader, headerOptions);
 
         for (int i = 13; i > 9; --i)
         {
             BlockHeader? beaconHeader = syncedTree.FindHeader(i, BlockTreeLookupOptions.None);
-            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, options);
+            AddBlockResult insertOutcome = notSyncedTree.Insert(beaconHeader!, headerOptions);
             Assert.AreEqual(AddBlockResult.Added, insertOutcome);
         }
 
@@ -319,8 +319,8 @@ public partial class BlockTreeTests
             public ScenarioBuilder InsertBeaconPivot(long num)
             {
                 Block? beaconBlock = SyncedTree.FindBlock(num, BlockTreeLookupOptions.None);
-                AddBlockResult insertResult = NotSyncedTree.Insert(beaconBlock!, true,
-                    BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain);
+                AddBlockResult insertResult = NotSyncedTree.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader,
+                    BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain);
                 Assert.AreEqual(AddBlockResult.Added, insertResult);
                 NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.LowestInsertedBeaconHeaderHash, Rlp.Encode(beaconBlock!.Hash).Bytes);
                 NotSyncedTreeBuilder.MetadataDb.Set(MetadataDbKeys.BeaconSyncPivotNumber, Rlp.Encode(beaconBlock.Number).Bytes);
@@ -394,9 +394,9 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertHeaders(long low, long high, TotalDifficultyMode tdMode = TotalDifficultyMode.TheSameAsSyncedTree)
             {
-                BlockTreeInsertOptions options = BlockTreeInsertOptions.BeaconHeaderInsert;
+                BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.BeaconHeaderInsert;
                 if (tdMode == TotalDifficultyMode.Null)
-                    options |= BlockTreeInsertOptions.TotalDifficultyNotNeeded;
+                    headerOptions |= BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded;
                 for (long i = high; i >= low; --i)
                 {
                     BlockHeader? beaconHeader = SyncedTree!.FindHeader(i, BlockTreeLookupOptions.None);
@@ -405,7 +405,7 @@ public partial class BlockTreeTests
                         beaconHeader!.TotalDifficulty = null;
                     else if (tdMode == TotalDifficultyMode.Zero)
                         beaconHeader.TotalDifficulty = 0;
-                    AddBlockResult insertResult = NotSyncedTree!.Insert(beaconHeader!, options);
+                    AddBlockResult insertResult = NotSyncedTree!.Insert(beaconHeader!, headerOptions);
                     Assert.AreEqual(AddBlockResult.Added, insertResult);
                 }
 
@@ -414,7 +414,7 @@ public partial class BlockTreeTests
 
             public ScenarioBuilder InsertBeaconBlocks(long low, long high, TotalDifficultyMode tdMode = TotalDifficultyMode.TheSameAsSyncedTree)
             {
-                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain;
+                BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain;
                 for (long i = high; i >= low; --i)
                 {
                     Block? beaconBlock = SyncedTree!.FindBlock(i, BlockTreeLookupOptions.None);
@@ -423,7 +423,7 @@ public partial class BlockTreeTests
                     else if (tdMode == TotalDifficultyMode.Zero)
                         beaconBlock!.Header.TotalDifficulty = 0;
 
-                    AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, true, insertOptions);
+                    AddBlockResult insertResult = NotSyncedTree!.Insert(beaconBlock!, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
                     Assert.AreEqual(AddBlockResult.Added, insertResult);
                 }
 
@@ -440,8 +440,8 @@ public partial class BlockTreeTests
                     if (parent == null)
                         parent = SyncedTree.FindBlock(i - 1, BlockTreeLookupOptions.None)!;
                     Block blockToInsert = Build.A.Block.WithNumber(i).WithParent(parent).WithNonce(0).TestObject;
-                    NotSyncedTree.Insert(blockToInsert, true, BlockTreeInsertOptions.BeaconBlockInsert);
-                    SyncedTree.Insert(blockToInsert, true, BlockTreeInsertOptions.NotOnMainChain);
+                    NotSyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+                    SyncedTree.Insert(blockToInsert, BlockTreeInsertBlockOptions.SaveHeader, BlockTreeInsertHeaderOptions.NotOnMainChain);
 
                     BlockInfo newBlockInfo = new(blockToInsert.Hash, UInt256.Zero, BlockMetadata.BeaconBody | BlockMetadata.BeaconHeader);
                     newBlockInfo.BlockNumber = blockToInsert.Number;

@@ -168,15 +168,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return NewPayloadV1Result.Invalid(null);
                 }
 
-                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+                BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
 
                 if (_blockCacheService.ProcessDestination != null && _blockCacheService.ProcessDestination.Hash == block.ParentHash)
                 {
-                    insertOptions |= BlockTreeInsertOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
+                    insertHeaderOptions |= BlockTreeInsertHeaderOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
                     _blockCacheService.ProcessDestination = block.Header;
                 }
 
-                _blockTree.Insert(block, true, insertOptions);
+                _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
 
                 if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
                 return NewPayloadV1Result.Syncing;
@@ -361,7 +361,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         /// Return false if no ancestor that is part of beacon chain found.
         private bool TryInsertDanglingBlock(Block block)
         {
-            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain;
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain;
 
             if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
             {
@@ -390,7 +390,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 while (stack.TryPop(out Block? child))
                 {
-                    _blockTree.Insert(child, true, insertOptions);
+                    _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
                 }
 
                 _blockCacheService.ProcessDestination = block.Header;

@@ -153,7 +153,7 @@
     },
     "Ropsten": {
       "commandName": "Project",
-      "commandLineArgs": "-c ropsten -dd %NETHERMIND_DATA_DIR% --JsonRpc.Enabled true",
+      "commandLineArgs": "-c ropsten -dd D:\\ --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
