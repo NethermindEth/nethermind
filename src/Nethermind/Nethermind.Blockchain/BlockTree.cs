@@ -215,25 +215,7 @@ namespace Nethermind.Blockchain
                 RecalculateTreeLevels();
                 AttemptToFixCorruptionByMovingHeadBackwards();
             }
-
-            var currentNumber = 12500000;
-            while (currentNumber > 0)
-            {
-                var info = FindCanonicalBlockInfo(currentNumber);
-
-                if (info == null)
-                {
-
-                }
-                var block = FindBlock(info!.BlockHash, BlockTreeLookupOptions.None);
-                if (block == null)
-                {
-                    _logger.Info($"Found null block {currentNumber}");
-                }
-                --currentNumber;
-
-            }
-
+            
             if (_logger.IsInfo)
                 _logger.Info($"Block tree initialized, " +
                              $"last processed is {Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}, " +
