@@ -182,7 +182,7 @@ namespace Nethermind.Synchronization.Test
             {
                 if (_causeTimeoutOnInit)
                 {
-                    Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER WITH EXCEPTION");
+                    // Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER WITH EXCEPTION");
                     await Task.FromException<BlockHeader>(new TimeoutException());
                 }
 
@@ -193,11 +193,11 @@ namespace Nethermind.Synchronization.Test
                 }
                 catch (Exception)
                 {
-                    Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER EXCEPTION");
+                    // Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER EXCEPTION");
                     throw;
                 }
 
-                Console.WriteLine($"RESPONDING TO GET HEAD BLOCK HEADER WITH RESULT {header.Number}");
+                // Console.WriteLine($"RESPONDING TO GET HEAD BLOCK HEADER WITH RESULT {header.Number}");
                 return header;
             }
 
@@ -745,7 +745,7 @@ namespace Nethermind.Synchronization.Test
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Wait().Stop();
 
-            Console.WriteLine("why?");
+            // Console.WriteLine("why?");
         }
 
         [Test, Retry(3)]

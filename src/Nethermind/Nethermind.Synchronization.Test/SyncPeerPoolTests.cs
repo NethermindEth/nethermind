@@ -725,13 +725,13 @@ namespace Nethermind.Synchronization.Test
             if (allocation.HasPeer)
             {
                 int workTime = _workRandomDelay.Next(1000);
-                Console.WriteLine($"{desc} will work for {workTime} ms");
+                // Console.WriteLine($"{desc} will work for {workTime} ms");
                 await Task.Delay(workTime);
-                Console.WriteLine($"{desc} finished work after {workTime} ms");
+                // Console.WriteLine($"{desc} finished work after {workTime} ms");
             }
 
             ctx.Pool.Free(allocation);
-            Console.WriteLine($"{desc} freed allocation");
+            // Console.WriteLine($"{desc} freed allocation");
         }
 
         [Test, Retry(3)]
@@ -761,12 +761,12 @@ namespace Nethermind.Synchronization.Test
                     task.ContinueWith(t =>
 #pragma warning restore 4014
                     {
-                        Console.WriteLine($"{iterationsLocal} Decrement on {t.IsCompleted}");
+                        // Console.WriteLine($"{iterationsLocal} Decrement on {t.IsCompleted}");
                         Interlocked.Decrement(ref _pendingRequests);
                     });
                 }
 
-                Console.WriteLine(iterations + " " + failures + " " + ctx.Pool.ReplaceableAllocations.Count() + " " + _pendingRequests);
+                // Console.WriteLine(iterations + " " + failures + " " + ctx.Pool.ReplaceableAllocations.Count() + " " + _pendingRequests);
                 await Task.Delay(10);
             } while (iterations-- > 0 || _pendingRequests > 0);
 
