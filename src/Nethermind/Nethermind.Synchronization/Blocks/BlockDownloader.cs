@@ -342,7 +342,7 @@ namespace Nethermind.Synchronization.Blocks
                     Block currentBlock = blocks[blockIndex];
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
 
-                    if (currentBlock.Header.HasBody && currentBlock.Body.IsEmpty)
+                    if (currentBlock.IsBodyMissing)
                     {
                         throw new EthSyncException($"{bestPeer} didn't send body for block {currentBlock.ToString(Block.Format.Short)}.");
                     }
@@ -487,7 +487,7 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     TxReceipt[] txReceipts = result[i];
                     Block block = context.GetBlockByRequestIdx(i + offset);
-                    if (block.Header.HasBody && block.Body.IsEmpty)
+                    if (block.IsBodyMissing)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Found incomplete blocks. {block.Hash}");
                         return;

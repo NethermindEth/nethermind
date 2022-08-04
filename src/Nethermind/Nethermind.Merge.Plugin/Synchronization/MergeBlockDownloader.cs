@@ -181,7 +181,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     Block currentBlock = blocks[blockIndex];
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
 
-                    if (currentBlock.Header.HasBody && currentBlock.Body.IsEmpty)
+                    if (currentBlock.IsBodyMissing)
                     {
                         throw new EthSyncException($"{bestPeer} didn't send body for block {currentBlock.ToString(Block.Format.Short)}.");
                     }
