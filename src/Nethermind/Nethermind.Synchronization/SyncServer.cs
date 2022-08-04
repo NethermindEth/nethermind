@@ -55,13 +55,13 @@ namespace Nethermind.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly IDb _stateDb;
         private readonly IDb _codeDb;
-        private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
         private readonly CanonicalHashTrie? _cht;
         private readonly object _dummyValue = new();
-        private bool gossipStopped = false;
+        private bool _gossipStopped = false;
+        private readonly Random _broadcastRandomizer = new();
 
         private readonly ICache<Keccak, object> _recentlySuggested =
             new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization
             ILogManager logManager,
             CanonicalHashTrie? cht = null)
         {
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _witnessRepository = witnessRepository ?? throw new ArgumentNullException(nameof(witnessRepository));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -100,8 +100,8 @@ namespace Nethermind.Synchronization
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cht = cht;
-            _pivotNumber = _syncConfig.PivotNumberParsed;
-            _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
+            _pivotNumber = config.PivotNumberParsed;
+            _pivotHash = new Keccak(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
@@ -147,7 +147,6 @@ namespace Nethermind.Synchronization
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
             if (block.Difficulty == 0) return; // don't gossip post merge blocks
-
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
@@ -259,8 +258,6 @@ namespace Nethermind.Synchronization
                     throw new EthSyncException(message);
                 }
 
-
-
                 bool shouldSkipProcessing = _blockTree.Head.IsPoS() || block.IsPostMerge;
                 if (shouldSkipProcessing)
                 {
@@ -275,6 +272,43 @@ namespace Nethermind.Synchronization
             {
                 if (_logger.IsDebug) _logger.Debug($"Peer {syncPeer} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
             }
+
+            BroadcastBlock(block, SendBlockPriority.High);
+        }
+
+        private void BroadcastBlock(Block block, SendBlockPriority priority)
+        {
+            Task broadcastTask = priority == SendBlockPriority.Low
+                ? Task.Run(() =>
+                {
+                    foreach (PeerInfo peerInfo in _pool.AllPeers)
+                    {
+                        NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.Low);
+                    }
+                })
+                : Task.Run(() =>
+                {
+                    int peerCount = _pool.PeerCount;
+                    double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
+                    int counter = 0;
+                    foreach (PeerInfo peerInfo in _pool.AllPeers)
+                    {
+                        if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                        {
+                            NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.High);
+                            counter++;
+                        }
+                    }
+
+                    if (counter > 0 && _logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
+                });
+
+            broadcastTask.ContinueWith(t => t.Exception?.Handle(ex =>
+                {
+                    if (_logger.IsError) _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
+                    return true;
+                }),
+                TaskContinuationOptions.OnlyOnFaulted);
         }
 
         /// <summary>
@@ -366,8 +400,7 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[]?[] GetNodeData(IReadOnlyList<Keccak> keys,
-            NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public byte[]?[] GetNodeData(IReadOnlyList<Keccak> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             byte[]?[] values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
@@ -392,7 +425,66 @@ namespace Nethermind.Synchronization
             return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
         }
 
-        private object _chtLock = new();
+        public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+        public Keccak? FindHash(long number)
+        {
+            try
+            {
+                Keccak? hash = _blockTree.FindHash(number);
+                return hash;
+            }
+            catch (Exception)
+            {
+                if (_logger.IsDebug) _logger.Debug("Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
+            }
+
+            return null;
+        }
+
+        [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
+        private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
+        {
+            Block block = blockEventArgs.Block;
+            if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
+            {
+                BroadcastBlock(block, SendBlockPriority.Low);
+            }
+        }
+
+        private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
+        {
+            if (!_gossipPolicy.CanGossipBlocks) return;
+
+            try
+            {
+                syncPeer.NotifyOfNewBlock(broadcastedBlock, priority);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo ?? (object)syncPeer}.", e);
+            }
+        }
+
+        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockPriority.High);
+
+
+        public void StopNotifyingPeersAboutNewBlocks()
+        {
+            if (_gossipStopped == false)
+            {
+                _blockTree.NewHeadBlock -= OnNewHeadBlock;
+                _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
+                _gossipStopped = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            StopNotifyingPeersAboutNewBlocks();
+        }
+
+        private readonly object _chtLock = new();
 
         // TODO - Cancellation token?
         // TODO - not a fan of this function name - CatchUpCHT, AddMissingCHTBlocks, ...?
@@ -434,111 +526,6 @@ namespace Nethermind.Synchronization
         public CanonicalHashTrie? GetCHT()
         {
             return _cht;
-        }
-
-        public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-
-
-        public Keccak? FindHash(long number)
-        {
-            try
-            {
-                Keccak? hash = _blockTree.FindHash(number);
-                return hash;
-            }
-            catch (Exception)
-            {
-                _logger.Debug(
-                    "Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
-            }
-
-            return null;
-        }
-
-
-        private Random _broadcastRandomizer = new();
-
-        [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
-        private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
-        {
-            Block block = blockEventArgs.Block;
-            if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
-            {
-                Task.Run(() =>
-                {
-                    int peerCount = _pool.PeerCount;
-                    double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
-
-                    int counter = 0;
-                    foreach (PeerInfo peerInfo in _pool.AllPeers)
-                    {
-                        if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
-                        {
-                            if (_broadcastRandomizer.NextDouble() < broadcastRatio)
-                            {
-                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.High);
-                                counter++;
-                            }
-                            else
-                            {
-                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.Low);
-                            }
-                        }
-                    }
-
-                    if (counter > 0)
-                    {
-                        if (_logger.IsDebug)
-                            _logger.Debug(
-                                $"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
-                    }
-
-                    if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
-                    {
-                        _ = BuildCHT();
-                    }
-                }).ContinueWith(
-                    t =>
-                        t.Exception?.Handle(ex =>
-                        {
-                            if (_logger.IsError) _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
-                            return true;
-                        })
-                    , TaskContinuationOptions.OnlyOnFaulted
-                );
-            }
-        }
-
-        private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
-        {
-            if (!_gossipPolicy.CanGossipBlocks) return;
-
-            try
-            {
-                syncPeer.NotifyOfNewBlock(broadcastedBlock, priority);
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo ?? (object)syncPeer}.", e);
-            }
-        }
-
-        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockPriority.High);
-
-
-        public void StopNotifyingPeersAboutNewBlocks()
-        {
-            if (gossipStopped == false)
-            {
-                _blockTree.NewHeadBlock -= OnNewHeadBlock;
-                _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
-                gossipStopped = true;
-            }
-        }
-
-        public void Dispose()
-        {
-            StopNotifyingPeersAboutNewBlocks();
         }
     }
 }

@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -39,6 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly TxFloodController _floodController;
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
+        private readonly LruKeyCache<Keccak> _lastBlockNotificationCache = new(5, "LastBlockNotificationCache");
 
         public Eth62ProtocolHandler(
             ISession session,
@@ -118,7 +120,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     Disconnect(DisconnectReason.BreachOfProtocol, postFinalized);
                     return false;
                 }
-                
+
                 if (_gossipPolicy.ShouldDiscardBlocks)
                 {
                     const string postTransition = $"NewBlock message received after TERMINAL_TOTAL_DIFFICULTY PoS block. Ignoring Message.";
@@ -128,7 +130,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 return true;
             }
-            
+
             int packetType = message.PacketType;
             if (!_statusReceived && packetType != Eth62MessageCode.Status)
             {
@@ -294,19 +296,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 return;
             }
 
-            switch (priority)
+            if (_lastBlockNotificationCache.Set(block.Hash))
             {
-                case SendBlockPriority.High:
-                    SendNewBlock(block);
-                    break;
-                case SendBlockPriority.Low:
-                    HintNewBlock(block.Hash, block.Number);
-                    break;
-                default:
-                    Logger.Error(
-                        $"Unknown priority ({priority}) passed to {nameof(NotifyOfNewBlock)} - handling as low priority");
-                    HintNewBlock(block.Hash, block.Number);
-                    break;
+                switch (priority)
+                {
+                    case SendBlockPriority.High:
+                        SendNewBlock(block);
+                        break;
+                    case SendBlockPriority.Low:
+                        HintNewBlock(block.Hash, block.Number);
+                        break;
+                    default:
+                        if (Logger.IsError) Logger.Error($"Unknown priority ({priority}) passed to {nameof(NotifyOfNewBlock)} - handling as low priority");
+                        HintNewBlock(block.Hash, block.Number);
+                        break;
+                }
             }
         }
 
@@ -319,9 +323,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
 
-            NewBlockMessage msg = new();
-            msg.Block = block;
-            msg.TotalDifficulty = block.TotalDifficulty.Value;
+            NewBlockMessage msg = new() { Block = block, TotalDifficulty = block.TotalDifficulty.Value };
 
             Send(msg);
         }
