@@ -9,7 +9,6 @@ Nethermind is a is a high-performance, highly configurable full Ethereum protoco
 [![Docker Pulls](https://img.shields.io/docker/pulls/nethermind/nethermind?style=for-the-badge&logo=docker&logoColor=white)](https://hub.docker.com/r/nethermind/nethermind)
 [![Codecov](https://img.shields.io/codecov/c/github/nethermindeth/nethermind?style=for-the-badge&logo=codecov&logoColor=white)](https://codecov.io/gh/NethermindEth/nethermind)
 [![Website](https://img.shields.io/website?down_color=lightgrey&down_message=offline&style=for-the-badge&up_color=brightgreen&up_message=online&url=https%3A%2F%2Fnethermind.io)](https://nethermind.io)
-[![gitpoap badge](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
 ### :speaking_head:	Chats
 [![Discord](https://img.shields.io/discord/629004402170134531?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/GXJFaYk)
@@ -180,6 +179,7 @@ dotnet test EthereumTests.sln
 ## :footprints:	Contributors welcome
 [![GitHub Issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/issues)
 [![GitHub Contributors](https://img.shields.io/github/contributors/nethermindeth/nethermind.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/NethermindEth/nethermind/graphs/contributors)
+[![gitpoap badge](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
 ## License
 [![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE)
