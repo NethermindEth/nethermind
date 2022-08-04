@@ -180,10 +180,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                     Block currentBlock = blocks[blockIndex];
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
-                    if (currentBlock.Header.HasBody && currentBlock.Body.IsEmpty)
-                    {
-                        throw new EthSyncException($"{bestPeer} didn't send transaction for block {currentBlock.ToString(Block.Format.Short)}.");
-                    }
 
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))

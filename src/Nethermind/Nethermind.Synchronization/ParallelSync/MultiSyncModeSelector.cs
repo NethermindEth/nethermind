@@ -420,21 +420,15 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             bool notInBeaconModes = !best.IsInAnyBeaconMode;
             bool desiredPeerKnown = AnyDesiredPeerKnown(best);
-            bool notInStateSync = !best.IsInStateSync;
-            bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 
             bool result = notInBeaconModes &&
-                          desiredPeerKnown &&
-                          notInStateSync &&
-                          notNeedToWaitForHeaders;
+                          desiredPeerKnown;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("FULL",
                     (nameof(notInBeaconModes), notInBeaconModes),
-                    (nameof(desiredPeerKnown), desiredPeerKnown),
-                    (nameof(notInStateSync), notInStateSync),
-                    (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
+                    (nameof(desiredPeerKnown), desiredPeerKnown));
             }
 
             return result;

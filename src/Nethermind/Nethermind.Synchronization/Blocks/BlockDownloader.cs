@@ -341,10 +341,6 @@ namespace Nethermind.Synchronization.Blocks
 
                     Block currentBlock = blocks[blockIndex];
                     if (_logger.IsTrace) _logger.Trace($"Received {currentBlock} from {bestPeer}");
-                    if (currentBlock.Header.HasBody && currentBlock.Body.IsEmpty)
-                    {
-                        throw new EthSyncException($"{bestPeer} didn't send body for block {currentBlock.ToString(Block.Format.Short)}.");
-                    }
 
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
@@ -461,12 +457,6 @@ namespace Nethermind.Synchronization.Blocks
                     context.SetBody(i + offset, result[i]);
                 }
 
-                if (result.Length == 0)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Peer sent no bodies. Peer: {peer}, Request: {hashesToRequest.Count}");
-                    return;
-                }
-
                 offset += result.Length;
             }
         }
@@ -485,13 +475,7 @@ namespace Nethermind.Synchronization.Blocks
                 for (int i = 0; i < result.Length; i++)
                 {
                     TxReceipt[] txReceipts = result[i];
-                    Block block = context.GetBlockByRequestIdx(i + offset);
-                    if (block.Header.HasBody && block.Transactions.Length == 0)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Found incomplete blocks. {block.Hash}");
-                        return;
-                    }
-                    if (!context.TrySetReceipts(i + offset, txReceipts, out block))
+                    if (!context.TrySetReceipts(i + offset, txReceipts, out Block block))
                     {
                         throw new EthSyncException($"{peer} sent invalid receipts for block {block.ToString(Block.Format.Short)}.");
                     }
