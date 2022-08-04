@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization;
 using NSubstitute;
 using NUnit.Framework;
@@ -93,18 +94,30 @@ public class MergeBetterPeerStrategyTests
 
     [TestCase(6,4,7,2, false)]
     [TestCase(6,2,7,2, false)]
-    [TestCase(7,2,7,4, true)]
     [TestCase(3,4,5,2, true)]
     [TestCase(3,2,3,4, true)]
     [TestCase(4,2,3,4, false)]
     [TestCase(3,4,3,2, false)]
-    public void IsDesiredPeer_return_expected_results(long chainDifficulty, long bestHeader, long peerTotalDifficulty, long peerNumber, bool expectedResult)
+    public void IsDesiredPeer_return_expected_results_pre_ttd(long chainDifficulty, long bestHeader, long peerTotalDifficulty, long peerNumber, bool expectedResult)
     {
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.TotalDifficulty.Returns((UInt256)peerTotalDifficulty);
         syncPeer.HeadNumber.Returns(peerNumber);
 
         MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy();
+        Assert.AreEqual(expectedResult, betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)));
+    }
+
+    [TestCase(9, 7,4,7,10, true)]
+    [TestCase(9, 8,2,7,7, false)]
+    [TestCase(null, 9,4,5,99, false)]
+    public void IsDesiredPeer_return_expected_results_post_ttd(long? pivotNumber, long chainDifficulty, long bestHeader, long peerTotalDifficulty, long peerNumber, bool expectedResult)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns((UInt256)peerTotalDifficulty);
+        syncPeer.HeadNumber.Returns(peerNumber);
+
+        MergeBetterPeerStrategy betterPeerStrategy = CreateStrategy(pivotNumber);
         Assert.AreEqual(expectedResult, betterPeerStrategy.IsDesiredPeer(((UInt256)peerTotalDifficulty, peerNumber), ((UInt256)chainDifficulty, bestHeader)));
     }
 
@@ -118,13 +131,21 @@ public class MergeBetterPeerStrategyTests
         Assert.AreEqual(expectedResult, betterPeerStrategy.IsLowerThanTerminalTotalDifficulty((UInt256)totalDifficulty));
     }
 
-    private MergeBetterPeerStrategy CreateStrategy()
+    private MergeBetterPeerStrategy CreateStrategy(long? beaconPivotNum = null)
     {
         const long ttd = 5;
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.TerminalTotalDifficulty.Returns((UInt256)ttd);
+
+        IBeaconPivot beaconPivot = Substitute.For<IBeaconPivot>();
+        if (beaconPivotNum != null)
+        {
+            beaconPivot.BeaconPivotExists().Returns(true);
+            beaconPivot.PivotNumber.Returns((long)beaconPivotNum);
+        }
+
         TotalDifficultyBetterPeerStrategy preMergeBetterPeerStrategy = new(LimboLogs.Instance);
-        MergeBetterPeerStrategy betterPeerStrategy = new(preMergeBetterPeerStrategy, poSSwitcher, LimboLogs.Instance);
+        MergeBetterPeerStrategy betterPeerStrategy = new(preMergeBetterPeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance);
         return betterPeerStrategy;
     }
 }

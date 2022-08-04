@@ -59,7 +59,7 @@ namespace Nethermind.Merge.Plugin.Test
         protected async Task<MergeTestBlockchain> CreateBlockChain(IMergeConfig mergeConfig = null, IPayloadPreparationService? mockedPayloadService = null)
             => await CreateBaseBlockChain(mergeConfig, mockedPayloadService).Build(new SingleReleaseSpecProvider(London.Instance, 1));
 
-        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null)
+        private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null)
         {
             IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
 
@@ -87,7 +87,8 @@ namespace Nethermind.Merge.Plugin.Test
                     chain.BlockProcessingQueue,
                     invalidChainTracker,
                     chain.BeaconSync,
-                    chain.LogManager),
+                    chain.LogManager,
+                    newPayloadTimeout),
                 new ForkchoiceUpdatedV1Handler(
                     chain.BlockTree,
                     chain.BlockFinalizationManager,

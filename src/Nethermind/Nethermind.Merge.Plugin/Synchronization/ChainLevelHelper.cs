@@ -15,19 +15,21 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
-    BlockHeader[]? GetNextHeaders(int maxCount);
+    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int blocksToSkip = 0);
 
     bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
@@ -37,27 +39,33 @@ public class ChainLevelHelper : IChainLevelHelper
     private readonly IBlockTree _blockTree;
     private readonly ISyncConfig _syncConfig;
     private readonly ILogger _logger;
+    private readonly IBlockCacheService _blockCacheService;
 
     public ChainLevelHelper(
         IBlockTree blockTree,
+        IBlockCacheService blockCacheService,
         ISyncConfig syncConfig,
         ILogManager logManager)
     {
         _blockTree = blockTree;
+        _blockCacheService = blockCacheService;
         _syncConfig = syncConfig;
         _logger = logManager.GetClassLogger();
     }
 
-    public BlockHeader[]? GetNextHeaders(int maxCount)
+    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int blocksToSkip)
     {
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
             return null;
 
+        long destinationPoint = GetDestinationPoint();
+
         List<BlockHeader> headers = new(maxCount);
         int i = 0;
 
-        while (i < maxCount)
+        long upperLimit = (destinationPoint - blocksToSkip); // blocksToSkip is used for FastSync boundary
+        while (i < maxCount && (startingPoint <= upperLimit))
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
             BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
@@ -94,6 +102,8 @@ public class ChainLevelHelper : IChainLevelHelper
             ++i;
             if (i >= maxCount)
                 break;
+            if (newHeader.Number >= maxHeaderNumber)
+                break;
 
             ++startingPoint;
         }
@@ -125,9 +135,14 @@ public class ChainLevelHelper : IChainLevelHelper
         return true;
     }
 
+    private long GetDestinationPoint()
+    {
+        return Math.Min(_blockTree.BestKnownNumber + 1, _blockCacheService.ProcessDestination?.Number ?? long.MaxValue);
+    }
+
     private long? GetStartingPoint()
     {
-        long startingPoint = _blockTree.BestKnownNumber + 1;
+        long startingPoint = GetDestinationPoint();
         bool foundBeaconBlock;
 
         BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
