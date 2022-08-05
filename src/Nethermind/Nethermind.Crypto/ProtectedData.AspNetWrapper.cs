@@ -54,16 +54,20 @@ namespace Nethermind.Crypto
                 }
             }
 
+            /**
+             * Creates data protector with keys located in Environment.SpecialFolder.ApplicationData
+             * if we don't have permission to write to this folder keys will be stored at keyStore/protection_keys
+             */
             private IDataProtector GetUserProtector(string keyStoreDir, byte[] optionalEntropy)
             {
                 var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
                 var path = Path.Combine(appData, AppName);
-                try // Check if we have permission to write to directory
+                try // Check if we have permission to write to directory SpecialFolder.ApplicationData
                 {
                     using (FileStream _ = File.Create(Path.Combine(path, Path.GetRandomFileName()), 1,
                                FileOptions.DeleteOnClose)) { }
                 }
-                catch // Change location of keys to keyStore directory
+                catch // Change location of keys to keyStore/protection_keys directory
                 {
                     path = Path.Combine(keyStoreDir, ProtectionDir);
                 }
