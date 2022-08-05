@@ -57,15 +57,19 @@ public class ChainLevelHelper : IChainLevelHelper
     {
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is null");
             return null;
-
-        long destinationPoint = GetDestinationPoint();
+        }
 
         List<BlockHeader> headers = new(maxCount);
         int i = 0;
 
-        long upperLimit = (destinationPoint - blocksToSkip); // blocksToSkip is used for FastSync boundary
-        while (i < maxCount && (startingPoint <= upperLimit))
+        // blocksToSkip is used for FastSync boundary.
+        long upperLimit = (_blockCacheService.ProcessDestination?.Number ?? _blockTree.BestSuggestedBeaconHeader?.Number ?? 0) - blocksToSkip;
+        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextHeaders - upper limit {upperLimit}");
+        while (i < maxCount && startingPoint <= upperLimit)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
             BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
@@ -144,6 +148,8 @@ public class ChainLevelHelper : IChainLevelHelper
     {
         long startingPoint = GetDestinationPoint();
         bool foundBeaconBlock;
+
+        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point is {startingPoint}");
 
         BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
         if (beaconMainChainBlock == null) return null;
