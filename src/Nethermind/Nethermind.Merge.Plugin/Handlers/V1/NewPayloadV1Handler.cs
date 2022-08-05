@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -59,7 +60,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ProcessingOptions _processingOptions;
-        internal static TimeSpan Timeout = TimeSpan.FromSeconds(7);
+        private readonly TimeSpan _timeout;
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
@@ -74,7 +75,8 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IInvalidChainTracker invalidChainTracker,
             IMergeSyncController mergeSyncController,
             ISpecProvider specProvider,
-            ILogManager logManager)
+            ILogManager logManager,
+            TimeSpan? timeout = null)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
@@ -89,6 +91,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _specProvider = specProvider;
             _logger = logManager.GetClassLogger();
             _processingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
+            _timeout = timeout ?? TimeSpan.FromSeconds(7);
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayloadV1 request)
@@ -151,9 +154,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool parentProcessed = parentBlockInfo.WasProcessed;
 
             // edge-case detected on GSF5 - during the transition we want to try process all transition blocks from CL client
-            // The last condition: !parentBlockInfo.IsBeaconBody will be true for terminal blocks. Checking _posSwitcher.IsTerminal might not be the best, because we're loading parentHeader with DoNotCalculateTotalDifficulty option
+            // The last condition: !parentBlockInfo.IsBeaconInfo will be true for terminal blocks. Checking _posSwitcher.IsTerminal might not be the best, because we're loading parentHeader with DoNotCalculateTotalDifficulty option
             bool weAreCloseToHead = (_blockTree.Head?.Number ?? 0) + 8 >= block.Number;
-            bool forceProcessing = !_poSSwitcher.TransitionFinished && weAreCloseToHead && parentHeader.IsTerminalBlock(_specProvider);
+            bool forceProcessing = !_poSSwitcher.TransitionFinished && weAreCloseToHead && !parentBlockInfo.IsBeaconInfo;
             if (parentProcessed == false && forceProcessing) // add extra logging for this edge case
             {
                 if (_logger.IsInfo) _logger.Info($"Forced processing block {block}, block TD: {block.TotalDifficulty}, parent: {parentHeader}, parent TD: {parentHeader.TotalDifficulty}");
@@ -293,7 +296,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
             try
             {
-                Task timeoutTask = Task.Delay(Timeout);
+                Task timeoutTask = Task.Delay(_timeout);
                 AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
                     .AsTask().TimeoutOn(timeoutTask);
 

@@ -1,29 +1,32 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Buffers;
 using System.Net;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerializer<NeighborsMsg>
+public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<NeighborsMsg>
 {
     public NeighborsMsgSerializer(IEcdsa ecdsa,
         IPrivateKeyGenerator nodeKey,
@@ -31,34 +34,44 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerial
     {
     }
 
-    public byte[] Serialize(NeighborsMsg msg)
+    public void Serialize(IByteBuffer byteBuffer, NeighborsMsg msg)
     {
-        Rlp[]? nodes = null;
-        if (msg.Nodes.Any())
+        (int totalLength, int contentLength, int nodesContentLength) = GetLength(msg);
+
+        byte[] array = ArrayPool<byte>.Shared.Rent(totalLength);
+        try
         {
-            nodes = new Rlp[msg.Nodes.Length];
-            for (int i = 0; i < msg.Nodes.Length; i++)
+            RlpStream stream = new(array);
+            stream.StartSequence(contentLength);
+            if (msg.Nodes.Any())
             {
-                Node node = msg.Nodes[i];
-                Rlp serializedNode = SerializeNode(node.Address, node.Id.Bytes);
-                nodes[i] = serializedNode;
+                stream.StartSequence(nodesContentLength);
+                for (int i = 0; i < msg.Nodes.Length; i++)
+                {
+                    Node node = msg.Nodes[i];
+                    SerializeNode(stream, node.Address, node.Id.Bytes);
+                }
             }
+            else
+            {
+                stream.Encode(Rlp.OfEmptySequence);
+            }
+
+            stream.Encode(msg.ExpirationTime);
+
+            Serialize((byte)msg.MsgType, stream.Data.AsSpan(0, totalLength), byteBuffer);
         }
-
-        byte[] data = Rlp.Encode(
-            nodes == null ? Rlp.OfEmptySequence : Rlp.Encode(nodes),
-            Rlp.Encode(msg.ExpirationTime)
-        ).Bytes;
-
-        byte[] serializedMsg = Serialize((byte) msg.MsgType, data);
-        return serializedMsg;
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(array);
+        }
     }
 
-    public NeighborsMsg Deserialize(byte[] msgBytes)
+    public NeighborsMsg Deserialize(IByteBuffer msgBytes)
     {
-        (PublicKey FarPublicKey, byte[] Mdc, byte[] Data) results = PrepareForDeserialization(msgBytes);
+        (PublicKey FarPublicKey, Memory<byte> Mdc, IByteBuffer Data) results = PrepareForDeserialization(msgBytes);
 
-        RlpStream rlp = results.Data.AsRlpStream();
+        NettyRlpStream rlp = new(results.Data);
         rlp.ReadSequenceLength();
         Node[] nodes = DeserializeNodes(rlp) as Node[];
 
@@ -84,5 +97,40 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IMessageSerial
             ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
             return new Node(new PublicKey(id), address);
         });
+    }
+
+    private int GetNodesLength(Node[] nodes, out int contentLength)
+    {
+        contentLength = 0;
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            Node node = nodes[i];
+            contentLength += Rlp.LengthOfSequence(GetLengthSerializeNode(node.Address, node.Id.Bytes));
+        }
+        return Rlp.LengthOfSequence(contentLength);
+    }
+
+    public int GetLength(NeighborsMsg msg, out int contentLength)
+    {
+        (int totalLength, contentLength, int _) = GetLength(msg);
+        return totalLength;
+    }
+
+    private (int totalLength, int contentLength, int nodesContentLength) GetLength(NeighborsMsg msg)
+    {
+        int nodesContentLength = 0;
+        int contentLength = 0;
+        if (msg.Nodes.Any())
+        {
+            contentLength += GetNodesLength(msg.Nodes, out nodesContentLength);
+        }
+        else
+        {
+            contentLength += Rlp.OfEmptySequence.Bytes.Length;
+        }
+
+        contentLength += Rlp.LengthOf(msg.ExpirationTime);
+
+        return (Rlp.LengthOfSequence(contentLength), contentLength, nodesContentLength);
     }
 }

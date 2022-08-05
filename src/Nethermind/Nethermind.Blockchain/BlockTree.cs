@@ -774,25 +774,30 @@ namespace Nethermind.Blockchain
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block!));
             }
 
-            if (header.IsGenesis || BestSuggestedImprovementRequirementsSatisfied(header))
+            if (header.IsGenesis)
             {
-                if (header.IsGenesis)
-                {
-                    Genesis = header;
-                }
-
+                Genesis = header;
                 BestSuggestedHeader = header;
+            }
 
-                if (block is not null && block.IsPostMerge)
-                {
-                    BestSuggestedBody = block;
-                }
-
-                if (block is not null && shouldProcess)
+            if (block is not null)
+            {
+                bool bestSuggestedImprovementSatisfied = BestSuggestedImprovementRequirementsSatisfied(header);
+                if (bestSuggestedImprovementSatisfied)
                 {
                     if (_logger.IsTrace)
                         _logger.Trace(
                             $"New best suggested block. PreviousBestSuggestedBlock {BestSuggestedBody}, BestSuggestedBlock TD {BestSuggestedBody?.TotalDifficulty}, Block TD {block?.TotalDifficulty}, Head: {Head}, Head: {Head?.TotalDifficulty}, Block {block?.ToString(Block.Format.FullHashAndNumber)}");
+                    BestSuggestedHeader = block.Header;
+
+                    if (block.IsPostMerge)
+                    {
+                        BestSuggestedBody = block;
+                    }
+                }
+
+                if (shouldProcess && (bestSuggestedImprovementSatisfied || header.IsGenesis || fillBeaconBlock))
+                {
                     BestSuggestedBody = block;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 }
@@ -1520,6 +1525,8 @@ namespace Nethermind.Blockchain
 
         private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
+            if (BestSuggestedHeader == null) return true;
+
             bool reachedTtd = header.IsPostTTD(_specProvider);
             bool isPostMerge = header.IsPoS();
             bool tdImproved = header.TotalDifficulty > (BestSuggestedBody?.TotalDifficulty ?? 0);

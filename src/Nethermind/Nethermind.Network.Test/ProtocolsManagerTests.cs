@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -183,7 +183,11 @@ namespace Nethermind.Network.Test
             public Context ReceiveDisconnect()
             {
                 DisconnectMessage message = new(DisconnectReason.Other);
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Disconnect, _serializer.Serialize(message)));
+                IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
+
+                // to account for AdaptivePacketType byte
+                disconnectPacket.ReadByte();
+                _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket){ PacketType = P2PMessageCode.Disconnect });
                 return this;
             }
 
@@ -213,7 +217,7 @@ namespace Nethermind.Network.Test
                 msg.GenesisHash = _blockTree.Genesis.Hash;
                 msg.BestHash = _blockTree.Genesis.Hash;
                 msg.ProtocolVersion = 63;
-                
+
                 return ReceiveStatus(msg);
             }
 
@@ -243,6 +247,17 @@ namespace Nethermind.Network.Test
                 return this;
             }
 
+            private Context ReceiveHello(HelloMessage msg)
+            {
+                IByteBuffer helloPacket = _serializer.ZeroSerialize(msg);
+                // to account for AdaptivePacketType byte
+                helloPacket.ReadByte();
+
+                _currentSession.ReceiveMessage(new ZeroPacket(helloPacket){ PacketType = P2PMessageCode.Hello });
+                return this;
+            }
+
+
             public Context ReceiveHello(byte p2pVersion = 5)
             {
                 HelloMessage msg = new();
@@ -251,10 +266,10 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = p2pVersion;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
-                return this;
+
+                return ReceiveHello(msg);
             }
-            
+
             public Context ReceiveHelloNoEth()
             {
                 HelloMessage msg = new();
@@ -263,10 +278,9 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
-                return this;
+                return ReceiveHello(msg);
             }
-            
+
             public Context ReceiveHelloEth(int protocolVersion)
             {
                 HelloMessage msg = new();
@@ -275,11 +289,10 @@ namespace Nethermind.Network.Test
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
                 msg.ListenPort = 30314;
-                _currentSession.ReceiveMessage(new Packet("p2p", P2PMessageCode.Hello, _serializer.Serialize(msg)));
-                return this;
+                return ReceiveHello(msg);
             }
 
-            
+
             public Context ReceiveHelloWrongEth()
             {
                 return ReceiveHelloEth(61);
@@ -412,7 +425,7 @@ namespace Nethermind.Network.Test
                 .ReceiveHelloNoEth()
                 .VerifyDisconnected();
         }
-        
+
         [Test]
         public void Disconnects_on_wrong_eth()
         {
@@ -439,7 +452,7 @@ namespace Nethermind.Network.Test
                 .ReceiveStatusWrongChain()
                 .VerifyDisconnected();
         }
-        
+
         [Test]
         public void Disconnects_on_wrong_genesis_hash()
         {
@@ -453,7 +466,7 @@ namespace Nethermind.Network.Test
                 .ReceiveStatusWrongGenesis()
                 .VerifyDisconnected();
         }
-        
+
         [Test]
         public void Initialized_with_eth66_only()
         {

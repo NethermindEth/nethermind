@@ -103,7 +103,8 @@ public class BeaconHeadersSyncTests
             BeaconPivot = beaconPivot ?? new BeaconPivot(_syncConfig, _metadataDb, BlockTree, LimboLogs.Instance);
             BeaconSync = new(BeaconPivot, BlockTree, _syncConfig,  new BlockCacheService(), LimboLogs.Instance);
             ISyncModeSelector selector = new MultiSyncModeSelector(syncProgressResolver, peerPool, _syncConfig, BeaconSync, bestPeerStrategy, LimboLogs.Instance);
-            Feed = new BeaconHeadersSyncFeed(poSSwitcher, selector, blockTree, peerPool, _syncConfig, report, BeaconPivot, _mergeConfig, LimboLogs.Instance);
+            Feed = new BeaconHeadersSyncFeed(poSSwitcher, selector, blockTree, peerPool, _syncConfig, report, BeaconPivot, _mergeConfig,
+                new NoopInvalidChainTracker(), LimboLogs.Instance);
         }
     }
 
@@ -126,7 +127,7 @@ public class BeaconHeadersSyncTests
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
         BeaconHeadersSyncFeed feed = new(poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
             Substitute.For<ISyncPeerPool>(), syncConfig, Substitute.For<ISyncReport>(),
-            pivot, new MergeConfig() {Enabled = true}, LimboLogs.Instance);
+            pivot, new MergeConfig() {Enabled = true}, new NoopInvalidChainTracker(), LimboLogs.Instance);
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -157,7 +158,9 @@ public class BeaconHeadersSyncTests
         PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree!,
             MainnetSpecProvider.Instance, LimboLogs.Instance);
         IBeaconPivot pivot = PreparePivot(2000, syncConfig, blockTree);
-        BeaconHeadersSyncFeed feed = new (poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree, Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, new MergeConfig() {Enabled = true},  LimboLogs.Instance);
+        BeaconHeadersSyncFeed feed = new (poSSwitcher, Substitute.For<ISyncModeSelector>(), blockTree,
+            Substitute.For<ISyncPeerPool>(), syncConfig, report, pivot, new MergeConfig() {Enabled = true},
+            new NoopInvalidChainTracker(), LimboLogs.Instance);
         feed.InitializeFeed();
         for (int i = 0; i < 6; i++)
         {
@@ -167,7 +170,7 @@ public class BeaconHeadersSyncTests
         HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
         feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-        measuredProgress.CurrentValue.Should().Be(1000);
+        measuredProgress.CurrentValue.Should().Be(999);
     }
 
     [Test]
@@ -254,7 +257,7 @@ public class BeaconHeadersSyncTests
         HeadersSyncBatch result = await ctx.Feed.PrepareRequest();
         result.Should().BeNull();
         // check headers are inserted into block tree during sync
-        blockTree.FindHeader(pivot.PivotNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
+        blockTree.FindHeader(pivot.PivotNumber - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
         blockTree.LowestInsertedBeaconHeader?.Hash.Should().BeEquivalentTo(syncedBlockTree.FindHeader(endLowestBeaconHeader, BlockTreeLookupOptions.None)?.Hash);
         blockTree.BestKnownNumber.Should().Be(bestPointer);
         blockTree.BestSuggestedHeader.Should().BeEquivalentTo(startBestHeader);
@@ -270,7 +273,7 @@ public class BeaconHeadersSyncTests
         long endLowestBeaconHeader)
     {
         ctx.Feed.InitializeFeed();
-        long lowestHeaderNumber = pivot.PivotNumber + 1;
+        long lowestHeaderNumber = pivot.PivotNumber;
         while (lowestHeaderNumber > endLowestBeaconHeader)
         {
             HeadersSyncBatch batch = await ctx.Feed.PrepareRequest();
@@ -301,7 +304,6 @@ public class BeaconHeadersSyncTests
 
     private IBeaconPivot PreparePivot(long blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)
     {
-        IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         IBeaconPivot pivot = new BeaconPivot(syncConfig, new MemDb(), blockTree, LimboLogs.Instance);
         pivot.EnsurePivot(pivotHeader ?? Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
         return pivot;
