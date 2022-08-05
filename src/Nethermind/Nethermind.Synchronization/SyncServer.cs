@@ -59,12 +59,10 @@ namespace Nethermind.Synchronization
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
         private readonly CanonicalHashTrie? _cht;
-        private readonly object _dummyValue = new();
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
-        private readonly ICache<Keccak, object> _recentlySuggested =
-            new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
+        private readonly LruKeyCache<Keccak> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
         private readonly Keccak _pivotHash;
@@ -180,34 +178,32 @@ namespace Nethermind.Synchronization
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
-            bool isBlockTotalDifficultyLow = block.TotalDifficulty < _blockTree.BestSuggestedHeader.TotalDifficulty
+            bool isBlockTotalDifficultyLow = block.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)
                                              && (_specProvider.TerminalTotalDifficulty == null || block.TotalDifficulty < _specProvider.TerminalTotalDifficulty); // terminal blocks with lower TTD might be useful for smooth merge transition
             if (isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows) return;
 
-            lock (_recentlySuggested)
+           if (_recentlySuggested.Set(block.Hash))
             {
-                if (_recentlySuggested.Get(block.Hash) != null) return;
-                _recentlySuggested.Set(block.Hash, _dummyValue);
-            }
+                if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
+                }
 
-            if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
-            {
-                if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
-            }
+                ValidateSeal(block, nodeWhoSentTheBlock);
+                if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None
+                    || (_syncModeSelector.Current & SyncMode.Full) != SyncMode.None)
+                {
+                    LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
+                    SyncBlock(block, nodeWhoSentTheBlock);
+                }
 
-            ValidateSeal(block, nodeWhoSentTheBlock);
-            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None
-                || (_syncModeSelector.Current & SyncMode.Full) != SyncMode.None)
-            {
-                LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
-                SyncBlock(block, nodeWhoSentTheBlock);
+                BroadcastBlock(block, SendBlockPriority.High, nodeWhoSentTheBlock);
             }
         }
 
         private void ValidateSeal(Block block, ISyncPeer syncPeer)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {syncPeer:c}");
+            if (_logger.IsTrace) _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {syncPeer:c}");
 
             // We hint validation range mostly to help ethash to cache epochs.
             // It is important that we only do that here, after we ensured that the block is
@@ -226,16 +222,14 @@ namespace Nethermind.Synchronization
         {
             if ((block.TotalDifficulty ?? 0) > syncPeer.TotalDifficulty)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
+                if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 syncPeer.HeadNumber = block.Number;
                 syncPeer.HeadHash = block.Hash;
                 syncPeer.TotalDifficulty = block.TotalDifficulty ?? syncPeer.TotalDifficulty;
             }
         }
 
-        private void SyncBlock(Block block, ISyncPeer? syncPeer)
+        private void SyncBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
             if (_logger.IsTrace) _logger.Trace($"{block}");
 
@@ -248,13 +242,9 @@ namespace Nethermind.Synchronization
             {
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
-                    string message = $"Peer {syncPeer?.Node:c} sent an invalid block.";
+                    string message = $"Peer {nodeWhoSentTheBlock?.Node:c} sent an invalid block.";
                     if (_logger.IsDebug) _logger.Debug(message);
-                    lock (_recentlySuggested)
-                    {
-                        _recentlySuggested.Delete(block.Hash!);
-                    }
-
+                    _recentlySuggested.Delete(block.Hash!);
                     throw new EthSyncException(message);
                 }
 
@@ -264,39 +254,47 @@ namespace Nethermind.Synchronization
                     if (_logger.IsInfo) _logger.Info($"Skipped processing of discovered block {block}, block.IsPostMerge: {block.IsPostMerge}, current head: {_blockTree.Head}");
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {syncPeer} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
+                if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {nodeWhoSentTheBlock} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
                 AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.None : BlockTreeSuggestOptions.ShouldProcess);
                 if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug($"Peer {syncPeer} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
+                if (_logger.IsDebug) _logger.Debug($"Peer {nodeWhoSentTheBlock} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
             }
-
-            BroadcastBlock(block, SendBlockPriority.High);
         }
 
-        private void BroadcastBlock(Block block, SendBlockPriority priority)
+        private void BroadcastBlock(Block block, SendBlockPriority priority, ISyncPeer? nodeWhoSentTheBlock = null)
         {
+            double CalculateBroadcastRatio(int minPeers, int peerCount) => peerCount == 0 ? 0 : minPeers / (double)peerCount;
+
             Task broadcastTask = priority == SendBlockPriority.Low
                 ? Task.Run(() =>
                 {
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.Low);
+                        NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, priority);
                     }
                 })
                 : Task.Run(() =>
                 {
-                    int peerCount = _pool.PeerCount;
-                    double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
+                    int peerCount = _pool.PeerCount - (nodeWhoSentTheBlock is null ? 0 : 1);
+                    int minPeers = (int)Math.Ceiling(Math.Sqrt(peerCount));
+                    double broadcastRatio = CalculateBroadcastRatio(minPeers, peerCount);
                     int counter = 0;
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                        if (nodeWhoSentTheBlock != peerInfo.SyncPeer)
                         {
-                            NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.High);
-                            counter++;
+                            if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                            {
+                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, priority);
+                                counter++;
+                                minPeers--;
+                            }
+
+                            peerCount--;
+                            broadcastRatio = CalculateBroadcastRatio(minPeers, peerCount);
                         }
                     }
 
@@ -370,27 +368,18 @@ namespace Nethermind.Synchronization
 
             if (number > syncPeer.HeadNumber)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
+                if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
                 syncPeer.HeadNumber = number;
                 syncPeer.HeadHash = hash;
 
-                lock (_recentlySuggested)
-                {
-                    if (_recentlySuggested.Get(hash) != null) return;
-
-                    /* do not add as this is a hint only */
-                }
-
-                if (!_blockTree.IsKnownBlock(number, hash))
+                if (!_recentlySuggested.Get(hash) && !_blockTree.IsKnownBlock(number, hash))
                 {
                     _pool.RefreshTotalDifficulty(syncPeer, hash);
                 }
             }
         }
 
-        public TxReceipt[] GetReceipts(Keccak blockHash)
+        public TxReceipt[] GetReceipts(Keccak? blockHash)
         {
             return blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }

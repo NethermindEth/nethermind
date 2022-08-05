@@ -14,6 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -47,7 +50,7 @@ namespace Nethermind.Synchronization.Test
     public class SyncServerTests
     {
         [Test]
-        public void _When_finding_hash_it_does_not_load_headers()
+        public void When_finding_hash_it_does_not_load_headers()
         {
             Context ctx = new();
             ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
@@ -441,6 +444,45 @@ namespace Nethermind.Synchronization.Test
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
 
             sealValidator.DidNotReceive().ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>());
+        }
+
+        [Test]
+        public void Broadcast_NewBlock_on_arrival()
+        {
+            Context ctx = new();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
+            PeerInfo peer1 = new(new SyncPeerMock(remoteBlockTree, TestItem.PublicKeyA, remoteSyncServer: remoteServer1));
+            ISyncServer remoteServer2 = Substitute.For<ISyncServer>();
+            PeerInfo peer2 = new(new SyncPeerMock(remoteBlockTree, TestItem.PublicKeyB, remoteSyncServer: remoteServer2));
+            PeerInfo[] peers = { peer1, peer2 };
+            ctx.PeerPool.AllPeers.Returns(peers);
+            ctx.PeerPool.PeerCount.Returns(peers.Length);
+            ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
+            remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
+            remoteServer2.Received().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
+        }
+
+        [Test]
+        public async Task Broadcast_NewBlock_on_arrival_to_sqrt_of_peers([Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100)] int peerCount)
+        {
+            int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1)); // -1 because of ignoring sender
+            Context ctx = new();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            ISyncServer remoteServer = Substitute.For<ISyncServer>();
+            int count = 0;
+            remoteServer
+                .When(r => r.AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>()))
+                .Do(_ => count++);
+            PeerInfo[] peers = Enumerable.Range(0, peerCount).Take(peerCount)
+                .Select(k => new PeerInfo(new SyncPeerMock(remoteBlockTree, remoteSyncServer: remoteServer)))
+                .ToArray();
+            ctx.PeerPool.AllPeers.Returns(peers);
+            ctx.PeerPool.PeerCount.Returns(peers.Length);
+            ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peers[0].SyncPeer);
+            await Task.Delay(100); // notifications fire on separate task
+            await Task.WhenAll(peers.Select(p => ((SyncPeerMock)p.SyncPeer).Close()).ToArray());
+            count.Should().Be(expectedPeers);
         }
 
         private class Context
