@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -80,12 +80,11 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
     public async void SendMsg(DiscoveryMsg discoveryMsg)
     {
-        byte[] msgBytes;
-
+        IByteBuffer msgBuffer;
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMsg}");
-            msgBytes = Serialize(discoveryMsg);
+            msgBuffer = Serialize(discoveryMsg, ByteBufferAllocator.UnpooledByteBufferAllocator);
         }
         catch (Exception e)
         {
@@ -93,14 +92,13 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             return;
         }
 
-        if (msgBytes.Length > 1280)
+        if (msgBuffer.ReadableBytes > 1280)
         {
             if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all client. Msg: ${discoveryMsg}");
         }
 
-        IByteBuffer copiedBuffer = Unpooled.CopiedBuffer(msgBytes);
-        IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(copiedBuffer, discoveryMsg.FarAddress);
-        
+        IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(msgBuffer, discoveryMsg.FarAddress);
+
         await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
         {
             if (t.IsFaulted)
@@ -109,7 +107,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             }
         });
 
-        Interlocked.Add(ref Metrics.DiscoveryBytesSent, msgBytes.Length);
+        Interlocked.Add(ref Metrics.DiscoveryBytesSent, msgBuffer.ReadableBytes);
     }
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
     {
@@ -118,7 +116,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
         byte[] msgBytes = new byte[content.ReadableBytes];
         content.ReadBytes(msgBytes);
-            
+
         Interlocked.Add(ref Metrics.DiscoveryBytesReceived, msgBytes.Length);
 
         if (msgBytes.Length < 98)
@@ -179,16 +177,16 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         };
     }
 
-    private byte[] Serialize(DiscoveryMsg msg)
+    private IByteBuffer Serialize(DiscoveryMsg msg, ByteBufferAllocator allocator)
     {
         return msg.MsgType switch
         {
-            MsgType.Ping => _msgSerializationService.Serialize((PingMsg) msg),
-            MsgType.Pong => _msgSerializationService.Serialize((PongMsg) msg),
-            MsgType.FindNode => _msgSerializationService.Serialize((FindNodeMsg) msg),
-            MsgType.Neighbors => _msgSerializationService.Serialize((NeighborsMsg) msg),
-            MsgType.EnrRequest => _msgSerializationService.Serialize((EnrRequestMsg) msg),
-            MsgType.EnrResponse => _msgSerializationService.Serialize((EnrResponseMsg) msg),
+            MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg)msg, allocator),
+            MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg)msg, allocator),
+            MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, allocator),
+            MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, allocator),
+            MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, allocator),
+            MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, allocator),
             _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
         };
     }
@@ -202,7 +200,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             if (_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired {-timeToExpire} seconds ago, type: {type}, sender: {address}, message: {msg}");
             return false;
         }
-        
+
         if (msg.FarAddress == null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", $"{msg.MsgType.ToString()} has null far address");
@@ -226,18 +224,18 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
 
         return true;
     }
-        
+
     private static void ReportMsgByType(DiscoveryMsg msg)
     {
         if (msg is PingMsg pingMsg)
         {
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "HANDLER disc v4", $"PING {pingMsg.SourceAddress.Address} -> {pingMsg.DestinationAddress?.Address}");    
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMsg.FarAddress, "HANDLER disc v4", $"PING {pingMsg.SourceAddress.Address} -> {pingMsg.DestinationAddress?.Address}");
         }
         else
         {
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", msg.MsgType.ToString());    
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "HANDLER disc v4", msg.MsgType.ToString());
         }
     }
-        
+
     public event EventHandler? OnChannelActivated;
 }

@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -45,7 +45,7 @@ namespace Nethermind.Network.Test.P2P
 
         private Packet CreatePacket(P2PMessage message)
         {
-            return new(message.Protocol, message.PacketType, _serializer.Serialize(message));
+            return new(message.Protocol, message.PacketType, _serializer.ZeroSerialize(message).ReadAllBytesAsArray());
         }
 
         private const int ListenPort = 8003;
@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test.P2P
             return new P2PProtocolHandler(
                 _session,
                 TestItem.PublicKeyA,
-                new NodeStatsManager(timerFactory, LimboLogs.Instance), 
+                new NodeStatsManager(timerFactory, LimboLogs.Instance),
                 _serializer,
                 LimboLogs.Instance);
         }
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Test.P2P
 
             _session.Received(1).DeliverMessage(Arg.Any<HelloMessage>());
         }
-        
+
         [Test]
         public void On_init_sends_a_hello_message_with_capabilities()
         {

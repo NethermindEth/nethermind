@@ -1,21 +1,23 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Security.Cryptography;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
@@ -28,12 +30,12 @@ namespace Nethermind.Serialization.Rlp
             {
                 throw new RlpException($"Received a 0 length stream when decoding a {nameof(ChainLevelInfo)}");
             }
-            
+
             if (rlpStream.IsNextItemNull())
             {
                 return null;
             }
-            
+
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
             bool hasMainChainBlock = rlpStream.DecodeBool();
 
@@ -59,9 +61,28 @@ namespace Nethermind.Serialization.Rlp
             return info;
         }
 
-        public void Encode(RlpStream stream, ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(RlpStream stream, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            if (item == null)
+            {
+                stream.Encode(Rlp.OfEmptySequence);
+                return;
+            }
+
+            if (item.BlockInfos.Any(t => t == null))
+            {
+                throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
+            }
+
+            int contentLength = GetLength(item, rlpBehaviors);
+            stream.StartSequence(contentLength);
+            stream.Encode(item.HasBlockOnMainChain);
+            int infoLength = GetBlockInfoLength(item.BlockInfos);
+            stream.StartSequence(infoLength);
+            foreach (BlockInfo? blockInfo in item.BlockInfos)
+            {
+                stream.Encode(blockInfo);
+            }
         }
 
         public ChainLevelInfo? Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -70,7 +91,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 return null;
             }
-            
+
             int lastCheck = decoderContext.ReadSequenceLength() + decoderContext.Position;
             bool hasMainChainBlock = decoderContext.DecodeBool();
 
@@ -110,7 +131,7 @@ namespace Nethermind.Serialization.Rlp
                     throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
                 }
             }
-            
+
             Rlp[] elements = new Rlp[2];
             elements[0] = Rlp.Encode(item.HasBlockOnMainChain);
             elements[1] = Rlp.Encode(item.BlockInfos);
@@ -121,7 +142,21 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors)
         {
-            throw new NotImplementedException();
+            int contentLength = 0;
+            contentLength += Rlp.LengthOf(item.HasBlockOnMainChain);
+            contentLength += Rlp.LengthOfSequence(GetBlockInfoLength(item.BlockInfos));
+            return contentLength;
+        }
+
+        private int GetBlockInfoLength(BlockInfo[] item)
+        {
+            int contentLength = 0;
+            foreach (BlockInfo? blockInfo in item)
+            {
+                contentLength += Rlp.LengthOf(blockInfo);
+            }
+
+            return contentLength;
         }
     }
 }

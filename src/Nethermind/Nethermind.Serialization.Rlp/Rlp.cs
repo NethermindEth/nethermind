@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -35,11 +35,11 @@ namespace Nethermind.Serialization.Rlp
     public class Rlp
     {
         public const int LengthOfKeccakRlp = 33;
-        
+
         public const int LengthOfAddressRlp = 21;
 
         internal const int DebugMessageContentLength = 2048;
-        
+
         public const byte EmptyArrayByte = 128;
 
         public const byte NullObjectByte = 192;
@@ -272,16 +272,16 @@ namespace Nethermind.Serialization.Rlp
             {
                 sequence[position++] = Encode(transaction.GasPrice);
             }
-            
+
             sequence[position++] = Encode(transaction.GasLimit);
             sequence[position++] = Encode(transaction.To);
             sequence[position++] = Encode(transaction.Value);
             sequence[position++] = Encode(transaction.Data);
             if (transaction.Type != TxType.Legacy)
             {
-                sequence[position++] = Encode(transaction.AccessList);    
+                sequence[position++] = Encode(transaction.AccessList);
             }
-            
+
             if (forSigning)
             {
                 if (includeSigChainIdHack)
@@ -304,10 +304,10 @@ namespace Nethermind.Serialization.Rlp
                 {
                     sequence[position++] = Encode(transaction.Type == TxType.Legacy ? signature.V : signature.RecoveryId);
                     sequence[position++] = Encode(signature.RAsSpan.WithoutLeadingZeros());
-                    sequence[position++] = Encode(signature.SAsSpan.WithoutLeadingZeros());   
+                    sequence[position++] = Encode(signature.SAsSpan.WithoutLeadingZeros());
                 }
             }
-            
+
             Debug.Assert(position == 6 + extraItems);
 
             Rlp result = Encode(sequence);
@@ -399,7 +399,7 @@ namespace Nethermind.Serialization.Rlp
             BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
             return Encode(bytes);
         }
-        
+
         public static Rlp Encode(ulong value)
         {
             return Encode((long)value);
@@ -812,14 +812,14 @@ namespace Nethermind.Serialization.Rlp
                 (int a, int b) = PeekPrefixAndContentLength();
                 return a + b;
             }
-            
+
             public Span<byte> Peek(int length)
             {
                 Span<byte> item = Read(length);
                 Position -= item.Length;
                 return item;
             }
-            
+
             public (int PrefixLength, int ContentLength) ReadPrefixAndContentLength()
             {
                 (int prefixLength, int contentLengt) result;
@@ -865,16 +865,16 @@ namespace Nethermind.Serialization.Rlp
 
                     result = (lengthOfContentLength + 1, contentLength);
                 }
-                
+
                 return result;
             }
-            
+
 
             public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
             {
                 int memorizedPosition = Position;
                 (int PrefixLength, int ContentLength) result = ReadPrefixAndContentLength();
-            
+
                 Position = memorizedPosition;
                 return result;
             }
@@ -958,7 +958,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             // This class was introduce to reduce allocations when deserializing receipts. In order to deserialize receipts we first try to deserialize it in new format and then in old format.
-            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings. 
+            // If someone didn't do migration this will result in excessive allocations and GC of the not needed strings.
             private class DecodeKeccakRlpException : RlpException
             {
                 private readonly int _prefix;
@@ -1100,7 +1100,7 @@ namespace Nethermind.Serialization.Rlp
                 // https://github.com/NethermindEth/nethermind/issues/113
                 if (Data[Position] == 249)
                 {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
                     bloomBytes = Read(256);
                 }
                 else
@@ -1128,7 +1128,7 @@ namespace Nethermind.Serialization.Rlp
                 // https://github.com/NethermindEth/nethermind/issues/113
                 if (Data[Position] == 249)
                 {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes
                     bloomBytes = Read(256);
                 }
                 else
@@ -1302,9 +1302,9 @@ namespace Nethermind.Serialization.Rlp
 
                 throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Length} starting with {Description}");
             }
-            
+
             private string Description => Data.Slice(0, Math.Min(DebugMessageContentLength, Length)).ToHexString();
-            
+
             public byte PeekByte()
             {
                 return Data[Position];
@@ -1359,7 +1359,7 @@ namespace Nethermind.Serialization.Rlp
 
                 return result;
             }
-            
+
             public ulong DecodeULong()
             {
                 int prefix = ReadByte();
@@ -1523,7 +1523,7 @@ namespace Nethermind.Serialization.Rlp
         public static int LengthOf(Keccak[] keccaks, bool includeLengthOfSequenceStart = false)
         {
             int value = keccaks?.Length * LengthOfKeccakRlp ?? 0;
-            
+
             if (includeLengthOfSequenceStart)
             {
                 value = LengthOfSequence(value);
@@ -1531,7 +1531,7 @@ namespace Nethermind.Serialization.Rlp
 
             return value;
         }
-        
+
         public static int LengthOf(Address? item)
         {
             return item is null ? 1 : 21;
@@ -1614,5 +1614,12 @@ namespace Nethermind.Serialization.Rlp
             IRlpDecoder<LogEntry>? rlpDecoder = GetDecoder<LogEntry>();
             return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(LogEntry)}");
         }
+
+        public static int LengthOf(BlockInfo item)
+        {
+            IRlpDecoder<BlockInfo>? rlpDecoder = GetDecoder<BlockInfo>();
+            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(BlockInfo)}");
+        }
+
     }
 }
