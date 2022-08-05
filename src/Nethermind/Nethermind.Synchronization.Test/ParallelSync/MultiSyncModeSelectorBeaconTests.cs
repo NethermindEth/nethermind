@@ -1,19 +1,19 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using Nethermind.Synchronization.ParallelSync;
 using NUnit.Framework;
@@ -48,15 +48,15 @@ public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
     /// <returns>Enhanced expectations based on beacon sync mode.</returns>
     private SyncMode GetBeaconSyncExpectations(SyncMode baseExpectations)
     {
-        // when beacon control mode, Disconnected, Fill, FastSync, StateNodes, SnapSync are ignored, instead we are waiting from block from beacon node  
+        // when beacon control mode, Disconnected, Fill, FastSync, StateNodes, SnapSync are ignored, instead we are waiting from block from beacon node
         baseExpectations = ChangeSyncMode(BeaconSync.ControlMode, baseExpectations, SyncMode.WaitingForBlock, true, SyncMode.Disconnected, SyncMode.Full, SyncMode.FastSync, SyncMode.StateNodes, SyncMode.SnapSync);
-        
+
         // when beacon control mode, FastHeaders, FastBodies, FastReceipts, are run in parallel with waiting from block from beacon node
         baseExpectations = ChangeSyncMode(BeaconSync.ControlMode, baseExpectations, SyncMode.WaitingForBlock, false, SyncMode.FastHeaders, SyncMode.FastBodies, SyncMode.FastReceipts);
-        
+
         // when beacon headers, WaitingForBlock, Fill, FastSync, StateNodes, SnapSync are ignored, instead we are syncing beacon headers
         baseExpectations = ChangeSyncMode(BeaconSync.Headers, baseExpectations, SyncMode.BeaconHeaders, true, SyncMode.WaitingForBlock, SyncMode.Full, SyncMode.FastSync, SyncMode.StateNodes, SyncMode.SnapSync);
-        
+
         // when beacon headers, FastHeaders, FastBodies, FastReceipts, are run in parallel with beacon headers
         baseExpectations = ChangeSyncMode(BeaconSync.Headers, baseExpectations, SyncMode.BeaconHeaders, false, SyncMode.FastHeaders, SyncMode.FastBodies, SyncMode.FastReceipts);
         return baseExpectations;

@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth
         {
             using Context ctx = await Context.Create();
             string serialized = ctx._test.TestEthRpc("eth_maxPriorityFeePerGas");
-            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x4190ab00\",\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
+            Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":67}", serialized, serialized.Replace("\"", "\\\""));
         }
 
         [Test]
