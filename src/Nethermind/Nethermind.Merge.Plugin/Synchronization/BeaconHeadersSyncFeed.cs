@@ -161,7 +161,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
 
         _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
 
-        AddBlockResult insertOutcome = _blockTree.Insert(header, options);
+        AddBlockResult insertOutcome = _blockTree.Insert(header, headerOptions);
 
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
         {
