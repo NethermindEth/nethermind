@@ -215,7 +215,7 @@ namespace Nethermind.Blockchain
                 RecalculateTreeLevels();
                 AttemptToFixCorruptionByMovingHeadBackwards();
             }
-            
+
             if (_logger.IsInfo)
                 _logger.Info($"Block tree initialized, " +
                              $"last processed is {Head?.Header.ToString(BlockHeader.Format.Short) ?? "0"}, " +
