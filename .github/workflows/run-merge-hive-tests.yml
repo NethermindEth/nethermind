@@ -35,10 +35,7 @@ on:
         default: 'ethereum/engine' 
         type: choice
         options:
-        - ethereum/engine
-        - ethereum/engine-transition
-        - ethereum/engine-auth
-        - ethereum/engine-sync
+        - ethereum/engine        
         - ethereum/rpc
         - ethereum/rpc-compat
         - ethereum/sync
