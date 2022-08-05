@@ -65,7 +65,7 @@ public class ChainLevelHelper : IChainLevelHelper
         int i = 0;
 
         long upperLimit = (destinationPoint - blocksToSkip); // blocksToSkip is used for FastSync boundary
-        while (i < maxCount && (startingPoint <= upperLimit))
+        while (i < maxCount)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
             BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
