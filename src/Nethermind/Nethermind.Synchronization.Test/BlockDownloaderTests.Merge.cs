@@ -28,6 +28,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
@@ -67,10 +68,22 @@ public partial class BlockDownloaderTests
             RopstenSpecProvider.Instance, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
-        MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
-            Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
-            CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(),  LimboLogs.Instance),
-            new NoopInvalidChainTracker(),
+
+        BlockCacheService blockCacheService = new();
+
+        MergeBlockDownloader downloader = new(
+            posSwitcher,
+            beaconPivot,
+            ctx.Feed,
+            ctx.PeerPool,
+            notSyncedTree,
+            Always.Valid,
+            Always.Valid,
+            NullSyncReport.Instance,
+            receiptStorage,
+            RopstenSpecProvider.Instance,
+            CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
+            new ChainLevelHelper(notSyncedTree, blockCacheService,  new SyncConfig(),  LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
@@ -120,10 +133,22 @@ public partial class BlockDownloaderTests
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, notSyncedTree, LimboLogs.Instance);
         if (withBeaconPivot)
             beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
-        MergeBlockDownloader downloader = new(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, notSyncedTree,
-            Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, RopstenSpecProvider.Instance,
-            CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(notSyncedTree, new SyncConfig(), LimboLogs.Instance),
-            new NoopInvalidChainTracker(),
+
+        BlockCacheService blockCacheService = new();
+
+        MergeBlockDownloader downloader = new(
+            posSwitcher,
+            beaconPivot,
+            ctx.Feed,
+            ctx.PeerPool,
+            notSyncedTree,
+            Always.Valid,
+            Always.Valid,
+            NullSyncReport.Instance,
+            receiptStorage,
+            RopstenSpecProvider.Instance,
+            CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
+            new ChainLevelHelper(notSyncedTree, blockCacheService, new SyncConfig(), LimboLogs.Instance),
             Substitute.For<ISyncProgressResolver>(),
             LimboLogs.Instance);
 
@@ -142,12 +167,29 @@ public partial class BlockDownloaderTests
             testSpecProvider, LimboLogs.Instance);
         BeaconPivot beaconPivot = new(new SyncConfig(), metadataDb, blockTree, LimboLogs.Instance);
         InMemoryReceiptStorage receiptStorage = new();
-        return new MergeBlockDownloader(posSwitcher, beaconPivot, ctx.Feed, ctx.PeerPool, ctx.BlockTree, Always.Valid, Always.Valid, NullSyncReport.Instance, receiptStorage, testSpecProvider, CreateMergePeerChoiceStrategy(posSwitcher), new ChainLevelHelper(blockTree, new SyncConfig(),  LimboLogs.Instance), new NoopInvalidChainTracker(), Substitute.For<ISyncProgressResolver>(), LimboLogs.Instance);
+
+        BlockCacheService blockCacheService = new();
+
+        return new MergeBlockDownloader(
+            posSwitcher,
+            beaconPivot,
+            ctx.Feed,
+            ctx.PeerPool,
+            ctx.BlockTree,
+            Always.Valid,
+            Always.Valid,
+            NullSyncReport.Instance,
+            receiptStorage,
+            testSpecProvider,
+            CreateMergePeerChoiceStrategy(posSwitcher, beaconPivot),
+            new ChainLevelHelper(blockTree, blockCacheService, new SyncConfig(),  LimboLogs.Instance),
+            Substitute.For<ISyncProgressResolver>(),
+            LimboLogs.Instance);
     }
 
-    private IBetterPeerStrategy CreateMergePeerChoiceStrategy(IPoSSwitcher poSSwitcher)
+    private IBetterPeerStrategy CreateMergePeerChoiceStrategy(IPoSSwitcher poSSwitcher, IBeaconPivot beaconPivot)
     {
         TotalDifficultyBetterPeerStrategy preMergePeerStrategy = new(LimboLogs.Instance);
-        return new MergeBetterPeerStrategy(preMergePeerStrategy, poSSwitcher, LimboLogs.Instance);
+        return new MergeBetterPeerStrategy(preMergePeerStrategy, poSSwitcher, beaconPivot, LimboLogs.Instance);
     }
 }

@@ -25,6 +25,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
@@ -40,6 +41,7 @@ public class MergeSynchronizer : Synchronizer
 {
     private readonly IPoSSwitcher _poSSwitcher;
     private readonly IMergeConfig _mergeConfig;
+    private readonly IInvalidChainTracker _invalidChainTracker;
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
@@ -55,6 +57,7 @@ public class MergeSynchronizer : Synchronizer
         IPivot pivot,
         IPoSSwitcher poSSwitcher,
         IMergeConfig mergeConfig,
+        IInvalidChainTracker invalidChainTracker,
         ILogManager logManager,
         ISyncReport syncReport)
         : base(
@@ -72,6 +75,7 @@ public class MergeSynchronizer : Synchronizer
             syncReport,
             logManager)
     {
+        _invalidChainTracker = invalidChainTracker;
         _poSSwitcher = poSSwitcher;
         _mergeConfig = mergeConfig;
     }
@@ -91,7 +95,7 @@ public class MergeSynchronizer : Synchronizer
     {
         FastBlocksPeerAllocationStrategyFactory fastFactory = new();
         BeaconHeadersSyncFeed beaconHeadersFeed =
-            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _logManager);
+            new(_poSSwitcher, _syncMode, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _pivot, _mergeConfig, _invalidChainTracker, _logManager);
         BeaconHeadersSyncDispatcher beaconHeadersDispatcher =
             new(beaconHeadersFeed!, _syncPeerPool, fastFactory, _logManager);
         beaconHeadersDispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>

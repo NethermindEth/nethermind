@@ -344,11 +344,18 @@ namespace Nethermind.Merge.Plugin
                     _api.LogManager);
 
                 _api.UnclesValidator = new MergeUnclesValidator(_poSSwitcher, _api.UnclesValidator);
-                _api.BlockValidator = new BlockValidator(_api.TxValidator, _api.HeaderValidator, _api.UnclesValidator,
-                    _api.SpecProvider, _api.LogManager);
+                _api.BlockValidator = new InvalidBlockInterceptor(
+                    new BlockValidator(
+                        _api.TxValidator,
+                        _api.HeaderValidator,
+                        _api.UnclesValidator,
+                        _api.SpecProvider,
+                        _api.LogManager),
+                    _invalidChainTracker,
+                    _api.LogManager);
                 _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.LogManager);
 
-                _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher, _api.LogManager);
+                _api.BetterPeerStrategy = new MergeBetterPeerStrategy(_api.BetterPeerStrategy, _poSSwitcher,  _beaconPivot, _api.LogManager);
 
                 _api.SyncModeSelector = new MultiSyncModeSelector(
                     _api.SyncProgressResolver,
@@ -366,6 +373,7 @@ namespace Nethermind.Merge.Plugin
                     _beaconPivot,
                     _api.SpecProvider,
                     _api.BlockTree,
+                    _blockCacheService,
                     _api.ReceiptStorage!,
                     _api.BlockValidator!,
                     _api.SealValidator!,
@@ -373,7 +381,6 @@ namespace Nethermind.Merge.Plugin
                     _syncConfig,
                     _api.BetterPeerStrategy!,
                     syncReport,
-                    _invalidChainTracker,
                     _api.SyncProgressResolver,
                     _api.LogManager);
                 _api.Synchronizer = new MergeSynchronizer(
@@ -390,6 +397,7 @@ namespace Nethermind.Merge.Plugin
                     _api.Pivot,
                     _poSSwitcher,
                     _mergeConfig,
+                    _invalidChainTracker,
                     _api.LogManager,
                     syncReport);
             }

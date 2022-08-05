@@ -199,6 +199,16 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public PruningContext DisposeAndRecreate()
+            {
+                _trieStore.Dispose();
+                _trieStore = new TrieStore(_dbProvider.StateDb, _pruningStrategy, _persistenceStrategy, _logManager);
+                _stateProvider = new StateProvider(_trieStore, _dbProvider.CodeDb, _logManager);
+                _storageProvider = new StorageProvider(_trieStore, _stateProvider, _logManager);
+                _stateReader = new StateReader(_trieStore, _dbProvider.CodeDb, _logManager);
+                return this;
+            }
+
             public PruningContext CommitEmptyBlock()
             {
                 Commit(); // same, just for better test readability
@@ -252,6 +262,8 @@ namespace Nethermind.Trie.Test
                 (long blockNumber, Keccak rootHash) branchPoint = _branchingPoints[name];
                 _blockNumber = branchPoint.blockNumber;
                 Keccak rootHash = branchPoint.rootHash;
+                _storageProvider.Reset();
+                _stateProvider.Reset();
                 _stateProvider.StateRoot = rootHash;
                 return this;
             }
@@ -573,6 +585,56 @@ namespace Nethermind.Trie.Test
                 .Commit()
 
                 .VerifyStorageValue(3, 1, 999);
+        }
+
+        [Test]
+        public void Should_persist_all_block_of_same_level_on_dispose()
+        {
+            Reorganization.MaxDepth = 3;
+
+            PruningContext.InMemory
+                .SetAccountBalance(1, 100)
+                .Commit()
+                .SetAccountBalance(2, 10)
+                .CreateAccount(3)
+                .Commit()
+
+                .SaveBranchingPoint("revert_main")
+
+                .SetStorage(3, 1, 1)
+                .Commit()
+                .SaveBranchingPoint("branch_1")
+
+                .RestoreBranchingPoint("revert_main")
+                .SetStorage(3, 1, 2)
+                .Commit()
+                .SaveBranchingPoint("branch_2")
+
+                .RestoreBranchingPoint("revert_main")
+                .SetStorage(3, 1, 3)
+                .Commit()
+                .SaveBranchingPoint("branch_3")
+
+                .RestoreBranchingPoint("branch_1")
+                .Commit()
+                .Commit()
+                .Commit()
+                .Commit()
+
+                // The `TrieStoreBoundaryWatcher` only reports the block number, but previously TrieStore only persist one of the
+                // multiple possible block of the same number. So if the persisted block is not the same as main,
+                // you'll get trie exception on restart.
+                .DisposeAndRecreate()
+
+                // This should pass because the last committed branch is branch 3.
+                .RestoreBranchingPoint("branch_3")
+                .VerifyStorageValue(3, 1, 3)
+
+                // Previously this does not.
+                .RestoreBranchingPoint("branch_1")
+                .VerifyStorageValue(3, 1, 1)
+                .RestoreBranchingPoint("branch_2")
+                .VerifyStorageValue(3, 1, 2);
         }
 
         [Test]
