@@ -645,10 +645,10 @@ namespace Nethermind.Blockchain
             bool skipCanAcceptNewBlocks = (insertBlockOptions & BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks) != 0;
             if (!CanAcceptNewBlocks)
             {
-                if (_logger.IsInfo) _logger.Info($"Block tree in cannot accept new blocks mode. SkipCanAcceptNewBlocks: {skipCanAcceptNewBlocks}, Block {block}");
+                if (_logger.IsTrace) _logger.Trace($"Block tree in cannot accept new blocks mode. SkipCanAcceptNewBlocks: {skipCanAcceptNewBlocks}, Block {block}");
             }
 
-            if (!CanAcceptNewBlocks && skipCanAcceptNewBlocks)
+            if (!CanAcceptNewBlocks && !skipCanAcceptNewBlocks)
             {
                 return AddBlockResult.CannotAccept;
             }
