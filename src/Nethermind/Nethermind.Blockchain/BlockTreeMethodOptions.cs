@@ -51,7 +51,7 @@ public enum BlockTreeInsertBlockOptions
 {
     None = 0,
     SaveHeader = 1,
-    SkipCanAcceptNewBlocks = 2
+    SkipCanAcceptNewBlocks = 2  // If we have an invalid block, we're blocking the block tree. However, if we have old bodies/old receipts sync at the same time, we need this option. Otherwise, old bodies sync won't insert block, and we fail old receipts sync later
 }
 
 [Flags]
