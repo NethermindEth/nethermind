@@ -447,18 +447,22 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Broadcast_NewBlock_on_arrival()
+        public async Task Broadcast_NewBlock_on_arrival()
         {
             Context ctx = new();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
-            PeerInfo peer1 = new(new SyncPeerMock(remoteBlockTree, TestItem.PublicKeyA, remoteSyncServer: remoteServer1));
+            SyncPeerMock syncPeerMock1 = new(remoteBlockTree, TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
+            PeerInfo peer1 = new(syncPeerMock1);
             ISyncServer remoteServer2 = Substitute.For<ISyncServer>();
-            PeerInfo peer2 = new(new SyncPeerMock(remoteBlockTree, TestItem.PublicKeyB, remoteSyncServer: remoteServer2));
+            SyncPeerMock syncPeerMock2 = new(remoteBlockTree, TestItem.PublicKeyB, remoteSyncServer: remoteServer2);
+            PeerInfo peer2 = new(syncPeerMock2);
             PeerInfo[] peers = { peer1, peer2 };
             ctx.PeerPool.AllPeers.Returns(peers);
             ctx.PeerPool.PeerCount.Returns(peers.Length);
             ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
+            await Task.Delay(100); // notifications fire on separate task
+            await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
             remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
             remoteServer2.Received().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
         }
