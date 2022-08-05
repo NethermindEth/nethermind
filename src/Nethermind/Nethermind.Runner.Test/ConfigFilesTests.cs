@@ -37,6 +37,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -414,6 +415,21 @@ namespace Nethermind.Runner.Test
         public void Arena_order_is_default(string configWildcard)
         {
             Test<INetworkConfig, int>(configWildcard, c => c.NettyArenaOrder, 11);
+        }
+
+        [TestCase("*")]
+        public void EngineHost_and_EnginePort_specified(string configWildcard)
+        {
+            foreach (TestConfigProvider configProvider in GetConfigProviders(configWildcard))
+            {
+                IJsonRpcConfig rpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
+                IMergeConfig mergeConfig = configProvider.GetConfig<IMergeConfig>();
+                if (mergeConfig.Enabled)
+                {
+                    Assert.False(string.IsNullOrEmpty(rpcConfig.EngineHost));
+                    Assert.False(rpcConfig.EnginePort == null);
+                }
+            }
         }
 
         [TestCase("^mainnet ^goerli", false)]
