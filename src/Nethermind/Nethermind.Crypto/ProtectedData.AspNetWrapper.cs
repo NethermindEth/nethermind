@@ -28,6 +28,7 @@ namespace Nethermind.Crypto
         {
             private const string AppName = "Nethermind";
             private const string BaseName = AppName + "_";
+            private const string ProtectionDir = "protection_keys";
 
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope, string keyStoreDir)
             {
@@ -55,10 +56,21 @@ namespace Nethermind.Crypto
 
             private IDataProtector GetUserProtector(string keyStoreDir, byte[] optionalEntropy)
             {
-                var path = Path.Combine(keyStoreDir, AppName);
+                var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                var path = Path.Combine(appData, AppName);
+                try // Check if we have permission to write to directory
+                {
+                    using (FileStream _ = File.Create(Path.Combine(path, Path.GetRandomFileName()), 1,
+                               FileOptions.DeleteOnClose)) { }
+                }
+                catch // Change location of keys to keyStore directory
+                {
+                    path = Path.Combine(keyStoreDir, ProtectionDir);
+                }
                 var info = new DirectoryInfo(path);
                 var provider = DataProtectionProvider.Create(info);
                 var purpose = CreatePurpose(optionalEntropy);
+
                 return provider.CreateProtector(purpose);
             }
 
