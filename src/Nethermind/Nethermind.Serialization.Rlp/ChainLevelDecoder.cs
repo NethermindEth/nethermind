@@ -74,7 +74,7 @@ namespace Nethermind.Serialization.Rlp
                 throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
             }
 
-            int contentLength = GetLength(item, rlpBehaviors);
+            int contentLength = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.HasBlockOnMainChain);
             int infoLength = GetBlockInfoLength(item.BlockInfos);
@@ -140,12 +140,27 @@ namespace Nethermind.Serialization.Rlp
             return rlp;
         }
 
-        public int GetLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors)
+        private int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors=RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence.Length;
+            }
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.HasBlockOnMainChain);
             contentLength += Rlp.LengthOfSequence(GetBlockInfoLength(item.BlockInfos));
             return contentLength;
+        }
+
+        public int GetLength(ChainLevelInfo? item, RlpBehaviors rlpBehaviors)
+        {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence.Length;
+            }
+
+            int contLength = GetContentLength(item, rlpBehaviors);
+            return Rlp.LengthOfSequence(contLength);
         }
 
         private int GetBlockInfoLength(BlockInfo[] item)
