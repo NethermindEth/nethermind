@@ -184,7 +184,9 @@ namespace Nethermind.Synchronization
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
             bool isBlockTotalDifficultyLow = block.TotalDifficulty < _blockTree.BestSuggestedHeader.TotalDifficulty
                                              && (_specProvider.TerminalTotalDifficulty == null || block.TotalDifficulty < _specProvider.TerminalTotalDifficulty); // terminal blocks with lower TTD might be useful for smooth merge transition
-            if (isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows) return;
+            if (isBlockBeforeTheSyncPivot ||
+                // isBlockTotalDifficultyLow || // ToDo just for testing
+                isBlockOlderThanMaxReorgAllows) return;
 
             lock (_recentlySuggested)
             {
