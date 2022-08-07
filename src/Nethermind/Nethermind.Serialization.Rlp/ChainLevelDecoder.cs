@@ -119,25 +119,7 @@ namespace Nethermind.Serialization.Rlp
 
         public Rlp Encode(ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
-            {
-                return Rlp.OfEmptySequence;
-            }
-
-            for (int i = 0; i < item.BlockInfos.Length; i++)
-            {
-                if (item.BlockInfos[i] == null)
-                {
-                    throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
-                }
-            }
-
-            Rlp[] elements = new Rlp[2];
-            elements[0] = Rlp.Encode(item.HasBlockOnMainChain);
-            elements[1] = Rlp.Encode(item.BlockInfos);
-            Rlp rlp = Rlp.Encode(elements);
-
-            return rlp;
+            throw new NotImplementedException();
         }
 
         private int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors=RlpBehaviors.None)
