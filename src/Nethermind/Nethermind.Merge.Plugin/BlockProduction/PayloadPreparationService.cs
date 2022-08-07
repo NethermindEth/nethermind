@@ -120,14 +120,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 }
             }
 
-            foreach (string payloadToRemove in _payloadsToRemove)
-            {
-                if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
-                {
-                    context.Dispose();
-                    if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
-                }
-            }
+            // foreach (string payloadToRemove in _payloadsToRemove)
+            // {
+            //     if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
+            //     {
+            //         context.Dispose();
+            //         if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
+            //     }
+            // }
 
             _payloadsToRemove.Clear();
             if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");
