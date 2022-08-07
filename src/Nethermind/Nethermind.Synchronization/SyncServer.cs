@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization
             // even if the block is not something that we want to include in the block tree
             // it delivers information about the peer's chain.
 
-            if (_logger.IsTrace) _logger.Trace($"Received block {block} with TD {block.TotalDifficulty} from peer {nodeWhoSentTheBlock}, TTD {_specProvider.TerminalTotalDifficulty}, Our BestSuggestedHeader {_blockTree.BestSuggestedHeader} BestSuggestedHeader.TotalDifficulty {_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0} ");
+            if (_logger.IsInfo) _logger.Info($"Received block {block} with TD {block.TotalDifficulty} from peer {nodeWhoSentTheBlock}, TTD {_specProvider.TerminalTotalDifficulty}, Our BestSuggestedHeader {_blockTree.BestSuggestedHeader} BestSuggestedHeader.TotalDifficulty {_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0} ");
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
             bool isBlockTotalDifficultyLow = block.TotalDifficulty < _blockTree.BestSuggestedHeader.TotalDifficulty

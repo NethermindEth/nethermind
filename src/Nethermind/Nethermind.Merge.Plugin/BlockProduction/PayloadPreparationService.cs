@@ -115,7 +115,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             {
                 if (payload.Value.CurrentBestBlock is not null && payload.Value.CurrentBestBlock.Timestamp + (uint)_cleanupOldPayloadDelay.Seconds <= utcNow.Seconds)
                 {
-                    if (_logger.IsInfo) _logger.Info($"A new payload to remove: {payload.Key}, Current time {utcNow}, Payload timestamp: {payload.Value.CurrentBestBlock.Timestamp}");
+                    if (_logger.IsInfo) _logger.Info($"A new payload to remove: {payload.Key}, Current time {utcNow.ToString()}, Payload timestamp: {payload.Value.CurrentBestBlock.Timestamp}");
                     _payloadsToRemove.Add(payload.Key);
                 }
             }
