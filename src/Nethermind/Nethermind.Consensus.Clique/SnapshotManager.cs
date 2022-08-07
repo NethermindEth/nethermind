@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Clique
         private object _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
-        
+
         public Snapshot GetOrCreateSnapshot(long number, Keccak hash)
         {
             Snapshot? snapshot = GetSnapshot(number, hash);
@@ -133,14 +133,14 @@ namespace Nethermind.Consensus.Clique
                     if (IsEpochTransition(number))
                     {
                         Snapshot? parentSnapshot = GetSnapshot(number - 1, parentHash);
-                        
+
                         if(_logger.IsInfo) _logger.Info($"Creating epoch snapshot at block {number}");
                         int signersCount = CalculateSignersCount(header);
                         SortedList<Address, long> signers = new SortedList<Address, long>(signersCount, AddressComparer.Instance);
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {
-                            Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));                            
+                            Address signer = new(header.ExtraData.Slice(Clique.ExtraVanityLength + i * Address.ByteLength, Address.ByteLength));
                             signers.Add(signer, signer == epochSigner ? number : parentSnapshot == null ? 0L : parentSnapshot.Signers.ContainsKey(signer) ? parentSnapshot.Signers[signer] : 0L);
                         }
 
@@ -167,7 +167,7 @@ namespace Nethermind.Consensus.Clique
 
                     int countBefore = snapshot.Signers.Count;
                     snapshot = Apply(snapshot, headers, _cliqueConfig.Epoch);
-                    
+
                     int countAfter = snapshot.Signers.Count;
                     if (countAfter != countBefore && _logger.IsInfo)
                     {
@@ -253,9 +253,10 @@ namespace Nethermind.Consensus.Clique
 
         private void Store(Snapshot snapshot)
         {
-            Rlp rlp = _decoder.Encode(snapshot);
+            RlpStream stream = new(_decoder.GetLength(snapshot, RlpBehaviors.None));
+            _decoder.Encode(stream, snapshot);
             Keccak key = GetSnapshotKey(snapshot.Hash);
-            _blocksDb.Set(key, rlp.Bytes);
+            _blocksDb.Set(key, stream.Data);
         }
 
         private Snapshot Apply(Snapshot original, List<BlockHeader> headers, ulong epoch)
@@ -356,7 +357,7 @@ namespace Nethermind.Consensus.Clique
             }
 
             snapshot.Number += headers.Count;
-            
+
             // was this needed?
 //            snapshot.Hash = headers[headers.Count - 1].CalculateHash();
             snapshot.Hash = headers[^1].Hash;
