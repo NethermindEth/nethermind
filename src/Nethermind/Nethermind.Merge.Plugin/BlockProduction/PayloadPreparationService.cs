@@ -42,7 +42,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
     {
         private readonly PostMergeBlockProducer _blockProducer;
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
-        private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private readonly List<string> _payloadsToRemove = new();
 
@@ -56,7 +55,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         public PayloadPreparationService(
             PostMergeBlockProducer blockProducer,
             IBlockImprovementContextFactory blockImprovementContextFactory,
-            ISealer sealer,
             ITimerFactory timerFactory,
             ILogManager logManager,
             TimeSpan timePerSlot,
@@ -64,9 +62,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             _blockProducer = blockProducer;
             _blockImprovementContextFactory = blockImprovementContextFactory;
-            _sealer = sealer;
             TimeSpan timeout = timePerSlot;
-            _cleanupOldPayloadDelay = 2 * timePerSlot; // 2 * slots time
+            _cleanupOldPayloadDelay = 10 * timePerSlot; // 10 * slots time
             ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
             timer.Elapsed += CleanupOldPayloads;
             timer.Start();
@@ -120,14 +117,14 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 }
             }
 
-            // foreach (string payloadToRemove in _payloadsToRemove)
-            // {
-            //     if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
-            //     {
-            //         context.Dispose();
-            //         if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
-            //     }
-            // }
+            foreach (string payloadToRemove in _payloadsToRemove)
+            {
+                if (_payloadStorage.TryRemove(payloadToRemove, out IBlockImprovementContext? context))
+                {
+                    context.Dispose();
+                    if (_logger.IsInfo) _logger.Info($"Cleaned up payload with id={payloadToRemove} as it was not requested");
+                }
+            }
 
             _payloadsToRemove.Clear();
             if (_logger.IsTrace) _logger.Trace($"Finished old payloads cleanup");

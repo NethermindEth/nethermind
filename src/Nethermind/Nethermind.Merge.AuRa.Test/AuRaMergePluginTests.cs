@@ -109,7 +109,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
             postMergeBlockProducer,
             new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)
             ),
-            SealEngine,
             TimerFactory.Default,
             LogManager,
             TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)

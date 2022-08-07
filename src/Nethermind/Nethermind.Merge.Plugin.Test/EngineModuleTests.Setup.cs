@@ -186,7 +186,6 @@ namespace Nethermind.Merge.Plugin.Test
                 PayloadPreparationService ??= new PayloadPreparationService(
                     postMergeBlockProducer,
                     new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
-                    SealEngine,
                     TimerFactory.Default,
                     LogManager,
                     TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));

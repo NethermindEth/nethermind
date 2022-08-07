@@ -273,7 +273,6 @@ namespace Nethermind.Merge.Plugin.Test
             chain.PayloadPreparationService = new PayloadPreparationService(
                 chain.PostMergeBlockProducer!,
                 improvementContextFactory,
-                chain.SealEngine,
                 TimerFactory.Default,
                 chain.LogManager,
                 timePerSlot);
