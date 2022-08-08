@@ -34,7 +34,7 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual(expectedHost, url.Host);
             Assert.AreEqual(expectedPort, url.Port);
             Assert.AreEqual(expectedRpcEndpoint, url.RpcEndpoint);
-            CollectionAssert.AreEqual(expectedEnabledModules, url.EnabledModules);
+            CollectionAssert.AreEqual(expectedEnabledModules, url.EnabledModules, StringComparer.InvariantCultureIgnoreCase);
         }
 
         [TestCase(null, typeof(ArgumentNullException))]
