@@ -53,8 +53,8 @@ namespace Nethermind.Synchronization
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly IDb _stateDb;
-        private readonly IDb _codeDb;
+        private readonly IReadOnlyKeyValueStore _stateDb;
+        private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
         private readonly IGossipPolicy _gossipPolicy;
@@ -71,8 +71,8 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
 
         public SyncServer(
-            IDb stateDb,
-            IDb codeDb,
+            IReadOnlyKeyValueStore stateDb,
+            IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IBlockValidator blockValidator,
@@ -374,8 +374,7 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[]?[] GetNodeData(IReadOnlyList<Keccak> keys,
-            NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public byte[]?[] GetNodeData(IReadOnlyList<Keccak> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             byte[]?[] values = new byte[keys.Count][];
             for (int i = 0; i < keys.Count; i++)
@@ -383,12 +382,12 @@ namespace Nethermind.Synchronization
                 values[i] = null;
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
-                    values[i] = _stateDb.Get(keys[i]);
+                    values[i] = _stateDb[keys[i].Bytes];
                 }
 
                 if (values[i] == null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
-                    values[i] = _codeDb.Get(keys[i]);
+                    values[i] = _codeDb[keys[i].Bytes];
                 }
             }
 

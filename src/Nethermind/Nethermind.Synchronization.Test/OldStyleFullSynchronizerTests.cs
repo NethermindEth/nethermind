@@ -60,8 +60,7 @@ namespace Nethermind.Synchronization.Test
             _stateDb = dbProvider.StateDb;
             _codeDb = dbProvider.CodeDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
-            SyncConfig quickConfig = new();
-            quickConfig.FastSync = false;
+            SyncConfig quickConfig = new() { FastSync = false };
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
@@ -70,11 +69,12 @@ namespace Nethermind.Synchronization.Test
             ProgressTracker progressTracker = new(_blockTree, dbProvider.StateDb, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
+            TrieStore trieStore = new(_stateDb, LimboLogs.Instance);
             SyncProgressResolver resolver = new(
                 _blockTree,
                 _receiptStorage,
                 _stateDb,
-                new TrieStore(_stateDb, LimboLogs.Instance),
+                trieStore,
                 progressTracker,
                 syncConfig,
                 LimboLogs.Instance);
@@ -107,7 +107,7 @@ namespace Nethermind.Synchronization.Test
                 syncReport,
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
-                _stateDb,
+                trieStore,
                 _codeDb,
                 _blockTree,
                 _receiptStorage,
