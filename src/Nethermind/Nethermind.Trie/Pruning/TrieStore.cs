@@ -15,10 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -805,6 +803,16 @@ namespace Nethermind.Trie.Pruning
 
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Persist Cache finished: {stopwatch.Elapsed} {persistedNodes / (double)million:N} mln nodes persisted.");
             });
+        }
+
+        public byte[]? this[byte[] key]
+        {
+            get => _dirtyNodes.AllNodes.TryGetValue(new Keccak(key), out TrieNode? trieNode)
+                   && trieNode is not null
+                   && trieNode.NodeType != NodeType.Unknown
+                   && trieNode.FullRlp is not null
+                ? trieNode.FullRlp
+                : _currentBatch?[key] ?? _keyValueStore[key];
         }
     }
 }
