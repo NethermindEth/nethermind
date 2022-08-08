@@ -178,11 +178,14 @@ namespace Nethermind.Synchronization
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
-            bool isBlockTotalDifficultyLow = block.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)
-                                             && (_specProvider.TerminalTotalDifficulty == null || block.TotalDifficulty < _specProvider.TerminalTotalDifficulty); // terminal blocks with lower TTD might be useful for smooth merge transition
-            if (isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows) return;
+            bool isBlockTotalDifficultyLow = _specProvider.TerminalTotalDifficulty == null || block.TotalDifficulty < _specProvider.TerminalTotalDifficulty; // terminal blocks with lower TTD might be useful for smooth merge transition
 
-           if (_recentlySuggested.Set(block.Hash))
+            if (isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows)
+            {
+                return;
+            }
+
+            if (_recentlySuggested.Set(block.Hash))
             {
                 if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
                 {
@@ -190,8 +193,10 @@ namespace Nethermind.Synchronization
                 }
 
                 ValidateSeal(block, nodeWhoSentTheBlock);
-                if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None
-                    || (_syncModeSelector.Current & SyncMode.Full) != SyncMode.None)
+                SyncMode syncMode = _syncModeSelector.Current;
+                bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
+                bool inFullSyncOrWaitingForBlocks = (syncMode & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
+                if (notInFastSyncNorStateSync || inFullSyncOrWaitingForBlocks)
                 {
                     LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                     SyncBlock(block, nodeWhoSentTheBlock);
