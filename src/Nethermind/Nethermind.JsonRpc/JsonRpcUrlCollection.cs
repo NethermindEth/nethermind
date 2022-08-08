@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc
                 return;
             }
             JsonRpcUrl url = new(Uri.UriSchemeHttp, _jsonRpcConfig.EngineHost, _jsonRpcConfig.EnginePort.Value,
-                RpcEndpoint.Http, true, _jsonRpcConfig.EngineEnabledModules.Append("engine").ToArray());
+                RpcEndpoint.Http, true, _jsonRpcConfig.EngineEnabledModules.Append(ModuleType.Engine).ToArray());
 
             if (ContainsKey(url.Port))
             {

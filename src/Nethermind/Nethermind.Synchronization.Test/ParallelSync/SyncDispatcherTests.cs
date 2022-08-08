@@ -196,7 +196,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     }
                 }
 
-                // Console.WriteLine($"Decrementing Pending Requests {Interlocked.Decrement(ref _pendingRequests)}");
+                int decremented = Interlocked.Decrement(ref _pendingRequests);
+                // Console.WriteLine($"Decrementing Pending Requests {decremented}");
                 return SyncResponseHandlingResult.OK;
             }
 
@@ -240,7 +241,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     testBatch = new TestBatch(start, 8);
                 }
 
-                // Console.WriteLine($"Incrementing Pending Requests {Interlocked.Increment(ref _pendingRequests)}");
+                int incremented = Interlocked.Increment(ref _pendingRequests);
+                // Console.WriteLine($"Incrementing Pending Requests {incremented}");
                 return testBatch;
             }
         }
