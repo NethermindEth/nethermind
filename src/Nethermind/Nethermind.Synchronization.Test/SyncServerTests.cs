@@ -25,6 +25,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -37,8 +38,11 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
@@ -487,6 +491,38 @@ namespace Nethermind.Synchronization.Test
             await Task.Delay(100); // notifications fire on separate task
             await Task.WhenAll(peers.Select(p => ((SyncPeerMock)p.SyncPeer).Close()).ToArray());
             count.Should().Be(expectedPeers);
+        }
+
+        [Test]
+        public void GetNodeData_returns_cached_trie_nodes()
+        {
+            Context ctx = new();
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
+            ISealValidator sealValidator = Substitute.For<ISealValidator>();
+            MemDb stateDb = new();
+            TrieStore trieStore = new(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
+            ctx.SyncServer = new SyncServer(
+                trieStore,
+                new MemDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                sealValidator,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            Keccak nodeKey = TestItem.KeccakA;
+            TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
+            trieStore.CommitNode(1, new NodeCommitInfo(node));
+            trieStore.FinishBlockCommit(TrieType.State, 1, node);
+
+            stateDb.KeyExists(nodeKey).Should().BeFalse();
+            ctx.SyncServer.GetNodeData(new[] { nodeKey }, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.Bytes });
         }
 
         private class Context

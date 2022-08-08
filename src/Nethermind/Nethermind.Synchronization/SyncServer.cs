@@ -53,8 +53,8 @@ namespace Nethermind.Synchronization
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
-        private readonly IDb _stateDb;
-        private readonly IDb _codeDb;
+        private readonly IReadOnlyKeyValueStore _stateDb;
+        private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IWitnessRepository _witnessRepository;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
@@ -69,8 +69,8 @@ namespace Nethermind.Synchronization
         private BlockHeader? _pivotHeader;
 
         public SyncServer(
-            IDb stateDb,
-            IDb codeDb,
+            IReadOnlyKeyValueStore stateDb,
+            IReadOnlyKeyValueStore codeDb,
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IBlockValidator blockValidator,
@@ -397,12 +397,12 @@ namespace Nethermind.Synchronization
                 values[i] = null;
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
-                    values[i] = _stateDb.Get(keys[i]);
+                    values[i] = _stateDb[keys[i].Bytes];
                 }
 
                 if (values[i] == null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
-                    values[i] = _codeDb.Get(keys[i]);
+                    values[i] = _codeDb[keys[i].Bytes];
                 }
             }
 

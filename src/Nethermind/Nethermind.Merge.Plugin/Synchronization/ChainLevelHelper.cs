@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
-    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int blocksToSkip = 0);
+    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber);
 
     bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
@@ -53,19 +53,21 @@ public class ChainLevelHelper : IChainLevelHelper
         _logger = logManager.GetClassLogger();
     }
 
-    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int blocksToSkip)
+    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber)
     {
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
+        {
+            if (_logger.IsTrace)
+                _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is null");
             return null;
-
-        long destinationPoint = GetDestinationPoint();
+        }
 
         List<BlockHeader> headers = new(maxCount);
         int i = 0;
 
-        long upperLimit = (destinationPoint - blocksToSkip); // blocksToSkip is used for FastSync boundary
-        while (i < maxCount && (startingPoint <= upperLimit))
+        // blocksToSkip is used for FastSync boundary.
+        while (i < maxCount)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
             BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
@@ -144,6 +146,8 @@ public class ChainLevelHelper : IChainLevelHelper
     {
         long startingPoint = GetDestinationPoint();
         bool foundBeaconBlock;
+
+        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point is {startingPoint}");
 
         BlockInfo? beaconMainChainBlock = GetBeaconMainChainBlockInfo(startingPoint);
         if (beaconMainChainBlock == null) return null;

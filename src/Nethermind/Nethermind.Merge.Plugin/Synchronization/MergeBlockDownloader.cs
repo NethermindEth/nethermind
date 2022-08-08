@@ -118,8 +118,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     _logger.Trace(
                         $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
-                // Note: This is slow
-                headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
+                // Note: blocksRequest.NumberOfLatestBlocksToBeIgnored not accounted for
+                headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber);
                 if (headers == null || headers.Length == 0)
                 {
                     if (_logger.IsTrace)
@@ -143,7 +143,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers!, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                _logger.Info("NonBlockhash " + context.NonEmptyBlockHashes.Count);
 
                 await RequestBodies(bestPeer, cancellation, context);
 
