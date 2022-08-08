@@ -182,10 +182,15 @@ namespace Nethermind.Synchronization
             if (_logger.IsInfo) _logger.Info($"Received block {block} with TD {block.TotalDifficulty} from peer {nodeWhoSentTheBlock}, TTD {_specProvider.TerminalTotalDifficulty}, Our BestSuggestedHeader {_blockTree.BestSuggestedHeader} BestSuggestedHeader.TotalDifficulty {_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0} ");
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
+
+            // ToDo think about the number 20 or different
+            bool closeToTerminalTotalDifficulty = _blockTree.BestSuggestedHeader.Difficulty * 20 + _blockTree.BestSuggestedHeader.TotalDifficulty >= _specProvider.TerminalTotalDifficulty;
+            bool closeToOurBest = _blockTree.BestSuggestedHeader.Difficulty * 20 + block.TotalDifficulty >= _blockTree.BestSuggestedHeader.TotalDifficulty;
             bool isBlockTotalDifficultyLow = block.TotalDifficulty < _blockTree.BestSuggestedHeader.TotalDifficulty
                                              && (_specProvider.TerminalTotalDifficulty == null || block.TotalDifficulty < _specProvider.TerminalTotalDifficulty); // terminal blocks with lower TTD might be useful for smooth merge transition
             if (isBlockBeforeTheSyncPivot ||
-                // isBlockTotalDifficultyLow || // ToDo just for testing
+                closeToOurBest ||
+             //   (closeToOurBest && closeToTerminalTotalDifficulty) for now just for testing
                 isBlockOlderThanMaxReorgAllows) return;
 
             lock (_recentlySuggested)
