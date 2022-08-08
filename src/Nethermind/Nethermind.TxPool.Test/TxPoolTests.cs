@@ -1023,7 +1023,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_retrieve_added_transaction_correctly_even_if_was_evicted()
+        public void should_retrieve_added_persistent_transaction_correctly_even_if_was_evicted()
         {
             Transaction transaction = Build.A.Transaction
                 .WithGasPrice(10)
