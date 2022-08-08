@@ -108,7 +108,8 @@ namespace Nethermind.JsonRpc
                    string.Equals(Host, other.Host) &&
                    Port == other.Port &&
                    RpcEndpoint == other.RpcEndpoint &&
-                   EnabledModules.SequenceEqual(other.EnabledModules);
+                   EnabledModules.OrderBy(t => t).SequenceEqual(other.EnabledModules.OrderBy(t => t),
+                       StringComparer.InvariantCultureIgnoreCase);
         }
 
         public override bool Equals(object other)
@@ -123,7 +124,7 @@ namespace Nethermind.JsonRpc
         }
 
         public override int GetHashCode() => HashCode.Combine(Scheme, Host, Port, RpcEndpoint, EnabledModules as IStructuralEquatable);
-        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, EnabledModules as string[]);
+        public object Clone() => new JsonRpcUrl(Scheme, Host, Port, RpcEndpoint, IsAuthenticated, EnabledModules.ToArray());
         public override string ToString() => $"{Scheme}://{Host}:{Port}";
     }
 }
