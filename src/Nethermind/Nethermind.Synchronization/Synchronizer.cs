@@ -39,7 +39,7 @@ namespace Nethermind.Synchronization
 {
     public class Synchronizer : ISynchronizer
     {
-        private const int FeedsTerminationTimeout = 5_000;
+        private const int FeedsTerminationTimeout = 7_000;
 
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;

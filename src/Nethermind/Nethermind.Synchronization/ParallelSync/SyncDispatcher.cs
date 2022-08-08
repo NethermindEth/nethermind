@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -50,17 +50,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private TaskCompletionSource<object?>? _dormantStateTask = new();
 
         protected abstract Task Dispatch(PeerInfo peerInfo, T request, CancellationToken cancellationToken);
-        
+
         public async Task Start(CancellationToken cancellationToken)
         {
-            cancellationToken.Register(() =>
-            {
-                lock (_feedStateManipulation)
-                {
-                    _dormantStateTask?.SetCanceled();
-                }
-            });
-
             UpdateState(Feed.CurrentState);
             while (true)
             {
@@ -82,11 +74,12 @@ namespace Nethermind.Synchronization.ParallelSync
                             if (Logger.IsWarn) Logger.Warn("Dormant task is NULL when trying to await it");
                         }
 
-                        await (dormantTaskLocal?.Task ?? Task.CompletedTask);
+                        await (dormantTaskLocal?.Task ?? Task.CompletedTask).WaitAsync(cancellationToken);
                         if (Logger.IsDebug) Logger.Debug($"{GetType().Name} got activated.");
                     }
                     else if (currentStateLocal == SyncFeedState.Active)
                     {
+                        cancellationToken.ThrowIfCancellationRequested();
                         T request = await (Feed.PrepareRequest() ?? Task.FromResult<T>(default!)); // just to avoid null refs
                         if (request == null)
                         {
@@ -111,6 +104,11 @@ namespace Nethermind.Synchronization.ParallelSync
                                 if (t.IsFaulted)
                                 {
                                     if (Logger.IsWarn) Logger.Warn($"Failure when executing request {t.Exception}");
+                                }
+
+                                if (cancellationToken.IsCancellationRequested)
+                                {
+                                    if (Logger.IsInfo) Logger.Info("Ignoring sync response as shutdown is requested.");
                                 }
 
                                 try
@@ -154,7 +152,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         break;
                     }
                 }
-                catch (TaskCanceledException)
+                catch (OperationCanceledException)
                 {
                     Feed.Finish();
                 }
