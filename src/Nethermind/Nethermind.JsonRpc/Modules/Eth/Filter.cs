@@ -32,7 +32,7 @@ public class Filter : IJsonRpcParam
 
     public IEnumerable<object?>? Topics { get; set; }
 
-    public void FromJson(JsonSerializer serializer, string json)
+    public void ReadJson(JsonSerializer serializer, string json)
     {
         var filter = serializer.Deserialize<JObject>(json.ToJsonTextReader());
         var blockHash = filter["blockhash"]?.Value<string>();

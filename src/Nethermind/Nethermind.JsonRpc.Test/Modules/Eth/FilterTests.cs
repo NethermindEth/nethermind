@@ -116,7 +116,7 @@ public class FilterTests
     public void FromJson_parses_correctly(string json, Filter expectation)
     {
         Filter filter = new();
-        filter.FromJson(JsonSerializer.CreateDefault(), json);
+        filter.ReadJson(JsonSerializer.CreateDefault(), json);
         filter.Should().BeEquivalentTo(expectation);
     }
 }
