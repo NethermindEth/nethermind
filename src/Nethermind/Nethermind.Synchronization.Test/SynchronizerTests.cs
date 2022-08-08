@@ -334,11 +334,12 @@ namespace Nethermind.Synchronization.Test
                 ProgressTracker progressTracker = new(BlockTree, dbProvider.StateDb, LimboLogs.Instance);
                 SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
+                TrieStore trieStore = new(stateDb, LimboLogs.Instance);
                 SyncProgressResolver syncProgressResolver = new(
                     BlockTree,
                     NullReceiptStorage.Instance,
                     stateDb,
-                    new TrieStore(stateDb, LimboLogs.Instance),
+                    trieStore,
                     progressTracker,
                     syncConfig,
                     _logManager);
@@ -433,7 +434,7 @@ namespace Nethermind.Synchronization.Test
                 }
 
                 SyncServer = new SyncServer(
-                    stateDb,
+                    trieStore,
                     codeDb,
                     BlockTree,
                     NullReceiptStorage.Instance,
