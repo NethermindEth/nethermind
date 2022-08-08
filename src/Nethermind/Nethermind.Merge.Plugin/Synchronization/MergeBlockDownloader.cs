@@ -143,7 +143,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 BlockDownloadContext context = new(_specProvider, bestPeer, headers!, downloadReceipts, _receiptsRecovery);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                _logger.Info("NonBlockhash " + context.NonEmptyBlockHashes.Count);
 
                 await RequestBodies(bestPeer, cancellation, context);
 
