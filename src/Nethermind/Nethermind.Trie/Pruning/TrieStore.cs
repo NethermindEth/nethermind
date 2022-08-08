@@ -807,7 +807,8 @@ namespace Nethermind.Trie.Pruning
 
         public byte[]? this[byte[] key]
         {
-            get => _dirtyNodes.AllNodes.TryGetValue(new Keccak(key), out TrieNode? trieNode)
+            get => _pruningStrategy.PruningEnabled
+                   && _dirtyNodes.AllNodes.TryGetValue(new Keccak(key), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp is not null
