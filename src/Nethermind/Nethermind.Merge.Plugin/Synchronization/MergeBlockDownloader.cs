@@ -130,7 +130,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 return true;
             }
 
-            while (Feed.CurrentState == SyncFeedState.Active && HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest))
+            while (HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest))
             {
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
