@@ -35,7 +35,7 @@ public class Filter : IJsonRpcParam
     public void ReadJson(JsonSerializer serializer, string json)
     {
         var filter = serializer.Deserialize<JObject>(json.ToJsonTextReader());
-        var blockHash = filter["blockhash"]?.Value<string>();
+        var blockHash = filter["blockHash"]?.Value<string>();
 
         if (blockHash is null)
         {

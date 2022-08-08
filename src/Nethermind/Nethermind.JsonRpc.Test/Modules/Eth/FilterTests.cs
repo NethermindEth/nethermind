@@ -99,11 +99,11 @@ public class FilterTests
                     }
                 });
 
-            var blockhash = "0x892a8b3ccc78359e059e67ec44c83bfed496721d48c2d1dd929d6e4cd6559d35";
-            var blockParam = BlockParameterConverter.GetBlockParameter(blockhash);
+            var blockHash = "0x892a8b3ccc78359e059e67ec44c83bfed496721d48c2d1dd929d6e4cd6559d35";
+            var blockParam = BlockParameterConverter.GetBlockParameter(blockHash);
 
             yield return new TestCaseData(
-                JsonConvert.SerializeObject(new { blockhash }),
+                JsonConvert.SerializeObject(new { blockHash }),
                 new Filter
                 {
                     FromBlock = blockParam,
