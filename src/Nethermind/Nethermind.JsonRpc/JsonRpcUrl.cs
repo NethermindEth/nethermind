@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc
             Host = host;
             Port = port;
             RpcEndpoint = rpcEndpoint;
-            EnabledModules = enabledModules.Select(name => name.ToLower()).ToArray();
+            EnabledModules = new HashSet<string>(enabledModules, StringComparer.InvariantCultureIgnoreCase);
             IsAuthenticated = isAuthenticated;
         }
 
