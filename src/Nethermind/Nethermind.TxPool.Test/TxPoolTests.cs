@@ -1047,6 +1047,7 @@ namespace Nethermind.TxPool.Test
             _txPool.TryGetPendingTransaction(transactionWithHigherFee.Hash, out var retrievedTransactionWithHigherFee).Should().BeTrue();
             retrievedTransactionWithHigherFee.Should().BeEquivalentTo(transactionWithHigherFee);
 
+            // now transaction with lower fee should be evicted from pending txs and should still be present in persistentTxs
             _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransactionWithLowerFee).Should().BeTrue();
             retrievedTransactionWithLowerFee.Should().BeEquivalentTo(transaction);
         }
