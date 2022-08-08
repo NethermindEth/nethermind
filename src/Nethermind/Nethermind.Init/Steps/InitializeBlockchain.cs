@@ -153,9 +153,10 @@ namespace Nethermind.Init.Steps
                     getApi.LogManager);
             }
             
-            getApi.DisposeStack.Push(trieStore);
             TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(trieStore, _api.BlockTree!, _api.LogManager);
             getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
+            getApi.DisposeStack.Push(trieStore);
+
             ITrieStore readOnlyTrieStore = setApi.ReadOnlyTrieStore = trieStore.AsReadOnly(cachedStateDb);
 
             IStateProvider stateProvider = setApi.StateProvider = new StateProvider(
