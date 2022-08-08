@@ -132,21 +132,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Can_broadcast_a_block([Values(SendBlockPriority.Low, SendBlockPriority.High, (SendBlockPriority)99)] SendBlockPriority priority)
+        public void Can_broadcast_a_block([Values(SendBlockMode.HashOnly, SendBlockMode.FullBlock, (SendBlockMode)99)] SendBlockMode mode)
         {
             Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
-            Type expectedMessageType = priority == SendBlockPriority.High ? typeof(NewBlockMessage) : typeof(NewBlockHashesMessage);
-            _handler.NotifyOfNewBlock(block, priority);
+            Type expectedMessageType = mode == SendBlockMode.FullBlock ? typeof(NewBlockMessage) : typeof(NewBlockHashesMessage);
+            _handler.NotifyOfNewBlock(block, mode);
             _session.Received().DeliverMessage(Arg.Is<P2PMessage>(m => m.GetType().IsAssignableFrom(expectedMessageType)));
         }
 
         [Test]
-        public void Broadcasts_only_once([Values(SendBlockPriority.Low, SendBlockPriority.High)] SendBlockPriority priority)
+        public void Broadcasts_only_once([Values(SendBlockMode.HashOnly, SendBlockMode.FullBlock)] SendBlockMode mode)
         {
             Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
-            _handler.NotifyOfNewBlock(block, priority);
-            _handler.NotifyOfNewBlock(block, SendBlockPriority.Low);
-            _handler.NotifyOfNewBlock(block, SendBlockPriority.High);
+            _handler.NotifyOfNewBlock(block, mode);
+            _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
+            _handler.NotifyOfNewBlock(block, SendBlockMode.FullBlock);
             _session.Received(1).DeliverMessage(Arg.Is<P2PMessage>(m =>
                 m.GetType().IsAssignableFrom(typeof(NewBlockMessage))
                 || m.GetType().IsAssignableFrom(typeof(NewBlockHashesMessage))));
@@ -157,13 +157,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             Block block = Build.A.Block.WithTotalDifficulty(1L).TestObject;
             _gossipPolicy.CanGossipBlocks.Returns(false);
-            _handler.NotifyOfNewBlock(block, SendBlockPriority.High);
+            _handler.NotifyOfNewBlock(block, SendBlockMode.FullBlock);
             _session.Received(0).DeliverMessage(Arg.Any<NewBlockMessage>());
             _session.ClearReceivedCalls();
-            _handler.NotifyOfNewBlock(block, SendBlockPriority.Low);
+            _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
             _session.Received(0).DeliverMessage(Arg.Any<NewBlockHashesMessage>());
             _session.ClearReceivedCalls();
-            _handler.NotifyOfNewBlock(block, (SendBlockPriority) 99);
+            _handler.NotifyOfNewBlock(block, (SendBlockMode) 99);
             _session.Received(0).DeliverMessage(Arg.Any<NewBlockHashesMessage>());
         }
 
@@ -172,9 +172,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             Block block = Build.A.Block.TestObject;
             Assert.Throws<InvalidOperationException>(
-                () => _handler.NotifyOfNewBlock(block, SendBlockPriority.High));
-            _handler.NotifyOfNewBlock(block, SendBlockPriority.Low);
-            _handler.NotifyOfNewBlock(block, (SendBlockPriority) 99);
+                () => _handler.NotifyOfNewBlock(block, SendBlockMode.FullBlock));
+            _handler.NotifyOfNewBlock(block, SendBlockMode.HashOnly);
+            _handler.NotifyOfNewBlock(block, (SendBlockMode) 99);
         }
 
         [Test]

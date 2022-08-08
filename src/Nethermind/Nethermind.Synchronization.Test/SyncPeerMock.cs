@@ -149,9 +149,9 @@ namespace Nethermind.Synchronization.Test
 
         private readonly BlockingCollection<Action> _sendQueue = new();
 
-        public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+        public void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
-            if (priority == SendBlockPriority.High)
+            if (mode == SendBlockMode.FullBlock)
             {
                 SendNewBlock(block);
             }

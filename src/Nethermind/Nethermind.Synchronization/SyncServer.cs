@@ -202,7 +202,7 @@ namespace Nethermind.Synchronization
                     SyncBlock(block, nodeWhoSentTheBlock);
                 }
 
-                BroadcastBlock(block, SendBlockPriority.High, nodeWhoSentTheBlock);
+                BroadcastBlock(block, SendBlockMode.FullBlock, nodeWhoSentTheBlock);
             }
         }
 
@@ -269,16 +269,16 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void BroadcastBlock(Block block, SendBlockPriority priority, ISyncPeer? nodeWhoSentTheBlock = null)
+        private void BroadcastBlock(Block block, SendBlockMode mode, ISyncPeer? nodeWhoSentTheBlock = null)
         {
             double CalculateBroadcastRatio(int minPeers, int peerCount) => peerCount == 0 ? 0 : minPeers / (double)peerCount;
 
-            Task broadcastTask = priority == SendBlockPriority.Low
+            Task broadcastTask = mode == SendBlockMode.HashOnly
                 ? Task.Run(() =>
                 {
                     foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, priority);
+                        NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, mode);
                     }
                 })
                 : Task.Run(() =>
@@ -293,7 +293,7 @@ namespace Nethermind.Synchronization
                         {
                             if (_broadcastRandomizer.NextDouble() < broadcastRatio)
                             {
-                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, priority);
+                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, mode);
                                 counter++;
                                 minPeers--;
                             }
@@ -442,17 +442,17 @@ namespace Nethermind.Synchronization
             Block block = blockEventArgs.Block;
             if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
             {
-                BroadcastBlock(block, SendBlockPriority.Low);
+                BroadcastBlock(block, SendBlockMode.HashOnly);
             }
         }
 
-        private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
+        private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
             try
             {
-                syncPeer.NotifyOfNewBlock(broadcastedBlock, priority);
+                syncPeer.NotifyOfNewBlock(broadcastedBlock, mode);
             }
             catch (Exception e)
             {
@@ -460,7 +460,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockPriority.High);
+        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
 
 
         public void StopNotifyingPeersAboutNewBlocks()

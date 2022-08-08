@@ -284,7 +284,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         private BlockHeader _lastSentBlock;
 
-        public override void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+        public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
             if (RequestedAnnounceType == LesAnnounceType.None) return;
             if (!block.TotalDifficulty.HasValue)

@@ -288,7 +288,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        public override void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+        public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
         {
             if (!CanGossip || !_gossipPolicy.ShouldGossipBlock(block.Header))
             {
@@ -297,16 +297,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             if (_lastBlockNotificationCache.Set(block.Hash))
             {
-                switch (priority)
+                switch (mode)
                 {
-                    case SendBlockPriority.High:
+                    case SendBlockMode.FullBlock:
                         SendNewBlock(block);
                         break;
-                    case SendBlockPriority.Low:
+                    case SendBlockMode.HashOnly:
                         HintNewBlock(block.Hash, block.Number);
                         break;
                     default:
-                        if (Logger.IsError) Logger.Error($"Unknown priority ({priority}) passed to {nameof(NotifyOfNewBlock)} - handling as low priority");
+                        if (Logger.IsError) Logger.Error($"Unknown mode ({mode}) passed to {nameof(NotifyOfNewBlock)} - handling as {nameof(SendBlockMode.HashOnly)} mode");
                         HintNewBlock(block.Hash, block.Number);
                         break;
                 }
