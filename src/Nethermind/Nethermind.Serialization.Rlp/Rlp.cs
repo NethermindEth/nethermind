@@ -18,6 +18,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Numerics;
 using System.Reflection;
 using System.Text;
@@ -179,7 +180,8 @@ namespace Nethermind.Serialization.Rlp
         {
             if (item is Rlp rlp)
             {
-                return Encode(new[] {rlp});
+                RlpStream stream = new(LengthOfSequence(rlp.Length));
+                return new(stream.Data);
             }
 
             IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
@@ -202,16 +204,19 @@ namespace Nethermind.Serialization.Rlp
                 return OfEmptySequence;
             }
 
+            IRlpStreamDecoder<T>? rlpStreamDecoder = GetStreamDecoder<T>();
+            if (rlpStreamDecoder != null)
+            {
+                int totalLength = rlpStreamDecoder.GetLength(items, behaviors);
+                RlpStream stream = new(totalLength);
+                rlpStreamDecoder.Encode(stream, items, behaviors);
+                return new Rlp(stream.Data);
+            }
+
             IRlpObjectDecoder<T> rlpDecoder = GetObjectDecoder<T>();
             if (rlpDecoder is not null)
             {
-                Rlp[] rlpSequence = new Rlp[items.Length];
-                for (int i = 0; i < items.Length; i++)
-                {
-                    rlpSequence[i] = items[i] is null ? OfEmptySequence : rlpDecoder.Encode(items[i], behaviors);
-                }
-
-                return Encode(rlpSequence);
+                return rlpDecoder.Encode(items, behaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
