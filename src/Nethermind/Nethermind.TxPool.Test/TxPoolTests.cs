@@ -1023,6 +1023,35 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_retrieve_added_transaction_correctly_even_if_was_evicted()
+        {
+            Transaction transaction = Build.A.Transaction
+                .WithGasPrice(10)
+                .WithSenderAddress(TestItem.AddressA)
+                .SignedAndResolved().TestObject;
+            Transaction transactionWithHigherFee = Build.A.Transaction
+                .WithGasPrice(11)
+                .WithSenderAddress(TestItem.AddressB)
+                .SignedAndResolved().TestObject;
+            _specProvider = Substitute.For<ISpecProvider>();
+            _specProvider.ChainId.Returns(transaction.Signature.ChainId.Value);
+            _txPool = CreatePool(config:new TxPoolConfig(){Size = 1});
+
+            EnsureSenderBalance(transaction);
+            _txPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransaction).Should().BeTrue();
+            retrievedTransaction.Should().BeEquivalentTo(transaction);
+
+            EnsureSenderBalance(transactionWithHigherFee);
+            _txPool.SubmitTx(transactionWithHigherFee, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            _txPool.TryGetPendingTransaction(transactionWithHigherFee.Hash, out var retrievedTransactionWithHigherFee).Should().BeTrue();
+            retrievedTransactionWithHigherFee.Should().BeEquivalentTo(transactionWithHigherFee);
+
+            _txPool.TryGetPendingTransaction(transaction.Hash, out var retrievedTransactionWithLowerFee).Should().BeTrue();
+            retrievedTransactionWithLowerFee.Should().BeEquivalentTo(transaction);
+        }
+
+        [Test]
         public void should_notify_added_peer_of_own_tx()
         {
             _txPool = CreatePool();
