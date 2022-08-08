@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -70,7 +70,7 @@ namespace Nethermind.TxPool
         /// Indexes transactions
         /// </summary>
         private ulong _txIndex;
-        
+
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -151,7 +151,7 @@ namespace Nethermind.TxPool
                         $"Couldn't correctly add or remove transactions from txpool after processing block {e.Block!.ToString(Block.Format.FullHashAndNumber)}.", exception);
             }
         }
-        
+
         private void ProcessNewHeads()
         {
             Task.Factory.StartNew(async () =>
@@ -245,7 +245,7 @@ namespace Nethermind.TxPool
             if (_broadcaster.AddPeer(peerInfo))
             {
                 _broadcaster.BroadcastOnce(peerInfo, _transactions.GetSnapshot());
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Added a peer to TX pool: {peer}");
             }
         }
@@ -299,7 +299,7 @@ namespace Nethermind.TxPool
                 tx.GasBottleneck = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
                 bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
                 if (inserted)
-                { 
+                {
                     _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
@@ -488,6 +488,8 @@ namespace Nethermind.TxPool
             {
                 if (!_transactions.TryGetValue(hash, out transaction))
                 {
+                    _broadcaster.TryGetPersistentTx(hash, out transaction);
+
                     // commented out as it puts too much pressure on the database
                     // and it not really required in any scenario
                     // * tx recovery usually will fetch from pending
