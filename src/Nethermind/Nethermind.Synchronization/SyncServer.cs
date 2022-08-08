@@ -374,12 +374,12 @@ namespace Nethermind.Synchronization
                 values[i] = null;
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
-                    values[i] = _stateDb.Get(keys[i]);
+                    values[i] = _stateDb[keys[i].Bytes];
                 }
 
                 if (values[i] == null && (includedTypes & NodeDataType.Code) == NodeDataType.Code)
                 {
-                    values[i] = _codeDb.Get(keys[i]);
+                    values[i] = _codeDb[keys[i].Bytes];
                 }
             }
 

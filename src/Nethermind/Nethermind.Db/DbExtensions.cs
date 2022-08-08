@@ -37,7 +37,7 @@ namespace Nethermind.Db
              db[key.Bytes] = value;
          }
 
-        public static byte[]? Get(this IReadOnlyKeyValueStore db, Keccak key)
+        public static byte[]? Get(this IDb db, Keccak key)
         {
             #if DEBUG
             if (key == Keccak.OfAnEmptyString)
