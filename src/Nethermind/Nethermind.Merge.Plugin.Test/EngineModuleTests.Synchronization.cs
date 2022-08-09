@@ -92,6 +92,96 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task forkChoiceUpdatedV1_unknown_block_parent_while_syncing_initiates_new_sync()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak? startingHead = chain.BlockTree.HeadHash;
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithHash(TestItem.KeccakA)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(2)
+            .WithParent(parent)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithPostMergeFlag(true)
+            .TestObject;
+
+        Block nextUnconnectedBlock = Build.A.Block
+            .WithNumber(3)
+            .WithParent(block)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithPostMergeFlag(true)
+            .TestObject;
+
+        nextUnconnectedBlock = Build.A.Block
+            .WithNumber(4)
+            .WithParent(nextUnconnectedBlock)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithPostMergeFlag(true)
+            .TestObject;
+
+        await rpc.engine_newPayloadV1(new ExecutionPayloadV1(block));
+        // sync has not started yet
+        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
+        chain.BeaconSync.IsBeaconSyncFinished(block.Header).Should().BeTrue();
+        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeFalse();
+        chain.BeaconPivot.BeaconPivotExists().Should().BeFalse();
+        BlockTreePointers pointers = new BlockTreePointers
+        {
+            BestKnownNumber = 0,
+            BestSuggestedHeader = chain.BlockTree.Genesis!,
+            BestSuggestedBody = chain.BlockTree.FindBlock(0)!,
+            BestKnownBeaconBlock = 0,
+            LowestInsertedHeader = null,
+            LowestInsertedBeaconHeader = null
+        };
+        AssertBlockTreePointers(chain.BlockTree, pointers);
+
+        ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
+            await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
+            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+
+        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
+        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
+        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash)?.Header).Should().BeFalse();
+        AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
+
+        pointers.LowestInsertedBeaconHeader = block.Header;
+        pointers.BestKnownBeaconBlock = block.Number;
+        pointers.LowestInsertedHeader = block.Header;
+        AssertBlockTreePointers(chain.BlockTree, pointers);
+
+        await rpc.engine_newPayloadV1(new ExecutionPayloadV1(nextUnconnectedBlock));
+        forkchoiceStateV1 = new(nextUnconnectedBlock.Hash!, startingHead, startingHead);
+        forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
+            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+
+        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
+        chain.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
+        chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(nextUnconnectedBlock.Hash)?.Header).Should().BeFalse();
+        AssertBeaconPivotValues(chain.BeaconPivot, nextUnconnectedBlock.Header);
+
+        pointers.LowestInsertedBeaconHeader = nextUnconnectedBlock.Header;
+        pointers.BestKnownBeaconBlock = nextUnconnectedBlock.Number;
+        AssertBlockTreePointers(chain.BlockTree, pointers);
+
+        AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
+    }
+
+    [Test]
     public async Task should_return_invalid_lvh_null_on_invalid_blocks_during_the_sync()
     {
         using MergeTestBlockchain chain = await CreateBlockChain();

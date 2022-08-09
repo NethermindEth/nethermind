@@ -146,7 +146,7 @@ public class ChainLevelHelper : IChainLevelHelper
     /// <returns></returns>
     private long? GetStartingPoint()
     {
-        long startingPoint = Math.Min(_blockTree.BestKnownNumber, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
+        long startingPoint = Math.Min(_blockTree.BestKnownNumber + 1, _beaconPivot.ProcessDestination?.Number ?? long.MaxValue);
         bool foundBeaconBlock;
 
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper. starting point's starting point is {startingPoint}");

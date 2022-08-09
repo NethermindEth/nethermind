@@ -135,8 +135,6 @@ public partial class BlockDownloaderTests
         if (withBeaconPivot)
             beaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
 
-        BlockCacheService blockCacheService = new();
-
         MergeBlockDownloader downloader = new(
             posSwitcher,
             beaconPivot,
