@@ -120,10 +120,16 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                 // Note: blocksRequest.NumberOfLatestBlocksToBeIgnored not accounted for
                 headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber);
-                if (headers == null || headers.Length == 0)
+                if (headers == null || headers.Length == 0 || (headers.Length == 1 && _blockTree.IsMainChain(headers[0])))
                 {
                     if (_logger.IsTrace)
                         _logger.Trace("Chain level helper got no headers suggestion");
+                    return false;
+                }
+
+                if (headers[0].Number != 0 && !_blockTree.IsMainChain(headers[0].ParentHash!)) {
+                    if (_logger.IsTrace)
+                        _logger.Trace("Beacon header chain not connected");
                     return false;
                 }
 
@@ -258,6 +264,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             }
                         }
 
+                        if ((_beaconPivot.ProcessDestination?.Number ?? long.MaxValue) < currentBlock.Number)
+                        {
+                            // Move the process destination in front, otherwise `ChainLevelHelper` would continue returning
+                            // already processed header starting from `ProcessDestination`.
+                            _beaconPivot.ProcessDestination = currentBlock.Header;
+                        }
                         blocksSynced++;
                     }
 

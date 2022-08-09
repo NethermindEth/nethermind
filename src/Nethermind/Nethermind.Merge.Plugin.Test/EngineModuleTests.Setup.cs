@@ -98,6 +98,7 @@ namespace Nethermind.Merge.Plugin.Test
                     blockCacheService,
                     invalidChainTracker,
                     chain.BeaconSync,
+                    chain.BeaconPivot,
                     peerRefresher,
                     chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),

@@ -85,6 +85,8 @@ public partial class EngineModuleTests
         chain.BeaconSync.IsBeaconSyncFinished(chain.BlockTree.FindBlock(block.Hash)?.Header).Should().BeFalse();
         AssertBeaconPivotValues(chain.BeaconPivot, block.Header);
         pointers.LowestInsertedBeaconHeader = block.Header;
+        pointers.BestKnownBeaconBlock = block.Number;
+        pointers.LowestInsertedHeader = block.Header;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         AssertExecutionStatusNotChangedV1(rpc, block.Hash!, startingHead, startingHead);
     }
