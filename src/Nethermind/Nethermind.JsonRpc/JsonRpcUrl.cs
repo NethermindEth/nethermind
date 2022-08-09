@@ -96,6 +96,9 @@ namespace Nethermind.JsonRpc
         public RpcEndpoint RpcEndpoint { get; set; }
         public IReadOnlyCollection<string> EnabledModules { get; set; }
 
+        public bool IsModuleEnabled(string moduleName) =>
+            EnabledModules.Any(m => StringComparer.InvariantCultureIgnoreCase.Equals(m, moduleName));
+
         public bool Equals(JsonRpcUrl other)
         {
             if (other == null)
@@ -108,6 +111,7 @@ namespace Nethermind.JsonRpc
                    string.Equals(Host, other.Host) &&
                    Port == other.Port &&
                    RpcEndpoint == other.RpcEndpoint &&
+                   IsAuthenticated == other.IsAuthenticated &&
                    EnabledModules.OrderBy(t => t).SequenceEqual(other.EnabledModules.OrderBy(t => t),
                        StringComparer.InvariantCultureIgnoreCase);
         }
