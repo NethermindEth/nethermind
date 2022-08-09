@@ -343,6 +343,9 @@ public partial class EngineModuleTests
         await rpc.engine_newPayloadV1(new ExecutionPayloadV1(newBlock2));
         Block? block = chain.BlockTree.FindBlock(newBlock2.GetOrCalculateHash(), BlockTreeLookupOptions.None);
         block.TotalDifficulty.Should().NotBe((UInt256)0);
+        BlockInfo blockInfo = chain.BlockTree.FindLevel(newBlock2.Number!).BlockInfos[0];
+        blockInfo.TotalDifficulty.Should().NotBe(0);
+        blockInfo.Metadata.Should().Be(BlockMetadata.None);
     }
 
     [Test]

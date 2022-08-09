@@ -599,6 +599,15 @@ namespace Nethermind.Merge.Plugin.Test
             block.Header.IsPostMerge = true;
             block.Header.Hash = block.CalculateHash();
             await chain.BlockTree.SuggestBlockAsync(block!);
+            SemaphoreSlim bestBlockProcessed = new(0);
+            chain.BlockProcessor.BlockProcessed += (s, e) =>
+            {
+                if (e.Block.Hash == block!.Hash)
+                    bestBlockProcessed.Release(1);
+            };
+            await chain.BlockTree.SuggestBlockAsync(block!);
+
+            await bestBlockProcessed.WaitAsync();
             ExecutionPayloadV1 blockRequest = new(block);
             ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(blockRequest);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);

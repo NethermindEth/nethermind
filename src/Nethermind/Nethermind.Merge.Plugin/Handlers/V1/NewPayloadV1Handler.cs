@@ -179,9 +179,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _blockCacheService.ProcessDestination = block.Header;
                 }
 
-                _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
+                if (_blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Block already known in blockTree {block}.");
+                    return NewPayloadV1Result.Syncing;
+                }
 
-                if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
+                _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
+
+                if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Inserting block {block}.");
                 return NewPayloadV1Result.Syncing;
             }
 
