@@ -584,34 +584,34 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor)
-        {
-            using MergeTestBlockchain chain = await CreateBaseBlockChain()
-                .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
-                .Build(new SingleReleaseSpecProvider(London.Instance, 1));
-
-            IEngineRpcModule rpc = CreateEngineModule(chain);
-            Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)
-                .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
-                .TestObject;
-            block.Header.IsPostMerge = true;
-            block.Header.Hash = block.CalculateHash();
-            await chain.BlockTree.SuggestBlockAsync(block!);
-            SemaphoreSlim bestBlockProcessed = new(0);
-            chain.BlockTree.NewHeadBlock += (s, e) =>
-            {
-                if (e.Block.Hash == block!.Hash)
-                    bestBlockProcessed.Release(1);
-            };
-            await chain.BlockTree.SuggestBlockAsync(block!);
-
-            await bestBlockProcessed.WaitAsync();
-            ExecutionPayloadV1 blockRequest = new(block);
-            ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(blockRequest);
-            executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
-        }
+        // [TestCase(true)]
+        // [TestCase(false)]
+        // public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor)
+        // {
+        //     using MergeTestBlockchain chain = await CreateBaseBlockChain()
+        //         .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
+        //         .Build(new SingleReleaseSpecProvider(London.Instance, 1));
+        //
+        //     IEngineRpcModule rpc = CreateEngineModule(chain);
+        //     Block block = Build.A.Block.WithNumber(1).WithParent(chain.BlockTree.Head!).WithDifficulty(0).WithNonce(0)
+        //         .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+        //         .TestObject;
+        //     block.Header.IsPostMerge = true;
+        //     block.Header.Hash = block.CalculateHash();
+        //     await chain.BlockTree.SuggestBlockAsync(block!);
+        //     SemaphoreSlim bestBlockProcessed = new(0);
+        //     chain.BlockTree.NewHeadBlock += (s, e) =>
+        //     {
+        //         if (e.Block.Hash == block!.Hash)
+        //             bestBlockProcessed.Release(1);
+        //     };
+        //     await chain.BlockTree.SuggestBlockAsync(block!);
+        //
+        //     await bestBlockProcessed.WaitAsync();
+        //     ExecutionPayloadV1 blockRequest = new(block);
+        //     ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(blockRequest);
+        //     executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+        // }
 
         [Test]
         public async Task forkchoiceUpdatedV1_should_work_with_zero_keccak_for_finalization()
