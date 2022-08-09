@@ -271,7 +271,7 @@ namespace Nethermind.Synchronization
 
         private void BroadcastBlock(Block block, SendBlockMode mode, ISyncPeer? nodeWhoSentTheBlock = null)
         {
-            double CalculateBroadcastRatio(int minPeers, int peerCount) => peerCount == 0 ? 0 : minPeers / (double)peerCount;
+            if (!_gossipPolicy.CanGossipBlocks) return;
 
             Task broadcastTask = mode == SendBlockMode.HashOnly
                 ? Task.Run(() =>
@@ -283,6 +283,8 @@ namespace Nethermind.Synchronization
                 })
                 : Task.Run(() =>
                 {
+                    double CalculateBroadcastRatio(int minPeers, int peerCount) => peerCount == 0 ? 0 : minPeers / (double)peerCount;
+
                     int peerCount = _pool.PeerCount - (nodeWhoSentTheBlock is null ? 0 : 1);
                     int minPeers = (int)Math.Ceiling(Math.Sqrt(peerCount));
                     double broadcastRatio = CalculateBroadcastRatio(minPeers, peerCount);
