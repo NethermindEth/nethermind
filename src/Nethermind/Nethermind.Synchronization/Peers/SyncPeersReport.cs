@@ -64,6 +64,11 @@ namespace Nethermind.Synchronization.Peers
                 RememberState(out bool _);
                 _stringBuilder.AppendLine($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
                 AddPeerHeader();
+                foreach (PeerInfo peerInfo in OrderedPeers)
+                {
+                    _stringBuilder.AppendLine();
+                    AddPeerInfo(peerInfo);
+                }
 
                 _logger.Info(_stringBuilder.ToString());
                 _stringBuilder.Clear();
@@ -86,7 +91,7 @@ namespace Nethermind.Synchronization.Peers
                 }
                 
                 _stringBuilder.AppendLine($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
-                AddPeerHeader()
+                AddPeerHeader();
                 foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))
                 {
                     _stringBuilder.AppendLine();
@@ -118,11 +123,6 @@ namespace Nethermind.Synchronization.Peers
                                 .Append("[ Peer Info                                               ]")
                                 .Append("[ Transfer Speeds                   ]")
                                 .Append("[ Client Info                                             ]");
-            foreach (PeerInfo peerInfo in OrderedPeers)
-            {
-                _stringBuilder.AppendLine();
-                AddPeerInfo(peerInfo);
-            }
         }
 
         private void RememberState(out bool initializedCountChanged)
