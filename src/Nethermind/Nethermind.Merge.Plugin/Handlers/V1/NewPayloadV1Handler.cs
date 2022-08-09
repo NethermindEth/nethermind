@@ -199,22 +199,22 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             // Try to execute block
             (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader);
 
-            if ((result & ValidationResult.AlreadyKnown) == ValidationResult.AlreadyKnown || result == ValidationResult.Invalid)
+            if (result == ValidationResult.Invalid)
             {
-                bool isValid = (result & ValidationResult.Valid) == ValidationResult.Valid;
-                if (_logger.IsInfo)
+                _invalidChainTracker.OnInvalidBlock(blockHash, request.ParentHash);
+                return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
+            }
+
+            if (result == ValidationResult.AlreadyKnown) // this could happen only when we processed a parent, repeated the same block and we're processing this block via sync
+            {
+                if (_blockTree.IsMainChain(block.GetOrCalculateHash())) // if the block is on main chain it means that we've already finished processing it so we can return VALID
                 {
-                    string resultStr = isValid ? "Valid" : "Invalid";
-                    if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}.");
+                    if (_logger.IsInfo) _logger.Info($"Valid - already known processed block {requestStr}");
+                    return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = request.BlockHash });
                 }
 
-                if (result == ValidationResult.Invalid)
-                {
-                    _invalidChainTracker.OnInvalidBlock(blockHash, request.ParentHash);
-                    return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
-                }
-
-                return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = request.BlockHash });
+                if (_logger.IsInfo) _logger.Info($"Syncing - already known not processed block {requestStr}.");
+                return NewPayloadV1Result.Syncing;
             }
 
             if (result == ValidationResult.Syncing)
