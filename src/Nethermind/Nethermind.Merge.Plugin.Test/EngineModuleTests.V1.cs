@@ -600,7 +600,7 @@ namespace Nethermind.Merge.Plugin.Test
             block.Header.Hash = block.CalculateHash();
             await chain.BlockTree.SuggestBlockAsync(block!);
             SemaphoreSlim bestBlockProcessed = new(0);
-            chain.BlockProcessor.BlockProcessed += (s, e) =>
+            chain.BlockTree.NewHeadBlock += (s, e) =>
             {
                 if (e.Block.Hash == block!.Hash)
                     bestBlockProcessed.Release(1);
