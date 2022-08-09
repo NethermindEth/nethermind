@@ -118,8 +118,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     _logger.Trace(
                         $"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
-                // Note: This is slow
-                headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber, blocksRequest.NumberOfLatestBlocksToBeIgnored ?? 0);
+                // Note: blocksRequest.NumberOfLatestBlocksToBeIgnored not accounted for
+                headers = _chainLevelHelper.GetNextHeaders(headersToRequest, bestPeer.HeadNumber);
                 if (headers == null || headers.Length == 0)
                 {
                     if (_logger.IsTrace)

@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin.Synchronization;
 
 public interface IChainLevelHelper
 {
-    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int blocksToSkip = 0);
+    BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber);
 
     bool TrySetNextBlocks(int maxCount, BlockDownloadContext context);
 }
@@ -53,7 +53,7 @@ public class ChainLevelHelper : IChainLevelHelper
         _logger = logManager.GetClassLogger();
     }
 
-    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber, int blocksToSkip)
+    public BlockHeader[]? GetNextHeaders(int maxCount, long maxHeaderNumber)
     {
         long? startingPoint = GetStartingPoint();
         if (startingPoint == null)
@@ -67,9 +67,7 @@ public class ChainLevelHelper : IChainLevelHelper
         int i = 0;
 
         // blocksToSkip is used for FastSync boundary.
-        long upperLimit = (_blockCacheService.ProcessDestination?.Number ?? _blockTree.BestSuggestedBeaconHeader?.Number ?? 0) - blocksToSkip;
-        if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextHeaders - upper limit {upperLimit}");
-        while (i < maxCount && startingPoint <= upperLimit)
+        while (i < maxCount)
         {
             ChainLevelInfo? level = _blockTree.FindLevel(startingPoint!.Value);
             BlockInfo? beaconMainChainBlock = level?.BeaconMainChainBlock;
