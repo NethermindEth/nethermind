@@ -209,7 +209,7 @@ namespace Nethermind.Synchronization
                     ? new Block(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } }
                     : block;
 
-                BroadcastBlock(blockToBroadCast, SendBlockMode.FullBlock, nodeWhoSentTheBlock);
+                BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
             }
         }
 
@@ -276,19 +276,11 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private void BroadcastBlock(Block block, SendBlockMode mode, ISyncPeer? nodeWhoSentTheBlock = null)
+        private void BroadcastBlock(Block block, bool allowHashes, ISyncPeer? nodeWhoSentTheBlock = null)
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
-            Task broadcastTask = mode == SendBlockMode.HashOnly
-                ? Task.Run(() =>
-                {
-                    foreach (PeerInfo peerInfo in _pool.AllPeers)
-                    {
-                        NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, mode);
-                    }
-                })
-                : Task.Run(() =>
+            Task.Run(() =>
                 {
                     double CalculateBroadcastRatio(int minPeers, int peerCount) => peerCount == 0 ? 0 : minPeers / (double)peerCount;
 
@@ -302,9 +294,13 @@ namespace Nethermind.Synchronization
                         {
                             if (_broadcastRandomizer.NextDouble() < broadcastRatio)
                             {
-                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, mode);
+                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockMode.FullBlock);
                                 counter++;
                                 minPeers--;
+                            }
+                            else if (allowHashes)
+                            {
+                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockMode.HashOnly);
                             }
 
                             peerCount--;
@@ -313,9 +309,8 @@ namespace Nethermind.Synchronization
                     }
 
                     if (counter > 0 && _logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
-                });
-
-            broadcastTask.ContinueWith(t => t.Exception?.Handle(ex =>
+                }
+            ).ContinueWith(t => t.Exception?.Handle(ex =>
                 {
                     if (_logger.IsError) _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
                     return true;
@@ -451,7 +446,7 @@ namespace Nethermind.Synchronization
             Block block = blockEventArgs.Block;
             if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
             {
-                BroadcastBlock(block, SendBlockMode.HashOnly);
+                BroadcastBlock(block, true);
             }
         }
 
