@@ -145,7 +145,9 @@ namespace Nethermind.Synchronization
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
             if (block.Difficulty == 0) return; // don't gossip post merge blocks
-            if (block.TotalDifficulty == null)
+
+            UInt256? totalDifficulty = block.TotalDifficulty;
+            if (totalDifficulty == null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
             }
@@ -178,7 +180,7 @@ namespace Nethermind.Synchronization
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
-            bool isBlockTotalDifficultyLow = _specProvider.TerminalTotalDifficulty == null || block.TotalDifficulty < _specProvider.TerminalTotalDifficulty; // terminal blocks with lower TTD might be useful for smooth merge transition
+            bool isBlockTotalDifficultyLow = _specProvider.TerminalTotalDifficulty == null || totalDifficulty < _specProvider.TerminalTotalDifficulty; // terminal blocks with lower TTD might be useful for smooth merge transition
 
             if (isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows)
             {
@@ -187,9 +189,9 @@ namespace Nethermind.Synchronization
 
             if (_recentlySuggested.Set(block.Hash))
             {
-                if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
+                if (_specProvider.TerminalTotalDifficulty != null && totalDifficulty >= _specProvider.TerminalTotalDifficulty)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
+                    if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {totalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
                 }
 
                 ValidateSeal(block, nodeWhoSentTheBlock);
@@ -202,7 +204,12 @@ namespace Nethermind.Synchronization
                     SyncBlock(block, nodeWhoSentTheBlock);
                 }
 
-                BroadcastBlock(block, SendBlockMode.FullBlock, nodeWhoSentTheBlock);
+                // we might null total difficulty for a block in a block tree as we don't trust the message
+                Block blockToBroadCast = block.TotalDifficulty is null
+                    ? new Block(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } }
+                    : block;
+
+                BroadcastBlock(blockToBroadCast, SendBlockMode.FullBlock, nodeWhoSentTheBlock);
             }
         }
 
