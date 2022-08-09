@@ -66,7 +66,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             _blockImprovementContextFactory = blockImprovementContextFactory;
             _sealer = sealer;
             TimeSpan timeout = timePerSlot;
-            _cleanupOldPayloadDelay = 4 * timePerSlot; // 2 * slots time
+            _cleanupOldPayloadDelay = 2 * timePerSlot; // 2 * slots time
             ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
             timer.Elapsed += CleanupOldPayloads;
             timer.Start();
