@@ -468,7 +468,7 @@ namespace Nethermind.Synchronization.Test
             await Task.Delay(100); // notifications fire on separate task
             await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
             remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
-            remoteServer2.Received().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
+            remoteServer2.Received().AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash) , Arg.Any<ISyncPeer>());
         }
 
         [Test]
@@ -480,7 +480,7 @@ namespace Nethermind.Synchronization.Test
             ISyncServer remoteServer = Substitute.For<ISyncServer>();
             int count = 0;
             remoteServer
-                .When(r => r.AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>()))
+                .When(r => r.AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
                 .Do(_ => count++);
             PeerInfo[] peers = Enumerable.Range(0, peerCount).Take(peerCount)
                 .Select(k => new PeerInfo(new SyncPeerMock(remoteBlockTree, remoteSyncServer: remoteServer)))

@@ -146,8 +146,7 @@ namespace Nethermind.Synchronization
             if (!_gossipPolicy.CanGossipBlocks) return;
             if (block.Difficulty == 0) return; // don't gossip post merge blocks
 
-            UInt256? totalDifficulty = block.TotalDifficulty;
-            if (totalDifficulty == null)
+            if (block.TotalDifficulty == null)
             {
                 throw new InvalidDataException("Cannot add a block with unknown total difficulty");
             }
@@ -156,6 +155,8 @@ namespace Nethermind.Synchronization
             {
                 throw new InvalidDataException("Cannot add a block with unknown hash");
             }
+
+            UInt256 totalDifficulty = block.TotalDifficulty.Value;
 
             // Now, there are some complexities here.
             // We can have a scenario when a node sends us a block whose parent we do not know.
@@ -180,18 +181,17 @@ namespace Nethermind.Synchronization
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
-            bool isBlockTotalDifficultyLow = _specProvider.TerminalTotalDifficulty == null || totalDifficulty < _specProvider.TerminalTotalDifficulty; // terminal blocks with lower TTD might be useful for smooth merge transition
 
-            if (isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows)
+            if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
             {
                 return;
             }
 
             if (_recentlySuggested.Set(block.Hash))
             {
-                if (_specProvider.TerminalTotalDifficulty != null && totalDifficulty >= _specProvider.TerminalTotalDifficulty)
+                if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {totalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
+                    if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
                 }
 
                 ValidateSeal(block, nodeWhoSentTheBlock);
