@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -142,12 +142,10 @@ namespace Nethermind.Merge.Plugin
 
                 EnsureEngineModuleIsConfigured();
 
-                if (!jsonRpcConfig.EnabledModules.Contains("engine"))
-                {
-                    // Disable it
-                    jsonRpcConfig.EnabledModules = new string[] { };
-                }
+                // Disable all modules on main RPC
+                jsonRpcConfig.EnabledModules = new string[] { };
 
+                // Disable all other AdditionalRpcUrls except EngineAPI
                 jsonRpcConfig.AdditionalRpcUrls = jsonRpcConfig.AdditionalRpcUrls
                     .Where((url) => JsonRpcUrl.Parse(url).EnabledModules.Contains("engine"))
                     .ToArray();
