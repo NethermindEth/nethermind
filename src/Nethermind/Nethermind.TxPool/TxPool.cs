@@ -531,7 +531,7 @@ namespace Nethermind.TxPool
                 {
                     // if we don't have any gaps we can easily calculate the nonce
                     Transaction lastTransaction = transactions.Max!;
-                    if (maxPendingNonce + (UInt256)transactions.Count == lastTransaction.Nonce)
+                    if (maxPendingNonce + (UInt256)transactions.Count - 1 == lastTransaction.Nonce)
                     {
                         maxPendingNonce = lastTransaction.Nonce + 1;
                     }
