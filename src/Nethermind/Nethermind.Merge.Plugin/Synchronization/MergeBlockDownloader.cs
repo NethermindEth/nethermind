@@ -191,15 +191,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         throw new EthSyncException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
 
-                    if (downloadReceipts)
-                    {
-                        TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
-                        if (currentBlock.Header.HasBody && contextReceiptsForBlock == null)
-                        {
-                            throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
-                        }
-                    }
-
                     if (shouldProcess)
                     {
                         // covering edge case during fastSyncTransition when we're trying to SuggestBlock without the state
@@ -209,9 +200,21 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         if (isFastSyncTransition)
                         {
                             long bestFullState = _syncProgressResolver.FindBestFullState();
-                            shouldProcess = currentBlock.Number >= bestFullState && bestFullState!=0;
+                            shouldProcess = currentBlock.Number > bestFullState && bestFullState!=0;
                             if (!shouldProcess)
+                            {
                                 if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}");
+                                downloadReceipts = true;
+                            }
+                        }
+                    }
+
+                    if (downloadReceipts)
+                    {
+                        TxReceipt[]? contextReceiptsForBlock = receipts![blockIndex];
+                        if (currentBlock.Header.HasBody && contextReceiptsForBlock == null)
+                        {
+                            throw new EthSyncException($"{bestPeer} didn't send receipts for block {currentBlock.ToString(Block.Format.Short)}.");
                         }
                     }
 
