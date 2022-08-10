@@ -131,7 +131,7 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Port for Execution Engine calls. Ensure the firewall is configured when enabling JSON RPC.",
-            DefaultValue = "null")]
+            DefaultValue = "\"127.0.0.1\"")]
         int? EnginePort { get; set; }
 
         [ConfigItem(
