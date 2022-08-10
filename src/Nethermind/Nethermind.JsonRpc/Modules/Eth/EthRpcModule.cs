@@ -210,33 +210,33 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
     }
 
-    public Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
+    public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
     {
 
         if (blockParameter == BlockParameter.Pending)
         {
             UInt256 pendingNonce = _txPoolBridge.GetLatestPendingNonce(address);
-            return Task.FromResult(ResultWrapper<UInt256?>.Success(pendingNonce));
+            return Task.FromResult(ResultWrapper<UInt256>.Success(pendingNonce));
 
         }
 
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return Task.FromResult(ResultWrapper<UInt256?>.Fail(searchResult));
+            return Task.FromResult(ResultWrapper<UInt256>.Fail(searchResult));
         }
 
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header))
         {
-            return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
+            return Task.FromResult(ResultWrapper<UInt256>.Fail($"No state available for block {header.Hash}",
                 ErrorCodes.ResourceUnavailable));
         }
 
         Account account = _stateReader.GetAccount(header.StateRoot, address);
         UInt256 nonce = account?.Nonce ?? 0;
 
-        return Task.FromResult(ResultWrapper<UInt256?>.Success(nonce));
+        return Task.FromResult(ResultWrapper<UInt256>.Success(nonce));
     }
 
     public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
