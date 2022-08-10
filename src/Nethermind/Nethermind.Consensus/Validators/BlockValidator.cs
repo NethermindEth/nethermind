@@ -64,18 +64,6 @@ namespace Nethermind.Consensus.Validators
         /// <returns><value>True</value> if the <paramref name="block"/> is valid, otherwise <value>False</value></returns>
         public bool ValidateSuggestedBlock(Block block)
         {
-            bool blockHeaderValid = _headerValidator.Validate(block.Header);
-            if (!blockHeaderValid)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid header");
-                return false;
-            }
-
-            return ValidateSuggestedBody(block);
-        }
-
-        public bool ValidateSuggestedBody(Block block)
-        {
             Transaction[] txs = block.Transactions;
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
 
@@ -103,6 +91,13 @@ namespace Nethermind.Consensus.Validators
             if (!_unclesValidator.Validate(block.Header, block.Uncles))
             {
                 _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles");
+                return false;
+            }
+
+            bool blockHeaderValid = _headerValidator.Validate(block.Header);
+            if (!blockHeaderValid)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid header");
                 return false;
             }
 

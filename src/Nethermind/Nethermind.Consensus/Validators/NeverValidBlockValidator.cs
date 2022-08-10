@@ -40,11 +40,6 @@ namespace Nethermind.Consensus.Validators
             return false;
         }
 
-        public bool ValidateSuggestedBody(Block block)
-        {
-            return false;
-        }
-
         public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
         {
             return false;

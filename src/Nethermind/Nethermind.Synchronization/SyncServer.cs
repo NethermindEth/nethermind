@@ -197,12 +197,11 @@ namespace Nethermind.Synchronization
                     ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                 }
 
-                Block blockToBroadCast = block;
                 bool isKnownParent = block.ParentHash is not null && _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
                 if (isKnownParent)
                 {
                     // we null total difficulty for a block in a block tree as we don't trust the message
-                    blockToBroadCast = new Block(block.Header.Clone(), block.Body);
+                    UInt256? totalDifficulty = block.TotalDifficulty;
 
                     // we do not trust total difficulty from peers
                     // Parity sends invalid data here and it is equally expensive to validate and to set from null
@@ -211,6 +210,9 @@ namespace Nethermind.Synchronization
                     {
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }
+
+                    Block blockToBroadCast = new(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } };
+                    BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
 
                     SyncMode syncMode = _syncModeSelector.Current;
                     bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
@@ -223,16 +225,9 @@ namespace Nethermind.Synchronization
                 }
                 else
                 {
-                    if (!_blockValidator.ValidateSuggestedBody(block))
-                    {
-                        ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
-                    }
-
                     LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
                     if (_logger.IsDebug) _logger.Debug($"Peer {nodeWhoSentTheBlock} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
                 }
-
-                BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
             }
         }
 

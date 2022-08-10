@@ -57,11 +57,6 @@ namespace Nethermind.Blockchain.Test.Validators
             return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
         }
 
-        public bool ValidateSuggestedBody(Block block)
-        {
-            return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
-        }
-
         public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
         {
             return _alwaysSameResultForProcessed ?? _processedValidationResults.Dequeue();

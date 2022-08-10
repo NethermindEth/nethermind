@@ -62,11 +62,6 @@ namespace Nethermind.Consensus.Validators
             return _result;
         }
 
-        public bool ValidateSuggestedBody(Block block)
-        {
-            return _result;
-        }
-
         public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
         {
             return _result;

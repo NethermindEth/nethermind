@@ -21,7 +21,6 @@ namespace Nethermind.Consensus.Validators
     public interface IBlockValidator : IHeaderValidator
     {
         bool ValidateSuggestedBlock(Block block);
-        bool ValidateSuggestedBody(Block block);
         bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock);
     }
 }

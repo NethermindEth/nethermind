@@ -462,11 +462,6 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool ValidateSuggestedBody(Block block)
-            {
-                throw new NotImplementedException();
-            }
-
             public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
             {
                 Thread.Sleep(1000);
