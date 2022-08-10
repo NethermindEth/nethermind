@@ -120,9 +120,12 @@ namespace Nethermind.Synchronization.Peers
         private void AddPeerHeader()
         {
             _stringBuilder.Append("===")
-                                .Append("[ Peer Info                                               ]")
-                                .Append("[ Transfer Speeds                   ]")
-                                .Append("[ Client Info                                             ]");
+                                .Append("[Allocated][Sleeping][Peer Info                           ]")
+                                .Append("[Transfer Speeds (L/H/B/R/N/S)      ]")
+                                .Append("[Client Info (Name/Version/OS/Language)                   ]")
+                                .AppendLine();
+            _stringBuilder.Append("----------------------------------------------------------------------" +
+                "----------------------------------------------------------------------------------------");
         }
 
         private void RememberState(out bool initializedCountChanged)
