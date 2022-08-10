@@ -215,11 +215,8 @@ public partial class EthRpcModule : IEthRpcModule
 
         if (blockParameter == BlockParameter.Pending)
         {
-            UInt256? pendingNonce = _txPoolBridge.GetLatestPendingNonce(address);
-            if (pendingNonce != null)
-            {
-                return Task.FromResult(ResultWrapper<UInt256?>.Success(pendingNonce));
-            }
+            UInt256 pendingNonce = _txPoolBridge.GetLatestPendingNonce(address);
+            return Task.FromResult(ResultWrapper<UInt256?>.Success(pendingNonce));
 
         }
 

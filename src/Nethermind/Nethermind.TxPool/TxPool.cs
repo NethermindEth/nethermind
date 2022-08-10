@@ -519,7 +519,7 @@ namespace Nethermind.TxPool
             return currentNonce;
         }
 
-        public UInt256? GetLatestPendingNonce(Address address)
+        public UInt256 GetLatestPendingNonce(Address address)
         {
             UInt256 maxPendingNonce = _accounts.GetAccount(address).Nonce;
 

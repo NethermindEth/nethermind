@@ -279,10 +279,14 @@ namespace Nethermind.TxPool.Test
         public void get_next_pending_nonce()
         {
             _txPool = CreatePool();
+
+            // LatestPendingNonce=0, when account does not exist
+            UInt256? latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+
             _stateProvider.CreateAccount(TestItem.AddressA, 10.Ether());
 
             // LatestPendingNonce=0, for a new account
-            UInt256? latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
             Assert.AreEqual(latestNonce, (UInt256)0);
 
             // LatestPendingNonce=1, when the current nonce of the account=1 and no pending transactions

@@ -39,7 +39,7 @@ namespace Nethermind.TxPool
         bool IsKnown(Keccak? hash);
         bool TryGetPendingTransaction(Keccak hash, out Transaction? transaction);
         UInt256 ReserveOwnTransactionNonce(Address address); // TODO: this should be moved to a signer component, outside of TX pool
-        UInt256? GetLatestPendingNonce(Address address);
+        UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
