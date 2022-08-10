@@ -330,7 +330,7 @@ namespace Nethermind.TxPool
         }
 
         private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucketWithAddedTransaction(
-            Address address, ICollection<Transaction> transactions)
+            Address address, IReadOnlyCollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -346,7 +346,7 @@ namespace Nethermind.TxPool
         }
 
         private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateGasBottleneck(
-            ICollection<Transaction> transactions, long currentNonce, UInt256 balance)
+            IReadOnlyCollection<Transaction> transactions, long currentNonce, UInt256 balance)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
@@ -403,7 +403,7 @@ namespace Nethermind.TxPool
             }
         }
 
-        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucket(Address address, ICollection<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, Action<Transaction>? Change)> UpdateBucket(Address address, IReadOnlyCollection<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -521,27 +521,41 @@ namespace Nethermind.TxPool
 
         public UInt256? GetLatestPendingNonce(Address address)
         {
-            Transaction[]? addressTransactions = _transactions.GetBucketSnapshot(address);
-            UInt256? maxPendingNonce = null;
+            UInt256 maxPendingNonce = _accounts.GetAccount(address).Nonce;
 
-            // This is under the assumption that the addressTransactions are sorted by Nonce.
-            foreach (Transaction? transaction in addressTransactions)
+            // we are not doing any updating, but lets just use a thread-safe method without any data copying like snapshot
+            _transactions.UpdateGroup(address, (_, transactions) =>
             {
-                if (maxPendingNonce == null)
+                // This is under the assumption that the addressTransactions are sorted by Nonce.
+                if (transactions.Count > 0)
                 {
-                    maxPendingNonce = transaction.Nonce;
-                    continue;
+                    // if we don't have any gaps we can easily calculate the nonce
+                    Transaction lastTransaction = transactions.Max!;
+                    if (maxPendingNonce + (UInt256)transactions.Count == lastTransaction.Nonce)
+                    {
+                        maxPendingNonce = lastTransaction.Nonce + 1;
+                    }
+
+                    // we have a gap, need to scan the transactions
+                    else
+                    {
+                        foreach (Transaction transaction in transactions)
+                        {
+                            if (transaction.Nonce == maxPendingNonce)
+                            {
+                                maxPendingNonce++;
+                            }
+                            else
+                            {
+                                break;
+                            }
+                        }
+                    }
                 }
 
-                if (transaction.Nonce == maxPendingNonce + 1)
-                {
-                    maxPendingNonce = transaction.Nonce;
-                }
-                else
-                {
-                    break;
-                }
-            }
+                // we won't do any actual changes
+                return Array.Empty<(Transaction Tx, Action<Transaction>? Change)>();
+            });
 
             return maxPendingNonce;
         }
