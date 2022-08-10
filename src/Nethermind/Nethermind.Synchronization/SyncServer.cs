@@ -156,8 +156,6 @@ namespace Nethermind.Synchronization
                 throw new InvalidDataException("Cannot add a block with unknown hash");
             }
 
-            UInt256 totalDifficulty = block.TotalDifficulty.Value;
-
             // Now, there are some complexities here.
             // We can have a scenario when a node sends us a block whose parent we do not know.
             // In such cases we cannot verify the total difficulty of the block
@@ -194,26 +192,59 @@ namespace Nethermind.Synchronization
                     if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
                 }
 
-                ValidateSeal(block, nodeWhoSentTheBlock);
-                SyncMode syncMode = _syncModeSelector.Current;
-                bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
-                bool inFullSyncOrWaitingForBlocks = (syncMode & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
-                if (notInFastSyncNorStateSync || inFullSyncOrWaitingForBlocks)
+                if (!ValidateSeal(block, nodeWhoSentTheBlock))
                 {
-                    LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
-                    SyncBlock(block, nodeWhoSentTheBlock);
+                    ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                 }
 
-                // we might null total difficulty for a block in a block tree as we don't trust the message
-                Block blockToBroadCast = block.TotalDifficulty is null
-                    ? new Block(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } }
-                    : block;
+                Block blockToBroadCast = block;
+                bool isKnownParent = block.ParentHash is not null && _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
+                if (isKnownParent)
+                {
+                    // we null total difficulty for a block in a block tree as we don't trust the message
+                    blockToBroadCast = new Block(block.Header.Clone(), block.Body);
+
+                    // we do not trust total difficulty from peers
+                    // Parity sends invalid data here and it is equally expensive to validate and to set from null
+                    block.Header.TotalDifficulty = null;
+                    if (!_blockValidator.ValidateSuggestedBlock(block))
+                    {
+                        ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
+                    }
+
+                    SyncMode syncMode = _syncModeSelector.Current;
+                    bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
+                    bool inFullSyncOrWaitingForBlocks = (syncMode & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
+                    if (notInFastSyncNorStateSync || inFullSyncOrWaitingForBlocks)
+                    {
+                        LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
+                        SyncBlock(block, nodeWhoSentTheBlock);
+                    }
+                }
+                else
+                {
+                    if (!_blockValidator.ValidateSuggestedBody(block))
+                    {
+                        ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
+                    }
+
+                    LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
+                    if (_logger.IsDebug) _logger.Debug($"Peer {nodeWhoSentTheBlock} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
+                }
 
                 BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
             }
         }
 
-        private void ValidateSeal(Block block, ISyncPeer syncPeer)
+        private void ThrowOnInvalidBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
+        {
+            string message = $"Peer {nodeWhoSentTheBlock.Node:c} sent an invalid block.";
+            if (_logger.IsDebug) _logger.Debug(message);
+            _recentlySuggested.Delete(block.Hash!);
+            throw new EthSyncException(message);
+        }
+
+        private bool ValidateSeal(Block block, ISyncPeer syncPeer)
         {
             if (_logger.IsTrace) _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {syncPeer:c}");
 
@@ -222,12 +253,7 @@ namespace Nethermind.Synchronization
             // in the range of [Head - MaxReorganizationLength, Head].
             // Otherwise we could hint incorrect ranges and cause expensive cache recalculations.
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
-            if (!_sealValidator.ValidateSeal(block.Header, true))
-            {
-                string message = $"Peer {syncPeer?.Node:c} sent a block with an invalid seal";
-                if (_logger.IsDebug) _logger.Debug($"Peer {syncPeer?.Node:c} sent a block with an invalid seal");
-                throw new EthSyncException(message);
-            }
+            return _sealValidator.ValidateSeal(block.Header, true);
         }
 
         private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
@@ -243,37 +269,15 @@ namespace Nethermind.Synchronization
 
         private void SyncBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
-            if (_logger.IsTrace) _logger.Trace($"{block}");
-
-            // we do not trust total difficulty from peers
-            // Parity sends invalid data here and it is equally expensive to validate and to set from null
-            block.Header.TotalDifficulty = null;
-
-            bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
-            if (isKnownParent)
+            bool shouldSkipProcessing = _blockTree.Head.IsPoS() || block.IsPostMerge;
+            if (shouldSkipProcessing)
             {
-                if (!_blockValidator.ValidateSuggestedBlock(block))
-                {
-                    string message = $"Peer {nodeWhoSentTheBlock?.Node:c} sent an invalid block.";
-                    if (_logger.IsDebug) _logger.Debug(message);
-                    _recentlySuggested.Delete(block.Hash!);
-                    throw new EthSyncException(message);
-                }
-
-                bool shouldSkipProcessing = _blockTree.Head.IsPoS() || block.IsPostMerge;
-                if (shouldSkipProcessing)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Skipped processing of discovered block {block}, block.IsPostMerge: {block.IsPostMerge}, current head: {_blockTree.Head}");
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {nodeWhoSentTheBlock} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
-                AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.None : BlockTreeSuggestOptions.ShouldProcess);
-                if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
+                if (_logger.IsInfo) _logger.Info($"Skipped processing of discovered block {block}, block.IsPostMerge: {block.IsPostMerge}, current head: {_blockTree.Head}");
             }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug($"Peer {nodeWhoSentTheBlock} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
-            }
+
+            if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {nodeWhoSentTheBlock} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
+            AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.None : BlockTreeSuggestOptions.ShouldProcess);
+            if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
         }
 
         private void BroadcastBlock(Block block, bool allowHashes, ISyncPeer? nodeWhoSentTheBlock = null)

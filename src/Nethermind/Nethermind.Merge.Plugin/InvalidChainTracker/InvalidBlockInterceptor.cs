@@ -74,6 +74,19 @@ public class InvalidBlockInterceptor: IBlockValidator
         return result;
     }
 
+    public bool ValidateSuggestedBody(Block block)
+    {
+        _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
+        bool result = _baseValidator.ValidateSuggestedBody(block);
+        if (!result)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
+            _invalidChainTracker.OnInvalidBlock(block.Hash!, block.ParentHash);
+        }
+
+        return result;
+    }
+
     public bool ValidateProcessedBlock(Block block, TxReceipt[] receipts, Block suggestedBlock)
     {
         _invalidChainTracker.SetChildParent(suggestedBlock.Hash!, suggestedBlock.ParentHash!);
