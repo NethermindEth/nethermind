@@ -96,7 +96,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 // BeaconHeaderSync actually starts from the parent of the pivot. So we need to to manually insert
                 // the pivot itself here.
                 _blockTree.Insert(blockHeader,
-                    BlockTreeInsertOptions.BeaconHeaderInsert | BlockTreeInsertOptions.TotalDifficultyNotNeeded);
+                    BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
                 CurrentBeaconPivot = blockHeader;
                 _blockTree.LowestInsertedBeaconHeader = blockHeader;
                 if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader}");

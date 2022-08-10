@@ -175,7 +175,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 if (_beaconPivot.ProcessDestination != null && _beaconPivot.ProcessDestination.Hash == block.ParentHash)
                 {
-                    insertOptions |= BlockTreeInsertHeaderOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
+                    insertHeaderOptions |= BlockTreeInsertHeaderOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
                     _beaconPivot.ProcessDestination = block.Header;
                 }
 
