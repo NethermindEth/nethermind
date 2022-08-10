@@ -55,16 +55,14 @@ namespace Nethermind.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly IReadOnlyKeyValueStore _stateDb;
         private readonly IReadOnlyKeyValueStore _codeDb;
-        private readonly ISyncConfig _syncConfig;
         private readonly IWitnessRepository _witnessRepository;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
         private readonly CanonicalHashTrie? _cht;
-        private readonly object _dummyValue = new();
-        private bool gossipStopped = false;
+        private bool _gossipStopped = false;
+        private readonly Random _broadcastRandomizer = new();
 
-        private readonly ICache<Keccak, object> _recentlySuggested =
-            new LruCache<Keccak, object>(128, 128, "recently suggested blocks");
+        private readonly LruKeyCache<Keccak> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
         private readonly Keccak _pivotHash;
@@ -86,7 +84,7 @@ namespace Nethermind.Synchronization
             ILogManager logManager,
             CanonicalHashTrie? cht = null)
         {
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _witnessRepository = witnessRepository ?? throw new ArgumentNullException(nameof(witnessRepository));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -100,8 +98,8 @@ namespace Nethermind.Synchronization
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cht = cht;
-            _pivotNumber = _syncConfig.PivotNumberParsed;
-            _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
+            _pivotNumber = config.PivotNumberParsed;
+            _pivotHash = new Keccak(config.PivotHash ?? Keccak.Zero.ToString());
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _pool.NotifyPeerBlock += OnNotifyPeerBlock;
@@ -181,100 +179,142 @@ namespace Nethermind.Synchronization
 
             bool isBlockBeforeTheSyncPivot = block.Number < _pivotNumber;
             bool isBlockOlderThanMaxReorgAllows = block.Number < (_blockTree.Head?.Number ?? 0) - Sync.MaxReorgLength;
-            bool isBlockTotalDifficultyLow = block.TotalDifficulty < _blockTree.BestSuggestedHeader.TotalDifficulty
-                                             && (_specProvider.TerminalTotalDifficulty == null || block.TotalDifficulty < _specProvider.TerminalTotalDifficulty); // terminal blocks with lower TTD might be useful for smooth merge transition
-            if (isBlockBeforeTheSyncPivot || isBlockTotalDifficultyLow || isBlockOlderThanMaxReorgAllows) return;
 
-            lock (_recentlySuggested)
+            if (isBlockBeforeTheSyncPivot || isBlockOlderThanMaxReorgAllows)
             {
-                if (_recentlySuggested.Get(block.Hash) != null) return;
-                _recentlySuggested.Set(block.Hash, _dummyValue);
+                return;
             }
 
-            if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
+            if (_recentlySuggested.Set(block.Hash))
             {
-                if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
-            }
+                if (_specProvider.TerminalTotalDifficulty != null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Peer {nodeWhoSentTheBlock} sent block {block} with total difficulty {block.TotalDifficulty} higher than TTD {_specProvider.TerminalTotalDifficulty}");
+                }
 
-            ValidateSeal(block, nodeWhoSentTheBlock);
-            if ((_syncModeSelector.Current & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None
-                || (_syncModeSelector.Current & SyncMode.Full) != SyncMode.None)
-            {
-                LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
-                SyncBlock(block, nodeWhoSentTheBlock);
+                if (!ValidateSeal(block, nodeWhoSentTheBlock))
+                {
+                    ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
+                }
+
+                bool isKnownParent = block.ParentHash is not null && _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
+                if (isKnownParent)
+                {
+                    // we null total difficulty for a block in a block tree as we don't trust the message
+                    UInt256? totalDifficulty = block.TotalDifficulty;
+
+                    // we do not trust total difficulty from peers
+                    // Parity sends invalid data here and it is equally expensive to validate and to set from null
+                    block.Header.TotalDifficulty = null;
+                    if (!_blockValidator.ValidateSuggestedBlock(block))
+                    {
+                        ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
+                    }
+
+                    Block blockToBroadCast = new(block.Header.Clone(), block.Body) { Header = { TotalDifficulty = totalDifficulty } };
+                    BroadcastBlock(blockToBroadCast, false, nodeWhoSentTheBlock);
+
+                    SyncMode syncMode = _syncModeSelector.Current;
+                    bool notInFastSyncNorStateSync = (syncMode & (SyncMode.FastSync | SyncMode.StateNodes)) == SyncMode.None;
+                    bool inFullSyncOrWaitingForBlocks = (syncMode & (SyncMode.Full | SyncMode.WaitingForBlock)) != SyncMode.None;
+                    if (notInFastSyncNorStateSync || inFullSyncOrWaitingForBlocks)
+                    {
+                        LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
+                        SyncBlock(block, nodeWhoSentTheBlock);
+                    }
+                }
+                else
+                {
+                    LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
+                    if (_logger.IsDebug) _logger.Debug($"Peer {nodeWhoSentTheBlock} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
+                }
             }
         }
 
-        private void ValidateSeal(Block block, ISyncPeer syncPeer)
+        private void ThrowOnInvalidBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
-            if (_logger.IsTrace)
-                _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {syncPeer:c}");
+            string message = $"Peer {nodeWhoSentTheBlock.Node:c} sent an invalid block.";
+            if (_logger.IsDebug) _logger.Debug(message);
+            _recentlySuggested.Delete(block.Hash!);
+            throw new EthSyncException(message);
+        }
+
+        private bool ValidateSeal(Block block, ISyncPeer syncPeer)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Validating seal of {block.ToString(Block.Format.Short)}) from {syncPeer:c}");
 
             // We hint validation range mostly to help ethash to cache epochs.
             // It is important that we only do that here, after we ensured that the block is
             // in the range of [Head - MaxReorganizationLength, Head].
             // Otherwise we could hint incorrect ranges and cause expensive cache recalculations.
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
-            if (!_sealValidator.ValidateSeal(block.Header, true))
-            {
-                string message = $"Peer {syncPeer?.Node:c} sent a block with an invalid seal";
-                if (_logger.IsDebug) _logger.Debug($"Peer {syncPeer?.Node:c} sent a block with an invalid seal");
-                throw new EthSyncException(message);
-            }
+            return _sealValidator.ValidateSeal(block.Header, true);
         }
 
         private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
         {
             if ((block.TotalDifficulty ?? 0) > syncPeer.TotalDifficulty)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
+                if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
                 syncPeer.HeadNumber = block.Number;
                 syncPeer.HeadHash = block.Hash;
                 syncPeer.TotalDifficulty = block.TotalDifficulty ?? syncPeer.TotalDifficulty;
             }
         }
 
-        private void SyncBlock(Block block, ISyncPeer? syncPeer)
+        private void SyncBlock(Block block, ISyncPeer nodeWhoSentTheBlock)
         {
-            if (_logger.IsTrace) _logger.Trace($"{block}");
-
-            // we do not trust total difficulty from peers
-            // Parity sends invalid data here and it is equally expensive to validate and to set from null
-            block.Header.TotalDifficulty = null;
-
-            bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
-            if (isKnownParent)
+            bool shouldSkipProcessing = _blockTree.Head.IsPoS() || block.IsPostMerge;
+            if (shouldSkipProcessing)
             {
-                if (!_blockValidator.ValidateSuggestedBlock(block))
+                if (_logger.IsInfo) _logger.Info($"Skipped processing of discovered block {block}, block.IsPostMerge: {block.IsPostMerge}, current head: {_blockTree.Head}");
+            }
+
+            if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {nodeWhoSentTheBlock} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
+            AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.None : BlockTreeSuggestOptions.ShouldProcess);
+            if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
+        }
+
+        private void BroadcastBlock(Block block, bool allowHashes, ISyncPeer? nodeWhoSentTheBlock = null)
+        {
+            if (!_gossipPolicy.CanGossipBlocks) return;
+
+            Task.Run(() =>
                 {
-                    string message = $"Peer {syncPeer?.Node:c} sent an invalid block.";
-                    if (_logger.IsDebug) _logger.Debug(message);
-                    lock (_recentlySuggested)
+                    double CalculateBroadcastRatio(int minPeers, int peerCount) => peerCount == 0 ? 0 : minPeers / (double)peerCount;
+
+                    int peerCount = _pool.PeerCount - (nodeWhoSentTheBlock is null ? 0 : 1);
+                    int minPeers = (int)Math.Ceiling(Math.Sqrt(peerCount));
+                    double broadcastRatio = CalculateBroadcastRatio(minPeers, peerCount);
+                    int counter = 0;
+                    foreach (PeerInfo peerInfo in _pool.AllPeers)
                     {
-                        _recentlySuggested.Delete(block.Hash!);
+                        if (nodeWhoSentTheBlock != peerInfo.SyncPeer)
+                        {
+                            if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                            {
+                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockMode.FullBlock);
+                                counter++;
+                                minPeers--;
+                            }
+                            else if (allowHashes)
+                            {
+                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockMode.HashOnly);
+                            }
+
+                            peerCount--;
+                            broadcastRatio = CalculateBroadcastRatio(minPeers, peerCount);
+                        }
                     }
 
-                    throw new EthSyncException(message);
+                    if (counter > 0 && _logger.IsDebug) _logger.Debug($"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
                 }
-
-
-
-                bool shouldSkipProcessing = _blockTree.Head.IsPoS() || block.IsPostMerge;
-                if (shouldSkipProcessing)
+            ).ContinueWith(t => t.Exception?.Handle(ex =>
                 {
-                    if (_logger.IsInfo) _logger.Info($"Skipped processing of discovered block {block}, block.IsPostMerge: {block.IsPostMerge}, current head: {_blockTree.Head}");
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"SyncServer SyncPeer {syncPeer} SuggestBlock BestSuggestedBlock {_blockTree.BestSuggestedBody}, BestSuggestedBlock TD {_blockTree.BestSuggestedBody?.TotalDifficulty}, Block TD {block.TotalDifficulty}, Head: {_blockTree.Head}, Head: {_blockTree.Head?.TotalDifficulty}  Block {block.ToString(Block.Format.FullHashAndNumber)}");
-                AddBlockResult result = _blockTree.SuggestBlock(block, shouldSkipProcessing ? BlockTreeSuggestOptions.None : BlockTreeSuggestOptions.ShouldProcess);
-                if (_logger.IsTrace) _logger.Trace($"SyncServer block {block.ToString(Block.Format.FullHashAndNumber)}, SuggestBlock result: {result}.");
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug($"Peer {syncPeer} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
-            }
+                    if (_logger.IsError) _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
+                    return true;
+                }),
+                TaskContinuationOptions.OnlyOnFaulted);
         }
 
         /// <summary>
@@ -336,27 +376,18 @@ namespace Nethermind.Synchronization
 
             if (number > syncPeer.HeadNumber)
             {
-                if (_logger.IsTrace)
-                    _logger.Trace(
-                        $"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
+                if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
                 syncPeer.HeadNumber = number;
                 syncPeer.HeadHash = hash;
 
-                lock (_recentlySuggested)
-                {
-                    if (_recentlySuggested.Get(hash) != null) return;
-
-                    /* do not add as this is a hint only */
-                }
-
-                if (!_blockTree.IsKnownBlock(number, hash))
+                if (!_recentlySuggested.Get(hash) && !_blockTree.IsKnownBlock(number, hash))
                 {
                     _pool.RefreshTotalDifficulty(syncPeer, hash);
                 }
             }
         }
 
-        public TxReceipt[] GetReceipts(Keccak blockHash)
+        public TxReceipt[] GetReceipts(Keccak? blockHash)
         {
             return blockHash != null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
@@ -391,7 +422,66 @@ namespace Nethermind.Synchronization
             return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
         }
 
-        private object _chtLock = new();
+        public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+
+        public Keccak? FindHash(long number)
+        {
+            try
+            {
+                Keccak? hash = _blockTree.FindHash(number);
+                return hash;
+            }
+            catch (Exception)
+            {
+                if (_logger.IsDebug) _logger.Debug("Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
+            }
+
+            return null;
+        }
+
+        [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
+        private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
+        {
+            Block block = blockEventArgs.Block;
+            if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
+            {
+                BroadcastBlock(block, true);
+            }
+        }
+
+        private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockMode mode)
+        {
+            if (!_gossipPolicy.CanGossipBlocks) return;
+
+            try
+            {
+                syncPeer.NotifyOfNewBlock(broadcastedBlock, mode);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo ?? (object)syncPeer}.", e);
+            }
+        }
+
+        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockMode.FullBlock);
+
+
+        public void StopNotifyingPeersAboutNewBlocks()
+        {
+            if (_gossipStopped == false)
+            {
+                _blockTree.NewHeadBlock -= OnNewHeadBlock;
+                _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
+                _gossipStopped = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            StopNotifyingPeersAboutNewBlocks();
+        }
+
+        private readonly object _chtLock = new();
 
         // TODO - Cancellation token?
         // TODO - not a fan of this function name - CatchUpCHT, AddMissingCHTBlocks, ...?
@@ -433,111 +523,6 @@ namespace Nethermind.Synchronization
         public CanonicalHashTrie? GetCHT()
         {
             return _cht;
-        }
-
-        public Block Find(Keccak hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-
-
-        public Keccak? FindHash(long number)
-        {
-            try
-            {
-                Keccak? hash = _blockTree.FindHash(number);
-                return hash;
-            }
-            catch (Exception)
-            {
-                _logger.Debug(
-                    "Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
-            }
-
-            return null;
-        }
-
-
-        private Random _broadcastRandomizer = new();
-
-        [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
-        private void OnNewHeadBlock(object? sender, BlockEventArgs blockEventArgs)
-        {
-            Block block = blockEventArgs.Block;
-            if ((_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) <= block.TotalDifficulty)
-            {
-                Task.Run(() =>
-                {
-                    int peerCount = _pool.PeerCount;
-                    double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
-
-                    int counter = 0;
-                    foreach (PeerInfo peerInfo in _pool.AllPeers)
-                    {
-                        if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
-                        {
-                            if (_broadcastRandomizer.NextDouble() < broadcastRatio)
-                            {
-                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.High);
-                                counter++;
-                            }
-                            else
-                            {
-                                NotifyOfNewBlock(peerInfo, peerInfo.SyncPeer, block, SendBlockPriority.Low);
-                            }
-                        }
-                    }
-
-                    if (counter > 0)
-                    {
-                        if (_logger.IsDebug)
-                            _logger.Debug(
-                                $"Broadcasting block {block.ToString(Block.Format.Short)} to {counter} peers.");
-                    }
-
-                    if ((block.Number - Sync.MaxReorgLength) % CanonicalHashTrie.SectionSize == 0)
-                    {
-                        _ = BuildCHT();
-                    }
-                }).ContinueWith(
-                    t =>
-                        t.Exception?.Handle(ex =>
-                        {
-                            if (_logger.IsError) _logger.Error($"Error while broadcasting block {block.ToString(Block.Format.Short)}.", ex);
-                            return true;
-                        })
-                    , TaskContinuationOptions.OnlyOnFaulted
-                );
-            }
-        }
-
-        private void NotifyOfNewBlock(PeerInfo? peerInfo, ISyncPeer syncPeer, Block broadcastedBlock, SendBlockPriority priority)
-        {
-            if (!_gossipPolicy.CanGossipBlocks) return;
-
-            try
-            {
-                syncPeer.NotifyOfNewBlock(broadcastedBlock, priority);
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"Error while broadcasting block {broadcastedBlock.ToString(Block.Format.Short)} to peer {peerInfo ?? (object)syncPeer}.", e);
-            }
-        }
-
-        private void OnNotifyPeerBlock(object? sender, PeerBlockNotificationEventArgs e) => NotifyOfNewBlock(null, e.SyncPeer, e.Block, SendBlockPriority.High);
-
-
-        public void StopNotifyingPeersAboutNewBlocks()
-        {
-            if (gossipStopped == false)
-            {
-                _blockTree.NewHeadBlock -= OnNewHeadBlock;
-                _pool.NotifyPeerBlock -= OnNotifyPeerBlock;
-                gossipStopped = true;
-            }
-        }
-
-        public void Dispose()
-        {
-            StopNotifyingPeersAboutNewBlocks();
         }
     }
 }

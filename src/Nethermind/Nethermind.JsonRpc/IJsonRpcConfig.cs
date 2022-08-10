@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc
     public interface IJsonRpcConfig : IConfig
     {
         [ConfigItem(
-            Description = "Defines whether the JSON RPC service is enabled on node startup. Configure host nad port if default values do not work for you.",
+            Description = "Defines whether the JSON RPC service is enabled on node startup. Configure host and port if default values do not work for you.",
             DefaultValue = "false")]
         bool Enabled { get; set; }
 
@@ -126,8 +126,8 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Host for Execution Engine calls. Ensure the firewall is configured when enabling JSON RPC. If it does not work with 127.0.0.1 try something like 10.0.0.4 or 192.168.0.1",
-            DefaultValue = "null")]
-        string? EngineHost { get; set; }
+            DefaultValue = "\"127.0.0.1\"")]
+        string EngineHost { get; set; }
 
         [ConfigItem(
             Description = "Port for Execution Engine calls. Ensure the firewall is configured when enabling JSON RPC.",

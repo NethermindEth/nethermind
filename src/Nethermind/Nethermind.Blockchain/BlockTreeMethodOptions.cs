@@ -33,7 +33,7 @@ public enum BlockTreeLookupOptions
 }
 
 [Flags]
-public enum BlockTreeInsertOptions
+public enum BlockTreeInsertHeaderOptions
 {
     None = 0,
     TotalDifficultyNotNeeded = 1,
@@ -44,6 +44,14 @@ public enum BlockTreeInsertOptions
 
     BeaconBlockInsert = TotalDifficultyNotNeeded | BeaconHeaderMetadata | NotOnMainChain | BeaconBodyMetadata,
     BeaconHeaderInsert = BeaconHeaderMetadata | MoveToBeaconMainChain | NotOnMainChain
+}
+
+[Flags]
+public enum BlockTreeInsertBlockOptions
+{
+    None = 0,
+    SaveHeader = 1,
+    SkipCanAcceptNewBlocks = 2  // If we have an invalid block, we're blocking the block tree. However, if we have old bodies/old receipts sync at the same time, we need this option. Otherwise, old bodies sync won't insert block, and we fail old receipts sync later
 }
 
 [Flags]

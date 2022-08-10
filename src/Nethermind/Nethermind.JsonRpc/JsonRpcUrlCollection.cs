@@ -79,9 +79,9 @@ namespace Nethermind.JsonRpc
                 }
             }
 
-            BuildAdditionalUrls(includeWebSockets);
-
             BuildEngineUrls(includeWebSockets);
+
+            BuildAdditionalUrls(includeWebSockets);
         }
 
         private void BuildEngineUrls(bool includeWebSockets)
@@ -128,6 +128,13 @@ namespace Nethermind.JsonRpc
                             if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL '{url}' has web socket endpoint type and web sockets are not enabled; skipping...");
                             continue;
                         }
+                    }
+
+                    if (url.IsModuleEnabled(ModuleType.Engine) && _jsonRpcConfig.EnginePort != null &&
+                        !string.IsNullOrWhiteSpace(_jsonRpcConfig.EngineHost))
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"EngineUrl specified. Additional JSON RPC URL '{url}' has engine module enabled. skipping...");
+                        continue;
                     }
 
                     if (ContainsKey(url.Port))

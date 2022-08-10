@@ -120,7 +120,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(Build.A.BlockHeader.TestObject);
             }
 
-            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+            public void NotifyOfNewBlock(Block block, SendBlockMode mode)
             {
             }
 

@@ -45,7 +45,19 @@ on:
       limit:
         description: 'Limit for hive tests'
         required: false
-        type: string        
+        type: string 
+      loglevel:
+        description: 'Log level'
+        required: true
+        default: '3' 
+        type: choice
+        options:
+        - 0
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5        
       hive:
         description: 'Repository for hive tests'
         required: true
@@ -102,11 +114,11 @@ jobs:
       - name: Run Hive
         continue-on-error: true
         if: "${{ github.event.inputs.limit == '' }}"
-        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }}
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.loglevel ${{ github.event.inputs.loglevel }}
       - name: Run Hive With Limit
         continue-on-error: true
         if: "${{ github.event.inputs.limit != '' }}"
-        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.limit ${{ github.event.inputs.limit }}
+        run: ./hive --client nethermind --sim ${{ github.event.inputs.testSuite }} --sim.limit ${{ github.event.inputs.limit }} --sim.loglevel ${{ github.event.inputs.loglevel }}
       - name: Upload Hive Results
         uses: actions/upload-artifact@v2
         with:
