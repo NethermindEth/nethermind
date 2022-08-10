@@ -106,8 +106,6 @@ public class ChainLevelHelper : IChainLevelHelper
             ++i;
             if (i >= maxCount)
                 break;
-            if (newHeader.Number >= maxHeaderNumber)
-                break;
 
             ++startingPoint;
         }
