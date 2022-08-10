@@ -521,8 +521,29 @@ namespace Nethermind.TxPool
 
         public UInt256? GetLatestPendingNonce(Address address)
         {
-            // TODO: implement it by grabbing a bucket with transactions for address
-            throw new NotImplementedException();
+            Transaction[]? addressTransactions = _transactions.GetBucketSnapshot(address);
+            UInt256? maxPendingNonce = null;
+
+            // This is under the assumption that the addressTransactions are sorted by Nonce.
+            foreach (Transaction? transaction in addressTransactions)
+            {
+                if (maxPendingNonce == null)
+                {
+                    maxPendingNonce = transaction.Nonce;
+                    continue;
+                }
+
+                if (transaction.Nonce == maxPendingNonce + 1)
+                {
+                    maxPendingNonce = transaction.Nonce;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return maxPendingNonce;
         }
 
         public bool IsKnown(Keccak hash) => _hashCache.Get(hash);
