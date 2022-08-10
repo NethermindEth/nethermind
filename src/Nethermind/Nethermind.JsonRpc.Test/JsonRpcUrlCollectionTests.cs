@@ -228,9 +228,7 @@ namespace Nethermind.JsonRpc.Test
                 EnabledModules = _enabledModules,
                 AdditionalRpcUrls = new []
                 {
-                    string.Empty,
-                    "test",
-                    "http://127.0.0.1:8552|http|eth;web3;engine"
+                    "http://127.0.0.1:8551|http|eth;web3;engine"
                 },
                 EngineHost = "127.0.0.1",
                 EnginePort = 8551,
@@ -241,13 +239,12 @@ namespace Nethermind.JsonRpc.Test
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
                 { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
-                { 8551, new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http | RpcEndpoint.Ws, false, new [] { "eth", "engine" }) },
-                { 8552, new JsonRpcUrl("http", "127.0.0.1", 8552, RpcEndpoint.Http, false, new [] { "eth", "web3" , "engine" }) }
+                { 8551, new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http | RpcEndpoint.Ws, true, new [] { "eth", "engine" }) },
             }, urlCollection); ;
         }
 
         [Test]
-        public void Skips_engine_url_when_AdditionalUrl_specified()
+        public void Skips_AdditionalUrl_with_engine_module_enabled_when_EngineUrl_specified()
         {
             JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
             {
@@ -255,19 +252,20 @@ namespace Nethermind.JsonRpc.Test
                 EnabledModules = _enabledModules,
                 AdditionalRpcUrls = new []
                 {
-                    string.Empty,
-                    "test",
-                    "http://127.0.0.1:8551|http|eth;web3;engine"
+                    "http://127.0.0.1:8551|http|eth;web3;engine",
+                    "http://127.0.0.1:1234|http|eth;web3"
                 },
                 EngineHost = "127.0.0.1",
-                EnginePort = 8551
+                EnginePort = 8552,
+                EngineEnabledModules = new []{"eth"}
             };
 
-            JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+            JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
             CollectionAssert.AreEquivalent(new Dictionary<int, JsonRpcUrl>()
             {
-                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
-                { 8551, new JsonRpcUrl("http", "127.0.0.1", 8551, RpcEndpoint.Http, false, new [] { "eth", "web3", "engine" }) }
+                { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
+                { 8552, new JsonRpcUrl("http", "127.0.0.1", 8552, RpcEndpoint.Http, true, new [] { "eth", "engine" }) },
+                { 1234, new JsonRpcUrl("http", "127.0.0.1", 1234, RpcEndpoint.Http, false, new [] { "eth", "web3" })}
             }, urlCollection); ;
         }
     }

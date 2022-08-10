@@ -196,13 +196,13 @@ public class BeaconHeadersSyncTests
 
         // move best pointers forward as proxy for chain merge
         Block highestBlock = syncedBlockTree.FindBlock(700, BlockTreeLookupOptions.None)!;
-        blockTree.Insert(highestBlock, true);
+        blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
 
         pivot.EnsurePivot(syncedBlockTree.FindHeader(900, BlockTreeLookupOptions.None));
         BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 700, 701);
 
         highestBlock = syncedBlockTree.FindBlock(900, BlockTreeLookupOptions.None)!;
-        blockTree.Insert(highestBlock, true);
+        blockTree.Insert(highestBlock, BlockTreeInsertBlockOptions.SaveHeader);
         pivot.EnsurePivot(syncedBlockTree.FindHeader(999, BlockTreeLookupOptions.None));
         BuildAndProcessHeaderSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 900, 901);
     }

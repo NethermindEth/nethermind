@@ -28,6 +28,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -54,6 +55,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockCacheService _blockCacheService;
         private readonly IBlockProcessingQueue _processingQueue;
         private readonly IMergeSyncController _mergeSyncController;
+        private readonly ISpecProvider _specProvider;
         private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
@@ -72,6 +74,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockProcessingQueue processingQueue,
             IInvalidChainTracker invalidChainTracker,
             IMergeSyncController mergeSyncController,
+            ISpecProvider specProvider,
             ILogManager logManager,
             TimeSpan? timeout = null)
         {
@@ -85,6 +88,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _processingQueue = processingQueue;
             _invalidChainTracker = invalidChainTracker;
             _mergeSyncController = mergeSyncController;
+            _specProvider = specProvider;
             _logger = logManager.GetClassLogger();
             _processingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
             _timeout = timeout ?? TimeSpan.FromSeconds(7);
@@ -150,7 +154,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             bool parentProcessed = parentBlockInfo.WasProcessed;
 
             // edge-case detected on GSF5 - during the transition we want to try process all transition blocks from CL client
-            // The last condition: !parentBlockInfo.IsBeaconBody will be true for terminal blocks. Checking _posSwitcher.IsTerminal might not be the best, because we're loading parentHeader with DoNotCalculateTotalDifficulty option
+            // The last condition: !parentBlockInfo.IsBeaconInfo will be true for terminal blocks. Checking _posSwitcher.IsTerminal might not be the best, because we're loading parentHeader with DoNotCalculateTotalDifficulty option
             bool weAreCloseToHead = (_blockTree.Head?.Number ?? 0) + 8 >= block.Number;
             bool forceProcessing = !_poSSwitcher.TransitionFinished && weAreCloseToHead && !parentBlockInfo.IsBeaconInfo;
             if (parentProcessed == false && forceProcessing) // add extra logging for this edge case
@@ -167,15 +171,15 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return NewPayloadV1Result.Invalid(null);
                 }
 
-                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+                BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
 
                 if (_beaconPivot.ProcessDestination != null && _beaconPivot.ProcessDestination.Hash == block.ParentHash)
                 {
-                    insertOptions |= BlockTreeInsertOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
+                    insertOptions |= BlockTreeInsertHeaderOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
                     _beaconPivot.ProcessDestination = block.Header;
                 }
 
-                _blockTree.Insert(block, true, insertOptions);
+                _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
 
                 if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
                 return NewPayloadV1Result.Syncing;
@@ -360,7 +364,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         /// Return false if no ancestor that is part of beacon chain found.
         private bool TryInsertDanglingBlock(Block block)
         {
-            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert | BlockTreeInsertOptions.MoveToBeaconMainChain;
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain;
 
             if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
             {
@@ -389,7 +393,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
                 while (stack.TryPop(out Block? child))
                 {
-                    _blockTree.Insert(child, true, insertOptions);
+                    _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
                 }
 
                 _beaconPivot.ProcessDestination = block.Header;
