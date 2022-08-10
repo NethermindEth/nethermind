@@ -158,12 +158,12 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
             return;
         }
 
-        if (!CheckHeader(syncPeer, headBlockHeader))
+        if (!CheckHeader(syncPeer, headParentBlockHeader))
         {
             return;
         }
 
-        if (!CheckHeader(syncPeer, headParentBlockHeader))
+        if (!CheckHeader(syncPeer, headBlockHeader))
         {
             return;
         }
