@@ -68,9 +68,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly bool _isSnapSyncDisabledAfterAnyStateSync;
 
         private readonly long _pivotNumber;
-        private bool FastSyncEnabled => (_syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync));
-        private bool SnapSyncEnabled => (_syncConfig.SyncMode.HasFlag(StateSyncMode.SnapSync)) && !_isSnapSyncDisabledAfterAnyStateSync;
-        private bool FastBlocksEnabled => (_syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync)) && _syncConfig.FastBlocks;
+        private bool FastSyncEnabled => _syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync);
+        private bool SnapSyncEnabled => _syncConfig.SyncMode.HasFlag(StateSyncMode.SnapSync) && !_isSnapSyncDisabledAfterAnyStateSync;
+        private bool FastBlocksEnabled => _syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync) && _syncConfig.FastBlocks;
         private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;
         private bool FastBlocksHeadersFinished => !FastBlocksEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();

@@ -80,8 +80,8 @@ namespace Nethermind.Synchronization.Reporting
 
         private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
         {
-            if (e.Previous.NotSyncing() && e.Current == ParallelSync.SyncMode.Full ||
-                e.Previous == ParallelSync.SyncMode.Full && e.Current.NotSyncing())
+            if (e.Previous.NotSyncing() && e.Current == SyncMode.Full ||
+                e.Previous == SyncMode.Full && e.Current.NotSyncing())
             {
                 return;
             }
@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.Reporting
         {
             if (!_logger.IsTrace) return;
 
-            bool isFastSync = (_syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync));
+            bool isFastSync = _syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync);
             bool isFastBlocks = _syncConfig.FastBlocks;
             bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
             bool receiptsInFastBlocks = _syncConfig.DownloadReceiptsInFastSync;
@@ -291,21 +291,21 @@ namespace Nethermind.Synchronization.Reporting
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
 
-        private void WriteFastBlocksReport(ParallelSync.SyncMode currentSyncMode)
+        private void WriteFastBlocksReport(SyncMode currentSyncMode)
         {
-            if ((currentSyncMode & ParallelSync.SyncMode.FastHeaders) == ParallelSync.SyncMode.FastHeaders)
+            if ((currentSyncMode & SyncMode.FastHeaders) == SyncMode.FastHeaders)
             {
                 _logger.Info($"Old Headers  {Pad(FastBlocksHeaders.CurrentValue, _blockPaddingLength)} / {_paddedPivot} | queue {Pad(HeadersInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksHeaders.TotalPerSecond, SpeedPaddingLength)}bps");
                 FastBlocksHeaders.SetMeasuringPoint();
             }
 
-            if ((currentSyncMode & ParallelSync.SyncMode.FastBodies) == ParallelSync.SyncMode.FastBodies)
+            if ((currentSyncMode & SyncMode.FastBodies) == SyncMode.FastBodies)
             {
                 _logger.Info($"Old Bodies   {Pad(FastBlocksBodies.CurrentValue, _blockPaddingLength)} / {_paddedPivot} | queue {Pad(BodiesInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksBodies.TotalPerSecond, SpeedPaddingLength)}bps");
                 FastBlocksBodies.SetMeasuringPoint();
             }
 
-            if ((currentSyncMode & ParallelSync.SyncMode.FastReceipts) == ParallelSync.SyncMode.FastReceipts)
+            if ((currentSyncMode & SyncMode.FastReceipts) == SyncMode.FastReceipts)
             {
                 _logger.Info($"Old Receipts {Pad(FastBlocksReceipts.CurrentValue, _blockPaddingLength)} / {_paddedPivot} | queue {Pad(ReceiptsInQueue.CurrentValue, SpeedPaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, SpeedPaddingLength)}bps | total {Pad(FastBlocksReceipts.TotalPerSecond, SpeedPaddingLength)}bps");
                 FastBlocksReceipts.SetMeasuringPoint();

@@ -25,7 +25,6 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
-using SyncMode = Nethermind.Synchronization.ParallelSync.SyncMode;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -51,7 +50,7 @@ namespace Nethermind.Synchronization.Test
 
             SyncConfig syncConfig = new();
             syncConfig.FastBlocks = fastBlocks;
-            if (fastSync) 
+            if (fastSync)
             {
                 syncConfig.SyncMode = StateSyncMode.FastSync;
             }

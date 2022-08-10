@@ -45,7 +45,6 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
-using SyncMode = Nethermind.Synchronization.ParallelSync.SyncMode;
 
 namespace Nethermind.Synchronization.Test.FastSync
 {

@@ -133,8 +133,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected virtual bool StartingFeedCondition() => _syncConfig.FastBlocks;
 
-        protected override ParallelSync.SyncMode ActivationSyncModes { get; }
-            = ParallelSync.SyncMode.FastHeaders & ~ParallelSync.SyncMode.FastBlocks;
+        protected override SyncMode ActivationSyncModes { get; }
+            = SyncMode.FastHeaders & ~SyncMode.FastBlocks;
 
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Headers;

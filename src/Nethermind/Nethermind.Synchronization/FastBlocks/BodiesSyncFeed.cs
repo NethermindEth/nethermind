@@ -77,7 +77,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 _blockTree.LowestInsertedBodyNumber);
         }
 
-        protected override ParallelSync.SyncMode ActivationSyncModes { get; } = ParallelSync.SyncMode.FastBodies & ~ParallelSync.SyncMode.FastBlocks;
+        protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
 
         public override bool IsMultiFeed => true;
 

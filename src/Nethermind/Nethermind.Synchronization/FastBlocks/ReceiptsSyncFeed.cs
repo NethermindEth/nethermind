@@ -86,8 +86,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 _receiptStorage.LowestInsertedReceiptBlockNumber);
         }
 
-        protected override ParallelSync.SyncMode ActivationSyncModes { get; }
-            = ParallelSync.SyncMode.FastReceipts & ~ParallelSync.SyncMode.FastBlocks;
+        protected override SyncMode ActivationSyncModes { get; }
+            = SyncMode.FastReceipts & ~SyncMode.FastBlocks;
 
         public override bool IsMultiFeed => true;
 
