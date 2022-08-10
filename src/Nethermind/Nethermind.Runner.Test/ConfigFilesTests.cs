@@ -15,19 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Analytics;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
 using Nethermind.Config.Test;
-using Nethermind.Core;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc;
@@ -56,16 +52,17 @@ namespace Nethermind.Runner.Test
             }
         }
 
-        [TestCase("validators", true, true)]
-        [TestCase("poacore_validator.cfg", true, true)]
-        [TestCase("xdai_validator.cfg", true, true)]
-        [TestCase("spaceneth", false, false)]
-        [TestCase("archive", false, false)]
-        [TestCase("baseline", false, false)]
-        [TestCase("fast", true, true)]
-        public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled)
+        [TestCase("validators", StateSyncMode.FastSync, true)]
+        [TestCase("poacore_validator.cfg", StateSyncMode.FastSync, true)]
+        [TestCase("xdai_validator.cfg", StateSyncMode.FastSync, true)]
+        [TestCase("spaceneth", StateSyncMode.FullSync, false)]
+        [TestCase("archive", StateSyncMode.FullSync, false)]
+        [TestCase("baseline", StateSyncMode.FullSync, false)]
+        [TestCase("fast ^mainnet ^goerli ^ropsten", StateSyncMode.FastSync, true)]
+        [TestCase("mainnet goerli ropsten", StateSyncMode.SnapSync, true)]
+        public void Sync_defaults_are_correct(string configWildcard, StateSyncMode syncMode, bool fastBlocksEnabled)
         {
-            Test<ISyncConfig, bool>(configWildcard, c => c.FastSync, fastSyncEnabled);
+            Test<ISyncConfig, StateSyncMode>(configWildcard, c => c.SyncMode, syncMode);
             Test<ISyncConfig, bool>(configWildcard, c => c.FastBlocks, fastBlocksEnabled);
         }
 
@@ -286,18 +283,18 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.DownloadHeadersInFastSync, downloadHeaders);
         }
 
-        [TestCase("archive", false)]
-        [TestCase("mainnet.cfg", true)]
-        [TestCase("goerli.cfg", true)]
-        [TestCase("ropsten.cfg", true)]
-        [TestCase("rinkeby.cfg", false)]
-        [TestCase("sepolia.cfg", false)]
-        [TestCase("xdai.cfg", false)]
-        [TestCase("sokol.cfg", false)]
-        [TestCase("kiln.cfg", false)]
-        public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
+        [TestCase("archive", StateSyncMode.FullSync)]
+        [TestCase("mainnet.cfg", StateSyncMode.SnapSync)]
+        [TestCase("goerli.cfg", StateSyncMode.SnapSync)]
+        [TestCase("ropsten.cfg", StateSyncMode.SnapSync)]
+        [TestCase("rinkeby.cfg", StateSyncMode.FastSync)]
+        [TestCase("sepolia.cfg", StateSyncMode.FastSync)]
+        [TestCase("xdai.cfg", StateSyncMode.FastSync)]
+        [TestCase("sokol.cfg", StateSyncMode.FastSync)]
+        [TestCase("kiln.cfg", StateSyncMode.FullSync)]
+        public void Snap_sync_settings_as_expected(string configWildcard, StateSyncMode syncNode)
         {
-            Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
+            Test<ISyncConfig, StateSyncMode>(configWildcard, c => c.SyncMode, syncNode);
         }
 
         [TestCase("^aura ^ropsten ^sepolia ^goerli", false)]

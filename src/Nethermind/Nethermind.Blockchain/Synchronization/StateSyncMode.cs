@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-namespace Nethermind.Blockchain.Synchronization;
-
-public enum StateSyncMode
+namespace Nethermind.Blockchain.Synchronization
 {
-    NotConfigured,
-    FullSync,
-    FastSync,
-    SnapSync
+    public enum StateSyncMode
+    {
+        FullSync = 1,
+        FastSync = 2,
+        SnapSync = FastSync | 4,
+    }
 }

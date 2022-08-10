@@ -23,29 +23,30 @@ namespace Nethermind.Blockchain.Synchronization
     public class SyncConfig : ISyncConfig
     {
         private bool _synchronizationEnabled = true;
-        private bool _fastSync;
-        private StateSyncMode _syncMode = StateSyncMode.NotConfigured;
+        private bool? _fastSync;
+        private bool? _snapSync;
+        private StateSyncMode? _syncMode;
 
         public StateSyncMode SyncMode
         {
             get
             {
-                if (_syncMode != StateSyncMode.NotConfigured)
+                if (_syncMode.HasValue)
                 {
-                    return _syncMode;
+                    return _syncMode.Value;
                 }
-                else if (FastSync)
-                {
-                    return StateSyncMode.FastSync;
-                }
-                else if (SnapSync)
+
+                if (_snapSync.HasValue && _snapSync.Value)
                 {
                     return StateSyncMode.SnapSync;
                 }
-                else
+
+                if (_fastSync.HasValue && _fastSync.Value)
                 {
-                    return StateSyncMode.FullSync;
+                    return StateSyncMode.FastSync;
                 }
+
+                return StateSyncMode.FullSync;
             }
             set => _syncMode = value;
         }
@@ -68,12 +69,12 @@ namespace Nethermind.Blockchain.Synchronization
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
 
-        [Obsolete("This boolean will be deprecated in future release.")]
+        [Obsolete("FastSync flag will be deprecated in the future, consider using SyncMode.", false)]
         public bool FastSync
         {
-            get => _fastSync || SnapSync;
             set => _fastSync = value;
         }
+
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;
@@ -84,8 +85,11 @@ namespace Nethermind.Blockchain.Synchronization
         public string PivotHash { get; set; }
         public bool WitnessProtocolEnabled { get; set; } = false;
 
-        [Obsolete("This boolean will be deprecated in future release.")]
-        public bool SnapSync { get; set; } = false;
+        [Obsolete("SnapSync flag will be deprecated in the future, consider using SyncMode.", false)]
+        public bool SnapSync
+        {
+            set => _snapSync = value;
+        }
 
         public bool FixReceipts { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;

@@ -368,7 +368,7 @@ namespace Nethermind.Runner
                 NLogConfigurator.ConfigureLogLevels(logLevelOverride);
             }
 
-            ConfigProvider configProvider = new();
+            ConfigProvider configProvider = new(logger);
             Dictionary<string, string> configArgs = new();
             foreach (CommandOption commandOption in app.Options)
             {
@@ -426,7 +426,6 @@ namespace Nethermind.Runner
             }
 
             logger.Info($"Reading config file from {configFilePath}");
-            configProvider.SetLogger(_logger);
             configProvider.AddSource(new JsonConfigSource(configFilePath));
             configProvider.Initialize();
             var incorrectSettings = configProvider.FindIncorrectSettings();

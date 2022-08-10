@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(
             Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.",
             DefaultValue = "false")]
-        bool FastSync { get; set; }
+        bool FastSync { set; }
 
         // Minimum is taken from MultiSyncModeSelector.StickyStateNodesDelta
         [ConfigItem(Description = "Relevant only if 'FastSync' is 'true'. If set to a value, then it will set a minimum height threshold limit up to which FullSync, if already on, will stay on when chain will be behind network. If this limit will be exceeded, it will switch back to FastSync. In normal usage we do not recommend setting this to less than 32 as this can cause issues with chain reorgs. Please note that last 2 blocks will always be processed in FullSync, so setting it to less than 2 will have no effect.", DefaultValue = "8192")]
@@ -91,8 +91,8 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Enables witness protocol.", DefaultValue = "false")]
         public bool WitnessProtocolEnabled { get; set; }
 
-        [ConfigItem(Description = "Enables SNAP sync protocol.", DefaultValue = "false")]
-        public bool SnapSync { get; set; }
+        [ConfigItem(Description = "Enables SNAP sync protocol", DefaultValue = "false")]
+        public bool SnapSync { set; }
 
         [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +
                                   "If used please check that PivotNumber is same as original used when syncing the node as its used as a cut-off point.", DefaultValue = "false")]

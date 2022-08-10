@@ -27,6 +27,11 @@ namespace Nethermind.Config
 {
     public class ConfigProvider : IConfigProvider
     {
+        public ConfigProvider(ILogger logger = null)
+        {
+            _logger = logger;
+        }
+
         private static ILogger _logger;
 
         private readonly ConcurrentDictionary<Type, object> _instances = new();
@@ -37,11 +42,6 @@ namespace Nethermind.Config
         private readonly Dictionary<Type, Type> _implementations = new();
 
         private readonly TypeDiscovery _typeDiscovery = new();
-
-        public void SetLogger(ILogger logger)
-        {
-            _logger = logger;
-        }
 
         public T GetConfig<T>() where T : IConfig
         {
@@ -114,11 +114,11 @@ namespace Nethermind.Config
                             {
                                 try
                                 {
-                                    foreach (CustomAttributeData ad in propertyInfo.CustomAttributes)
+                                    foreach (CustomAttributeData customAttributeData in propertyInfo.CustomAttributes)
                                     {
-                                        if (ad.AttributeType == typeof(ObsoleteAttribute))
+                                        if (customAttributeData.AttributeType == typeof(ObsoleteAttribute))
                                         {
-                                            _logger.Warn($"Boolean attribute {name} is going to be deprecated. Please use SyncMode={name} in your config instead.");
+                                            _logger?.Warn(customAttributeData.ConstructorArguments[0].Value as string);
                                         }
                                     }
                                     propertyInfo.SetValue(config, value);
