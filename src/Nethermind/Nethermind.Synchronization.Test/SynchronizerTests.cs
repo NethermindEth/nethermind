@@ -201,9 +201,9 @@ namespace Nethermind.Synchronization.Test
                 return header;
             }
 
-            public void NotifyOfNewBlock(Block block, SendBlockPriority priority)
+            public void NotifyOfNewBlock(Block block, SendBlockMode mode)
             {
-                if (priority == SendBlockPriority.High)
+                if (mode == SendBlockMode.FullBlock)
                     ReceivedBlocks.Push(block);
             }
 
