@@ -206,11 +206,11 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
 
-        // Add two transactions, one with the next nonce (nonce=4) and the second one with a gap in nonce (nonce=6, skipping nonce=5)
+        // Add two transactions, one with the next nonce (nonce=3) and the second one with a gap in nonce (nonce=5, skipping nonce=4)
         Transaction txWithNextNonce = Build.A.Transaction.To(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(4).TestObject;
+            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(3).TestObject;
         Transaction txWithFutureNonce = Build.A.Transaction.To(TestItem.AddressB)
-            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(6).TestObject;
+            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(5).TestObject;
         ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
             ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None);
         ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultFutureNonce =
@@ -228,6 +228,23 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         string serialized = ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressA.Bytes.ToHexString(true));
         Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x3\",\"id\":67}", serialized);
+    }
+
+    [Test]
+    public async Task Eth_get_tx_count_pending_block()
+    {
+        using Context ctx = await Context.Create();
+        string serializedPendingBefore = ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true), "pending");
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}", serializedPendingBefore);
+        Transaction txWithNextNonce = Build.A.Transaction.To(TestItem.AddressA)
+            .SignedAndResolved(TestItem.PrivateKeyB).WithValue(0.Ether()).WithNonce(0).TestObject;
+        ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
+            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None);
+        Assert.AreEqual(resultNextNonce.Result.AddTxResult, AcceptTxResult.Accepted);
+        string serializedLatestAfter = ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true));
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x0\",\"id\":67}", serializedLatestAfter);
+        string serializedPendingAfter = ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressB.Bytes.ToHexString(true), "pending");
+        Assert.AreEqual("{\"jsonrpc\":\"2.0\",\"result\":\"0x1\",\"id\":67}", serializedPendingAfter);
     }
 
     [Test]
