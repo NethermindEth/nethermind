@@ -157,6 +157,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (_sinceLastTimeout > 2)
                 {
                     _syncBatchSize.Expand();
+
                 }
 
                 blocks = context.Blocks;

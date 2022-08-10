@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc
     public interface IJsonRpcConfig : IConfig
     {
         [ConfigItem(
-            Description = "Defines whether the JSON RPC service is enabled on node startup. Configure host nad port if default values do not work for you.",
+            Description = "Defines whether the JSON RPC service is enabled on node startup. Configure host and port if default values do not work for you.",
             DefaultValue = "false")]
         bool Enabled { get; set; }
 

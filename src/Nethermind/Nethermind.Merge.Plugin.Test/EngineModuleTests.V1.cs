@@ -273,7 +273,6 @@ namespace Nethermind.Merge.Plugin.Test
             chain.PayloadPreparationService = new PayloadPreparationService(
                 chain.PostMergeBlockProducer!,
                 improvementContextFactory,
-                chain.SealEngine,
                 TimerFactory.Default,
                 chain.LogManager,
                 timePerSlot);
@@ -599,7 +598,15 @@ namespace Nethermind.Merge.Plugin.Test
                 .TestObject;
             block.Header.IsPostMerge = true;
             block.Header.Hash = block.CalculateHash();
+            SemaphoreSlim bestBlockProcessed = new(0);
+            chain.BlockTree.NewHeadBlock += (s, e) =>
+            {
+                if (e.Block.Hash == block!.Hash)
+                    bestBlockProcessed.Release(1);
+            };
             await chain.BlockTree.SuggestBlockAsync(block!);
+
+            await bestBlockProcessed.WaitAsync();
             ExecutionPayloadV1 blockRequest = new(block);
             ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(blockRequest);
             executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);

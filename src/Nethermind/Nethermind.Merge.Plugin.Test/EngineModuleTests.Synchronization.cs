@@ -28,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Data.V1;
@@ -398,6 +399,45 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newBlock2.Hash!, newBlock2.Hash!, newBlock2.Hash!), null);
         chain.BlockTree.FindLevel(10)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.None);
         chain.BlockTree.FindLevel(newBlock2.Number)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconMainChain | BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody);
+    }
+
+
+    [Test]
+    public async Task Repeated_block_do_not_change_metadata()
+    {
+        using MergeTestBlockchain chain = await CreateBlockChain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Keccak lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        last.Should().NotBeNull();
+        last!.IsGenesis.Should().BeTrue();
+
+        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParent(chain.BlockTree.Head!)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithPostMergeFlag(true)
+            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+        newBlock.CalculateHash();
+        await chain.BlockTree.SuggestBlockAsync(newBlock!, BlockTreeSuggestOptions.FillBeaconBlock);
+
+
+        Block newBlock2 = Build.A.Block.WithNumber(newBlock.Number + 1)
+            .WithParent(newBlock)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithPostMergeFlag(true)
+            .WithStateRoot(new Keccak("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+        newBlock2.CalculateHash();
+        await chain.BlockTree.SuggestBlockAsync(newBlock2!,  BlockTreeSuggestOptions.FillBeaconBlock);
+
+        await rpc.engine_newPayloadV1(new ExecutionPayloadV1(newBlock2));
+        Block? block = chain.BlockTree.FindBlock(newBlock2.GetOrCalculateHash(), BlockTreeLookupOptions.None);
+        block.TotalDifficulty.Should().NotBe((UInt256)0);
+        BlockInfo blockInfo = chain.BlockTree.FindLevel(newBlock2.Number!).BlockInfos[0];
+        blockInfo.TotalDifficulty.Should().NotBe(0);
+        blockInfo.Metadata.Should().Be(BlockMetadata.None);
     }
 
     [Test]
