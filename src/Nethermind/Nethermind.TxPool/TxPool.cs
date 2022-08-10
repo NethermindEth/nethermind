@@ -300,19 +300,6 @@ namespace Nethermind.TxPool
                 bool inserted = _transactions.TryInsert(tx.Hash, tx, out Transaction? removed);
                 if (inserted)
                 {
-                    Address address = tx.SenderAddress;
-                    if (!_nonces.TryGetValue(address, out AddressNonces? addressNonces))
-                    {
-                        addressNonces = new AddressNonces(tx.Nonce);
-                        _nonces.TryAdd(address, addressNonces);
-                    }
-
-                    if (!addressNonces.Nonces.TryGetValue(tx.Nonce, out NonceInfo? nonce))
-                    {
-                        nonce = new NonceInfo(tx.Nonce);
-                        addressNonces.Nonces.TryAdd(tx.Nonce, nonce);
-                    }
-
                     _transactions.UpdateGroup(tx.SenderAddress!, UpdateBucketWithAddedTransaction);
                     Metrics.PendingTransactionsAdded++;
                     if (tx.IsEip1559) { Metrics.Pending1559TransactionsAdded++; }
@@ -534,8 +521,8 @@ namespace Nethermind.TxPool
 
         public UInt256? GetLatestPendingNonce(Address address)
         {
-            _nonces.TryGetValue(address!, out AddressNonces addressNonces);
-            return addressNonces is null ? null : addressNonces.GetLatestPendingNonce();
+            // TODO: implement it by grabbing a bucket with transactions for address
+            throw new NotImplementedException();
         }
 
         public bool IsKnown(Keccak hash) => _hashCache.Get(hash);

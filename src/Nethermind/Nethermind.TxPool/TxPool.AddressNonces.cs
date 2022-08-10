@@ -36,8 +36,6 @@ namespace Nethermind.TxPool
                 Nonces.TryAdd(_currentNonceInfo.Value, _currentNonceInfo);
             }
 
-            public UInt256 GetLatestPendingNonce() => Nonces.Keys.Max();
-
             public NonceInfo ReserveNonce()
             {
                 UInt256 nonce = _currentNonceInfo.Value;
