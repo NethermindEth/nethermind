@@ -279,7 +279,7 @@ namespace Nethermind.Init
 
         private DbNeeds GetStateNeeds(uint cpuCount, ISyncConfig syncConfig)
         {
-            uint preferredBuffers = Math.Min(cpuCount, (syncConfig.SyncMode == StateSyncMode.FastSync) ? 8u : 4u);
+            uint preferredBuffers = Math.Min(cpuCount, (syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync)) ? 8u : 4u);
             // remove optimize for point lookup here?
             return new DbNeeds(
                 preferredBuffers,
@@ -352,7 +352,7 @@ namespace Nethermind.Init
 
         private DbNeeds GetCodeNeeds(uint cpuCount, ISyncConfig syncConfig)
         {
-            uint preferredBuffers = Math.Min(cpuCount, (syncConfig.SyncMode == StateSyncMode.FastSync) ? 4u : 2u);
+            uint preferredBuffers = Math.Min(cpuCount, (syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync)) ? 4u : 2u);
             return new DbNeeds(
                 preferredBuffers,
                 1.MB(), // min buffer size

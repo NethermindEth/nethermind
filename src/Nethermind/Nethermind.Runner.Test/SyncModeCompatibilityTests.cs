@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 
+using System;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using NUnit.Framework;
@@ -47,21 +48,30 @@ namespace Nethermind.Runner.Test
             SyncConfig config = new();
             config.SnapSync = true;
             config.SyncMode.Should().Be(StateSyncMode.SnapSync);
+            config.SyncMode.HasFlag(StateSyncMode.FastSync).Should().Be(true);
         }
-
 
         [Test]
-        public void OldSettings_AreNotConsidered()
+        public void OldSettings_AreIgnored_IfSyncModeSet()
         {
-            SyncConfig config = new();
-            config.FastSync = true;
-            config.SyncMode = StateSyncMode.FullSync;
-            config.SyncMode.Should().Be(StateSyncMode.FullSync);
+            foreach(bool? fastSync in new bool?[]{ false, true, null })
+            foreach(bool? snapSync in new bool?[]{ false, true, null })
+            foreach (StateSyncMode syncMode in Enum.GetValues(typeof(StateSyncMode)))
+            {
+                SyncConfig config = new();
+                config.SyncMode = syncMode;
+                if (fastSync.HasValue)
+                {
+                    config.FastSync = fastSync.Value;
+                }
+                if (snapSync.HasValue)
+                {
+                    config.FastSync = snapSync.Value;
+                }
 
-            config = new();
-            config.FastSync = true;
-            config.SyncMode = StateSyncMode.SnapSync;
-            config.SyncMode.Should().Be(StateSyncMode.SnapSync);
+                config.SyncMode.Should().Be(syncMode);
+            }
         }
     }
+    #pragma warning restore 0618
 }

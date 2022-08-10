@@ -121,7 +121,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncProgressResolver.IsLoadingBlocksFromDb().Returns(false);
                     SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
 
-                    SyncConfig.FastSync = false;
+                    SyncConfig.SyncMode = StateSyncMode.FullSync;
                     SyncConfig.FastBlocks = false;
                     SyncConfig.PivotNumber = Pivot.Number.ToString();
                     SyncConfig.PivotHash = Keccak.Zero.ToString();
@@ -676,8 +676,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 {
                     _configActions.Add(() =>
                     {
-                        SyncConfig.FastSync = true;
-                        SyncConfig.SnapSync = true;
+                        SyncConfig.SyncMode = StateSyncMode.FullSync;
                         SyncConfig.FastBlocks = true;
                         return "snap sync with fast blocks";
                     });
@@ -689,8 +688,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 {
                     _configActions.Add(() =>
                     {
-                        SyncConfig.FastSync = true;
-                        SyncConfig.SnapSync = true;
+                        SyncConfig.SyncMode = StateSyncMode.FullSync;
                         SyncConfig.FastBlocks = false;
                         return "snap sync without fast blocks";
                     });
@@ -703,7 +701,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     _configActions.Add(() =>
                     {
                         SyncConfig.SyncMode = StateSyncMode.FullSync;
-                        SyncConfig.FastSync = false;
                         SyncConfig.FastBlocks = false;
                         return "full archive";
                     });

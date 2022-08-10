@@ -162,7 +162,7 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
-            ParallelSync.SyncMode currentSyncMode = _syncModeSelector.Current;
+            SyncMode currentSyncMode = _syncModeSelector.Current;
             if (_logger.IsDebug) WriteSyncConfigReport();
 
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.Reporting
                 WriteFastBlocksReport(currentSyncMode);
             }
 
-            if ((currentSyncMode | ParallelSync.SyncMode.Full) != ParallelSync.SyncMode.Full)
+            if ((currentSyncMode | SyncMode.Full) != SyncMode.Full)
             {
                 if (_reportId % PeerCountFrequency == 0)
                 {
@@ -179,17 +179,17 @@ namespace Nethermind.Synchronization.Reporting
                 }
             }
 
-            if (currentSyncMode == ParallelSync.SyncMode.Disconnected && _syncConfig.SynchronizationEnabled)
+            if (currentSyncMode == SyncMode.Disconnected && _syncConfig.SynchronizationEnabled)
             {
                 WriteNotStartedReport();
             }
 
-            if (currentSyncMode == ParallelSync.SyncMode.DbLoad)
+            if (currentSyncMode == SyncMode.DbLoad)
             {
                 WriteDbSyncReport();
             }
 
-            if ((currentSyncMode & ParallelSync.SyncMode.StateNodes) == ParallelSync.SyncMode.StateNodes)
+            if ((currentSyncMode & SyncMode.StateNodes) == SyncMode.StateNodes)
             {
                 if (_reportId % NoProgressStateSyncReportFrequency == 0)
                 {
@@ -197,22 +197,22 @@ namespace Nethermind.Synchronization.Reporting
                 }
             }
 
-            if ((currentSyncMode & ParallelSync.SyncMode.FastBlocks) == ParallelSync.SyncMode.FastBlocks)
+            if ((currentSyncMode & SyncMode.FastBlocks) == SyncMode.FastBlocks)
             {
                 WriteFastBlocksReport(currentSyncMode);
             }
 
-            if ((currentSyncMode & ParallelSync.SyncMode.Full) == ParallelSync.SyncMode.Full)
+            if ((currentSyncMode & SyncMode.Full) == SyncMode.Full)
             {
                 WriteFullSyncReport();
             }
 
-            if ((currentSyncMode & ParallelSync.SyncMode.FastSync) == ParallelSync.SyncMode.FastSync)
+            if ((currentSyncMode & SyncMode.FastSync) == SyncMode.FastSync)
             {
                 WriteFullSyncReport();
             }
 
-            if ((currentSyncMode & ParallelSync.SyncMode.BeaconHeaders) == ParallelSync.SyncMode.BeaconHeaders)
+            if ((currentSyncMode & SyncMode.BeaconHeaders) == SyncMode.BeaconHeaders)
             {
                 WriteBeaconSyncReport();
             }
@@ -229,7 +229,7 @@ namespace Nethermind.Synchronization.Reporting
         {
             if (!_logger.IsTrace) return;
 
-            bool isFastSync = (_syncConfig.SyncMode == StateSyncMode.FastSync);
+            bool isFastSync = (_syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync));
             bool isFastBlocks = _syncConfig.FastBlocks;
             bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
             bool receiptsInFastBlocks = _syncConfig.DownloadReceiptsInFastSync;

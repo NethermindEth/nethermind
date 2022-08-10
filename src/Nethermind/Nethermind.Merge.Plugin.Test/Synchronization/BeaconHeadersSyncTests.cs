@@ -116,7 +116,7 @@ public class BeaconHeadersSyncTests
             MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
         ISyncConfig syncConfig = new SyncConfig
         {
-            FastSync = true,
+            SyncMode = StateSyncMode.FastSync,
             FastBlocks = true,
             PivotNumber = "1000",
             PivotHash = Keccak.Zero.ToString(),
@@ -149,7 +149,7 @@ public class BeaconHeadersSyncTests
         report.BeaconHeaders.Returns(measuredProgress);
         ISyncConfig syncConfig = new SyncConfig
         {
-            FastSync = true,
+            SyncMode = StateSyncMode.FastSync,
             FastBlocks = true,
             PivotNumber = "1000",
             PivotHash = Keccak.Zero.ToString(),
@@ -182,7 +182,7 @@ public class BeaconHeadersSyncTests
         blockTree.SuggestBlock(genesisBlock);
         ISyncConfig syncConfig = new SyncConfig
         {
-            FastSync = true,
+            SyncMode = StateSyncMode.FastSync,
             FastBlocks = true,
             PivotNumber = "500",
             PivotHash = Keccak.Zero.ToString(),

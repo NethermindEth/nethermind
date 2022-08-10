@@ -542,7 +542,7 @@ public partial class EngineModuleTests
         BlockTree syncedBlockTree = Build.A.BlockTree(chain.BlockTree.Head!).OfChainLength(5).TestObject;
         ISyncConfig syncConfig = new SyncConfig
         {
-            FastSync = true,
+            SyncMode = StateSyncMode.FastSync,
             FastBlocks = true,
             PivotNumber = syncedBlockTree.Head?.Number.ToString() ?? "",
             PivotHash = syncedBlockTree.HeadHash?.ToString() ?? "",

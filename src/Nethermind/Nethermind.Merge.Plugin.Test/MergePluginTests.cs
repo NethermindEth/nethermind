@@ -173,7 +173,7 @@ namespace Nethermind.Merge.Plugin.Test
         {
             _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig()
             {
-                FastSync = true,
+                SyncMode = StateSyncMode.FastSync,
                 DownloadBodiesInFastSync = downloadBody,
                 DownloadReceiptsInFastSync = downloadReceipt
             });

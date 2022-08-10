@@ -110,7 +110,7 @@ namespace Nethermind.Synchronization
 
             StartFullSyncComponents();
 
-            if (_syncConfig.SyncMode == StateSyncMode.FastSync)
+            if (_syncConfig.SyncMode.HasFlag(StateSyncMode.FastSync))
             {
                 if (_syncConfig.FastBlocks)
                 {
@@ -119,7 +119,7 @@ namespace Nethermind.Synchronization
 
                 StartFastSyncComponents();
 
-                if (_syncConfig.SyncMode == StateSyncMode.SnapSync)
+                if (_syncConfig.SyncMode.HasFlag(StateSyncMode.SnapSync))
                 {
                     StartSnapSyncComponents();
                 }
@@ -148,7 +148,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(ParallelSync.SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(_syncMode, treeSync, _logManager);
             StateSyncDispatcher stateSyncDispatcher = new(_stateSyncFeed!, _syncPeerPool, new StateSyncAllocationStrategyFactory(), _logManager);
             Task syncDispatcherTask = stateSyncDispatcher.Start(_syncCancellation.Token).ContinueWith(t =>

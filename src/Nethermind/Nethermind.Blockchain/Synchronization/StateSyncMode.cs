@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
+using System;
+
 namespace Nethermind.Blockchain.Synchronization
 {
+    [Flags]
     public enum StateSyncMode
     {
         FullSync = 1,

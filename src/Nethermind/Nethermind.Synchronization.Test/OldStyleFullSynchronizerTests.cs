@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.Test
             _codeDb = dbProvider.CodeDb;
             _receiptStorage = Substitute.For<IReceiptStorage>();
             SyncConfig quickConfig = new();
-            quickConfig.FastSync = false;
+            quickConfig.SyncMode = StateSyncMode.FullSync;
 
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             NodeStatsManager stats = new(timerFactory, LimboLogs.Instance);
