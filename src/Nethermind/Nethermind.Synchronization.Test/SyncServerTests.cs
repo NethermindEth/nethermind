@@ -455,6 +455,22 @@ namespace Nethermind.Synchronization.Test
         {
             Context ctx = new();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
             ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
             SyncPeerMock syncPeerMock1 = new(remoteBlockTree, TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
             PeerInfo peer1 = new(syncPeerMock1);
@@ -475,8 +491,25 @@ namespace Nethermind.Synchronization.Test
         public async Task Broadcast_NewBlock_on_arrival_to_sqrt_of_peers([Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100)] int peerCount)
         {
             int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1)); // -1 because of ignoring sender
+
             Context ctx = new();
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
             ISyncServer remoteServer = Substitute.For<ISyncServer>();
             int count = 0;
             remoteServer
