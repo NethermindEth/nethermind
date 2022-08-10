@@ -179,7 +179,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _blockCacheService.ProcessDestination = block.Header;
                 }
 
-                if (_blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null)
+                if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null)
                 {
                     if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Block already known in blockTree {block}.");
                     return NewPayloadV1Result.Syncing;
