@@ -126,8 +126,8 @@ namespace Nethermind.JsonRpc
 
         [ConfigItem(
             Description = "Host for Execution Engine calls. Ensure the firewall is configured when enabling JSON RPC. If it does not work with 127.0.0.1 try something like 10.0.0.4 or 192.168.0.1",
-            DefaultValue = "null")]
-        string? EngineHost { get; set; }
+            DefaultValue = "\"127.0.0.1\"")]
+        string EngineHost { get; set; }
 
         [ConfigItem(
             Description = "Port for Execution Engine calls. Ensure the firewall is configured when enabling JSON RPC.",
