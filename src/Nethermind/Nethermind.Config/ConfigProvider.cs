@@ -118,7 +118,7 @@ namespace Nethermind.Config
                                     {
                                         if (customAttributeData.AttributeType == typeof(ObsoleteAttribute))
                                         {
-                                            _logger?.Warn(customAttributeData.ConstructorArguments[0].Value as string);
+                                            _logger?.Warn($"{category}.{name} is obsolete: {customAttributeData.ConstructorArguments[0].Value}");
                                         }
                                     }
                                     propertyInfo.SetValue(config, value);

@@ -31,11 +31,11 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "If 'false' then the node does not download/process new blocks.", DefaultValue = "true")]
         bool SynchronizationEnabled { get; set; }
 
-        [ConfigItem(Description = "Sync mode for client to use", DefaultValue = "StateSyncMode.NotConfigured")]
+        [ConfigItem(Description = "Sync mode for client to use", DefaultValue = "StateSyncMode.FullSync")]
         StateSyncMode SyncMode { get; set; }
 
         [ConfigItem(
-            Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.",
+            Description = "[OBSOLETE] If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.",
             DefaultValue = "false")]
         bool FastSync { set; }
 
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Synchronization
         [ConfigItem(Description = "Enables witness protocol.", DefaultValue = "false")]
         public bool WitnessProtocolEnabled { get; set; }
 
-        [ConfigItem(Description = "Enables SNAP sync protocol", DefaultValue = "false")]
+        [ConfigItem(Description = "[OBSOLETE] Enables SNAP sync protocol", DefaultValue = "false")]
         public bool SnapSync { set; }
 
         [ConfigItem(Description = "[ONLY FOR MISSING RECEIPTS ISSUE] Turns on receipts validation that checks for ones that might be missing due to previous bug. It downloads them from network if needed." +

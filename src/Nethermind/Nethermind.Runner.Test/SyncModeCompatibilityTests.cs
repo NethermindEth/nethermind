@@ -34,43 +34,25 @@ namespace Nethermind.Runner.Test
             config.SyncMode.Should().Be(StateSyncMode.FullSync);
         }
 
-        [Test]
-        public void FastSync_SetInOldWay()
+        [TestCase(false, false, StateSyncMode.SnapSync, StateSyncMode.FullSync)]
+        [TestCase(false, null, StateSyncMode.SnapSync, StateSyncMode.FullSync)]
+        [TestCase(null, null, StateSyncMode.SnapSync, StateSyncMode.SnapSync)]
+        [TestCase(true, false, StateSyncMode.FullSync, StateSyncMode.FastSync)]
+        [TestCase(null, true, StateSyncMode.FullSync, StateSyncMode.SnapSync)]
+        public void NewSettings_AreIgnored_IfSyncModeSetInOldWay(bool? fastSync, bool? snapSync, StateSyncMode syncMode, StateSyncMode expectedSyncMode)
         {
             SyncConfig config = new();
-            config.FastSync = true;
-            config.SyncMode.Should().Be(StateSyncMode.FastSync);
-        }
-
-        [Test]
-        public void SnapSync_SetInOldWay()
-        {
-            SyncConfig config = new();
-            config.SnapSync = true;
-            config.SyncMode.Should().Be(StateSyncMode.SnapSync);
-            config.SyncMode.HasFlag(StateSyncMode.FastSync).Should().Be(true);
-        }
-
-        [Test]
-        public void OldSettings_AreIgnored_IfSyncModeSet()
-        {
-            foreach(bool? fastSync in new bool?[]{ false, true, null })
-            foreach(bool? snapSync in new bool?[]{ false, true, null })
-            foreach (StateSyncMode syncMode in Enum.GetValues(typeof(StateSyncMode)))
+            config.SyncMode = syncMode;
+            if (fastSync.HasValue)
             {
-                SyncConfig config = new();
-                config.SyncMode = syncMode;
-                if (fastSync.HasValue)
-                {
-                    config.FastSync = fastSync.Value;
-                }
-                if (snapSync.HasValue)
-                {
-                    config.FastSync = snapSync.Value;
-                }
-
-                config.SyncMode.Should().Be(syncMode);
+                config.FastSync = fastSync.Value;
             }
+            if (snapSync.HasValue)
+            {
+                config.SnapSync = snapSync.Value;
+            }
+
+            config.SyncMode.Should().Be(expectedSyncMode);
         }
     }
     #pragma warning restore 0618

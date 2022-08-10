@@ -31,31 +31,33 @@ namespace Nethermind.Blockchain.Synchronization
         {
             get
             {
-                if (_syncMode.HasValue)
-                {
-                    return _syncMode.Value;
-                }
-
                 if (_snapSync.HasValue && _snapSync.Value)
                 {
                     return StateSyncMode.SnapSync;
                 }
 
-                if (_fastSync.HasValue && _fastSync.Value)
+                if (_fastSync.HasValue)
                 {
-                    return StateSyncMode.FastSync;
+                    return _fastSync.Value ? StateSyncMode.FastSync : StateSyncMode.FullSync;
                 }
 
-                return StateSyncMode.FullSync;
+                return _syncMode ?? StateSyncMode.FullSync;
             }
             set => _syncMode = value;
         }
 
         public static ISyncConfig Default { get; } = new SyncConfig();
-        public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig {FastBlocks = false, SyncMode = StateSyncMode.FullSync};
-        public static ISyncConfig WithFastSync { get; } = new SyncConfig {SyncMode = StateSyncMode.FastSync};
-        public static ISyncConfig WithFastBlocks { get; } = new SyncConfig {FastBlocks = true, SyncMode = StateSyncMode.FastSync};
-        public static ISyncConfig WithEth2Merge { get; } = new SyncConfig {FastBlocks = false, BlockGossipEnabled = false};
+
+        public static ISyncConfig WithFullSyncOnly { get; } =
+            new SyncConfig { FastBlocks = false, SyncMode = StateSyncMode.FullSync };
+
+        public static ISyncConfig WithFastSync { get; } = new SyncConfig { SyncMode = StateSyncMode.FastSync };
+
+        public static ISyncConfig WithFastBlocks { get; } =
+            new SyncConfig { FastBlocks = true, SyncMode = StateSyncMode.FastSync };
+
+        public static ISyncConfig WithEth2Merge { get; } =
+            new SyncConfig { FastBlocks = false, BlockGossipEnabled = false };
 
         public bool NetworkingEnabled { get; set; } = true;
 
@@ -70,10 +72,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
 
         [Obsolete("FastSync flag will be deprecated in the future, consider using SyncMode.", false)]
-        public bool FastSync
-        {
-            set => _fastSync = value;
-        }
+        public bool FastSync { set => _fastSync = value; }
 
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
@@ -86,11 +85,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool WitnessProtocolEnabled { get; set; } = false;
 
         [Obsolete("SnapSync flag will be deprecated in the future, consider using SyncMode.", false)]
-        public bool SnapSync
-        {
-            set => _snapSync = value;
-        }
-
+        public bool SnapSync { set => _snapSync = value; }
         public bool FixReceipts { get; set; } = false;
         public bool BlockGossipEnabled { get; set; } = true;
     }
