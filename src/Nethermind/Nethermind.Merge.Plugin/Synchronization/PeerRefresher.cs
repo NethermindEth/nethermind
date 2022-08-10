@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -120,7 +121,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         try
         {
             BlockHeader[] headAndParentHeaders = await getHeadParentHeaderTask;
-            if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders, out headParentBlockHeader, out headBlockHeader))
+            if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders, out headBlockHeader, out headParentBlockHeader))
             {
                 _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU unexpected response length");
                 return;
@@ -152,17 +153,17 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
             return;
         }
 
+        if (!CheckHeader(syncPeer, finalizedBlockHeader))
+        {
+            return;
+        }
+
         if (!CheckHeader(syncPeer, headBlockHeader))
         {
             return;
         }
 
         if (!CheckHeader(syncPeer, headParentBlockHeader))
-        {
-            return;
-        }
-
-        if (!CheckHeader(syncPeer, finalizedBlockHeader))
         {
             return;
         }
