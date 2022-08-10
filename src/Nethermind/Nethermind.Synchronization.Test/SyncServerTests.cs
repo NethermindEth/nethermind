@@ -14,6 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -51,7 +54,7 @@ namespace Nethermind.Synchronization.Test
     public class SyncServerTests
     {
         [Test]
-        public void _When_finding_hash_it_does_not_load_headers()
+        public void When_finding_hash_it_does_not_load_headers()
         {
             Context ctx = new();
             ctx.BlockTree.FindHash(123).Returns(TestItem.KeccakA);
@@ -172,9 +175,9 @@ namespace Nethermind.Synchronization.Test
             BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
             BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
             TestSpecProvider testSpecProvider = new(London.Instance);
-            testSpecProvider.TerminalTotalDifficulty = 1000000;
+            testSpecProvider.TerminalTotalDifficulty = 10_000_000;
 
-            Block newBestLocalBlock = Build.A.Block.WithNumber(localBlockTree.Head!.Number+1).WithParent(localBlockTree.Head!).WithDifficulty(1000002L).TestObject;
+            Block newBestLocalBlock = Build.A.Block.WithNumber(localBlockTree.Head!.Number + 1).WithParent(localBlockTree.Head!).WithDifficulty(10_000_002L).TestObject;
             localBlockTree.SuggestBlock(newBestLocalBlock);
 
             PoSSwitcher poSSwitcher = new(new MergeConfig() { Enabled = true }, new SyncConfig(), new MemDb(), localBlockTree, testSpecProvider, LimboLogs.Instance);
@@ -445,6 +448,82 @@ namespace Nethermind.Synchronization.Test
             ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
 
             sealValidator.DidNotReceive().ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>());
+        }
+
+        [Test]
+        public async Task Broadcast_NewBlock_on_arrival()
+        {
+            Context ctx = new();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
+            SyncPeerMock syncPeerMock1 = new(remoteBlockTree, TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
+            PeerInfo peer1 = new(syncPeerMock1);
+            ISyncServer remoteServer2 = Substitute.For<ISyncServer>();
+            SyncPeerMock syncPeerMock2 = new(remoteBlockTree, TestItem.PublicKeyB, remoteSyncServer: remoteServer2);
+            PeerInfo peer2 = new(syncPeerMock2);
+            PeerInfo[] peers = { peer1, peer2 };
+            ctx.PeerPool.AllPeers.Returns(peers);
+            ctx.PeerPool.PeerCount.Returns(peers.Length);
+            ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
+            await Task.Delay(100); // notifications fire on separate task
+            await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
+            remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
+            remoteServer2.Received().AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash) , Arg.Any<ISyncPeer>());
+        }
+
+        [Test]
+        public async Task Broadcast_NewBlock_on_arrival_to_sqrt_of_peers([Values(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100)] int peerCount)
+        {
+            int expectedPeers = (int)Math.Ceiling(Math.Sqrt(peerCount - 1)); // -1 because of ignoring sender
+
+            Context ctx = new();
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
+            ctx.SyncServer = new SyncServer(
+                new MemDb(),
+                new MemDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                Always.Valid,
+                Always.Valid,
+                ctx.PeerPool,
+                StaticSelector.Full,
+                new SyncConfig(),
+                NullWitnessCollector.Instance,
+                Policy.FullGossip,
+                MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+
+            ISyncServer remoteServer = Substitute.For<ISyncServer>();
+            int count = 0;
+            remoteServer
+                .When(r => r.AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
+                .Do(_ => count++);
+            PeerInfo[] peers = Enumerable.Range(0, peerCount).Take(peerCount)
+                .Select(k => new PeerInfo(new SyncPeerMock(remoteBlockTree, remoteSyncServer: remoteServer)))
+                .ToArray();
+            ctx.PeerPool.AllPeers.Returns(peers);
+            ctx.PeerPool.PeerCount.Returns(peers.Length);
+            ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peers[0].SyncPeer);
+            await Task.Delay(100); // notifications fire on separate task
+            await Task.WhenAll(peers.Select(p => ((SyncPeerMock)p.SyncPeer).Close()).ToArray());
+            count.Should().Be(expectedPeers);
         }
 
         [Test]

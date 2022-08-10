@@ -66,7 +66,7 @@ namespace Ethereum.Test.Base
         static BlockchainTestBase()
         {
             DifficultyCalculator = new DifficultyCalculatorWrapper();
-            Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new CryptoRandom(), new Ethash(_logManager)); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
+            Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
         }
 
         [SetUp]
@@ -85,7 +85,7 @@ namespace Ethereum.Test.Base
                     throw new InvalidOperationException(
                         $"Cannot calculate difficulty before the {nameof(Wrapped)} calculator is set.");
                 }
-                
+
                 return Wrapped.Calculate(header, parent);
             }
         }
@@ -101,14 +101,14 @@ namespace Ethereum.Test.Base
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)
             {
-                specProvider = new CustomSpecProvider(1, 
+                specProvider = new CustomSpecProvider(1,
                     (0, Frontier.Instance),
                     (1, test.Network),
                     (test.TransitionBlockNumber, test.NetworkAfterTransition));
             }
             else
             {
-                specProvider = new CustomSpecProvider(1, 
+                specProvider = new CustomSpecProvider(1,
                     (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                     (1, test.Network));
             }
@@ -201,12 +201,12 @@ namespace Ethereum.Test.Base
 
             if (correctRlp.Count == 0)
             {
-                EthereumTestResult result; 
+                EthereumTestResult result;
                 if (test.GenesisBlockHeader is null)
                 {
                     result = new EthereumTestResult(test.Name, "Genesis block header missing in the test spec.");
                 }
-                else if(!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash)) 
+                else if(!new Keccak(test.GenesisBlockHeader.Hash).Equals(test.LastBlockHash))
                 {
                     result = new EthereumTestResult(test.Name, "Genesis hash mismatch");
                 }
@@ -286,7 +286,7 @@ namespace Ethereum.Test.Base
 //            }
 
             Assert.Zero(differences.Count, "differences");
-            
+
             return new EthereumTestResult
             (
                 test.Name,
@@ -339,7 +339,7 @@ namespace Ethereum.Test.Base
 
             IEnumerable<KeyValuePair<Address, AccountState>> deletedAccounts = test.Pre?
                 .Where(pre => !(test.PostState?.ContainsKey(pre.Key) ?? false)) ?? Array.Empty<KeyValuePair<Address, AccountState>>();
-            
+
             foreach (KeyValuePair<Address, AccountState> deletedAccount in deletedAccounts)
             {
                 if (stateProvider.AccountExists(deletedAccount.Key))
