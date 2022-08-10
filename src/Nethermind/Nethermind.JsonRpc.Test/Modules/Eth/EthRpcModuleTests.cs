@@ -205,9 +205,19 @@ public partial class EthRpcModuleTests
     public async Task Eth_get_tx_count(string blockParameter, string expectedResult)
     {
         using Context ctx = await Context.Create();
-        Transaction tx = Build.A.Transaction.To(TestItem.AddressB).SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(4).TestObject;
-        ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> result = ctx.Test.TxSender.SendTransaction(tx, TxHandlingOptions.ManagedNonce);
-        Assert.AreEqual(result.Result.AddTxResult, AcceptTxResult.Accepted);
+
+        // Add two transactions, one with the next nonce (nonce=4) and the second one with a gap in nonce (nonce=6, skipping nonce=5)
+        Transaction txWithNextNonce = Build.A.Transaction.To(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(4).TestObject;
+        Transaction txWithFutureNonce = Build.A.Transaction.To(TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA).WithValue(0.Ether()).WithNonce(6).TestObject;
+        ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultNextNonce =
+            ctx.Test.TxSender.SendTransaction(txWithNextNonce, TxHandlingOptions.None);
+        ValueTask<(Keccak? Hash, AcceptTxResult? AddTxResult)> resultFutureNonce =
+            ctx.Test.TxSender.SendTransaction(txWithFutureNonce, TxHandlingOptions.None);
+        Assert.AreEqual(resultNextNonce.Result.AddTxResult, AcceptTxResult.Accepted);
+        Assert.AreEqual(resultFutureNonce.Result.AddTxResult, AcceptTxResult.Accepted);
+
         string serialized = ctx.Test.TestEthRpc("eth_getTransactionCount", TestItem.AddressA.Bytes.ToHexString(true), blockParameter);
         Assert.AreEqual($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expectedResult}\",\"id\":67}}", serialized);
     }
