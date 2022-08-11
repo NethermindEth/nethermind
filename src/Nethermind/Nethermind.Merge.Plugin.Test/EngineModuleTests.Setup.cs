@@ -99,6 +99,7 @@ namespace Nethermind.Merge.Plugin.Test
                     blockCacheService,
                     invalidChainTracker,
                     chain.BeaconSync,
+                    chain.BeaconPivot,
                     peerRefresher,
                     chain.LogManager),
                 new ExecutionStatusHandler(chain.BlockTree),
@@ -186,7 +187,6 @@ namespace Nethermind.Merge.Plugin.Test
                 PayloadPreparationService ??= new PayloadPreparationService(
                     postMergeBlockProducer,
                     new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
-                    SealEngine,
                     TimerFactory.Default,
                     LogManager,
                     TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot));
