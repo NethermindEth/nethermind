@@ -137,6 +137,19 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <XdaiConfigFiles Include="configs\*xdai*.cfg" />
+  </ItemGroup>
+
+  <Target Name="AliasingGnosisAndXdaiConfigFiles" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <XdaiConfigFiles>
+        <GnosisConfigFile>$([System.String]::Copy('%(Filename)').Replace('xdai', 'gnosis'))</GnosisConfigFile>
+      </XdaiConfigFiles>
+    </ItemGroup>
+    <Message Text="---&gt; Creating aliases for xdai and gnosis config files @(XdaiConfigFiles->'%(GnosisConfigFile)')" Importance="High" />
+    <Copy SourceFiles="@(XdaiConfigFiles)" DestinationFiles="@(XdaiConfigFiles->'$(OutDir)\configs\%(GnosisConfigFile).cfg')" />
+  </Target>
 
   <Target Name="StoreGitHashBeforeBuild" BeforeTargets="BeforeBuild">
     <Message Text="---&gt; Generating Git Hash file Before Build" Importance="High" />
