@@ -1,4 +1,4 @@
-<img src="Nethermind.png" width="200">
+![Nethermind](https://user-images.githubusercontent.com/337518/184172214-88ecb8f6-3e0f-4858-8603-47b682f6a2d2.png)
 
 # .NET Ethereum client
 
