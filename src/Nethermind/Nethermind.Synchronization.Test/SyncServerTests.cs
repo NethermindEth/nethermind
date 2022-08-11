@@ -187,7 +187,7 @@ namespace Nethermind.Synchronization.Test
                 testSpecProvider,
                 LimboLogs.Instance);
 
-            MergeHeaderValidator mergeHeaderValidator = new(poSSwitcher, headerValidator, localBlockTree, testSpecProvider, Always.Valid, LimboLogs.Instance);
+            MergeHeaderValidator mergeHeaderValidator = new(poSSwitcher, headerValidator, localBlockTree, testSpecProvider, Always.Valid, new MergeConfig(), LimboLogs.Instance);
             BlockValidator blockValidator = new(
                 Always.Valid,
                 mergeHeaderValidator,
@@ -337,7 +337,7 @@ namespace Nethermind.Synchronization.Test
                 sealEngine,
                 testSpecProvider,
                 LimboLogs.Instance);
-            MergeHeaderValidator mergeHeaderValidator = new(poSSwitcher, headerValidator, localBlockTree, testSpecProvider, Always.Valid, LimboLogs.Instance);
+            MergeHeaderValidator mergeHeaderValidator = new(poSSwitcher, headerValidator, localBlockTree, testSpecProvider, Always.Valid, new MergeConfig(), LimboLogs.Instance);
 
             InvalidChainTracker invalidChainTracker = new(
                 poSSwitcher,
