@@ -82,11 +82,21 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public long PivotDestinationNumber => CurrentBeaconPivot is null
             ? 0
             : _syncConfig.PivotNumberParsed + 1;
-        public void EnsurePivot(BlockHeader? blockHeader)
+        public void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false)
         {
             bool beaconPivotExists = BeaconPivotExists();
             if (blockHeader != null)
             {
+                if (beaconPivotExists && updateOnlyIfNull)
+                {
+                    return;
+                }
+
+                if (updateOnlyIfNull)
+                {
+                    if (_logger.IsInfo) _logger.Info($"BeaconPivot was null. Setting beacon pivot to {blockHeader}");
+                }
+
                 // ToDo Sarah in some cases this could be wrong
                 if (beaconPivotExists && (PivotNumber > blockHeader.Number || blockHeader.Hash == PivotHash))
                 {
@@ -130,7 +140,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
     public interface IBeaconPivot : IPivot
     {
-        void EnsurePivot(BlockHeader? blockHeader);
+        void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false);
 
         void RemoveBeaconPivot();
 

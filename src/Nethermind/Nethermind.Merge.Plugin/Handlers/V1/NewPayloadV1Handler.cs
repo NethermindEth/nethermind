@@ -185,6 +185,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     _beaconPivot.ProcessDestination = block.Header;
                 }
 
+                _beaconPivot.EnsurePivot(block.Header, true);
                 _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
 
                 if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Inserting block {block}.");
