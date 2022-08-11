@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -69,26 +69,29 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                                 Assert.AreEqual(0L, deserialized.TxReceipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
                                 Assert.Null(deserialized.TxReceipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
                                 Assert.AreEqual(0L, deserialized.TxReceipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
-                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
                                 Assert.AreEqual(txReceipts[i][j].GasUsedTotal, deserialized.TxReceipts[i][j].GasUsedTotal, $"receipts[{i}][{j}].GasUsedTotal");
-                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
+                                if (!txReceipts[i][j].SkipStateAndStatusInRlp)
+                                {
+                                    Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
+                                    Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
+                                }
                             }
                         }
                     }
                 }
             }
         }
-        
+
         [Test]
         public void Roundtrip()
-        {            
+        {
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             Test(data);
         }
-        
+
         [Test]
         public void Roundtrip_with_IgnoreOutputs()
-        {            
+        {
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             foreach (TxReceipt[] receipts in data)
             {
@@ -96,10 +99,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             }
             Test(data);
         }
-        
+
         [Test]
         public void Roundtrip_with_eip658()
-        {            
+        {
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(RopstenSpecProvider.ConstantinopleBlockNumber).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             Test(data);
         }
@@ -116,14 +119,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}, null, new[] {null, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             Test(data);
         }
-        
+
         [Test]
         public void Deserialize_empty()
         {
             ReceiptsMessageSerializer serializer = new(RopstenSpecProvider.Instance);
             serializer.Deserialize(new byte[0]).TxReceipts.Should().HaveCount(0);
         }
-        
+
         [Test]
         public void Roundtrip_mainnet_sample()
         {
@@ -132,18 +135,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             ReceiptsMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             Assert.AreEqual(bytes,  serialized);
-        }   
-        
+        }
+
         [Test]
         public void Roundtrip_one_receipt_with_accessList()
-        {            
+        {
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject }};
             Test(data);
         }
-        
+
         [Test]
         public void Roundtrip_with_both_txTypes_of_receipt()
-        {            
+        {
             TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).WithTxType(TxType.AccessList).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             Test(data);
         }

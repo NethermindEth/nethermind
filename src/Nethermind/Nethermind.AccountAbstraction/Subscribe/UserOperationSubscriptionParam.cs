@@ -13,27 +13,25 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
 
 using System;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Newtonsoft.Json;
 
-namespace Nethermind.AccountAbstraction.Subscribe
-{
-    public class UserOperationSubscriptionParam : IJsonRpcParam
-    {
-        public Address[] EntryPoints { get; set; } = Array.Empty<Address>();
-        public bool IncludeUserOperations { get; set; }
-    
-        public void FromJson(JsonSerializer serializer, string jsonValue)
-        {
-            UserOperationSubscriptionParam ep = serializer.Deserialize<UserOperationSubscriptionParam>(jsonValue.ToJsonTextReader())
-                                  ?? throw new ArgumentException($"Invalid 'entryPoints' filter: {jsonValue}");
-            EntryPoints = ep.EntryPoints;
-            IncludeUserOperations = ep.IncludeUserOperations;
+namespace Nethermind.AccountAbstraction.Subscribe;
 
-        }
+public class UserOperationSubscriptionParam : IJsonRpcParam
+{
+    public Address[] EntryPoints { get; set; } = Array.Empty<Address>();
+    public bool IncludeUserOperations { get; set; }
+
+    public void ReadJson(JsonSerializer serializer, string jsonValue)
+    {
+        UserOperationSubscriptionParam ep = serializer.Deserialize<UserOperationSubscriptionParam>(jsonValue.ToJsonTextReader())
+                              ?? throw new ArgumentException($"Invalid 'entryPoints' filter: {jsonValue}");
+        EntryPoints = ep.EntryPoints;
+        IncludeUserOperations = ep.IncludeUserOperations;
+
     }
 }

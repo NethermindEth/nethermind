@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -27,6 +28,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -53,11 +55,12 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         private readonly IBlockCacheService _blockCacheService;
         private readonly IBlockProcessingQueue _processingQueue;
         private readonly IMergeSyncController _mergeSyncController;
+        private readonly ISpecProvider _specProvider;
         private readonly IInvalidChainTracker _invalidChainTracker;
         private readonly ILogger _logger;
         private readonly LruCache<Keccak, bool> _latestBlocks = new(50, "LatestBlocks");
         private readonly ProcessingOptions _processingOptions;
-        internal static TimeSpan Timeout = TimeSpan.FromSeconds(7);
+        private readonly TimeSpan _timeout;
 
         public NewPayloadV1Handler(
             IBlockValidator blockValidator,
@@ -71,7 +74,9 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             IBlockProcessingQueue processingQueue,
             IInvalidChainTracker invalidChainTracker,
             IMergeSyncController mergeSyncController,
-            ILogManager logManager)
+            ISpecProvider specProvider,
+            ILogManager logManager,
+            TimeSpan? timeout = null)
         {
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _blockTree = blockTree;
@@ -83,8 +88,10 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _processingQueue = processingQueue;
             _invalidChainTracker = invalidChainTracker;
             _mergeSyncController = mergeSyncController;
+            _specProvider = specProvider;
             _logger = logManager.GetClassLogger();
             _processingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
+            _timeout = timeout ?? TimeSpan.FromSeconds(7);
         }
 
         public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayloadV1 request)
@@ -143,8 +150,20 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 return NewPayloadV1Result.Valid(block.Hash);
             }
 
-            bool parentProcessed = _blockTree.WasProcessed(parentHeader.Number, parentHeader.GetOrCalculateHash());
-            if (!parentProcessed)
+            BlockInfo parentBlockInfo = _blockTree.GetInfo(parentHeader.Number, parentHeader.GetOrCalculateHash()).Info;
+            bool parentProcessed = parentBlockInfo.WasProcessed;
+
+            // edge-case detected on GSF5 - during the transition we want to try process all transition blocks from CL client
+            // The last condition: !parentBlockInfo.IsBeaconInfo will be true for terminal blocks. Checking _posSwitcher.IsTerminal might not be the best, because we're loading parentHeader with DoNotCalculateTotalDifficulty option
+            bool weAreCloseToHead = (_blockTree.Head?.Number ?? 0) + 8 >= block.Number;
+            bool forceProcessing = !_poSSwitcher.TransitionFinished && weAreCloseToHead && !parentBlockInfo.IsBeaconInfo;
+            if (parentProcessed == false && forceProcessing) // add extra logging for this edge case
+            {
+                if (_logger.IsInfo) _logger.Info($"Forced processing block {block}, block TD: {block.TotalDifficulty}, parent: {parentHeader}, parent TD: {parentHeader.TotalDifficulty}");
+            }
+
+            bool tryProcessBlock = parentProcessed || forceProcessing;
+            if (!tryProcessBlock)
             {
                 if (!_blockValidator.ValidateSuggestedBlock(block))
                 {
@@ -152,13 +171,27 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     return NewPayloadV1Result.Invalid(null);
                 }
 
-                BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
-                _blockTree.Insert(block, true, insertOptions);
-                if (_logger.IsInfo) _logger.Info("Syncing... Parent wasn't processed. Inserting block.");
+                BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
+
+                if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Block already known in blockTree {block}.");
+                    return NewPayloadV1Result.Syncing;
+                }
+
+                if (_beaconPivot.ProcessDestination != null && _beaconPivot.ProcessDestination.Hash == block.ParentHash)
+                {
+                    insertHeaderOptions |= BlockTreeInsertHeaderOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
+                    _beaconPivot.ProcessDestination = block.Header;
+                }
+
+                _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, insertHeaderOptions);
+
+                if (_logger.IsInfo) _logger.Info($"Syncing... Parent wasn't processed. Inserting block {block}.");
                 return NewPayloadV1Result.Syncing;
             }
 
-            if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader))
+            if ((block.TotalDifficulty ?? 0) != 0 && (_poSSwitcher.MisconfiguredTerminalTotalDifficulty() || _poSSwitcher.BlockBeforeTerminalTotalDifficulty(parentHeader)))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid terminal block. Nethermind TTD {_poSSwitcher.TerminalTotalDifficulty}, Parent TD: {parentHeader.TotalDifficulty}. Request: {requestStr}.");
 
@@ -172,22 +205,22 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             // Try to execute block
             (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader);
 
-            if ((result & ValidationResult.AlreadyKnown) == ValidationResult.AlreadyKnown || result == ValidationResult.Invalid)
+            if (result == ValidationResult.Invalid)
             {
-                bool isValid = (result & ValidationResult.Valid) == ValidationResult.Valid;
-                if (_logger.IsInfo)
+                _invalidChainTracker.OnInvalidBlock(blockHash, request.ParentHash);
+                return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
+            }
+
+            if (result == ValidationResult.AlreadyKnown) // this could happen only when we processed a parent, repeated the same block and we're processing this block via sync
+            {
+                if (_blockTree.IsMainChain(block.GetOrCalculateHash())) // if the block is on main chain it means that we've already finished processing it so we can return VALID
                 {
-                    string resultStr = isValid ? "Valid" : "Invalid";
-                    if (_logger.IsInfo) _logger.Info($"{resultStr}. Result of {requestStr}.");
+                    if (_logger.IsInfo) _logger.Info($"Valid - already known processed block {requestStr}");
+                    return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = request.BlockHash });
                 }
 
-                if (result == ValidationResult.Invalid)
-                {
-                    _invalidChainTracker.OnInvalidBlock(blockHash, request.ParentHash);
-                    return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
-                }
-
-                return ResultWrapper<PayloadStatusV1>.Success(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = request.BlockHash });
+                if (_logger.IsInfo) _logger.Info($"Syncing - already known not processed block {requestStr}.");
+                return NewPayloadV1Result.Syncing;
             }
 
             if (result == ValidationResult.Syncing)
@@ -236,9 +269,11 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                 {
                     _processingQueue.BlockRemoved -= GetProcessingQueueOnBlockRemoved;
 
+                    const string blockProcessingThrewException = "Block processing threw exception.";
+
                     if (e.ProcessingResult == ProcessingResult.Exception)
                     {
-                        blockProcessedTaskCompletionSource.SetException(new Exception("Block processing failed"));
+                        blockProcessedTaskCompletionSource.SetException(new BlockchainException(blockProcessingThrewException, e.Exception));
                         return;
                     }
 
@@ -255,7 +290,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
                     {
                         ProcessingResult.QueueException => "Block cannot be added to processing queue.",
                         ProcessingResult.MissingBlock => "Block wasn't found in tree.",
-                        ProcessingResult.Exception => "Block processing threw exception.",
+                        ProcessingResult.Exception => blockProcessingThrewException,
                         ProcessingResult.ProcessingError => "Block processing failed.",
                         _ => null
                     };
@@ -267,7 +302,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
             _processingQueue.BlockRemoved += GetProcessingQueueOnBlockRemoved;
             try
             {
-                Task timeoutTask = Task.Delay(Timeout);
+                Task timeoutTask = Task.Delay(_timeout);
                 AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain)
                     .AsTask().TimeoutOn(timeoutTask);
 
@@ -335,46 +370,39 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
         /// Return false if no ancestor that is part of beacon chain found.
         private bool TryInsertDanglingBlock(Block block)
         {
-            BlockTreeInsertOptions insertOptions = BlockTreeInsertOptions.BeaconBlockInsert;
+            BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert | BlockTreeInsertHeaderOptions.MoveToBeaconMainChain;
 
             if (!_blockTree.IsKnownBeaconBlock(block.Number, block.Hash ?? block.CalculateHash()))
             {
                 // last block inserted is parent of current block, part of the same chain
-                if (block.ParentHash == _blockCacheService.ProcessDestination)
+                Block? current = block;
+                Stack<Block> stack = new();
+                while (current != null)
                 {
-                    _blockTree.Insert(block, true, insertOptions);
-                }
-                else
-                {
-                    Block? current = block;
-                    Stack<Block> stack = new();
-                    while (current != null)
+                    stack.Push(current);
+                    Keccak currentHash = current.Hash!;
+                    if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
                     {
-                        stack.Push(current);
-                        Keccak currentHash = current.Hash!;
-                        if (currentHash == _beaconPivot.PivotHash || _blockTree.IsKnownBeaconBlock(current.Number, currentHash))
-                        {
-                            break;
-                        }
-
-                        _blockCacheService.BlockCache.TryGetValue(current.ParentHash!, out Block? parentBlock);
-                        current = parentBlock;
+                        break;
                     }
 
-                    if (current == null)
-                    {
-                        // block not part of beacon pivot chain, save in cache
-                        _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
-                        return false;
-                    }
-
-                    while (stack.TryPop(out Block? child))
-                    {
-                        _blockTree.Insert(child, true, insertOptions);
-                    }
+                    _blockCacheService.BlockCache.TryGetValue(current.ParentHash!, out Block? parentBlock);
+                    current = parentBlock;
                 }
 
-                _blockCacheService.ProcessDestination = block.Hash;
+                if (current == null)
+                {
+                    // block not part of beacon pivot chain, save in cache
+                    _blockCacheService.BlockCache.TryAdd(block.Hash!, block);
+                    return false;
+                }
+
+                while (stack.TryPop(out Block? child))
+                {
+                    _blockTree.Insert(child, BlockTreeInsertBlockOptions.SaveHeader, insertHeaderOptions);
+                }
+
+                _beaconPivot.ProcessDestination = block.Header;
             }
 
             return true;

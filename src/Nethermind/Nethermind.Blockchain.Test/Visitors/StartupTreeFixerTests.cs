@@ -1,19 +1,19 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
-// 
+//
 
 using System.Threading;
 using System.Threading.Tasks;
@@ -46,18 +46,18 @@ namespace Nethermind.Blockchain.Test.Visitors
         {
             // for now let us just look at the warnings (before we start adding cleanup)
         }
-        
+
         [Test, Ignore("Not implemented")]
         public void Warns_when_blocks_are_marked_as_processed_but_there_are_no_bodies()
         {
             // for now let us just look at the warnings (before we start adding cleanup)
         }
-        
+
         [Test, Ignore("Not implemented")]
         public void Warns_when_there_is_a_hole_in_processed_blocks()
         {
         }
-        
+
         [Test]
         public void Deletes_everything_after_the_missing_level()
         {
@@ -82,11 +82,11 @@ namespace Nethermind.Blockchain.Test.Visitors
             tree.UpdateMainChain(block0);
             tree.UpdateMainChain(block1);
             tree.UpdateMainChain(block2);
-            
+
             blockInfosDb.Delete(3);
 
             tree = new BlockTree(blocksDb, headersDb, blockInfosDb, new ChainLevelInfoRepository(blockInfosDb), MainnetSpecProvider.Instance, NullBloomStorage.Instance, LimboLogs.Instance);
-            
+
             StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, new MemDb(), LimboNoErrorLogger.Instance);
             tree.Accept(fixer, CancellationToken.None);
 
@@ -96,10 +96,10 @@ namespace Nethermind.Blockchain.Test.Visitors
 
             tree.Head.Header.Should().BeEquivalentTo(block2.Header, options => options.Excluding(t => t.MaybeParent));
             tree.BestSuggestedHeader.Should().BeEquivalentTo(block2.Header, options => options.Excluding(t => t.MaybeParent));
-            tree.BestSuggestedBody.Should().BeEquivalentTo(block2.Body);
+            tree.BestSuggestedBody?.Body.Should().BeEquivalentTo(block2.Body);
             tree.BestKnownNumber.Should().Be(2);
         }
-        
+
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
@@ -115,13 +115,13 @@ namespace Nethermind.Blockchain.Test.Visitors
             long startingBlockNumber = tree.Head!.Number;
 
             SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
-            
+
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
                 testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
-            
+
             // fixing after restart
             StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
             await tree.Accept(fixer, CancellationToken.None);
@@ -136,7 +136,7 @@ namespace Nethermind.Blockchain.Test.Visitors
             await testRpc.AddBlock();
             Assert.AreEqual(startingBlockNumber + suggestedBlocksAmount + 1, tree.Head!.Number);
         }
-        
+
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
@@ -148,21 +148,21 @@ namespace Nethermind.Blockchain.Test.Visitors
             IBlockTree tree = testRpc.BlockTree;
 
             SuggestNumberOfBlocks(tree, suggestedBlocksAmount);
-            
+
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
                 testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
-            
+
             // we create a new empty db for stateDb so we shouldn't suggest new blocks
             MemDb stateDb = new();
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, stateDb, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(tree.Head!, CancellationToken.None);
-            
+
             Assert.AreEqual(BlockVisitOutcome.None, result);
         }
-        
+
         [Test]
         public async Task Fixer_should_not_suggest_block_with_null_block()
         {
@@ -171,16 +171,16 @@ namespace Nethermind.Blockchain.Test.Visitors
             IBlockTree tree = testRpc.BlockTree;
 
             SuggestNumberOfBlocks(tree, 1);
-            
+
             // simulating restarts - we stopped the old blockchain processor and create the new one
             BlockchainProcessor newBlockchainProcessor = new(tree, testRpc.BlockProcessor,
                 testRpc.BlockPreprocessorStep, testRpc.StateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
             newBlockchainProcessor.Start();
             testRpc.BlockchainProcessor = newBlockchainProcessor;
-            
+
             IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, testRpc.DbProvider.StateDb, LimboNoErrorLogger.Instance, 5);
             BlockVisitOutcome result = await fixer.VisitBlock(null, CancellationToken.None);
-            
+
             Assert.AreEqual(BlockVisitOutcome.None, result);
         }
 
@@ -198,7 +198,7 @@ namespace Nethermind.Blockchain.Test.Visitors
                 newParent = newBlock;
             }
         }
-        
+
         [Ignore("It is causing some trouble now. Disabling it while the restarts logic is under review")]
         [Test]
         public void When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()

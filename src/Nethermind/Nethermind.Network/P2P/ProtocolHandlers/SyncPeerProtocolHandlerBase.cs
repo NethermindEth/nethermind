@@ -231,7 +231,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public abstract void NotifyOfNewBlock(Block block, SendBlockPriority priority);
+        public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
         public void SendNewTransaction(Transaction tx)
         {

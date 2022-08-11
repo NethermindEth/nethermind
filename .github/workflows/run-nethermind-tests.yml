@@ -1,14 +1,18 @@
 name: '[RUN] Nethermind/Ethereum Tests'
 
 concurrency: 
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}  
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 on: 
   push:
+    branches:
+       - master
   pull_request:
   workflow_dispatch:
 
-jobs:
+
+jobs:       
   neth-tests:
     name: Running Nethermind Tests 1
     runs-on: ubuntu-latest

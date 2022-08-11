@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -47,7 +47,7 @@ namespace Nethermind.Core
         public Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body);
 
         public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody);
-        
+
         public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody);
 
         public BlockHeader Header { get; }
@@ -97,10 +97,12 @@ namespace Nethermind.Core
         public UInt256 Difficulty => Header.Difficulty; // do not add setter here
 
         public UInt256? TotalDifficulty => Header.TotalDifficulty; // do not add setter here
-        
+
         public UInt256 BaseFeePerGas => Header.BaseFeePerGas; // do not add setter here
-        
+
         public bool IsPostMerge => Header.IsPostMerge; // do not add setter here
+
+        public bool IsBodyMissing => Header.HasBody && Body.IsEmpty;
 
         public override string ToString()
         {

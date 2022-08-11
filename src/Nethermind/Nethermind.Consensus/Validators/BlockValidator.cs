@@ -1,16 +1,16 @@
 ﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -36,8 +36,8 @@ namespace Nethermind.Consensus.Validators
         public BlockValidator(
             ITxValidator? txValidator,
             IHeaderValidator? headerValidator,
-            IUnclesValidator? unclesValidator, 
-            ISpecProvider? specProvider, 
+            IUnclesValidator? unclesValidator,
+            ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -58,7 +58,7 @@ namespace Nethermind.Consensus.Validators
         }
 
         /// <summary>
-        /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing. 
+        /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
         /// </summary>
         /// <param name="block">A block to validate</param>
         /// <returns><value>True</value> if the <paramref name="block"/> is valid, otherwise <value>False</value></returns>
@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Validators
         {
             Transaction[] txs = block.Transactions;
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-            
+
             for (int i = 0; i < txs.Length; i++)
             {
                 if (!_txValidator.IsWellFormed(txs[i], spec))
@@ -87,13 +87,13 @@ namespace Nethermind.Consensus.Validators
                 _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles hash");
                 return false;
             }
-            
+
             if (!_unclesValidator.Validate(block.Header, block.Uncles))
             {
                 _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles");
                 return false;
             }
-            
+
             bool blockHeaderValid = _headerValidator.Validate(block.Header);
             if (!blockHeaderValid)
             {
@@ -126,7 +126,7 @@ namespace Nethermind.Consensus.Validators
             {
                 if (_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.Short)} is not valid");
                 if(_logger.IsError) _logger.Error($"  hash {processedBlock.Hash} != stated hash {suggestedBlock.Hash}");
-                
+
                 if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
                 {
                     if(_logger.IsError) _logger.Error($"  gas used {processedBlock.Header.GasUsed} != stated gas used {suggestedBlock.Header.GasUsed} ({processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed} difference)");
@@ -146,7 +146,7 @@ namespace Nethermind.Consensus.Validators
                 {
                     if(_logger.IsError) _logger.Error($"  state root {processedBlock.Header.StateRoot} != stated state root {suggestedBlock.Header.StateRoot}");
                 }
-                
+
                 for (int i = 0; i < processedBlock.Transactions.Length; i++)
                 {
                     if (receipts[i].Error != null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")

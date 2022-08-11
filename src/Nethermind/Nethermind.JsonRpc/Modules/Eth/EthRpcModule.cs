@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -40,7 +40,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
-using Nethermind.Stats.Model;
 using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -49,684 +48,700 @@ using BlockHeader = Nethermind.Core.BlockHeader;
 using Signature = Nethermind.Core.Crypto.Signature;
 using Transaction = Nethermind.Core.Transaction;
 
-namespace Nethermind.JsonRpc.Modules.Eth
+namespace Nethermind.JsonRpc.Modules.Eth;
+
+public partial class EthRpcModule : IEthRpcModule
 {
-    public partial class EthRpcModule : IEthRpcModule
+    private readonly Encoding _messageEncoding = Encoding.UTF8;
+    private readonly IJsonRpcConfig _rpcConfig;
+    private readonly IBlockchainBridge _blockchainBridge;
+    private readonly IBlockFinder _blockFinder;
+    private readonly IReceiptFinder _receiptFinder;
+    private readonly IStateReader _stateReader;
+    private readonly ITxPool _txPoolBridge;
+    private readonly ITxSender _txSender;
+    private readonly IWallet _wallet;
+    private readonly ISpecProvider _specProvider;
+    private readonly ILogger _logger;
+    private readonly IGasPriceOracle _gasPriceOracle;
+    private readonly IEthSyncingInfo _ethSyncingInfo;
+
+    private readonly IFeeHistoryOracle _feeHistoryOracle;
+    private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
-        private readonly Encoding _messageEncoding = Encoding.UTF8;
-        private readonly IJsonRpcConfig _rpcConfig;
-        private readonly IBlockchainBridge _blockchainBridge;
-        private readonly IBlockFinder _blockFinder;
-        private readonly IReceiptFinder _receiptFinder;
-        private readonly IStateReader _stateReader;
-        private readonly ITxPool _txPoolBridge;
-        private readonly ITxSender _txSender;
-        private readonly IWallet _wallet;
-        private readonly ISpecProvider _specProvider;
-        private readonly ILogger _logger;
-        private readonly IGasPriceOracle _gasPriceOracle;
-        private readonly IEthSyncingInfo _ethSyncingInfo;
+        RootCheckVisitor rootCheckVisitor = new();
+        blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
+        return rootCheckVisitor.HasRoot;
+    }
 
-        private readonly IFeeHistoryOracle _feeHistoryOracle;
-        private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
+    public EthRpcModule(
+        IJsonRpcConfig rpcConfig,
+        IBlockchainBridge blockchainBridge,
+        IBlockFinder blockFinder,
+        IStateReader stateReader,
+        ITxPool txPool,
+        ITxSender txSender,
+        IWallet wallet,
+        IReceiptFinder receiptFinder,
+        ILogManager logManager,
+        ISpecProvider specProvider,
+        IGasPriceOracle gasPriceOracle,
+        IEthSyncingInfo ethSyncingInfo,
+        IFeeHistoryOracle feeHistoryOracle)
+    {
+        _logger = logManager.GetClassLogger();
+        _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
+        _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+        _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
+        _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
+        _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+        _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));;
+        _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
+        _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
+        _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+    }
+
+    public ResultWrapper<string> eth_protocolVersion()
+    {
+        int highestVersion =  P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
+        return ResultWrapper<string>.Success(highestVersion.ToHexString());
+    }
+
+    public ResultWrapper<SyncingResult> eth_syncing()
+    {
+       return ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
+    }
+
+    public ResultWrapper<byte[]> eth_snapshot()
+    {
+        return ResultWrapper<byte[]>.Fail("eth_snapshot not supported");
+    }
+
+    public ResultWrapper<Address> eth_coinbase()
+    {
+        return ResultWrapper<Address>.Success(Address.Zero);
+    }
+
+    public ResultWrapper<bool?> eth_mining()
+    {
+        return ResultWrapper<bool?>.Success(_blockchainBridge.IsMining);
+    }
+
+    public ResultWrapper<UInt256?> eth_hashrate()
+    {
+        return ResultWrapper<UInt256?>.Success(0);
+    }
+
+    public ResultWrapper<UInt256?> eth_gasPrice()
+    {
+        return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
+    }
+    
+    public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
+    {
+        UInt256 gasPriceWithBaseFee = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+        return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
+    }
+
+    public ResultWrapper<FeeHistoryResults> eth_feeHistory(long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
+    {
+        return _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
+    }
+
+    public ResultWrapper<IEnumerable<Address>> eth_accounts()
+    {
+        try
         {
-            RootCheckVisitor rootCheckVisitor = new();
-            blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot);
-            return rootCheckVisitor.HasRoot;
+            Address[] result = _wallet.GetAccounts();
+            Address[] data = result.ToArray();
+            return ResultWrapper<IEnumerable<Address>>.Success(data.ToArray());
+        }
+        catch (Exception)
+        {
+            return ResultWrapper<IEnumerable<Address>>.Fail("Error while getting key addresses from wallet.");
+        }
+    }
+
+    public Task<ResultWrapper<long?>> eth_blockNumber()
+    {
+        long number = _blockchainBridge.HeadBlock?.Number ?? 0;
+        return Task.FromResult(ResultWrapper<long?>.Success(number));
+    }
+
+    public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter? blockParameter = null)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return Task.FromResult(ResultWrapper<UInt256?>.Fail(searchResult));
         }
 
-        public EthRpcModule(
-            IJsonRpcConfig rpcConfig,
-            IBlockchainBridge blockchainBridge,
-            IBlockFinder blockFinder,
-            IStateReader stateReader,
-            ITxPool txPool,
-            ITxSender txSender,
-            IWallet wallet,
-            IReceiptFinder receiptFinder,
-            ILogManager logManager,
-            ISpecProvider specProvider,
-            IGasPriceOracle gasPriceOracle,
-            IEthSyncingInfo ethSyncingInfo,
-            IFeeHistoryOracle feeHistoryOracle)
+        BlockHeader header = searchResult.Object;
+        if (!HasStateForBlock(_blockchainBridge, header))
         {
-            _logger = logManager.GetClassLogger();
-            _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
-            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _txPoolBridge = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _txSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
-            _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
-            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));;
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
-            _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
-            _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+            return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
+                ErrorCodes.ResourceUnavailable));
         }
 
-        public ResultWrapper<string> eth_protocolVersion()
+        Account account = _stateReader.GetAccount(header.StateRoot, address);
+        return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Balance ?? UInt256.Zero));
+    }
+
+    public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
+        BlockParameter? blockParameter = null)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
         {
-            int highestVersion =  P2PProtocolInfoProvider.GetHighestVersionOfEthProtocol();
-            return ResultWrapper<string>.Success(highestVersion.ToHexString());
+            return ResultWrapper<byte[]>.Fail(searchResult);
         }
 
-        public ResultWrapper<SyncingResult> eth_syncing()
+        BlockHeader? header = searchResult.Object;
+        Account account = _stateReader.GetAccount(header.StateRoot, address);
+        if (account == null)
         {
-           return ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
+            return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
 
-        public ResultWrapper<byte[]> eth_snapshot()
+        byte[] storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
+        return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
+    }
+
+    public Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
         {
-            return ResultWrapper<byte[]>.Fail("eth_snapshot not supported");
+            return Task.FromResult(ResultWrapper<UInt256?>.Fail(searchResult));
         }
 
-        public ResultWrapper<Address> eth_coinbase()
+        BlockHeader header = searchResult.Object;
+        if (!HasStateForBlock(_blockchainBridge, header))
         {
-            return ResultWrapper<Address>.Success(Address.Zero);
+            return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
+                ErrorCodes.ResourceUnavailable));
         }
 
-        public ResultWrapper<bool?> eth_mining()
+        Account account = _stateReader.GetAccount(header.StateRoot, address);
+        UInt256 nonce = account?.Nonce ?? 0;
+
+        return Task.FromResult(ResultWrapper<UInt256?>.Success(nonce));
+    }
+
+    public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
+        if (searchResult.IsError)
         {
-            return ResultWrapper<bool?>.Success(_blockchainBridge.IsMining);
+            return ResultWrapper<UInt256?>.Fail(searchResult);
         }
 
-        public ResultWrapper<UInt256?> eth_hashrate()
+        return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Transactions.Length);
+    }
+
+    public ResultWrapper<UInt256?> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        if (searchResult.IsError)
         {
-            return ResultWrapper<UInt256?>.Success(0);
+            return ResultWrapper<UInt256?>.Fail(searchResult);
         }
 
-        public ResultWrapper<UInt256?> eth_gasPrice()
-        {
-            return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
-        }
-        
-        public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
-        {
-            UInt256 gasPriceWithBaseFee = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
-            return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
-        }
+        return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Transactions.Length);
+    }
 
-        public ResultWrapper<FeeHistoryResults> eth_feeHistory(long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
+    public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Keccak blockHash)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
+        if (searchResult.IsError)
         {
-            return _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
+            return ResultWrapper<UInt256?>.Fail(searchResult);
         }
 
-        public ResultWrapper<IEnumerable<Address>> eth_accounts()
+        return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Uncles.Length);
+    }
+
+    public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter? blockParameter)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        if (searchResult.IsError)
         {
-            try
-            {
-                Address[] result = _wallet.GetAccounts();
-                Address[] data = result.ToArray();
-                return ResultWrapper<IEnumerable<Address>>.Success(data.ToArray());
-            }
-            catch (Exception)
-            {
-                return ResultWrapper<IEnumerable<Address>>.Fail("Error while getting key addresses from wallet.");
-            }
+            return ResultWrapper<UInt256?>.Fail(searchResult);
         }
 
-        public Task<ResultWrapper<long?>> eth_blockNumber()
+        return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Uncles.Length);
+    }
+
+    public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null)
+    {
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
         {
-            long number = _blockchainBridge.HeadBlock?.Number ?? 0;
-            return Task.FromResult(ResultWrapper<long?>.Success(number));
+            return ResultWrapper<byte[]>.Fail(searchResult);
         }
 
-        public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter? blockParameter = null)
+        BlockHeader header = searchResult.Object;
+        if (!HasStateForBlock(_blockchainBridge, header))
         {
-            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-            if (searchResult.IsError)
-            {
-                return Task.FromResult(ResultWrapper<UInt256?>.Fail(searchResult));
-            }
-
-            BlockHeader header = searchResult.Object;
-            if (!HasStateForBlock(_blockchainBridge, header))
-            {
-                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
-                    ErrorCodes.ResourceUnavailable));
-            }
-
-            Account account = _stateReader.GetAccount(header.StateRoot, address);
-            return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Balance ?? UInt256.Zero));
+            return ResultWrapper<byte[]>.Fail($"No state available for block {header.Hash}",
+                ErrorCodes.ResourceUnavailable);
         }
 
-        public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
-            BlockParameter? blockParameter = null)
+        Account account = _stateReader.GetAccount(header.StateRoot, address);
+        if (account == null)
         {
-            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<byte[]>.Fail(searchResult);
-            }
-
-            BlockHeader? header = searchResult.Object;
-            Account account = _stateReader.GetAccount(header.StateRoot, address);
-            if (account == null)
-            {
-                return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
-            }
-
-            byte[] storage = _stateReader.GetStorage(account.StorageRoot, positionIndex);
-            return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
+            return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
         }
 
-        public Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
+        byte[]? code = _stateReader.GetCode(account.CodeHash);
+        return ResultWrapper<byte[]>.Success(code);
+    }
+
+    public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
+    {
+        Signature sig;
+        try
         {
-            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-            if (searchResult.IsError)
-            {
-                return Task.FromResult(ResultWrapper<UInt256?>.Fail(searchResult));
-            }
-
-            BlockHeader header = searchResult.Object;
-            if (!HasStateForBlock(_blockchainBridge, header))
-            {
-                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
-                    ErrorCodes.ResourceUnavailable));
-            }
-
-            Account account = _stateReader.GetAccount(header.StateRoot, address);
-            UInt256 nonce = account?.Nonce ?? 0;
-
-            return Task.FromResult(ResultWrapper<UInt256?>.Success(nonce));
+            Address address = addressData;
+            string messageText = _messageEncoding.GetString(message);
+            const string signatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
+            string signatureText = string.Format(signatureTemplate, messageText.Length, messageText);
+            sig = _wallet.Sign(Keccak.Compute(signatureText), address);
+        }
+        catch (SecurityException e)
+        {
+            return ResultWrapper<byte[]>.Fail(e.Message, ErrorCodes.AccountLocked);
+        }
+        catch (Exception)
+        {
+            return ResultWrapper<byte[]>.Fail($"Unable to sign as {addressData}");
         }
 
-        public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
-        {
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<UInt256?>.Fail(searchResult);
-            }
+        if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
+        return ResultWrapper<byte[]>.Success(sig.Bytes);
+    }
 
-            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Transactions.Length);
+    public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
+    {
+        Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
+        TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
+        return SendTx(tx, options);
+    }
+
+    public async Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
+    {
+        try
+        {
+            Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
+            return await SendTx(tx);
+        }
+        catch (RlpException)
+        {
+            return ResultWrapper<Keccak>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
+        }
+    }
+
+    private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx,
+        TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
+    {
+        try
+        {
+            (Keccak txHash, AcceptTxResult? acceptTxResult) =
+                await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
+
+            return acceptTxResult.Equals(AcceptTxResult.Accepted)
+                ? ResultWrapper<Keccak>.Success(txHash)
+                : ResultWrapper<Keccak>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
+        }
+        catch (SecurityException e)
+        {
+            return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.AccountLocked);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Failed to send transaction.", e);
+            return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected);
+        }
+    }
+
+    public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
+        new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+            .ExecuteTx(transactionCall, blockParameter);
+
+    public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
+        new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+            .ExecuteTx(transactionCall, blockParameter);
+
+    public ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
+        new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, optimize)
+            .ExecuteTx(transactionCall, blockParameter);
+
+    public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
+    {
+        return GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
+    }
+
+    public ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter,
+        bool returnFullTransactionObjects)
+    {
+        return GetBlock(blockParameter, returnFullTransactionObjects);
+    }
+
+    private ResultWrapper<BlockForRpc> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
+        if (searchResult.IsError)
+        {
+            return ResultWrapper<BlockForRpc>.Fail(searchResult);
         }
 
-        public ResultWrapper<UInt256?> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
+        Block? block = searchResult.Object;
+        if (block != null)
         {
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<UInt256?>.Fail(searchResult);
-            }
-
-            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Transactions.Length);
+            _blockchainBridge.RecoverTxSenders(block);
         }
 
-        public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Keccak blockHash)
+        return ResultWrapper<BlockForRpc>.Success(block == null
+            ? null
+            : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
+    }
+
+    public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
+    {
+        UInt256? baseFee = null;
+        _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
+        TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
+        if (transaction == null)
         {
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<UInt256?>.Fail(searchResult);
-            }
-
-            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Uncles.Length);
-        }
-
-        public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter? blockParameter)
-        {
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<UInt256?>.Fail(searchResult);
-            }
-
-            return ResultWrapper<UInt256?>.Success((UInt256)searchResult.Object.Uncles.Length);
-        }
-
-        public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter? blockParameter = null)
-        {
-            SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<byte[]>.Fail(searchResult);
-            }
-
-            BlockHeader header = searchResult.Object;
-            if (!HasStateForBlock(_blockchainBridge, header))
-            {
-                return ResultWrapper<byte[]>.Fail($"No state available for block {header.Hash}",
-                    ErrorCodes.ResourceUnavailable);
-            }
-
-            Account account = _stateReader.GetAccount(header.StateRoot, address);
-            if (account == null)
-            {
-                return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
-            }
-
-            byte[]? code = _stateReader.GetCode(account.CodeHash);
-            return ResultWrapper<byte[]>.Success(code);
-        }
-
-        public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
-        {
-            Signature sig;
-            try
-            {
-                Address address = addressData;
-                string messageText = _messageEncoding.GetString(message);
-                const string signatureTemplate = "\x19Ethereum Signed Message:\n{0}{1}";
-                string signatureText = string.Format(signatureTemplate, messageText.Length, messageText);
-                sig = _wallet.Sign(Keccak.Compute(signatureText), address);
-            }
-            catch (SecurityException e)
-            {
-                return ResultWrapper<byte[]>.Fail(e.Message, ErrorCodes.AccountLocked);
-            }
-            catch (Exception)
-            {
-                return ResultWrapper<byte[]>.Fail($"Unable to sign as {addressData}");
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"eth_sign request {addressData}, {message}, result: {sig}");
-            return ResultWrapper<byte[]>.Success(sig.Bytes);
-        }
-
-        public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc rpcTx)
-        {
-            Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
-            TxHandlingOptions options = rpcTx.Nonce == null ? TxHandlingOptions.ManagedNonce : TxHandlingOptions.None;
-            return SendTx(tx, options);
-        }
-
-        public async Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
-        {
-            try
-            {
-                Transaction tx = Rlp.Decode<Transaction>(transaction, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
-                return await SendTx(tx);
-            }
-            catch (RlpException)
-            {
-                return ResultWrapper<Keccak>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected);
-            }
-        }
-
-        private async Task<ResultWrapper<Keccak>> SendTx(Transaction tx,
-            TxHandlingOptions txHandlingOptions = TxHandlingOptions.None)
-        {
-            try
-            {
-                (Keccak txHash, AcceptTxResult? acceptTxResult) =
-                    await _txSender.SendTransaction(tx, txHandlingOptions | TxHandlingOptions.PersistentBroadcast);
-
-                return acceptTxResult.Equals(AcceptTxResult.Accepted)
-                    ? ResultWrapper<Keccak>.Success(txHash)
-                    : ResultWrapper<Keccak>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected);
-            }
-            catch (SecurityException e)
-            {
-                return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.AccountLocked);
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error("Failed to send transaction.", e);
-                return ResultWrapper<Keccak>.Fail(e.Message, ErrorCodes.TransactionRejected);
-            }
-        }
-
-        public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
-            new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
-                .ExecuteTx(transactionCall, blockParameter);
-
-        public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
-            new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
-                .ExecuteTx(transactionCall, blockParameter);
-
-        public ResultWrapper<AccessListForRpc> eth_createAccessList(TransactionForRpc transactionCall, BlockParameter? blockParameter = null, bool optimize = true) =>
-            new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, optimize)
-                .ExecuteTx(transactionCall, blockParameter);
-
-        public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
-        {
-            return GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
-        }
-
-        public ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter,
-            bool returnFullTransactionObjects)
-        {
-            return GetBlock(blockParameter, returnFullTransactionObjects);
-        }
-
-        private ResultWrapper<BlockForRpc> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
-        {
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter, true);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<BlockForRpc>.Fail(searchResult);
-            }
-
-            Block? block = searchResult.Object;
-            if (block != null)
-            {
-                _blockchainBridge.RecoverTxSenders(block);
-            }
-
-            return ResultWrapper<BlockForRpc>.Success(block == null
-                ? null
-                : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
-        }
-
-        public Task<ResultWrapper<TransactionForRpc>> eth_getTransactionByHash(Keccak transactionHash)
-        {
-            UInt256? baseFee = null;
-            _txPoolBridge.TryGetPendingTransaction(transactionHash, out Transaction transaction);
-            TxReceipt receipt = null; // note that if transaction is pending then for sure no receipt is known
+            (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
             if (transaction == null)
             {
-                (receipt, transaction, baseFee) = _blockchainBridge.GetTransaction(transactionHash);
-                if (transaction == null)
-                {
-                    return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
-                }
+                return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(null));
             }
+        }
 
+        RecoverTxSenderIfNeeded(transaction);
+        TransactionForRpc transactionModel =
+            new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction, baseFee);
+        if (_logger.IsTrace)
+            _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
+        return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
+    }
+
+    public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
+    {
+        Transaction[] transactions = _txPoolBridge.GetPendingTransactions();
+        TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Transaction transaction = transactions[i];
             RecoverTxSenderIfNeeded(transaction);
-            TransactionForRpc transactionModel =
-                new(receipt?.BlockHash, receipt?.BlockNumber, receipt?.Index, transaction, baseFee);
-            if (_logger.IsTrace)
-                _logger.Trace($"eth_getTransactionByHash request {transactionHash}, result: {transactionModel.Hash}");
-            return Task.FromResult(ResultWrapper<TransactionForRpc>.Success(transactionModel));
+            transactionsModels[i] = new TransactionForRpc(transaction);
+            transactionsModels[i].BlockHash = Keccak.Zero;
         }
 
-        public ResultWrapper<TransactionForRpc[]> eth_pendingTransactions()
+        if (_logger.IsTrace) _logger.Trace($"eth_pendingTransactions request, result: {transactionsModels.Length}");
+        return ResultWrapper<TransactionForRpc[]>.Success(transactionsModels);
+    }
+
+    public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash,
+        UInt256 positionIndex)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
+        if (searchResult.IsError)
         {
-            Transaction[] transactions = _txPoolBridge.GetPendingTransactions();
-            TransactionForRpc[] transactionsModels = new TransactionForRpc[transactions.Length];
-            for (int i = 0; i < transactions.Length; i++)
+            return ResultWrapper<TransactionForRpc>.Fail(searchResult);
+        }
+
+        Block block = searchResult.Object;
+        if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
+        {
+            return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+        }
+
+        Transaction transaction = block.Transactions[(int)positionIndex];
+        RecoverTxSenderIfNeeded(transaction);
+
+        TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
+
+        return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+    }
+
+    public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter,
+        UInt256 positionIndex)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        if (searchResult.IsError)
+        {
+            return ResultWrapper<TransactionForRpc>.Fail(searchResult);
+        }
+
+        Block? block = searchResult.Object;
+        if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
+        {
+            return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+        }
+
+        Transaction transaction = block.Transactions[(int)positionIndex];
+        RecoverTxSenderIfNeeded(transaction);
+
+        TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
+
+        if (_logger.IsDebug)
+            _logger.Debug(
+                $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
+        return ResultWrapper<TransactionForRpc>.Success(transactionModel);
+    }
+
+    public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
+    {
+        (TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart) = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
+        if (receipt == null)
+        {
+            return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
+        }
+        
+        if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
+        return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, effectiveGasPrice, logIndexStart)));
+    }
+
+    public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)
+    {
+        return GetUncle(new BlockParameter(blockHash), positionIndex);
+    }
+
+    public ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter,
+        UInt256 positionIndex)
+    {
+        return GetUncle(blockParameter, positionIndex);
+    }
+
+    private ResultWrapper<BlockForRpc> GetUncle(BlockParameter blockParameter, UInt256 positionIndex)
+    {
+        SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
+        if (searchResult.IsError)
+        {
+            return ResultWrapper<BlockForRpc>.Fail(searchResult);
+        }
+
+        Block block = searchResult.Object;
+        if (positionIndex < 0 || positionIndex > block.Uncles.Length - 1)
+        {
+            return ResultWrapper<BlockForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+        }
+
+        BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
+        return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(uncleHeader, BlockBody.Empty), false, _specProvider));
+    }
+
+    public ResultWrapper<UInt256?> eth_newFilter(Filter filter)
+    {
+        BlockParameter fromBlock = filter.FromBlock;
+        BlockParameter toBlock = filter.ToBlock;
+        int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
+        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+    }
+
+    public ResultWrapper<UInt256?> eth_newBlockFilter()
+    {
+        int filterId = _blockchainBridge.NewBlockFilter();
+        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+    }
+
+    public ResultWrapper<UInt256?> eth_newPendingTransactionFilter()
+    {
+        int filterId = _blockchainBridge.NewPendingTransactionFilter();
+        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+    }
+
+    public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
+    {
+        _blockchainBridge.UninstallFilter((int)filterId);
+        return ResultWrapper<bool?>.Success(true);
+    }
+
+    public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
+    {
+        int id = (int)filterId;
+        FilterType filterType = _blockchainBridge.GetFilterType(id);
+        switch (filterType)
+        {
+            case FilterType.BlockFilter:
             {
-                Transaction transaction = transactions[i];
-                RecoverTxSenderIfNeeded(transaction);
-                transactionsModels[i] = new TransactionForRpc(transaction);
-                transactionsModels[i].BlockHash = Keccak.Zero;
+                return _blockchainBridge.FilterExists(id)
+                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
+                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
             }
 
-            if (_logger.IsTrace) _logger.Trace($"eth_pendingTransactions request, result: {transactionsModels.Length}");
-            return ResultWrapper<TransactionForRpc[]>.Success(transactionsModels);
-        }
-
-        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash,
-            UInt256 positionIndex)
-        {
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(new BlockParameter(blockHash));
-            if (searchResult.IsError)
+            case FilterType.PendingTransactionFilter:
             {
-                return ResultWrapper<TransactionForRpc>.Fail(searchResult);
+                return _blockchainBridge.FilterExists(id)
+                    ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
+                        .GetPendingTransactionFilterChanges(id))
+                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
             }
 
-            Block block = searchResult.Object;
-            if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
+            case FilterType.LogFilter:
             {
-                return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
+                return _blockchainBridge.FilterExists(id)
+                    ? ResultWrapper<IEnumerable<object>>.Success(
+                        _blockchainBridge.GetLogFilterChanges(id).ToArray())
+                    : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
             }
 
-            Transaction transaction = block.Transactions[(int)positionIndex];
-            RecoverTxSenderIfNeeded(transaction);
-
-            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
-
-            return ResultWrapper<TransactionForRpc>.Success(transactionModel);
-        }
-
-        public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter,
-            UInt256 positionIndex)
-        {
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
-            if (searchResult.IsError)
+            default:
             {
-                return ResultWrapper<TransactionForRpc>.Fail(searchResult);
+                throw new NotSupportedException($"Filter type {filterType} is not supported");
             }
+        }
+    }
 
-            Block? block = searchResult.Object;
-            if (positionIndex < 0 || positionIndex > block.Transactions.Length - 1)
+    public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
+    {
+        int id = (int)filterId;
+
+        return _blockchainBridge.FilterExists(id)
+            ? ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetFilterLogs(id))
+            : ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
+    }
+
+    public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
+    {
+        IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
+        {
+            using (cancellationTokenSource)
             {
-                return ResultWrapper<TransactionForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
-            }
-
-            Transaction transaction = block.Transactions[(int)positionIndex];
-            RecoverTxSenderIfNeeded(transaction);
-
-            TransactionForRpc transactionModel = new(block.Hash, block.Number, (int)positionIndex, transaction, block.BaseFeePerGas);
-
-            if (_logger.IsDebug)
-                _logger.Debug(
-                    $"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex}, result: {transactionModel.Hash}");
-            return ResultWrapper<TransactionForRpc>.Success(transactionModel);
-        }
-
-        public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
-        {
-            (TxReceipt receipt, UInt256? effectiveGasPrice, int logIndexStart) = _blockchainBridge.GetReceiptAndEffectiveGasPrice(txHash);
-            if (receipt == null)
-            {
-                return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
-            }
-            
-            if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-            return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, effectiveGasPrice, logIndexStart)));
-        }
-
-        public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHash, UInt256 positionIndex)
-        {
-            return GetUncle(new BlockParameter(blockHash), positionIndex);
-        }
-
-        public ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter,
-            UInt256 positionIndex)
-        {
-            return GetUncle(blockParameter, positionIndex);
-        }
-
-        private ResultWrapper<BlockForRpc> GetUncle(BlockParameter blockParameter, UInt256 positionIndex)
-        {
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<BlockForRpc>.Fail(searchResult);
-            }
-
-            Block block = searchResult.Object;
-            if (positionIndex < 0 || positionIndex > block.Uncles.Length - 1)
-            {
-                return ResultWrapper<BlockForRpc>.Fail("Position Index is incorrect", ErrorCodes.InvalidParams);
-            }
-
-            BlockHeader uncleHeader = block.Uncles[(int)positionIndex];
-            return ResultWrapper<BlockForRpc>.Success(new BlockForRpc(new Block(uncleHeader, BlockBody.Empty), false, _specProvider));
-        }
-
-        public ResultWrapper<UInt256?> eth_newFilter(Filter filter)
-        {
-            BlockParameter fromBlock = filter.FromBlock;
-            BlockParameter toBlock = filter.ToBlock;
-            int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
-            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
-        }
-
-        public ResultWrapper<UInt256?> eth_newBlockFilter()
-        {
-            int filterId = _blockchainBridge.NewBlockFilter();
-            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
-        }
-
-        public ResultWrapper<UInt256?> eth_newPendingTransactionFilter()
-        {
-            int filterId = _blockchainBridge.NewPendingTransactionFilter();
-            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
-        }
-
-        public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
-        {
-            _blockchainBridge.UninstallFilter((int)filterId);
-            return ResultWrapper<bool?>.Success(true);
-        }
-
-        public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
-        {
-            int id = (int)filterId;
-            FilterType filterType = _blockchainBridge.GetFilterType(id);
-            switch (filterType)
-            {
-                case FilterType.BlockFilter:
+                foreach (FilterLog log in logs)
                 {
-                    return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-                }
-
-                case FilterType.PendingTransactionFilter:
-                {
-                    return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge
-                            .GetPendingTransactionFilterChanges(id))
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-                }
-
-                case FilterType.LogFilter:
-                {
-                    return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(
-                            _blockchainBridge.GetLogFilterChanges(id).ToArray())
-                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
-                }
-
-                default:
-                {
-                    throw new NotSupportedException($"Filter type {filterType} is not supported");
-                }
-            }
-        }
-
-        public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
-        {
-            int id = (int)filterId;
-
-            return _blockchainBridge.FilterExists(id)
-                ? ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetFilterLogs(id))
-                : ResultWrapper<IEnumerable<FilterLog>>.Fail($"Filter with id: '{filterId}' does not exist.");
-        }
-
-        public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
-        {
-            IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
-            {
-                using (cancellationTokenSource)
-                {
-                    foreach (FilterLog log in logs)
-                    {
-                        yield return log;
-                    }
+                    yield return log;
                 }
             }
+        }
 
-            // because of lazy evaluation of enumerable, we need to do the validation here first
-            CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
-            CancellationToken cancellationToken = cancellationTokenSource.Token;
+        // because of lazy evaluation of enumerable, we need to do the validation here first
+        CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
-            SearchResult<BlockHeader> toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
+        SearchResult<BlockHeader> fromBlockResult;
+        SearchResult<BlockHeader> toBlockResult;
+
+        if (filter.FromBlock == filter.ToBlock)
+            fromBlockResult = toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
+        else
+        {
+            toBlockResult = _blockFinder.SearchForHeader(filter.ToBlock);
+
             if (toBlockResult.IsError)
             {
                 cancellationTokenSource.Dispose();
+
                 return ResultWrapper<IEnumerable<FilterLog>>.Fail(toBlockResult);
             }
-            cancellationToken.ThrowIfCancellationRequested();
-            
-            SearchResult<BlockHeader> fromBlockResult = _blockFinder.SearchForHeader(filter.FromBlock);
-            if (fromBlockResult.IsError)
-            {
-                cancellationTokenSource.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail(fromBlockResult);
-            }
+
             cancellationToken.ThrowIfCancellationRequested();
 
-            long fromBlockNumber = fromBlockResult.Object!.Number;
-            long toBlockNumber = toBlockResult.Object!.Number;
-            if (fromBlockNumber > toBlockNumber && toBlockNumber != 0)
-            {
-                cancellationTokenSource.Dispose();
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail($"'From' block '{fromBlockNumber}' is later than 'to' block '{toBlockNumber}'.", ErrorCodes.InvalidParams);
-            }
+            fromBlockResult = _blockFinder.SearchForHeader(filter.FromBlock);
+        }    
 
-            try
-            {
-                IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(filter.FromBlock, filter.ToBlock,
-                    filter.Address, filter.Topics, cancellationToken);
-                return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
-            }
-            catch (ResourceNotFoundException exception)
-            {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail(exception.Message, ErrorCodes.ResourceNotFound);
-            }
+        if (fromBlockResult.IsError)
+        {
+            cancellationTokenSource.Dispose();
+
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(fromBlockResult);
         }
 
-        public ResultWrapper<IEnumerable<byte[]>> eth_getWork()
+        cancellationToken.ThrowIfCancellationRequested();
+
+        long fromBlockNumber = fromBlockResult.Object!.Number;
+        long toBlockNumber = toBlockResult.Object!.Number;
+
+        if (fromBlockNumber > toBlockNumber && toBlockNumber != 0)
         {
-            return ResultWrapper<IEnumerable<byte[]>>.Fail("eth_getWork not supported", ErrorCodes.MethodNotFound);
+            cancellationTokenSource.Dispose();
+
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail($"'From' block '{fromBlockNumber}' is later than 'to' block '{toBlockNumber}'.", ErrorCodes.InvalidParams);
         }
 
-        public ResultWrapper<bool?> eth_submitWork(byte[] nonce, Keccak headerPowHash, byte[] mixDigest)
+        try
         {
-            return ResultWrapper<bool?>.Fail("eth_submitWork not supported", ErrorCodes.MethodNotFound, null);
+            IEnumerable<FilterLog> filterLogs = _blockchainBridge.GetLogs(filter.FromBlock, filter.ToBlock,
+                filter.Address, filter.Topics, cancellationToken);
+
+            return ResultWrapper<IEnumerable<FilterLog>>.Success(GetLogs(filterLogs, cancellationTokenSource));
         }
-
-        public ResultWrapper<bool?> eth_submitHashrate(string hashRate, string id)
+        catch (ResourceNotFoundException exception)
         {
-            return ResultWrapper<bool?>.Fail("eth_submitHashrate not supported", ErrorCodes.MethodNotFound, null);
+            return ResultWrapper<IEnumerable<FilterLog>>.Fail(exception.Message, ErrorCodes.ResourceNotFound);
         }
+    }
 
-        // https://github.com/ethereum/EIPs/issues/1186	
-        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys,
-            BlockParameter blockParameter)
+    public ResultWrapper<IEnumerable<byte[]>> eth_getWork()
+    {
+        return ResultWrapper<IEnumerable<byte[]>>.Fail("eth_getWork not supported", ErrorCodes.MethodNotFound);
+    }
+
+    public ResultWrapper<bool?> eth_submitWork(byte[] nonce, Keccak headerPowHash, byte[] mixDigest)
+    {
+        return ResultWrapper<bool?>.Fail("eth_submitWork not supported", ErrorCodes.MethodNotFound, null);
+    }
+
+    public ResultWrapper<bool?> eth_submitHashrate(string hashRate, string id)
+    {
+        return ResultWrapper<bool?>.Fail("eth_submitHashrate not supported", ErrorCodes.MethodNotFound, null);
+    }
+
+    // https://github.com/ethereum/EIPs/issues/1186	
+    public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys,
+        BlockParameter blockParameter)
+    {
+        BlockHeader header;
+        try
         {
-            BlockHeader header;
-            try
+            header = _blockFinder.FindHeader(blockParameter);
+            if (header == null)
             {
-                header = _blockFinder.FindHeader(blockParameter);
-                if (header == null)
-                {
-                    return ResultWrapper<AccountProof>.Fail($"{blockParameter} block not found",
-                        ErrorCodes.ResourceNotFound, null);
-                }
-
-                if (!HasStateForBlock(_blockchainBridge, header))
-                {
-                    return ResultWrapper<AccountProof>.Fail($"No state available for block {header.Hash}",
-                        ErrorCodes.ResourceUnavailable);
-                }
-            }
-            catch (Exception ex)
-            {
-                return ResultWrapper<AccountProof>.Fail(ex.Message, ErrorCodes.InternalError, null);
+                return ResultWrapper<AccountProof>.Fail($"{blockParameter} block not found",
+                    ErrorCodes.ResourceNotFound, null);
             }
 
-            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
-            _blockchainBridge.RunTreeVisitor(accountProofCollector, header.StateRoot);
-
-            return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
-        }
-
-        public ResultWrapper<ulong> eth_chainId()
-        {
-            try
+            if (!HasStateForBlock(_blockchainBridge, header))
             {
-                ulong chainId = _blockchainBridge.GetChainId();
-                return ResultWrapper<ulong>.Success(chainId);
-            }
-            catch (Exception ex)
-            {
-                return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0L);
+                return ResultWrapper<AccountProof>.Fail($"No state available for block {header.Hash}",
+                    ErrorCodes.ResourceUnavailable);
             }
         }
-
-        private void RecoverTxSenderIfNeeded(Transaction transaction)
+        catch (Exception ex)
         {
-            if (transaction.SenderAddress == null)
-            {
-                _blockchainBridge.RecoverTxSender(transaction);
-            }
+            return ResultWrapper<AccountProof>.Fail(ex.Message, ErrorCodes.InternalError, null);
+        }
+
+        AccountProofCollector accountProofCollector = new(accountAddress, storageKeys);
+        _blockchainBridge.RunTreeVisitor(accountProofCollector, header.StateRoot);
+
+        return ResultWrapper<AccountProof>.Success(accountProofCollector.BuildResult());
+    }
+
+    public ResultWrapper<ulong> eth_chainId()
+    {
+        try
+        {
+            ulong chainId = _blockchainBridge.GetChainId();
+            return ResultWrapper<ulong>.Success(chainId);
+        }
+        catch (Exception ex)
+        {
+            return ResultWrapper<ulong>.Fail(ex.Message, ErrorCodes.InternalError, 0L);
+        }
+    }
+
+    private void RecoverTxSenderIfNeeded(Transaction transaction)
+    {
+        if (transaction.SenderAddress == null)
+        {
+            _blockchainBridge.RecoverTxSender(transaction);
         }
     }
 }
