@@ -5,8 +5,7 @@
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">
-    <!-- Use DateTimeOffset for MSBuild v17.3 -->
-    <BuildTimestamp>$([System.Convert]::ToInt64($([System.DateTime]::UtcNow.Subtract($([System.DateTime]::new(1970, 1, 1))).TotalSeconds)))</BuildTimestamp>
+    <BuildTimestamp Condition="'$(BuildTimestamp)' == ''">$([System.DateTimeOffset]::UtcNow.ToUnixTimeSeconds())</BuildTimestamp>
     <Copyright>Demerzel Solutions Limited</Copyright>
     <Product>Nethermind</Product>
     <SourceRevisionId Condition="'$(Commit)' != ''">$(Commit.Substring(0, 8))</SourceRevisionId>

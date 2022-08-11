@@ -28,6 +28,9 @@ jobs:
       WIN10: win10-x64
       LINUX_ARM64: linux-arm64
       OSX_ARM64: osx-arm64
+    outputs:
+      COMMIT_HASH: ${{ steps.build-runner.outputs.COMMIT_HASH }}
+      BUILD_TIMESTAMP: ${{ steps.build-runner.outputs.BUILD_TIMESTAMP }}
     steps:
     - name: Checking out Nethermind repository
       uses: actions/checkout@v3
@@ -60,10 +63,14 @@ jobs:
     #- name: Setting up Packages
     #  run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Building Runner
+      id: build-runner
       run: |
         cd nethermind/
+        build_timestamp=$(date '+%s')
         commit_hash=$(git describe --always --exclude=* --abbrev=40)
-        ./scripts/deployment/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash
+        echo "::set-output name=BUILD_TIMESTAMP::$build_timestamp"
+        echo "::set-output name=COMMIT_HASH::$commit_hash"
+        ./scripts/deployment/build-runner.sh ${{ github.event.inputs.tag }} $commit_hash $build_timestamp
     - name: Building Cli
       run: ./nethermind/scripts/deployment/build-cli.sh
     - name: Building Launcher
