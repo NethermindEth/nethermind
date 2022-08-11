@@ -67,8 +67,9 @@ namespace Nethermind.JsonRpc.Modules.Parity
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
         }
 
-        public ResultWrapper<ParityTransaction[]> parity_pendingTransactions()
-            => ResultWrapper<ParityTransaction[]>.Success(_txPool.GetPendingTransactions().Where(pt => pt.SenderAddress != null)
+        public ResultWrapper<ParityTransaction[]> parity_pendingTransactions(Address? address)
+            => ResultWrapper<ParityTransaction[]>.Success(_txPool.GetPendingTransactions()
+                .Where(pt => address == null ? pt.SenderAddress != null : pt.SenderAddress == address)
                 .Select(t => new ParityTransaction(t, Rlp.Encode(t).Bytes,
                     t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null)).ToArray());
         
