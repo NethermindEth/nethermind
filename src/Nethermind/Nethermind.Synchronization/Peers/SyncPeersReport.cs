@@ -62,11 +62,15 @@ namespace Nethermind.Synchronization.Peers
                 }
 
                 RememberState(out bool _);
-                _stringBuilder.AppendLine($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
-                if (_peerPool.InitializedPeersCount > 0)
-                    AddPeerHeader();
+                _stringBuilder.Append($"Sync peers - Initialized: {_currentInitializedPeerCount} | All: {_peerPool.PeerCount} | Max: {_peerPool.PeerMaxCount}");
+                bool headerAdded = false;
                 foreach (PeerInfo peerInfo in OrderedPeers)
                 {
+                    if (!headerAdded)
+                    {
+                        headerAdded = true;
+                        AddPeerHeader();
+                    }
                     _stringBuilder.AppendLine();
                     AddPeerInfo(peerInfo);
                 }
@@ -84,18 +88,21 @@ namespace Nethermind.Synchronization.Peers
                 {
                     return;
                 }
-
                 RememberState(out bool changed);
                 if (!changed)
                 {
                     return;
                 }
                 
-                _stringBuilder.AppendLine($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
-                if (_peerPool.InitializedPeers.Any(p => !p.CanBeAllocated(AllocationContexts.All)))
-                    AddPeerHeader();
+                _stringBuilder.Append($"Sync peers {_currentInitializedPeerCount}({_peerPool.PeerCount})/{_peerPool.PeerMaxCount}");
+                bool headerAdded = false;
                 foreach (PeerInfo peerInfo in OrderedPeers.Where(p => !p.CanBeAllocated(AllocationContexts.All)))
                 {
+                    if (!headerAdded)
+                    {
+                        headerAdded = true;
+                        AddPeerHeader();
+                    }
                     _stringBuilder.AppendLine();
                     AddPeerInfo(peerInfo);
                 }
@@ -121,6 +128,7 @@ namespace Nethermind.Synchronization.Peers
 
         private void AddPeerHeader()
         {
+            _stringBuilder.AppendLine();
             _stringBuilder.Append("===")
                                 .Append("[Allocated][Sleeping][Peer Info                           ]")
                                 .Append("[Transfer Speeds (L/H/B/R/N/S)      ]")
