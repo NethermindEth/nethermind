@@ -92,7 +92,7 @@ namespace Nethermind.Abi.Test.Json
             op.Converters.Add(new AbiDefinitionConverter());
             op.Converters.Add(new AbiEventParameterConverter(abiTypeFactories));
             op.Converters.Add(new AbiParameterConverter(abiTypeFactories));
-            op.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+            op.Converters.Add(new JsonStringEnumConverter(new LowerCaseNamingPolicy()));
             op.Converters.Add(new AbiTypeConverter());
             var model = new {name = "theName", type, components};
             string json = JsonConvert.SerializeObject(model);

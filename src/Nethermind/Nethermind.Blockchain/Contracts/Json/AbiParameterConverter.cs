@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Contracts.Json
             string GetAbiTypeName()
             {
                 string name = baseType;
-                if (components is not null)
+                if (components is not null && components.Value.ValueKind != JsonValueKind.Null)
                 {
                     IEnumerable<string> innerTypes = components.Value.EnumerateArray()
                         .Select(c => c.GetProperty(TypePropertyName).GetString())!;
