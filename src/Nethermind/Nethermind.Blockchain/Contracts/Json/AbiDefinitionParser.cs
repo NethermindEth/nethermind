@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,34 +18,37 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Xml.Linq;
+using Microsoft.Extensions.Options;
 using Nethermind.Abi;
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Converters;
-using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Blockchain.Contracts.Json
 {
     public class AbiDefinitionParser : IAbiDefinitionParser
     {
-        private readonly JsonSerializer _serializer;
+        private readonly JsonSerializerOptions _op;
         private readonly IList<IAbiTypeFactory> _abiTypeFactories = new List<IAbiTypeFactory>(); 
 
         public AbiDefinitionParser()
         {
-            _serializer = JsonSerializer.CreateDefault(GetJsonSerializerSettings());
+            _op = GetJsonSerializerSettings();
         }
 
         public AbiDefinition Parse(string json, string name = null)
         {
-            using var reader = new StringReader(json);
-            return Parse(reader, name);
+            AbiDefinition definition = JsonSerializer.Deserialize<AbiDefinition>(json, _op);
+            definition.Name = name;
+            return definition;
         }
 
         public AbiDefinition Parse(Type type)
         {
             using var reader = LoadResource(type);
-            return Parse(reader, type.Name);
+            AbiDefinition definition = JsonSerializer.Deserialize<AbiDefinition>(reader.BaseStream, _op);
+            return definition;
         }
 
         public void RegisterAbiTypeFactory(IAbiTypeFactory abiTypeFactory)
@@ -61,18 +64,7 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         public string Serialize(AbiDefinition contract)
         {
-            var builder = new StringBuilder();
-            using var writer = new StringWriter(builder);
-            _serializer.Serialize(writer, contract);
-            return builder.ToString();
-        }
-
-        private AbiDefinition Parse(TextReader textReader, string name)
-        {
-            using var reader = new JsonTextReader(textReader);
-            var definition = _serializer.Deserialize<AbiDefinition>(reader);
-            definition.Name = name;
-            return definition;
+            return JsonSerializer.Serialize(contract, _op);
         }
 
         private static StreamReader LoadResource(Type type)
@@ -85,16 +77,18 @@ namespace Nethermind.Blockchain.Contracts.Json
             return new StreamReader(stream);
         }
 
-        private JsonSerializerSettings GetJsonSerializerSettings()
+        public JsonSerializerOptions GetJsonSerializerSettings()
         {
-            var jsonSerializerSettings = new JsonSerializerSettings();
+            JsonSerializerOptions jsonSerializerSettings = new()
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
             jsonSerializerSettings.Converters.Add(new AbiDefinitionConverter());
             jsonSerializerSettings.Converters.Add(new AbiEventParameterConverter(_abiTypeFactories));
             jsonSerializerSettings.Converters.Add(new AbiParameterConverter(_abiTypeFactories));
-            jsonSerializerSettings.Converters.Add(new StringEnumConverter() {NamingStrategy = new LowerCaseNamingStrategy()});
+            jsonSerializerSettings.Converters.Add(new JsonStringEnumConverter(new LowerCaseNamingPolicy()));
             jsonSerializerSettings.Converters.Add(new AbiTypeConverter());
-            jsonSerializerSettings.Formatting = Formatting.Indented;
-            jsonSerializerSettings.ContractResolver = new CamelCasePropertyNamesContractResolver();
             return jsonSerializerSettings;
         }
     }

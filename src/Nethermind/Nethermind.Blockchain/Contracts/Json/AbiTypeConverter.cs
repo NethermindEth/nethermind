@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,23 +15,26 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Abi;
-using Newtonsoft.Json;
 
 namespace Nethermind.Blockchain.Contracts.Json
 {
     public class AbiTypeConverter : JsonConverter<AbiType>
     {
-        public override void WriteJson(JsonWriter writer, AbiType value, JsonSerializer serializer)
+        public override void Write(Utf8JsonWriter writer, AbiType value, JsonSerializerOptions op)
         {
-            writer.WriteValue(value.Name);
+            writer.WriteStringValue(value.Name);
         }
 
-        public override AbiType ReadJson(JsonReader reader, Type objectType, AbiType existingValue, bool hasExistingValue, JsonSerializer serializer)
+        public override AbiType Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions op)
         {
             throw new NotSupportedException();
         }
 
-        public override bool CanRead { get; } = false;
     }
 }

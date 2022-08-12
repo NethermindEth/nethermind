@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -18,6 +18,9 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using FluentAssertions;
 using Nethermind.Blockchain.Contracts.Json;
 using Newtonsoft.Json;
@@ -81,23 +84,32 @@ namespace Nethermind.Abi.Test.Json
         {
             List<IAbiTypeFactory> abiTypeFactories = new List<IAbiTypeFactory>() {new AbiTypeFactory(new AbiTuple<CustomAbiType>())};
             var converter = new AbiParameterConverter(abiTypeFactories);
+            JsonSerializerOptions op = new()
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            };
+            op.Converters.Add(new AbiDefinitionConverter());
+            op.Converters.Add(new AbiEventParameterConverter(abiTypeFactories));
+            op.Converters.Add(new AbiParameterConverter(abiTypeFactories));
+            op.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+            op.Converters.Add(new AbiTypeConverter());
             var model = new {name = "theName", type, components};
             string json = JsonConvert.SerializeObject(model);
-            using (var jsonReader = new JsonTextReader(new StringReader(json)))
+
+            Utf8JsonReader jsonReader = new(Encoding.UTF8.GetBytes(json));
+            try
             {
-                try
+                var result = converter.Read(ref jsonReader, typeof(AbiParameter), op);
+                var expectation = new AbiParameter() {Name = "theName", Type = expectedType};
+                expectedException.Should().BeNull();
+                result.Should().BeEquivalentTo(expectation);
+            }
+            catch (Exception e)
+            {
+                if (e.GetType() != expectedException?.GetType())
                 {
-                    var result = converter.ReadJson(jsonReader, typeof(AbiParameter), null, false, new JsonSerializer());
-                    var expectation = new AbiParameter() {Name = "theName", Type = expectedType};
-                    expectedException.Should().BeNull();
-                    result.Should().BeEquivalentTo(expectation);
-                }
-                catch (Exception e)
-                {
-                    if (e.GetType() != expectedException?.GetType())
-                    {
-                        throw;
-                    }
+                    throw;
                 }
             }
         }
