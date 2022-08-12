@@ -63,10 +63,10 @@ namespace Nethermind.Blockchain.Contracts.Json
             foreach (JsonElement definitionToken in abiToken.EnumerateArray())
             {
                 //string name = "";
-                if (!definitionToken.TryGetProperty(_nameTokenName, out JsonElement nameToken))
+                //if (!definitionToken.TryGetProperty(_nameTokenName, out JsonElement nameToken))
                     //name = nameToken.GetString();
-                    if (!definitionToken.TryGetProperty(_typeTokenName, out JsonElement typeToken))
-                    continue;
+                if (!definitionToken.TryGetProperty(_typeTokenName, out JsonElement typeToken))
+                continue;
                 AbiDescriptionType type = FastEnum.Parse<AbiDescriptionType>(typeToken.GetString(), true);
                 switch (type)
                 {
