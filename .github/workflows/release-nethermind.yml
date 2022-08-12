@@ -126,7 +126,10 @@ jobs:
     env:
       OSX_RELEASE: nethermind-osx-x64
       OSX_ARM64_RELEASE: nethermind-osx-arm64
-      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind 
+      RELEASE_DIRECTORY: /home/runner/work/nethermind/nethermind
+      VERSION: ${{ github.event.inputs.tag }}
+      TIMESTAMP: ${{needs.build-nethermind.outputs.BUILD_TIMESTAMP}}
+      HASH: ${{needs.build-nethermind.outputs.COMMIT_HASH}} 
     steps:
       - name: Downloading Nethermind darwin package
         uses: actions/download-artifact@v3
