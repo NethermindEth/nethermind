@@ -76,6 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityTxTraceFromReplay[]> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
         {
+            /*
             blockParameter ??= BlockParameter.Latest;
             List<ParityTxTraceFromReplay> traces = new();
             for (var index = 0; index < calls.Length; index++)
@@ -83,6 +84,48 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 TransactionForRpcWithTraceTypes call = calls[index];
                 ResultWrapper<ParityTxTraceFromReplay> trace = trace_call(call.Transaction, call.TraceTypes, blockParameter);
                 traces.Add(trace.Data);
+            }
+            */
+
+            SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter ?? BlockParameter.Latest);
+            if (headerSearch.IsError)
+            {
+                return ResultWrapper<ParityTxTraceFromReplay[]>.Fail(headerSearch);
+            }
+
+            BlockHeader header = headerSearch.Object;
+
+            if (header.IsGenesis)
+            {
+                UInt256 baseFee = header.BaseFeePerGas;
+                header = new BlockHeader(
+                    header.Hash,
+                    Keccak.OfAnEmptySequenceRlp,
+                    Address.Zero,
+                    header.Difficulty,
+                    header.Number + 1,
+                    header.GasLimit,
+                    header.Timestamp + 1,
+                    header.ExtraData);
+
+                header.TotalDifficulty = 2 * header.Difficulty;
+                header.BaseFeePerGas = baseFee;
+            }
+
+            Transaction[] txs = calls
+                .Select((call, i) => {
+                    call.Transaction.EnsureDefaults(_jsonRpcConfig.GasCap);
+                    Transaction tx = call.Transaction.ToTransaction();
+                    tx.Hash = new Keccak(new UInt256((ulong)i).ToBigEndian());
+                    return tx;
+                })
+                .ToArray();
+            Block block = new(header, txs, Enumerable.Empty<BlockHeader>());
+
+            List<ParityTxTraceFromReplay> traces = new();
+            for (var i = 0; i < calls.Length; i++) {
+                IReadOnlyCollection<ParityLikeTxTrace> result = TraceTx(block, block.Transactions[i].Hash!, GetParityTypes(calls[i].TraceTypes));
+                traces.Add(new ParityTxTraceFromReplay(result));
             }
 
             return ResultWrapper<ParityTxTraceFromReplay[]>.Success(traces.ToArray());
@@ -92,6 +135,34 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
             Transaction tx = _txDecoder.Decode(new RlpStream(data), RlpBehaviors.SkipTypedWrapping);
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
+        }
+
+        private SearchResult<BlockHeader> SearchBlockHeaderForTraceCall(BlockParameter? blockParameter) {
+            SearchResult<BlockHeader> headerSearch = _blockFinder.SearchForHeader(blockParameter ?? BlockParameter.Latest);
+            if (headerSearch.IsError)
+            {
+                return headerSearch;
+            }
+
+            BlockHeader header = headerSearch.Object;
+            if (header.IsGenesis)
+            {
+                UInt256 baseFee = header.BaseFeePerGas;
+                header = new BlockHeader(
+                    header.Hash,
+                    Keccak.OfAnEmptySequenceRlp,
+                    Address.Zero,
+                    header.Difficulty,
+                    header.Number + 1,
+                    header.GasLimit,
+                    header.Timestamp + 1,
+                    header.ExtraData);
+
+                header.TotalDifficulty = 2 * header.Difficulty;
+                header.BaseFeePerGas = baseFee;
+            }
+
+            return new SearchResult<BlockHeader>(header);
         }
 
         private ResultWrapper<ParityTxTraceFromReplay> TraceTx(Transaction tx, string[] traceTypes, BlockParameter blockParameter)
