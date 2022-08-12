@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Contracts.Json
             writer.WriteEndArray();
         }
 
-        private readonly string _nameTokenName = nameof(AbiBaseDescription<AbiParameter>.Name).ToLowerInvariant();
+        //private readonly string _nameTokenName = nameof(AbiBaseDescription<AbiParameter>.Name).ToLowerInvariant();
         private readonly string _typeTokenName = nameof(AbiBaseDescription<AbiParameter>.Type).ToLowerInvariant();
 
         public override AbiDefinition? Read(
@@ -62,8 +62,10 @@ namespace Nethermind.Blockchain.Contracts.Json
             }
             foreach (JsonElement definitionToken in abiToken.EnumerateArray())
             {
-                string name = definitionToken.GetProperty(_nameTokenName).GetString() ?? "";
-                if (!definitionToken.TryGetProperty(_typeTokenName, out JsonElement typeToken))
+                //string name = "";
+                if (!definitionToken.TryGetProperty(_nameTokenName, out JsonElement nameToken))
+                    //name = nameToken.GetString();
+                    if (!definitionToken.TryGetProperty(_typeTokenName, out JsonElement typeToken))
                     continue;
                 AbiDescriptionType type = FastEnum.Parse<AbiDescriptionType>(typeToken.GetString(), true);
                 switch (type)
