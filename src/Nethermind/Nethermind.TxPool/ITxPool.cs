@@ -32,6 +32,12 @@ namespace Nethermind.TxPool
         /// </summary>
         /// <returns></returns>
         IDictionary<Address, Transaction[]> GetPendingTransactionsBySender();
+
+        /// <summary>
+        /// from a specific sender, sorted by nonce and later tx pool sorting
+        /// </summary>
+        /// <returns></returns>
+        Transaction[] GetPendingTransactionsBySender(Address address);
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
