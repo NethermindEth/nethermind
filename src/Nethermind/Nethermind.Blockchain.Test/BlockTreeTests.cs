@@ -1672,6 +1672,39 @@ namespace Nethermind.Blockchain.Test
             suggest.IsCompleted.Should().Be(true);
         }
 
+        public static IEnumerable<TestCaseData> InvalidBlockTestCases
+        {
+            get
+            {
+                BlockHeader? FindHeader(BlockTree b, Keccak? h, BlockTreeLookupOptions o) => b.FindHeader(h, o);
+                BlockHeader? FindBlock(BlockTree b, Keccak? h, BlockTreeLookupOptions o) => b.FindBlock(h, o)?.Header;
+
+                IReadOnlyList<BlockTreeLookupOptions> valueCombinations = EnumExtensions.AllValuesCombinations<BlockTreeLookupOptions>();
+                foreach (BlockTreeLookupOptions blockTreeLookupOptions in valueCombinations)
+                {
+                    bool allowInvalid = (blockTreeLookupOptions & BlockTreeLookupOptions.AllowInvalid) == BlockTreeLookupOptions.AllowInvalid;
+                    yield return new TestCaseData(FindHeader, blockTreeLookupOptions, allowInvalid)
+                    {
+                        TestName = $"InvalidBlock_{nameof(FindHeader)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
+                    };
+                    yield return new TestCaseData(FindBlock, blockTreeLookupOptions, allowInvalid)
+                    {
+                        TestName = $"InvalidBlock_{nameof(FindBlock)}_({blockTreeLookupOptions})_{(allowInvalid ? "found" : "not_found")}"
+                    };
+                }
+            }
+        }
+
+        [TestCaseSource(nameof(InvalidBlockTestCases))]
+        public void Find_handles_invalid_blocks(Func<BlockTree, Keccak?, BlockTreeLookupOptions, BlockHeader?> findFunction, BlockTreeLookupOptions lookupOptions, bool foundInvalid)
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            Block invalidBlock = Build.A.Block.WithNumber(4).WithParent(blockTree.Head!).TestObject;
+            blockTree.SuggestBlock(invalidBlock);
+            blockTree.DeleteInvalidBlock(invalidBlock);
+            findFunction(blockTree, invalidBlock.Hash, lookupOptions).Should().Be(foundInvalid ? invalidBlock.Header : null);
+        }
+
         private class TestBlockTreeVisitor : IBlockTreeVisitor
         {
             private readonly ManualResetEvent _manualResetEvent;
