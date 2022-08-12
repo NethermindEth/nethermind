@@ -19,6 +19,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using FastEnumUtility;
 using Nethermind.Abi;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Blockchain.Contracts.Json
 {
@@ -52,9 +53,9 @@ namespace Nethermind.Blockchain.Contracts.Json
             {
                 abiToken = topLevelToken.GetProperty("abi");
                 if (topLevelToken.TryGetProperty("bytecode", out JsonElement bytecodeBase64))
-                    value.SetBytecode(bytecodeBase64.GetBytesFromBase64());
+                    value.SetBytecode(Bytes.FromHexString(bytecodeBase64.GetString()));
                 if (topLevelToken.TryGetProperty("deployedBytecode", out JsonElement deployedBytecodeBase64))
-                    value.SetDeployedBytecode(deployedBytecodeBase64.GetBytesFromBase64());
+                    value.SetDeployedBytecode(Bytes.FromHexString(deployedBytecodeBase64.GetString()));
             }
             else
             {
