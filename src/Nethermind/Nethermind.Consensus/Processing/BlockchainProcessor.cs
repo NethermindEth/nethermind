@@ -585,7 +585,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     if (_logger.IsDebug)
                         _logger.Debug(
-                            $"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
+                            $"Block not found when determining processing branch: {toBeProcessed.ToString(Block.Format.Short)}. Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
                     break;
                 }
 
