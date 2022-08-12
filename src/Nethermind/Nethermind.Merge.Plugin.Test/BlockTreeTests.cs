@@ -274,7 +274,7 @@ public partial class BlockTreeTests
         {
             private BlockTreeBuilder? _syncedTreeBuilder;
             private IChainLevelHelper? _chainLevelHelper;
-            private IBlockCacheService _blockCacheService;
+            private IBeaconPivot _beaconPivot;
 
             public ScenarioBuilder WithBlockTrees(int notSyncedTreeSize, int syncedTreeSize = -1, bool moveBlocksToMainChain = true, UInt256? ttd = null)
             {
@@ -307,9 +307,9 @@ public partial class BlockTreeTests
                         LimboLogs.Instance);
                 }
 
-                _blockCacheService = new BlockCacheService();
+                _beaconPivot = new BeaconPivot(new SyncConfig(), new MemDb(), SyncedTree, LimboLogs.Instance);
 
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _blockCacheService, new SyncConfig(), LimboLogs.Instance);
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), LimboLogs.Instance);
                 if (moveBlocksToMainChain)
                     NotSyncedTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
                 return this;
@@ -353,7 +353,7 @@ public partial class BlockTreeTests
             public ScenarioBuilder SuggestBlocksUsingChainLevels(int maxCount = 2, long maxHeaderNumber = long.MaxValue)
             {
                 BlockHeader[] headers = _chainLevelHelper!.GetNextHeaders(maxCount, maxHeaderNumber);
-                while (headers != null && headers.Length > 0)
+                while (headers != null && headers.Length > 1)
                 {
                     BlockDownloadContext blockDownloadContext = new(
                         Substitute.For<ISpecProvider>(),
@@ -475,7 +475,7 @@ public partial class BlockTreeTests
                     NullBloomStorage.Instance,
                     new SyncConfig(),
                     LimboLogs.Instance);
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _blockCacheService, new SyncConfig(), LimboLogs.Instance);
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), LimboLogs.Instance);
                 return this;
             }
 

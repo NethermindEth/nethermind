@@ -1,4 +1,4 @@
-//  Copyright (c) 2021 Demerzel Solutions Limited
+﻿//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 //
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,14 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 //
 
-using System.Collections.Concurrent;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using System.Collections.Generic;
+using System.Runtime.Serialization;
 
-namespace Nethermind.Merge.Plugin.Handlers;
+namespace Nethermind.Core.Collections;
 
-public class BlockCacheService : IBlockCacheService
+public class EnhancedSortedSet<T> : SortedSet<T>, IReadOnlySortedSet<T>
 {
-    public ConcurrentDictionary<Keccak, Block> BlockCache { get; } = new();
-    public Keccak FinalizedHash { get; set; } = Keccak.Zero;
+    public EnhancedSortedSet() { }
+    public EnhancedSortedSet(IComparer<T>? comparer) : base(comparer) { }
+    public EnhancedSortedSet(IEnumerable<T> collection) : base(collection) { }
+    public EnhancedSortedSet(IEnumerable<T> collection, IComparer<T>? comparer) : base(collection, comparer) { }
+    protected EnhancedSortedSet(SerializationInfo info, StreamingContext context) : base(info, context) { }
 }

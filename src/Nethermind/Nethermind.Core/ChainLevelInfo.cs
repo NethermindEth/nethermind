@@ -50,6 +50,7 @@ namespace Nethermind.Core
                         return blockInfo;
                 }
 
+                // Note: The first block info is main
                 return BlockInfos[0];
             }
         }

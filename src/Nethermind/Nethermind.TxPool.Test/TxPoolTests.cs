@@ -276,6 +276,53 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void get_next_pending_nonce()
+        {
+            _txPool = CreatePool();
+
+            // LatestPendingNonce=0, when account does not exist
+            UInt256? latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+
+            _stateProvider.CreateAccount(TestItem.AddressA, 10.Ether());
+
+            // LatestPendingNonce=0, for a new account
+            latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            Assert.AreEqual(latestNonce, (UInt256)0);
+
+            // LatestPendingNonce=1, when the current nonce of the account=1 and no pending transactions
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            Assert.AreEqual(latestNonce, (UInt256)1);
+
+            // LatestPendingNonce=1, when a pending transaction added to the pool with a gap in nonce (skipping nonce=1)
+            Transaction tx = Build.A.Transaction.WithNonce(2).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AcceptTxResult.Accepted);
+            latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            Assert.AreEqual(latestNonce, (UInt256)1);
+
+            // LatestPendingNonce=5, when added pending transactions upto nonce=4
+            tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AcceptTxResult.Accepted);
+            tx = Build.A.Transaction.WithNonce(3).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AcceptTxResult.Accepted);
+            tx = Build.A.Transaction.WithNonce(4).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AcceptTxResult.Accepted);
+            latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            Assert.AreEqual(latestNonce, (UInt256)5);
+
+            //LatestPendingNonce=5, when added a new pending transaction with a gap in nonce (skipped nonce=5)
+            tx = Build.A.Transaction.WithNonce(6).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            result.Should().Be(AcceptTxResult.Accepted);
+            latestNonce = _txPool.GetLatestPendingNonce(TestItem.AddressA);
+            Assert.AreEqual(latestNonce, (UInt256)5);
+        }
+
+        [Test]
         public void should_ignore_overflow_transactions()
         {
             _txPool = CreatePool();
