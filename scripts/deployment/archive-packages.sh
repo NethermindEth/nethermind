@@ -6,7 +6,7 @@ OSX=nethermind-darwin-amd64
 OSX_ARM64=nethermind-darwin-arm64
 WIN=nethermind-windows-amd64
 LIN_ARM64=nethermind-linux-arm64
-RELEASE_PATH=nethermind/src/Nethermind/Nethermind.Runner/bin/Release/net6.0
+RELEASE_PATH=nethermind/src/Nethermind/Nethermind.Runner/bin/release/net6.0
 
 echo =======================================================
 echo Archiving Nethermind packages
@@ -26,8 +26,8 @@ mkdir -p $OSX_ARM64_RELEASE/plugins
 mkdir -p $WIN_RELEASE/plugins
 mkdir -p $LIN_ARM64_RELEASE/plugins
 
-cd nethermind/src/Nethermind/
-dotnet build -c Release Nethermind.sln
+cd nethermind/src/Nethermind/Nethermind.Runner
+dotnet build -c release Nethermind.Runner.csproj
 
 cd $RELEASE_DIRECTORY
 
