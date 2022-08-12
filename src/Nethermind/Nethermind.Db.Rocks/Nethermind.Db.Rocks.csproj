@@ -14,7 +14,7 @@
 
     <ItemGroup>
       <PackageReference Include="FastEnum" Version="1.7.0" />
-      <PackageReference Include="RocksDB" Version="7.4.4.31443" />
+      <PackageReference Include="RocksDB" Version="6.29.3.26014" />
     </ItemGroup>
 
     <ItemGroup>
