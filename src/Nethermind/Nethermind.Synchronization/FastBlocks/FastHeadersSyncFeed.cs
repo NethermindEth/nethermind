@@ -334,7 +334,7 @@ namespace Nethermind.Synchronization.FastBlocks
             return dependentBatch;
         }
 
-        private int InsertHeaders(HeadersSyncBatch batch)
+        protected virtual int InsertHeaders(HeadersSyncBatch batch)
         {
             if (batch.Response == null)
             {
