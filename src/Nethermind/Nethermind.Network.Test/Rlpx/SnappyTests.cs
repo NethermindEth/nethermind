@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 var result = UnpooledByteBufferAllocator.Default.Buffer();
                 Encode(null, input.ToUnpooledByteBuffer(), result);
-                return result.ReadAllBytesAsArray();
+                return result.ReadAllBytes();
             }
         }
 
