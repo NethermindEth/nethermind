@@ -26,7 +26,8 @@ public class NETMetricsPlugin: INethermindPlugin
 {
     public ValueTask DisposeAsync()
     {
-        throw new NotImplementedException();
+        _metricsListener.Dispose();
+        return ValueTask.CompletedTask;
     }
 
     private SystemMetricsListener _metricsListener = null!;

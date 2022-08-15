@@ -33,7 +33,7 @@ public class SystemMetricsListener: EventListener
 
     protected override void OnEventSourceCreated(EventSource source)
     {
-        Console.WriteLine($"{source.Guid} | {source.Name}");
+        // Console.WriteLine($"{source.Guid} | {source.Name}");
 
         if (!source.Name.Equals("System.Runtime"))
         {
@@ -67,46 +67,47 @@ public class SystemMetricsListener: EventListener
 
     private static void UpdateMetric(string counterName, string counterValue)
     {
+        long value = long.Parse(counterValue);
         switch (counterName)
         {
             case "time-in-gc":
-                Metrics.TimeInGCSinceLastGC = counterValue;
+                Metrics.TimeInGCSinceLastGC = value;
                 break;
             case "alloc-rate":
-                Metrics.AllocationRate = counterValue;
+                Metrics.AllocationRate = value;
                 break;
             case "gc-committed":
-                Metrics.GCCommittedBytes = counterValue;
+                Metrics.GCCommittedBytes = value;
                 break;
             case "gc-fragmentation":
-                Metrics.GCFragmentation = counterValue;
+                Metrics.GCFragmentation = value;
                 break;
             case "gc-heap-size":
-                Metrics.GCHeapSize = counterValue;
+                Metrics.GCHeapSize = value;
                 break;
             case "gen-0-gc-count":
-                Metrics.Gen0GCCount = counterValue;
+                Metrics.Gen0GCCount = value;
                 break;
             case "gen-0-size":
-                Metrics.Gen0Size = counterValue;
+                Metrics.Gen0Size = value;
                 break;
             case "gen-1-gc-count":
-                Metrics.Gen1GCCount = counterValue;
+                Metrics.Gen1GCCount = value;
                 break;
             case "gen-1-size":
-                Metrics.Gen1Size = counterValue;
+                Metrics.Gen1Size = value;
                 break;
             case "gen-2-gc-count":
-                Metrics.Gen2GCCount = counterValue;
+                Metrics.Gen2GCCount = value;
                 break;
             case "gen-2-size":
-                Metrics.Gen2Size = counterValue;
+                Metrics.Gen2Size = value;
                 break;
             case "loh-size":
-                Metrics.LOHSize = counterValue;
+                Metrics.LOHSize = value;
                 break;
             case "poh-size":
-                Metrics.POHSize = counterValue;
+                Metrics.POHSize = value;
                 break;
         }
     }
