@@ -60,8 +60,8 @@ jobs:
     - name: Setting up Docker Buildx
       id: buildx
       uses: docker/setup-buildx-action@v2
-    #- name: Setting up Packages
-    #  run: ./nethermind/scripts/deployment/setup-packages.sh
+    - name: Setting up Packages
+      run: ./nethermind/scripts/deployment/setup-packages.sh
     - name: Building Runner
       id: build-runner
       run: |
@@ -82,7 +82,7 @@ jobs:
         docker run --platform=linux/arm64 -v $PWD:/opt/mount --rm tmp-launcher bash -c "cp /nethermind/Nethermind.Launcher /opt/mount/"
         mv Nethermind.Launcher ${{ env.RELEASE_DIRECTORY }}/${{ env.LIN_ARM64_RELEASE }}/Nethermind.Launcher
     - name: Archiving packages
-      run: ./nethermind/scripts/deployment/archive-packages.sh
+      run: ./nethermind/scripts/deployment/archive-packages.sh ${{ github.event.inputs.tag }} ${{ steps.build-runner.outputs.COMMIT_HASH }} ${{ steps.build-runner.outputs.BUILD_TIMESTAMP}}
     - uses: actions/upload-artifact@v3
       name: Uploading Nethermind darwin package
       with:
