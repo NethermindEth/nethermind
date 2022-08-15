@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (requestHashes.Count > 0)
                 {
                     StateSyncItem[] requestedNodes = requestHashes.ToArray();
-                    StateSyncBatch result = new(requestedNodes);
+                    StateSyncBatch result = new(_rootNode, requestedNodes);
 
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + secondsInCurrentSync);
