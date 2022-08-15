@@ -53,41 +53,29 @@ namespace Nethermind.Synchronization.StateSync
             //{
             //    return string.Join(null, bytes.Select(b => b.ToString("X")));
             //}
-
-            ISyncPeer peer = peerInfo.SyncPeer;
-
-            if (_snapSyncEnabled)
-            {
-                GetTrieNodesRequest request = GetRequest(batch);
-
-                if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
-                {
-                    Task<byte[][]> task = handler.GetTrieNodes(request, cancellationToken);
-                    await task.ContinueWith(
-                        (t, state) =>
-                        {
-                            if (t.IsFaulted)
-                            {
-                                if (Logger.IsTrace)
-                                    Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
-                            }
-
-                            StateSyncBatch batchLocal = (StateSyncBatch)state!;
-                            if (t.IsCompletedSuccessfully)
-                            {
-                                batchLocal.Responses = t.Result;
-                            }
-                        }, batch);
-
-                    return;
-                }
-            }
-
             //_trace += String.Join(Environment.NewLine, batch.RequestedNodes.Select(n => n.Level + "|" + n.NodeDataType + "|" + printByteArray(n.AccountPathNibbles) + "|" + printByteArray(n.PathNibbles)))
             //    + Environment.NewLine;
 
-            Task<byte[][]> getNodeDataTask = peer.GetNodeData(batch.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
-            await getNodeDataTask.ContinueWith(
+            ISyncPeer peer = peerInfo.SyncPeer;
+
+            Task<byte[][]> task = null;
+
+            if (_snapSyncEnabled)
+            {
+                if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
+                {
+                    GetTrieNodesRequest request = GetRequest(batch);
+
+                    task = handler.GetTrieNodes(request, cancellationToken);
+                }
+            }
+
+            if (task is null)
+            {
+                task = peer.GetNodeData(batch.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
+            }
+
+            await task.ContinueWith(
                 (t, state) =>
                 {
                     if (t.IsFaulted)
