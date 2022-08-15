@@ -1,6 +1,6 @@
 [![Nethermind](https://user-images.githubusercontent.com/337518/184721709-80f31fe9-efc3-43f0-9a76-6bd944ad7758.png)](https://nethermind.io/nethermind-client)
 
-# .NET Ethereum client
+# Nethermind Ethereum client
 
 [![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/run-nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/run-nethermind-tests.yml)
 [![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)](https://discord.gg/GXJFaYk)
