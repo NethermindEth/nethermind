@@ -754,7 +754,11 @@ namespace Nethermind.Synchronization.FastSync
 
                         if (storageRoot != Keccak.EmptyTreeHash)
                         {
-                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, currentStateSyncItem.PathNibbles, null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
+                            Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Path!.Length];
+                            currentStateSyncItem.PathNibbles.CopyTo(childPath.Slice(0, currentStateSyncItem.PathNibbles.Length));
+                            trieNode.Path!.CopyTo(childPath.Slice(currentStateSyncItem.PathNibbles.Length));
+
+                            AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, childPath.ToArray(), null, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                         }
 

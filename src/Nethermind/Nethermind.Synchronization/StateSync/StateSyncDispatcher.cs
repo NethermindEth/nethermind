@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,15 +28,54 @@ namespace Nethermind.Synchronization.StateSync
 {
     public class StateSyncDispatcher : SyncDispatcher<StateSyncBatch>
     {
-        public StateSyncDispatcher(ISyncFeed<StateSyncBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy, ILogManager logManager)
+        private string _trace;
+
+        private readonly bool _snapSyncEnabled;
+
+        public StateSyncDispatcher(ISyncFeed<StateSyncBatch> syncFeed, ISyncPeerPool syncPeerPool, IPeerAllocationStrategyFactory<StateSyncBatch> peerAllocationStrategy, ISyncConfig syncConfig, ILogManager logManager)
             : base(syncFeed, syncPeerPool, peerAllocationStrategy, logManager)
         {
+            _snapSyncEnabled = syncConfig.SnapSync;
         }
 
-        protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch request, CancellationToken cancellationToken)
+        protected override async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
+            //string printByteArray(byte[] bytes)
+            //{
+            //    return string.Join(null, bytes.Select(b => b.ToString("X")));
+            //}
+
             ISyncPeer peer = peerInfo.SyncPeer;
-            var getNodeDataTask = peer.GetNodeData(request.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
+
+            if (_snapSyncEnabled)
+            {
+                if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
+                {
+                    Task<byte[][]> task = handler.GetTrieNodes(batch.AccountsToRefreshRequest, cancellationToken);
+                    await task.ContinueWith(
+                        (t, state) =>
+                        {
+                            if (t.IsFaulted)
+                            {
+                                if (Logger.IsTrace)
+                                    Logger.Error("DEBUG/ERROR Error after dispatching the snap sync request", t.Exception);
+                            }
+
+                            StateSyncBatch batchLocal = (StateSyncBatch)state!;
+                            if (t.IsCompletedSuccessfully)
+                            {
+                                batchLocal.AccountsToRefreshResponse = t.Result;
+                            }
+                        }, batch);
+
+                    return;
+                }
+            }
+
+            //_trace += String.Join(Environment.NewLine, batch.RequestedNodes.Select(n => n.Level + "|" + n.NodeDataType + "|" + printByteArray(n.AccountPathNibbles) + "|" + printByteArray(n.PathNibbles)))
+            //    + Environment.NewLine;
+
+            Task<byte[][]> getNodeDataTask = peer.GetNodeData(batch.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
             await getNodeDataTask.ContinueWith(
                 (t, state) =>
                 {
@@ -49,7 +89,7 @@ namespace Nethermind.Synchronization.StateSync
                     {
                         batchLocal.Responses = t.Result;
                     }
-                }, request);
+                }, batch);
         }
     }
 }
