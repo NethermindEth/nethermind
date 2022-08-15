@@ -22,11 +22,14 @@ namespace Nethermind.Synchronization.FastSync
     [DebuggerDisplay("Requested Nodes: {RequestedNodes?.Length ?? 0}, Responses: {Responses?.Length ?? 0}, Assigned: {AssignedPeer?.Current}")]
     public class StateSyncBatch
     {
-        public StateSyncBatch(Keccak stateRoot, StateSyncItem[] requestedNodes)
+        public StateSyncBatch(Keccak stateRoot, NodeDataType nodeDataType, StateSyncItem[] requestedNodes)
         {
             StateRoot = stateRoot;
+            NodeDataType = nodeDataType;
             RequestedNodes = requestedNodes;
         }
+
+        public NodeDataType NodeDataType { get; }
 
         public Keccak StateRoot;
 

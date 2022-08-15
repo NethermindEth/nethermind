@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private bool TryTake(out StateSyncItem? node)
         {
-            for (int i = 0; i < _allStacks.Length; i++)
+            for (int i = 1; i < _allStacks.Length; i++)
             {
                 if (_allStacks[i].TryPop(out node))
                 {
@@ -168,8 +168,26 @@ namespace Nethermind.Synchronization.FastSync
             // the moment we find the first leaf we will know something more about the tree structure and hence
             // prevent lot of Stream2 entries to stay in memory for a long time 
             int length = MaxStateLevel == 64 ? maxSize : Math.Max(1, (int)(maxSize * ((decimal)MaxStateLevel / 64) * ((decimal)MaxStateLevel / 64)));
-
             List<StateSyncItem> requestItems = new(length);
+
+            if (CodeItems.Count > 0)
+            {
+                length = Math.Min(length, CodeItems.Count);
+
+                for (int i = 0; i < length; i++)
+                {
+                    if(CodeItems.TryPop(out var codeItem))
+                    {
+                        requestItems.Add(codeItem!);
+                    }
+                }
+
+                if(requestItems.Count > 0)
+                {
+                    return requestItems;
+                }
+            }
+
             for (int i = 0; i < length; i++)
             {
                 if (TryTake(out StateSyncItem? requestItem))

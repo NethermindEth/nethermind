@@ -64,15 +64,29 @@ namespace Nethermind.Synchronization.StateSync
             {
                 if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>("snap", out var handler))
                 {
-                    GetTrieNodesRequest request = GetRequest(batch);
+                    if (batch.NodeDataType == NodeDataType.Code)
+                    {
+                        var a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
+                        Logger.Warn($"GETBYTECODES count:{a.Length}");
+                        task = handler.GetByteCodes(a, cancellationToken);
+                    }
+                    else
+                    {
+                        GetTrieNodesRequest request = GetRequest(batch);
 
-                    task = handler.GetTrieNodes(request, cancellationToken);
+                        Logger.Warn($"GETTRIENODES count:{request.AccountAndStoragePaths.Length}");
+
+                        task = handler.GetTrieNodes(request, cancellationToken);
+                    }
                 }
             }
 
             if (task is null)
             {
-                task = peer.GetNodeData(batch.RequestedNodes.Select(n => n.Hash).ToArray(), cancellationToken);
+                var a = batch.RequestedNodes.Select(n => n.Hash).ToArray();
+                Logger.Warn($"GETNODEDATA count:{a.Length}");
+
+                task = peer.GetNodeData(a, cancellationToken);
             }
 
             await task.ContinueWith(

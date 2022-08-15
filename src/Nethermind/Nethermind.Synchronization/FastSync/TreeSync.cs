@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (requestHashes.Count > 0)
                 {
                     StateSyncItem[] requestedNodes = requestHashes.ToArray();
-                    StateSyncBatch result = new(_rootNode, requestedNodes);
+                    StateSyncBatch result = new(_rootNode, requestHashes[0].NodeDataType, requestedNodes);
 
                     Interlocked.Add(ref _data.RequestedNodesCount, result.RequestedNodes.Length);
                     Interlocked.Exchange(ref _data.SecondsInSync, _currentSyncStartSecondsInSync + secondsInCurrentSync);
@@ -671,7 +671,15 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             branchChildPath[currentStateSyncItem.PathNibbles.Length] = (byte)childIndex;
 
-                            AddNodeResult addChildResult = AddNodeToPending(new StateSyncItem(childHash, currentStateSyncItem.AccountPathNibbles, branchChildPath.ToArray(), nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex)) { BranchChildIndex = (short)childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex }, dependentBranch, "branch child");
+                            AddNodeResult addChildResult = AddNodeToPending(
+                                new StateSyncItem(childHash, currentStateSyncItem.AccountPathNibbles, branchChildPath.ToArray(), nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex))
+                                {
+                                    BranchChildIndex = (short)childIndex,
+                                    ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex
+                                },
+                                dependentBranch,
+                                "branch child");
+
                             if (addChildResult != AddNodeResult.AlreadySaved)
                             {
                                 dependentBranch.Counter++;
