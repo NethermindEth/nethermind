@@ -173,6 +173,7 @@ namespace Nethermind.Specs.Test.ChainSpecStyle
             Assert.AreEqual(10_700_000, provider.GetSpec(15_049_999).DifficultyBombDelay);
             Assert.AreEqual(11_400_000, provider.GetSpec(15_050_000).DifficultyBombDelay);
             Assert.AreEqual(11_400_000, provider.GetSpec(99_414_000).DifficultyBombDelay);
+            Assert.AreEqual(MainnetSpecProvider.Instance.TerminalTotalDifficulty, provider.TerminalTotalDifficulty);
         }
 
         private static void CompareSpecProviders(
