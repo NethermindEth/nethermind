@@ -14,7 +14,7 @@
 
     2. You are responsible for Your own actions. If You make any mistakes or do anything unlawful or illegal, this shall be Your responsibility alone.
 
-    3. The software is open-source and is governed by a Lesser General Public License (**"LGPL"**).
+    3. The software is open-source and is governed by the GNU Lesser General Public License version 3 (**"LGPL-3.0"**).
 
 3. #### DISCLAIMER OF LIABILITIES AND WARRANTIES
 
