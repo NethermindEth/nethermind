@@ -18,6 +18,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Tracing;
+using System.Reflection;
 
 
 namespace Nethermind.NETMetrics;
@@ -59,63 +60,12 @@ public class SystemMetricsListener: EventListener
         {
             if (eventData.Payload[i] is IDictionary<string, object> eventPayload)
             {
-                var (counterName, counterValue) = GetRelevantMetric(eventPayload);
-                UpdateMetric(counterName, counterValue);
+                UpdateMetrics(eventPayload);
             }
         }
     }
 
-    private static void UpdateMetric(string counterName, string counterValue)
-    {
-        long value = long.Parse(counterValue);
-        switch (counterName)
-        {
-            case "time-in-gc":
-                Metrics.TimeInGcSinceLastGc = value;
-                break;
-            case "alloc-rate":
-                Metrics.AllocationRate = value;
-                break;
-            case "gc-committed":
-                Metrics.GcCommittedBytes = value;
-                break;
-            case "gc-fragmentation":
-                Metrics.GcFragmentation = value;
-                break;
-            case "gc-heap-size":
-                Metrics.GcHeapSize= value;
-                break;
-            case "gen-0-gc-count":
-                Metrics.Gen0GcCount = value;
-                break;
-            case "gen-0-size":
-                Metrics.Gen0Size = value;
-                break;
-            case "gen-1-gc-count":
-                Metrics.Gen1GcCount = value;
-                break;
-            case "gen-1-size":
-                Metrics.Gen1Size = value;
-                break;
-            case "gen-2-gc-count":
-                Metrics.Gen2GcCount = value;
-                break;
-            case "gen-2-size":
-                Metrics.Gen2Size = value;
-                break;
-            case "loh-size":
-                Metrics.LohSize = value;
-                break;
-            case "poh-size":
-                Metrics.PohSize = value;
-                break;
-            case "cpu-usage":
-                Metrics.CpuUsage = value;
-                break;
-        }
-    }
-
-    private static (string counterName, string counterValue) GetRelevantMetric(
+    private static void UpdateMetrics(
         IDictionary<string, object> eventPayload)
     {
         var counterName = "";
@@ -125,12 +75,23 @@ public class SystemMetricsListener: EventListener
         {
             counterName = displayValue.ToString();
         }
-        if (eventPayload.TryGetValue("Mean", out object value) ||
-            eventPayload.TryGetValue("Increment", out value))
+        if (eventPayload.TryGetValue("Mean", out object value))
         {
-            counterValue = value.ToString();
+            Metrics.SystemRuntimeMetric[counterName] = long.Parse(value.ToString());
+            return;
         }
 
-        return (counterName, counterValue);
+        if (eventPayload.TryGetValue("Increment", out value))
+        {
+            Metrics.SystemRuntimeMetric[counterName] += long.Parse(value.ToString());
+            return;
+        }
+
+    }
+
+    enum MetricType
+    {
+        Increment,
+        Mean
     }
 }
