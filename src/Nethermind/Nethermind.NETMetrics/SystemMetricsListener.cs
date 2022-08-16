@@ -68,13 +68,13 @@ public class SystemMetricsListener: EventListener
     private static void UpdateMetrics(
         IDictionary<string, object> eventPayload)
     {
-        var counterName = "";
-        var counterValue = "";
+        string counterName = "";
 
         if (eventPayload.TryGetValue("Name", out object displayValue))
         {
             counterName = displayValue.ToString();
         }
+
         if (eventPayload.TryGetValue("Mean", out object value))
         {
             Metrics.SystemRuntimeMetric[counterName] = long.Parse(value.ToString());
@@ -87,11 +87,5 @@ public class SystemMetricsListener: EventListener
             return;
         }
 
-    }
-
-    enum MetricType
-    {
-        Increment,
-        Mean
     }
 }
