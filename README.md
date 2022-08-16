@@ -1,4 +1,8 @@
-[![Nethermind](https://user-images.githubusercontent.com/337518/184721709-80f31fe9-efc3-43f0-9a76-6bd944ad7758.png)](https://nethermind.io/nethermind-client)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://user-images.githubusercontent.com/337518/184757509-5ac8a259-659a-42dd-a51c-cd093a41a0ad.png">
+  <source media="(prefers-color-scheme: light)" srcset="https://user-images.githubusercontent.com/337518/184757473-5d70ac41-4afd-42f6-ab7b-5338ae09b2fb.png">
+  <img alt="Nethermind" src="https://user-images.githubusercontent.com/337518/184757473-5d70ac41-4afd-42f6-ab7b-5338ae09b2fb.png" height="64">
+</picture>
 
 # Nethermind Ethereum client
 
