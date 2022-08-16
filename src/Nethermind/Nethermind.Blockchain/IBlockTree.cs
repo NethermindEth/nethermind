@@ -70,7 +70,6 @@ namespace Nethermind.Blockchain
         /// </summary>
         long BestKnownNumber { get; }
 
-
         long BestKnownBeaconNumber { get; }
 
         /// <summary>

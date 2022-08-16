@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -13,23 +13,14 @@
 // 
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+// 
 
-using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
+using System.Collections.Generic;
 
-namespace Nethermind.Network.Discovery.Messages;
+namespace Nethermind.Core.Collections;
 
-public class NodeIdResolver : INodeIdResolver
+public interface IReadOnlySortedSet<T> : IReadOnlySet<T>
 {
-    private readonly IEcdsa _ecdsa;
-
-    public NodeIdResolver(IEcdsa ecdsa)
-    {
-        _ecdsa = ecdsa;
-    }
-
-    public PublicKey GetNodeId(byte[] signature, int recoveryId, Span<byte> typeAndData)
-    {
-        return _ecdsa.RecoverPublicKey(new Signature(signature, recoveryId), Keccak.Compute(typeAndData));   
-    }
+    public T? Max { get; }
+    public T? Min { get; }
 }

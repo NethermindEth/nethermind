@@ -174,7 +174,7 @@ namespace Nethermind.Network.Test.Rlpx
 
                 Assert.AreEqual(0, output.PacketType);
 
-                byte[] outputBytes = output.Content.ReadAllBytesAsArray();
+                byte[] outputBytes = output.Content.ReadAllBytes();
                 HelloMessageSerializer serializer = new();
                 HelloMessage helloMessage = serializer.Deserialize(outputBytes);
 
@@ -204,7 +204,7 @@ namespace Nethermind.Network.Test.Rlpx
                 Assert.NotNull(output);
 
                 Assert.AreEqual(32, output.PacketType);
-                output.Content.ReadAllBytesAsArray();
+                output.Content.ReadAllBytes();
             }
             finally
             {

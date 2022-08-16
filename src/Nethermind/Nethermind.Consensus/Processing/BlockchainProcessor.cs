@@ -428,7 +428,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 catch (InvalidBlockException ex)
                 {
-                    BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlockHash, _logger);
+                    BlockTraceDumper.LogDiagnosticTrace(blockTracer, ex.InvalidBlock.Hash!, _logger);
                 }
                 catch (Exception ex)
                 {
@@ -465,10 +465,10 @@ namespace Nethermind.Consensus.Processing
             {
                 InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs
                 {
-                    InvalidBlockHash = ex.InvalidBlockHash,
+                    InvalidBlock = ex.InvalidBlock,
                 });
 
-                invalidBlockHash = ex.InvalidBlockHash;
+                invalidBlockHash = ex.InvalidBlock.Hash;
                 TraceFailingBranch(
                     processingBranch,
                     options,
