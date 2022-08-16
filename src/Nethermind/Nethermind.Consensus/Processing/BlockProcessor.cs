@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -93,11 +93,11 @@ namespace Nethermind.Consensus.Processing
             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
             /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
-               In case of invalid blocks on the new branch we will discard the entire branch and come back to 
+               In case of invalid blocks on the new branch we will discard the entire branch and come back to
                the previous head state.*/
             Keccak previousBranchStateRoot = CreateCheckpoint();
             InitBranch(newBranchStateRoot);
-            
+
             bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
             int blocksCount = suggestedBlocks.Count;
             Block[] processedBlocks = new Block[blocksCount];
@@ -196,7 +196,7 @@ namespace Nethermind.Consensus.Processing
             _stateProvider.StateRoot = branchingPointStateRoot;
             if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
         }
-        
+
         // TODO: block processor pipeline
         private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
@@ -210,7 +210,7 @@ namespace Nethermind.Consensus.Processing
             {
                 StoreTxReceipts(block, receipts);
             }
-            
+
             return (block, receipts);
         }
 
@@ -221,23 +221,23 @@ namespace Nethermind.Consensus.Processing
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (_logger.IsError) _logger.Error($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
-                throw new InvalidBlockException(suggestedBlock.Hash);
+                throw new InvalidBlockException(suggestedBlock);
             }
         }
 
         // TODO: block processor pipeline
         protected virtual TxReceipt[] ProcessBlock(
-            Block block, 
-            IBlockTracer blockTracer, 
+            Block block,
+            IBlockTracer blockTracer,
             ProcessingOptions options)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-            
+
             _receiptsTracer.SetOtherTracer(blockTracer);
             _receiptsTracer.StartNewBlockTrace(block);
             TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
             _receiptsTracer.EndBlockTrace();
-            
+
             block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
             ApplyMinerRewards(block, blockTracer, spec);
 

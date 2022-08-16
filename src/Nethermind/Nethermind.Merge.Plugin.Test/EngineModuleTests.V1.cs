@@ -900,7 +900,6 @@ namespace Nethermind.Merge.Plugin.Test
             new ExecutionPayloadV1(chain.BlockTree.BestSuggestedBody).Should().BeEquivalentTo(executionPayload);
         }
 
-
         [Test]
         public async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block()
         {
