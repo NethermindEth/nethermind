@@ -23,7 +23,7 @@ namespace Nethermind.Specs
     public class MainnetSpecProvider : ISpecProvider
     {
         private long? _theMergeBlock = null;
-        private UInt256? _terminalTotalDifficulty = 58_750_000_000_000_000_000_000;
+        private UInt256? _terminalTotalDifficulty = UInt256.Parse("58750000000000000000000");
 
         public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
