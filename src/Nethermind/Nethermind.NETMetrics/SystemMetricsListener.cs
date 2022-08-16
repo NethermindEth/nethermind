@@ -71,43 +71,46 @@ public class SystemMetricsListener: EventListener
         switch (counterName)
         {
             case "time-in-gc":
-                Metrics.TimeInGCSinceLastGC = value;
+                Metrics.TimeInGcSinceLastGc = value;
                 break;
             case "alloc-rate":
                 Metrics.AllocationRate = value;
                 break;
             case "gc-committed":
-                Metrics.GCCommittedBytes = value;
+                Metrics.GcCommittedBytes = value;
                 break;
             case "gc-fragmentation":
-                Metrics.GCFragmentation = value;
+                Metrics.GcFragmentation = value;
                 break;
             case "gc-heap-size":
-                Metrics.GCHeapSize = value;
+                Metrics.GcHeapSize= value;
                 break;
             case "gen-0-gc-count":
-                Metrics.Gen0GCCount = value;
+                Metrics.Gen0GcCount = value;
                 break;
             case "gen-0-size":
                 Metrics.Gen0Size = value;
                 break;
             case "gen-1-gc-count":
-                Metrics.Gen1GCCount = value;
+                Metrics.Gen1GcCount = value;
                 break;
             case "gen-1-size":
                 Metrics.Gen1Size = value;
                 break;
             case "gen-2-gc-count":
-                Metrics.Gen2GCCount = value;
+                Metrics.Gen2GcCount = value;
                 break;
             case "gen-2-size":
                 Metrics.Gen2Size = value;
                 break;
             case "loh-size":
-                Metrics.LOHSize = value;
+                Metrics.LohSize = value;
                 break;
             case "poh-size":
-                Metrics.POHSize = value;
+                Metrics.PohSize = value;
+                break;
+            case "cpu-usage":
+                Metrics.CpuUsage = value;
                 break;
         }
     }
