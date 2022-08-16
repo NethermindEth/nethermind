@@ -26,8 +26,11 @@ Nethermind documentation can be found at [docs.nethermind.io](https://docs.nethe
 
 1. `sudo add-apt-repository ppa:nethermindeth/nethermind`
 2. `sudo apt install nethermind`
-3. Execute the launcher: `nethermind`
-4. Execute the runner: `nethermind -c mainnet_pruned`
+3. Link libraries (Ubuntu 21.04 and later only):
+    - On x64: `sudo ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so`
+    - On aarch64 (arm64): `sudo ln -s /usr/lib/aarch64-linux-gnu/libdl.so.2 /usr/lib/aarch64-linux-gnu/libdl.so`
+4. To run the launcher: `nethermind`
+5. To run the runner: `nethermind -c mainnet_pruned`
 
 _Tested on Ubuntu Series: Focal, Bionic, Xenial, and Trusty_
 
@@ -35,8 +38,8 @@ _Tested on Ubuntu Series: Focal, Bionic, Xenial, and Trusty_
 
 1. `brew tap nethermindeth/nethermind`
 2. `brew install nethermind`
-3. Execute the launcher: `nethermind-launcher`
-4. Execute the runner: `nethermind -c mainnet_pruned`
+3. To run the launcher: `nethermind-launcher`
+4. To run the runner: `nethermind -c mainnet_pruned`
 
 ## Docker image
 
@@ -70,7 +73,7 @@ The output must show the image digest, and then you can copy that output to the 
     brew install rocksdb gmp snappy lz4 zstd
     ```
 
--   _Apple silicon (M1) users only._ Create symlink for homebrew dependencies:
+-   _Apple silicon (M1) users only._ Create symlink for Homebrew dependencies:
 
     ```sh
     sudo ln -s `find /opt/homebrew/Cellar/snappy -name "libsnappy.dylib"` /usr/local/lib/libsnappy.dylib
@@ -83,12 +86,22 @@ The output must show the image digest, and then you can copy that output to the 
 
     ```sh
     sudo apt-get install libsnappy-dev libc6-dev libc6
+    ```
 
-    # Link libraries (only for Ubuntu 21.04 and later)
-    amd64 architecture: sudo ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so
-    arm64/aarch64 architecture: sudo ln -s /usr/lib/aarch64-linux-gnu/libdl.so.2 /usr/lib/aarch64-linux-gnu/libdl.so
+    Link libraries (Ubuntu 21.04 and later only):
 
-    # Extra dependency for arm64/aarch64
+    -   On x64:
+        ```sh
+        sudo ln -s /usr/lib/x86_64-linux-gnu/libdl.so.2 /usr/lib/x86_64-linux-gnu/libdl.so
+        ```
+    -   On aarch64 (arm64):
+        ```sh
+        sudo ln -s /usr/lib/aarch64-linux-gnu/libdl.so.2 /usr/lib/aarch64-linux-gnu/libdl.so
+        ```
+
+    An extra dependency for aarch64 (arm64):
+
+    ```sh
     sudo apt-get install libgflags-dev
     ```
 
@@ -114,7 +127,7 @@ _Tested on Debian 10 (9 not working)_
     sudo yum install -y glibc-devel bzip2-devel libzstd
 
     # Link libraries
-    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
+    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
     sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
     ```
 
@@ -129,7 +142,7 @@ _Tested on CentOS 8_
     sudo yum install -y glibc-devel snappy libzstd
 
     # Link libraries
-    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
+    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0
     sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
     # also required for Fedora 35
     sudo ln -s `find /usr/lib64/ -type f -name "libdl.so.2*"` /usr/lib64/libdl.so
