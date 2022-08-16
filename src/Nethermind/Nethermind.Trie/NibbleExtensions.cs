@@ -84,5 +84,33 @@ namespace Nethermind.Trie
         {
             return (byte)(((byte)highNibble << 4) | (byte)lowNibble);
         }
+
+        public static byte[] ToBytes(byte[] nibbles)
+        {
+            byte[] bytes = new byte[32];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                bytes[i] = ToByte(nibbles[2 * i], nibbles[2 * i + 1]);
+            }
+
+            return bytes;
+        }
+
+        public static byte[] ToCompactHexEncoding(byte[] nibbles)
+        {
+            int oddity = nibbles.Length % 2;
+            byte[] bytes = new byte[nibbles.Length / 2 + 1];
+            for (int i = 0; i < bytes.Length - 1; i++)
+            {
+                bytes[i + 1] = ToByte(nibbles[2 * i + oddity], nibbles[2 * i + 1 + oddity]);
+            }
+
+            if (oddity == 1)
+            {
+                bytes[0] = ToByte(1, nibbles[0]);
+            }
+
+            return bytes;
+        }
     }
 }

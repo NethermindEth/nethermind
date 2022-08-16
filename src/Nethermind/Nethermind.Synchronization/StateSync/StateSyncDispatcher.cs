@@ -156,19 +156,6 @@ namespace Nethermind.Synchronization.StateSync
             return request;
         }
 
-        private byte[] EncodePath(byte[] input)
-        {
-            if (input.Length == 64)
-            {
-                // TODO: Convert 64 nibbles into 32 bytes
-                
-            }
-            else
-            {
-                // TODO: Add compact encoding
-            }
-
-            return input;
-        }
+        private byte[] EncodePath(byte[] input) => input.Length == 64 ? Nibbles.ToBytes(input) : Nibbles.ToCompactHexEncoding(input);
     }
 }
