@@ -15,11 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Security.Claims;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
+using MathNet.Numerics.LinearAlgebra;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.IdentityModel.Tokens;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 
@@ -38,6 +46,26 @@ namespace Nethermind.Overseer.Test.JsonRpc
             {
                 BaseAddress = new Uri(host)
             };
+        }
+        public JsonRpcClient(string host, string hexSecret) : this(host)
+        {
+            hexSecret = hexSecret.Trim();
+            if (!Regex.IsMatch(hexSecret, @"^(0x)?[0-9a-fA-F]{64}$"))
+            {
+                throw new FormatException("JWT secret should be a 64 digit hexadecimal number");
+            }
+            byte[] decodedSecret = DecodeSecret(hexSecret);
+            var securityKey = new SymmetricSecurityKey(decodedSecret);
+            var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256Signature);
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                SigningCredentials = signingCredentials,
+                Expires = DateTime.Now.AddYears(1)
+            };
+            var jwtHandler = new JwtSecurityTokenHandler();
+            var token = jwtHandler.CreateEncodedJwt(tokenDescriptor);
+            _client.DefaultRequestHeaders.Authorization = new
+                AuthenticationHeaderValue("Bearer", token);
         }
 
         public Task<JsonRpcResponse<T>> PostAsync<T>(string method)
@@ -76,6 +104,15 @@ namespace Nethermind.Overseer.Test.JsonRpc
                 .ContinueWith(t => new EthereumJsonSerializer().Deserialize<JsonRpcResponse<T>>(t.Result));
         }
 
+        private static byte[] DecodeSecret(string hexSecret)
+        {
+            int start = hexSecret.StartsWith("0x") ? 2 : 0;
+            return Enumerable.Range(start, hexSecret.Length - start)
+                .Where(x => x % 2 == 0)
+                .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
+                .ToArray();
+        }
+
         private StringContent GetPayload(JsonRpcRequest request)
             => new StringContent(new EthereumJsonSerializer().Serialize(request), Encoding.UTF8, "application/json");
 
@@ -98,5 +135,6 @@ namespace Nethermind.Overseer.Test.JsonRpc
                 Params = @params;
             }
         }
+
     }
 }
