@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2021 Demerzel Solutions Limited
+//  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -42,7 +42,8 @@ namespace Nethermind.Merge.Plugin.Test
             int destinationBlockNumber = 5000;
             long? currentBlockNumber = null;
             Keccak? currentHash = null;
-            JsonRpcClient? client = new($"http://127.0.0.1:8545");
+            JsonRpcClient? client = new($"http://127.0.0.1:8551",
+                "736BAFFD47F4B2E99341B0D8A38C6569A1A442E556C0F67CCB99327AA2358316");
             do {
                 string? requestedBlockNumber = currentBlockNumber == null ? "latest" : currentBlockNumber.Value.ToHexString(false);
                 JsonRpcResponse<JObject>? requestResponse =
