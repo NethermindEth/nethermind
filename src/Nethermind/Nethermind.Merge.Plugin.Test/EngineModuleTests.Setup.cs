@@ -157,7 +157,8 @@ namespace Nethermind.Merge.Plugin.Test
                     base.CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
                 MiningConfig miningConfig = new() { Enabled = true, MinGasPrice = 0 };
                 TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, miningConfig);
-                EthSyncingInfo = new EthSyncingInfo(BlockTree);
+                ISyncConfig syncConfig = new SyncConfig();
+                EthSyncingInfo = new EthSyncingInfo(BlockTree, syncConfig);
                 PostMergeBlockProducerFactory? blockProducerFactory = new(
                     SpecProvider,
                     SealEngine,
