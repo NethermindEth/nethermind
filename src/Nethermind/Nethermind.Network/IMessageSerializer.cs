@@ -14,22 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
-
-namespace Nethermind.Network.Discovery.Messages;
-
-public class NodeIdResolver : INodeIdResolver
+namespace Nethermind.Network
 {
-    private readonly IEcdsa _ecdsa;
-
-    public NodeIdResolver(IEcdsa ecdsa)
+    public interface IMessageSerializer<T> where T : MessageBase
     {
-        _ecdsa = ecdsa;
-    }
-
-    public PublicKey GetNodeId(byte[] signature, int recoveryId, Span<byte> typeAndData)
-    {
-        return _ecdsa.RecoverPublicKey(new Signature(signature, recoveryId), Keccak.Compute(typeAndData));   
+        byte[] Serialize(T msg);
+        T Deserialize(byte[] msgBytes);
     }
 }
