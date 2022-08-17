@@ -47,6 +47,7 @@
     "eip2929Transition": "0x0",
     "eip2930Transition": "0x0",
     "eip152Transition": 331363,
+    "eip1108Transition": 331363,
     "eip2565Transition": 331363,
     "eip3198Transition": 331363,
     "eip3529Transition": 331363,
