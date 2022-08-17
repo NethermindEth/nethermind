@@ -8,9 +8,9 @@ ARG BUILDPLATFORM
 COPY . .
 
 RUN if [ "$TARGETARCH" = "amd64" ] ; \
-    then git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
+    then git submodule update --init src/Dirichlet src/int256 src/Math.Gmp.Native && \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-x64 -c release -o out ; \
-    else git submodule update --init src/Dirichlet src/int256 src/rocksdb-sharp src/Math.Gmp.Native && \
+    else git submodule update --init src/Dirichlet src/int256 src/Math.Gmp.Native && \
     dotnet publish src/Nethermind/Nethermind.Runner -r $TARGETOS-$TARGETARCH -c release -o out ; \
     fi
 
