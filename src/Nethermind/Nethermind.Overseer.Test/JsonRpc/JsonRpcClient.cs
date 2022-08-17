@@ -28,6 +28,7 @@ using DotNetty.Common.Utilities;
 using MathNet.Numerics.LinearAlgebra;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 
@@ -54,7 +55,7 @@ namespace Nethermind.Overseer.Test.JsonRpc
             {
                 throw new FormatException("JWT secret should be a 64 digit hexadecimal number");
             }
-            byte[] decodedSecret = DecodeSecret(hexSecret);
+            byte[] decodedSecret = Bytes.FromHexString(hexSecret);
             var securityKey = new SymmetricSecurityKey(decodedSecret);
             var signingCredentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256Signature);
             var tokenDescriptor = new SecurityTokenDescriptor
@@ -102,15 +103,6 @@ namespace Nethermind.Overseer.Test.JsonRpc
 
             return await response.Content.ReadAsStringAsync()
                 .ContinueWith(t => new EthereumJsonSerializer().Deserialize<JsonRpcResponse<T>>(t.Result));
-        }
-
-        private static byte[] DecodeSecret(string hexSecret)
-        {
-            int start = hexSecret.StartsWith("0x") ? 2 : 0;
-            return Enumerable.Range(start, hexSecret.Length - start)
-                .Where(x => x % 2 == 0)
-                .Select(x => Convert.ToByte(hexSecret.Substring(x, 2), 16))
-                .ToArray();
         }
 
         private StringContent GetPayload(JsonRpcRequest request)
