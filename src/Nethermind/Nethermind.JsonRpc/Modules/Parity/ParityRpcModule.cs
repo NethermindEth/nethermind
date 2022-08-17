@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public ResultWrapper<ParityTransaction[]> parity_pendingTransactions(Address? address = null)
         {
            IEnumerable<Transaction> enumerable = address == null
-                ? _txPool.GetPendingTransactions().Where(pt => pt.SenderAddress != null)
+                ? _txPool.GetPendingTransactions()
                 : _txPool.GetPendingTransactionsBySender(address);
             return ResultWrapper<ParityTransaction[]>.Success(enumerable
                 .Select(t => new ParityTransaction(t, Rlp.Encode(t).Bytes,
