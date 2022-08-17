@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -74,36 +74,35 @@ namespace Nethermind.JsonRpc.Modules.Trace
             return TraceTx(tx, traceTypes, blockParameter);
         }
 
-        public ResultWrapper<ParityTxTraceFromReplay[]> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
         {
             blockParameter ??= BlockParameter.Latest;
-            foreach (var call in calls)
+            for (int index = 0; index < calls.Length; index++)
             {
+                TransactionForRpcWithTraceTypes call = calls[index];
                 call.Transaction.EnsureDefaults(_jsonRpcConfig.GasCap);
             }
 
-            SearchResult<BlockHeader> headerSearch = SearchBlockHeaderForTraceCall(blockParameter ?? BlockParameter.Latest);
+            SearchResult<BlockHeader> headerSearch = SearchBlockHeaderForTraceCall(blockParameter);
             if (headerSearch.IsError)
             {
-                return ResultWrapper<ParityTxTraceFromReplay[]>.Fail(headerSearch);
+                return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(headerSearch);
             }
 
-            Transaction[] txs = calls
-                .Select((call, i) => {
-                    Transaction tx = call.Transaction.ToTransaction();
-                    tx.Hash = new Keccak(new UInt256((ulong)i).ToBigEndian());
-                    return tx;
-                })
-                .ToArray();
-            Block block = new(headerSearch.Object, txs, Enumerable.Empty<BlockHeader>());
-
-            List<ParityTxTraceFromReplay> traces = new();
-            for (var i = 0; i < calls.Length; i++) {
-                IReadOnlyCollection<ParityLikeTxTrace> result = TraceTx(block, block.Transactions[i].Hash, GetParityTypes(calls[i].TraceTypes));
-                traces.Add(new ParityTxTraceFromReplay(result));
+            Dictionary<Keccak, ParityTraceTypes> traceTypeByTransaction = new(calls.Length);
+            Transaction[] txs = new Transaction[calls.Length];
+            for (int i = 0; i < calls.Length; i++)
+            {
+                Transaction tx = calls[i].Transaction.ToTransaction();
+                tx.Hash = new Keccak(new UInt256((ulong)i).ToBigEndian());
+                ParityTraceTypes traceTypes = GetParityTypes(calls[i].TraceTypes);
+                txs[i] = tx;
+                traceTypeByTransaction.Add(tx.Hash, traceTypes);
             }
 
-            return ResultWrapper<ParityTxTraceFromReplay[]>.Success(traces.ToArray());
+            Block block = new(headerSearch.Object!, txs, Enumerable.Empty<BlockHeader>());
+            IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new ParityLikeBlockTracer(traceTypeByTransaction));
+            return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(t => new ParityTxTraceFromReplay(t)));
         }
 
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
@@ -120,11 +119,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             BlockHeader header = headerSearch.Object;
-            if (header.IsGenesis)
+            if (header!.IsGenesis)
             {
                 UInt256 baseFee = header.BaseFeePerGas;
                 header = new BlockHeader(
-                    header.Hash,
+                    header.Hash!,
                     Keccak.OfAnEmptySequenceRlp,
                     Address.Zero,
                     header.Difficulty,
@@ -148,9 +147,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
             }
 
-            Block block = new(headerSearch.Object, new[] {tx}, Enumerable.Empty<BlockHeader>());
+            Block block = new(headerSearch.Object!, new[] {tx}, Enumerable.Empty<BlockHeader>());
 
-            IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlock(block, GetParityTypes(traceTypes));
+            ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
+            IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlock(block, new(traceTypes1));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(result.SingleOrDefault()));
         }
 
@@ -162,15 +162,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(blockHashSearch);
             }
 
-            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object));
+            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object!));
             if (blockSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(blockSearch);
             }
 
-            Block block = blockSearch.Object;
+            Block block = blockSearch.Object!;
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTrace = TraceTx(block, txHash, GetParityTypes(traceTypes));
+            IReadOnlyCollection<ParityLikeTxTrace>? txTrace = Trace(block, new ParityLikeBlockTracer(txHash, GetParityTypes(traceTypes)));
             return ResultWrapper<ParityTxTraceFromReplay>.Success(new ParityTxTraceFromReplay(txTrace));
         }
 
@@ -182,9 +182,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<ParityTxTraceFromReplay[]>.Fail(blockSearch);
             }
 
-            Block block = blockSearch.Object;
+            Block block = blockSearch.Object!;
 
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = TraceBlock(block, GetParityTypes(traceTypes));
+            ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = TraceBlock(block, new(traceTypes1));
 
             // ReSharper disable once CoVariantArrayConversion
             return ResultWrapper<ParityTxTraceFromReplay[]>.Success(txTraces.Select(t => new ParityTxTraceFromReplay(t, true)).ToArray());
@@ -193,22 +194,24 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_filter(TraceFilterForRpc traceFilterForRpc)
         {
             List<ParityLikeTxTrace> txTraces = new();
-            IEnumerable<SearchResult<Block>> blocksSearch =
-                _blockFinder.SearchForBlocksOnMainChain(traceFilterForRpc.FromBlock ?? BlockParameter.Latest, traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
+            IEnumerable<SearchResult<Block>> blocksSearch = _blockFinder.SearchForBlocksOnMainChain(
+                traceFilterForRpc.FromBlock ?? BlockParameter.Latest,
+                traceFilterForRpc.ToBlock ?? BlockParameter.Latest);
+
             foreach (SearchResult<Block> blockSearch in blocksSearch)
             {
                 if (blockSearch.IsError)
                 {
                     return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Fail(blockSearch);
                 }
+
                 Block block = blockSearch.Object;
-                IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock =
-                    TraceBlock(block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards);
+                IReadOnlyCollection<ParityLikeTxTrace> txTracesFromOneBlock = TraceBlock(block!, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)));
                 txTraces.AddRange(txTracesFromOneBlock);
             }
 
             ParityTxTraceFromStore[] txTracesResult = txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray();
-            
+
             TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTracesResult));
         }
@@ -221,26 +224,25 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
             }
 
-            Block block = blockSearch.Object;
-            
-            IReadOnlyCollection<ParityLikeTxTrace> txTraces = TraceBlock(block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards);
+            Block block = blockSearch.Object!;
+            IReadOnlyCollection<ParityLikeTxTrace> txTraces = TraceBlock(block, new((ParityTraceTypes)(ParityTraceTypes.Trace | ParityTraceTypes.Rewards)));
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray());
         }
 
         public ResultWrapper<ParityTxTraceFromStore[]> trace_get(Keccak txHash, long[] positions)
         {
             ResultWrapper<ParityTxTraceFromStore[]> traceTransaction = trace_transaction(txHash);
-            
             List<ParityTxTraceFromStore> traces = new();
-            foreach (long t in positions)
+            for (int index = 0; index < positions.Length; index++)
             {
-                if (traceTransaction.Data.Length > t+1)
+                long position = positions[index];
+                if (traceTransaction.Data.Length > position + 1)
                 {
-                    ParityTxTraceFromStore tr = traceTransaction.Data[t+1];
+                    ParityTxTraceFromStore tr = traceTransaction.Data[position + 1];
                     traces.Add(tr);
                 }
             }
-            
+
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(traces.ToArray());
         }
 
@@ -251,40 +253,33 @@ namespace Nethermind.JsonRpc.Modules.Trace
             {
                 return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockHashSearch);
             }
-            
-            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object));
+
+            SearchResult<Block> blockSearch = _blockFinder.SearchForBlock(new BlockParameter(blockHashSearch.Object!));
             if (blockSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromStore[]>.Fail(blockSearch);
             }
-        
-            Block block = blockSearch.Object;
-            
-            IReadOnlyCollection<ParityLikeTxTrace> txTrace = TraceTx(block, txHash, ParityTraceTypes.Trace);
+
+            Block block = blockSearch.Object!;
+
+            IReadOnlyCollection<ParityLikeTxTrace> txTrace = Trace(block, new(txHash, ParityTraceTypes.Trace));
             return ResultWrapper<ParityTxTraceFromStore[]>.Success(ParityTxTraceFromStore.FromTxTrace(txTrace));
         }
 
-        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityTraceTypes traceTypes)
+        private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
-
-            ParityLikeBlockTracer listener = new(traceTypes, _specProvider);
-            _tracer.Trace(block, listener);
-
-            return listener.BuildResult();
+            _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult();
         }
-        
-        private IReadOnlyCollection<ParityLikeTxTrace> TraceTx(Block block, Keccak txHash, ParityTraceTypes traceTypes)
+
+        private IReadOnlyCollection<ParityLikeTxTrace> Trace(Block block, ParityLikeBlockTracer tracer)
         {
             using CancellationTokenSource cancellationTokenSource = new(_cancellationTokenTimeout);
             CancellationToken cancellationToken = cancellationTokenSource.Token;
-
-            ParityLikeBlockTracer listener = new(txHash, traceTypes);
-            _tracer.Trace(block, listener.WithCancellation(cancellationToken));
-
-            return listener.BuildResult();
+            _tracer.Trace(block, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult();
         }
-
     }
 }
