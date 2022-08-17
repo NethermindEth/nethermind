@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc
             if (string.IsNullOrWhiteSpace(_jsonRpcConfig.EngineHost)) // by default EngineHost is not null
             {
                 if (_logger.IsWarn) _logger.Warn("Json RPC EngineHost is set to null, " +
-                    "please set it to 127.0.0.1 in if your CL Client is on the same machine " +
+                    "please set it to 127.0.0.1 if your CL Client is on the same machine " +
                     "or to 0.0.0.0 if your CL Client is on a seperate machine");
                 return;
             }
