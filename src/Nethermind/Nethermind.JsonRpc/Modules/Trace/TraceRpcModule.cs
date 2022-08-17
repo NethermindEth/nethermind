@@ -210,7 +210,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 txTraces.AddRange(txTracesFromOneBlock);
             }
 
-            ParityTxTraceFromStore[] txTracesResult = txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace).ToArray();
+            IEnumerable<ParityTxTraceFromStore> txTracesResult = txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
 
             TxTraceFilter txTracerFilter = new(traceFilterForRpc.FromAddress, traceFilterForRpc.ToAddress, traceFilterForRpc.After, traceFilterForRpc.Count);
             return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(txTracerFilter.FilterTxTraces(txTracesResult));
