@@ -86,14 +86,16 @@ namespace Nethermind.JsonRpc
 
         private void BuildEngineUrls(bool includeWebSockets)
         {
-            if (_jsonRpcConfig.EnginePort == null && string.IsNullOrWhiteSpace(_jsonRpcConfig.EngineHost))
+            if (_jsonRpcConfig.EnginePort == null)
             {
                 return;
             }
 
-            if (_jsonRpcConfig.EnginePort == null || string.IsNullOrWhiteSpace(_jsonRpcConfig.EngineHost)) // by default EngineHost is not null
+            if (string.IsNullOrWhiteSpace(_jsonRpcConfig.EngineHost)) // by default EngineHost is not null
             {
-                if (_logger.IsTrace) _logger.Trace("Json RPC EnginePort and EngineHost should be specified");
+                if (_logger.IsWarn) _logger.Warn("Json RPC EngineHost is set to null, " +
+                    "please set it to 127.0.0.1 in if your CL Client is on the same machine " +
+                    "or to 0.0.0.0 if your CL Client is on a seperate machine");
                 return;
             }
             JsonRpcUrl url = new(Uri.UriSchemeHttp, _jsonRpcConfig.EngineHost, _jsonRpcConfig.EnginePort.Value,
