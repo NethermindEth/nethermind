@@ -195,6 +195,7 @@ namespace Nethermind.Merge.Plugin.Handlers.V1
 
             if (result == ValidationResult.Invalid)
             {
+                if (_logger.IsInfo) _logger.Info($"Invalid block found. Validation message: {message}. Result of {requestStr}.");
                 _invalidChainTracker.OnInvalidBlock(blockHash, request.ParentHash);
                 return ResultWrapper<PayloadStatusV1>.Success(BuildInvalidPayloadStatusV1(request, message));
             }
