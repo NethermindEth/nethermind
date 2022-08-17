@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         }
 
         protected override ParityLikeTxTracer OnStart(Transaction? tx) => new(_block, tx,
-            _typesByTransaction?.TryGetValue(tx!.Hash!, out ParityTraceTypes types) == true ? types : _types);
+            tx is not null && _typesByTransaction?.TryGetValue(tx.Hash!, out ParityTraceTypes types) == true ? types : _types);
 
         protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
 
