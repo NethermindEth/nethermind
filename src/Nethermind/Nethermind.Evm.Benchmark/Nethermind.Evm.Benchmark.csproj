@@ -11,7 +11,7 @@
 
     <ItemGroup>
       <PackageReference Include="BenchmarkDotNet" Version="0.13.1" />
-      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0-preview.1" />
+      <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0" />
     </ItemGroup>
 
     <ItemGroup>

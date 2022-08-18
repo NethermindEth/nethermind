@@ -16,7 +16,7 @@
       <Name>Nethermind.HashLib</Name>
     </ProjectReference>
     <PackageReference Include="FastEnum" Version="1.7.0" />
-    <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0-preview.1" />
+    <PackageReference Include="Nethermind.Numerics.Int256" Version="1.0.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="6.18.0" />
     <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
     <ProjectReference Include="..\Nethermind.Secp256k1\Nethermind.Secp256k1.csproj" />
