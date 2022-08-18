@@ -42,7 +42,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
     {
         private readonly PostMergeBlockProducer _blockProducer;
         private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
-        private readonly ISealer _sealer;
         private readonly ILogger _logger;
         private readonly List<string> _payloadsToRemove = new();
 
@@ -56,7 +55,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         public PayloadPreparationService(
             PostMergeBlockProducer blockProducer,
             IBlockImprovementContextFactory blockImprovementContextFactory,
-            ISealer sealer,
             ITimerFactory timerFactory,
             ILogManager logManager,
             TimeSpan timePerSlot,
@@ -64,7 +62,6 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         {
             _blockProducer = blockProducer;
             _blockImprovementContextFactory = blockImprovementContextFactory;
-            _sealer = sealer;
             TimeSpan timeout = timePerSlot;
             _cleanupOldPayloadDelay = 2 * timePerSlot; // 2 * slots time
             ITimer timer = timerFactory.CreateTimer(slotsPerOldPayloadCleanup * timeout);
@@ -115,7 +112,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             {
                 if (payload.Value.CurrentBestBlock is not null && payload.Value.CurrentBestBlock.Timestamp + (uint)_cleanupOldPayloadDelay.Seconds <= utcNow.Seconds)
                 {
-                    if (_logger.IsInfo) _logger.Info($"A new payload to remove: {payload.Key}, Current time {utcNow}, Payload timestamp: {payload.Value.CurrentBestBlock.Timestamp}");
+                    if (_logger.IsInfo) _logger.Info($"A new payload to remove: {payload.Key}, Current time {utcNow.Seconds}, Payload timestamp: {payload.Value.CurrentBestBlock.Timestamp}");
                     _payloadsToRemove.Add(payload.Key);
                 }
             }

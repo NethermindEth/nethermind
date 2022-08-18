@@ -1,16 +1,16 @@
 //  Copyright (c) 2021 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
-// 
+//
 //  The Nethermind library is free software: you can redistribute it and/or modify
 //  it under the terms of the GNU Lesser General Public License as published by
 //  the Free Software Foundation, either version 3 of the License, or
 //  (at your option) any later version.
-// 
+//
 //  The Nethermind library is distributed in the hope that it will be useful,
 //  but WITHOUT ANY WARRANTY; without even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
-// 
+//
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
@@ -139,7 +139,7 @@ public partial class EthRpcModule : IEthRpcModule
     {
         return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
     }
-    
+
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
         UInt256 gasPriceWithBaseFee = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
@@ -210,25 +210,33 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<byte[]>.Success(storage.PadLeft(32));
     }
 
-    public Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
+    public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
     {
+
+        if (blockParameter == BlockParameter.Pending)
+        {
+            UInt256 pendingNonce = _txPoolBridge.GetLatestPendingNonce(address);
+            return Task.FromResult(ResultWrapper<UInt256>.Success(pendingNonce));
+
+        }
+
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return Task.FromResult(ResultWrapper<UInt256?>.Fail(searchResult));
+            return Task.FromResult(ResultWrapper<UInt256>.Fail(searchResult));
         }
 
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header))
         {
-            return Task.FromResult(ResultWrapper<UInt256?>.Fail($"No state available for block {header.Hash}",
+            return Task.FromResult(ResultWrapper<UInt256>.Fail($"No state available for block {header.Hash}",
                 ErrorCodes.ResourceUnavailable));
         }
 
         Account account = _stateReader.GetAccount(header.StateRoot, address);
         UInt256 nonce = account?.Nonce ?? 0;
 
-        return Task.FromResult(ResultWrapper<UInt256?>.Success(nonce));
+        return Task.FromResult(ResultWrapper<UInt256>.Success(nonce));
     }
 
     public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
@@ -503,7 +511,7 @@ public partial class EthRpcModule : IEthRpcModule
         {
             return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
         }
-        
+
         if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
         return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(new(txHash, receipt, effectiveGasPrice, logIndexStart)));
     }
@@ -644,7 +652,7 @@ public partial class EthRpcModule : IEthRpcModule
             cancellationToken.ThrowIfCancellationRequested();
 
             fromBlockResult = _blockFinder.SearchForHeader(filter.FromBlock);
-        }    
+        }
 
         if (fromBlockResult.IsError)
         {
@@ -693,7 +701,7 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<bool?>.Fail("eth_submitHashrate not supported", ErrorCodes.MethodNotFound, null);
     }
 
-    // https://github.com/ethereum/EIPs/issues/1186	
+    // https://github.com/ethereum/EIPs/issues/1186
     public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys,
         BlockParameter blockParameter)
     {

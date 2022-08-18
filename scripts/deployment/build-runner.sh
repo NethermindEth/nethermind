@@ -2,7 +2,6 @@
 #exit when any command fails
 set -e
 RUNNER_PATH=$RELEASE_DIRECTORY/nethermind/src/Nethermind/Nethermind.Runner
-ARM_ROCKSDB_PATH=$RELEASE_DIRECTORY/nethermind/scripts/deployment/arm64/runtimes
 PUBLISH_PATH=bin/release/net6.0
 OUT=out
 
@@ -14,13 +13,10 @@ echo =======================================================
 echo Nethermind Runner path: $RUNNER_PATH
 
 dotnet publish -c release -r $LINUX --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_RELEASE
-dotnet publish -c release -r $OSX --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_RELEASE
-dotnet publish -c release -r $WIN10 --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$WIN_RELEASE
-dotnet publish -c release -r $OSX_ARM64 --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_ARM64_RELEASE
-
-
-cp $ARM_ROCKSDB_PATH/librocksdb.so ../../rocksdb-sharp/RocksDbNative/runtimes/linux-arm64/native/librocksdb.so
 dotnet publish -c release -r $LINUX_ARM64 -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$LIN_ARM64_RELEASE
+dotnet publish -c release -r $OSX --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_RELEASE
+dotnet publish -c release -r $OSX_ARM64 --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$OSX_ARM64_RELEASE
+dotnet publish -c release -r $WIN10 --self-contained true -p:PublishSingleFile=true -p:IncludeAllContentForSelfExtract=true -o $OUT/$WIN_RELEASE
 
 rm -rf $OUT/$LIN_RELEASE/Data
 rm -rf $OUT/$LIN_RELEASE/Hive

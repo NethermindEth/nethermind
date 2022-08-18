@@ -215,7 +215,6 @@ namespace Nethermind.Merge.Plugin
                 }
                 else
                 {
-
                     isTerminal = header.IsTerminalBlock(_specProvider); // we're checking if block is terminal if not it should be PostMerge block
                     isPostMerge = !isTerminal;
                 }
