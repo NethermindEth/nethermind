@@ -38,7 +38,6 @@ jobs:
         submodules: recursive
         path: nethermind
         ref: ${{ github.event.inputs.tag }}
-        #fetch-depth: 0
     - name: Checking out Nethermind Launcher repository
       uses: actions/checkout@v3
       with:
@@ -108,11 +107,6 @@ jobs:
       with:
         name: nethermind-darwin-arm64-package
         path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/nethermind-darwin-arm64-*
-    #- uses: actions/upload-artifact@v3
-    #  name: Uploading git-hash files
-    #  with:
-    #    name: nethermind-git-hash
-    #    path: ${{ env.RELEASE_DIRECTORY }}/git-*  
     - uses: actions/upload-artifact@v3
       name: Uploading update-homebrew.sh
       with:
@@ -141,11 +135,6 @@ jobs:
         with:
           name: nethermind-darwin-arm64-package
           path: ${{ env.RELEASE_DIRECTORY }}/${{ env.OSX_ARM64_RELEASE }}/
-      #- name: Downloading git-hash files
-      #  uses: actions/download-artifact@v3
-      #  with:
-      #    name: nethermind-git-hash
-      #    path: ${{ env.RELEASE_DIRECTORY }}/
       - name: Downloading update-homebrew script
         uses: actions/download-artifact@v3
         with:
