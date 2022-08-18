@@ -39,7 +39,7 @@ public class NETMetricsPlugin: INethermindPlugin
     public Task Init(INethermindApi nethermindApi)
     {
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-        _metricsListener = new SystemMetricsListener(1);
+        _metricsListener = new SystemMetricsListener();
         _logger = _nethermindApi.LogManager.GetClassLogger();
         return Task.CompletedTask;
     }

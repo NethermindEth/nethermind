@@ -25,16 +25,15 @@ namespace Nethermind.NETMetrics;
 
 public class SystemMetricsListener: EventListener
 {
-    public SystemMetricsListener(int timeInterval)
+    public SystemMetricsListener()
     {
-        _timeInterval = timeInterval;
     }
 
-    private readonly int _timeInterval;
+    private const int TimeInterval = 1;
 
     protected override void OnEventSourceCreated(EventSource source)
     {
-        // Console.WriteLine($"{source.Guid} | {source.Name}");
+        Console.WriteLine($"{source.Guid} | {source.Name}");
 
         if (!source.Name.Equals("System.Runtime"))
         {
@@ -43,14 +42,14 @@ public class SystemMetricsListener: EventListener
 
         EnableEvents(source, EventLevel.Verbose, EventKeywords.All, new Dictionary<string, string?>()
             {
-                ["EventCounterIntervalSec"] = _timeInterval.ToString()
+                ["EventCounterIntervalSec"] = TimeInterval.ToString()
             }
         );
     }
 
     protected override void OnEventWritten(EventWrittenEventArgs eventData)
     {
-
+        Console.WriteLine(eventData.EventName);
         if (!eventData.EventName.Equals("EventCounters"))
         {
             return;
