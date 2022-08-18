@@ -56,22 +56,14 @@ namespace Nethermind.Hive
 
         private void OnPeerRefreshed(object? sender, PeerHeadRefreshedEventArgs e)
         {
-            BlockTreeSuggestOptions GetOptions(BlockHeader blockHeader)
-            {
-                BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess;
-                if (blockHeader.IsTerminalBlock(_api.SpecProvider!))
-                {
-                    options |= BlockTreeSuggestOptions.FillBeaconBlock;
-                }
-
-                return options;
-            }
-
             BlockHeader header = e.Header;
-            if (header.UnclesHash == Keccak.OfAnEmptySequenceRlp && header.TxRoot == Keccak.EmptyTreeHash)
+            IBlockTree blockTree = _api.BlockTree!;
+            Block? head = blockTree.Head;
+            if ((head is null || !head.IsPoS() || !head.IsTerminalBlock(_api.SpecProvider!))
+                && header.UnclesHash == Keccak.OfAnEmptySequenceRlp && header.TxRoot == Keccak.EmptyTreeHash)
             {
                 Block block = new(header, new BlockBody());
-                _api.BlockTree!.SuggestBlock(block, GetOptions(header));
+                blockTree.SuggestBlock(block);
             }
         }
 
